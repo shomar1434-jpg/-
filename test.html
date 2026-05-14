@@ -67,7 +67,7 @@
         doc:function(){var t=tableFromArgs(arguments); return {table:t.table,id:t.id};},
         collection:function(){var t=tableFromArgs(arguments); return {table:t.table};},
         setDoc:async function(ref,data,opt){ if(ref.table==='users') return safeUpsert('users',mapUserToDb(data)); if(ref.table==='schools') return safeUpsert('schools',mapSchoolToDb(data)); return safeUpsert(ref.table,Object.assign({},data,{id:ref.id||data.id||uuid()})); },
-        updateDoc:async function(ref,data){ var sb=getSchoolSupabaseClient(); var patch=data; if(ref.table==='users'){ patch={}; if(data.name!==undefined||data.full_name!==undefined) patch.full_name=data.name||data.full_name||''; if(data.email!==undefined) patch.email=data.email||''; if(data.password!==undefined) patch.password=data.password||''; if(data.role!==undefined) patch.role=data.role||'performance'; if(data.schoolId!==undefined||data.school_id!==undefined) patch.school_id=data.schoolId||data.school_id||null; if(data.adminOwnerId!==undefined||data.admin_owner_id!==undefined) patch.admin_owner_id=data.adminOwnerId||data.admin_owner_id||null; if(data.registrationToken!==undefined||data.registration_token!==undefined) patch.registration_token=data.registrationToken||data.registration_token||null; if(data.isActive!==undefined||data.active!==undefined){ var av=(data.active!==undefined)?data.active:data.isActive; patch.active=!!av; patch.is_active=!!av; patch.status=av?'active':'pending'; } if(Object.keys(patch).length===0) patch=data; } return sb.from(ref.table).update(patch).eq('id',ref.id); },
+        updateDoc:async function(ref,data){ var sb=getSchoolSupabaseClient(); var patch=data; if(ref.table==='users') patch=mapUserToDb(Object.assign({id:ref.id},data)); return sb.from(ref.table).update(patch).eq('id',ref.id); },
         addDoc:async function(ref,data){ var id=uuid(); return this.setDoc({table:ref.table,id:id},Object.assign({id:id},data)); },
         onSnapshot:function(ref,cb){ async function load(){ if(ref.table==='users'){ var arr=await window.SupaStore.listUsers(); cb({docs:arr.map(function(x){return {data:function(){return x;}, exists:function(){return true;}}})}); } } load(); return function(){}; }
       };
@@ -668,7 +668,6 @@
                     name,
                     email,
                     role,
-                    password: '123456',
                     isActive: false,
                     schoolId: schoolId || null,
                     schoolCode,
@@ -697,8 +696,8 @@
                 const userData = await window.SupaStore.findUserByEmail(e);
                 if (!userData) { showToast('لم يتم العثور على الحساب داخل هذه المدرسة'); return; }
                 if (linkSchoolId && userData.schoolId && String(userData.schoolId) !== String(linkSchoolId)) { showToast('هذا الحساب غير مرتبط بهذه المدرسة'); return; }
-                const effectivePassword = userData.password || '123456';
-                if (String(effectivePassword) !== String(pw)) { showToast('كلمة المرور غير صحيحة'); return; }
+                if (userData.password && String(userData.password) !== String(pw)) { showToast('كلمة المرور غير صحيحة'); return; }
+                if (!userData.password) { showToast('الحساب لا يحتوي على كلمة مرور. راجع مالك النظام.'); return; }
                 if (userData.isActive === false || userData.status === 'pending') {
                     document.getElementById('role-selector-screen').classList.add('login-hidden'); document.getElementById('role-selector-screen').style.display = 'none';
                     document.getElementById('waiting-screen').classList.remove('hidden');
@@ -776,13 +775,6 @@
 
         const startApp = (u) => {
             currentUser = u;
-            try {
-                const roleKey = String(u?.originalRole || u?.role || '').toLowerCase();
-                const schoolKey = u?.schoolId || u?.school_id || new URLSearchParams(location.search).get('schoolId') || '';
-                if ((roleKey === 'manager' || roleKey === 'leadership') && schoolKey) {
-                    localStorage.setItem('school_activation_confirmed_' + schoolKey, 'true');
-                }
-            } catch(e) {}
             document.getElementById('waiting-screen').classList.add('hidden');
             document.getElementById('role-selector-screen').classList.add('login-hidden'); document.getElementById('role-selector-screen').style.display = 'none';
             document.getElementById('main-ui').classList.remove('opacity-0', 'pointer-events-none');
@@ -1170,17 +1162,13 @@
             const isEditingSelfAdmin = (uid === 'root' || uid === window.auth.currentUser?.uid) && isManagerVerifiedInSession;
             const finalRole = isEditingSelfAdmin ? 'leadership' : role;
             
-            const existingUser = allUsers.find(u => u.id === uid) || {};
             const userData = { 
                 id: uid, 
                 name, 
                 email, 
-                password: existingUser.password || '123456',
                 role: finalRole, 
                 isActive: isEditingSelfAdmin ? true : selectedActive,
-                active: isEditingSelfAdmin ? true : selectedActive,
-                status: (isEditingSelfAdmin ? true : selectedActive) ? 'active' : 'pending',
-                adminOwnerId: isEditingSelfAdmin ? getManagerOwnerId() : (existingUser.adminOwnerId || getManagerOwnerId()),
+                adminOwnerId: isEditingSelfAdmin ? getManagerOwnerId() : (allUsers.find(u => u.id === uid)?.adminOwnerId || getManagerOwnerId()),
                 createdByAdminId: getManagerOwnerId(),
                 isRootAdmin: isEditingSelfAdmin // وسم داخلي لضمان الصلاحية حتى بعد تغيير الاسم
             };
@@ -1663,27 +1651,50 @@
 
 
 
-<!-- NO_SECTION_ACTIVATION_AFTER_MANAGER_PATCH_START -->
-<script>
+
+<!-- MANAGER_UI_ISOLATION_FIX_START -->
+<style id="manager-ui-isolation-fix-style">
+body.school-link-mode.app-started #role-selector-screen,
+body.school-link-mode.app-started #registration-modal,
+body.school-link-mode.app-started #waiting-screen{
+  display:none!important;
+  visibility:hidden!important;
+  pointer-events:none!important;
+}
+body.school-link-mode.app-started #main-ui{
+  display:flex!important;
+  opacity:1!important;
+  pointer-events:auto!important;
+}
+body.school-link-mode.app-started .login-container{display:none!important}
+</style>
+<script id="manager-ui-isolation-fix-script">
 (function(){
-  'use strict';
   function by(id){return document.getElementById(id);}
-  function hideActivationScreens(){
-    try{
-      var ws=by('waiting-screen'); if(ws) ws.classList.add('hidden');
-      var rs=by('role-selector-screen');
-      if(rs){ rs.classList.add('login-hidden'); rs.style.display='none'; }
-    }catch(e){}
+  function hasSchool(){var q=new URLSearchParams(location.search||'');return q.has('schoolId')||q.has('school_id')||q.has('code')||q.has('school_code')||q.get('register')==='1'||q.get('join')==='1';}
+  function mainIsStarted(){
+    var main=by('main-ui');
+    if(!main) return false;
+    var cs=getComputedStyle(main);
+    return !main.classList.contains('opacity-0') && cs.display!=='none' && (main.style.opacity==='1' || Number(cs.opacity) > 0.5);
   }
-  window.SmartSchoolNoSectionActivation = {
-    hide: hideActivationScreens,
-    markSchoolActive: function(schoolId){
-      if(schoolId) localStorage.setItem('school_activation_confirmed_'+schoolId,'true');
-    }
-  };
+  function isolateManagerUi(){
+    if(!hasSchool() || !mainIsStarted()) return;
+    document.body.classList.add('app-started');
+    ['role-selector-screen','registration-modal','waiting-screen'].forEach(function(id){
+      var el=by(id);
+      if(el){ el.classList.add('login-hidden'); el.classList.add('hidden'); el.style.display='none'; el.style.visibility='hidden'; el.style.pointerEvents='none'; }
+    });
+    var main=by('main-ui');
+    if(main){ main.classList.remove('opacity-0','pointer-events-none'); main.style.display='flex'; main.style.opacity='1'; main.style.pointerEvents='auto'; }
+  }
+  document.addEventListener('DOMContentLoaded',function(){
+    setInterval(isolateManagerUi,250);
+    document.addEventListener('click',function(){setTimeout(isolateManagerUi,100);setTimeout(isolateManagerUi,500);},true);
+  });
 })();
 </script>
-<!-- NO_SECTION_ACTIVATION_AFTER_MANAGER_PATCH_END -->
+<!-- MANAGER_UI_ISOLATION_FIX_END -->
 
 </body></html>`;
             const w = window.open('', '_blank');
@@ -1932,27 +1943,50 @@
       '</section>'+
       (s.includeAttendance?'<section class="page"><div class="topbar"></div><header><div class="hblock"><b>المملكة العربية السعودية</b><b>وزارة التعليم</b><span>'+esc(s.schoolName||'المدرسة')+'</span></div><div class="logo">وزارة التعليم</div><div class="meta"><div>'+esc(m.date||today())+'</div></div></header><h1>سجل الحضور والتوثيق</h1><table><thead><tr><th>م</th><th>الاسم</th><th>التوقيع</th></tr></thead><tbody>'+rows+'</tbody></table><div class="note">ملاحظة: يلزم توقيع الحاضرين/ات فور انتهاء الاجتماع وتوثيق المحضر رسميًا.</div><div class="footnote">منصة المدرسة الرقمية الذكية - تاريخ التحقق: '+esc(today())+' - '+esc(code)+'</div></section>':'')+
     '\n
-<!-- NO_SECTION_ACTIVATION_AFTER_MANAGER_PATCH_START -->
-<script>
+
+<!-- MANAGER_UI_ISOLATION_FIX_START -->
+<style id="manager-ui-isolation-fix-style">
+body.school-link-mode.app-started #role-selector-screen,
+body.school-link-mode.app-started #registration-modal,
+body.school-link-mode.app-started #waiting-screen{
+  display:none!important;
+  visibility:hidden!important;
+  pointer-events:none!important;
+}
+body.school-link-mode.app-started #main-ui{
+  display:flex!important;
+  opacity:1!important;
+  pointer-events:auto!important;
+}
+body.school-link-mode.app-started .login-container{display:none!important}
+</style>
+<script id="manager-ui-isolation-fix-script">
 (function(){
-  'use strict';
   function by(id){return document.getElementById(id);}
-  function hideActivationScreens(){
-    try{
-      var ws=by('waiting-screen'); if(ws) ws.classList.add('hidden');
-      var rs=by('role-selector-screen');
-      if(rs){ rs.classList.add('login-hidden'); rs.style.display='none'; }
-    }catch(e){}
+  function hasSchool(){var q=new URLSearchParams(location.search||'');return q.has('schoolId')||q.has('school_id')||q.has('code')||q.has('school_code')||q.get('register')==='1'||q.get('join')==='1';}
+  function mainIsStarted(){
+    var main=by('main-ui');
+    if(!main) return false;
+    var cs=getComputedStyle(main);
+    return !main.classList.contains('opacity-0') && cs.display!=='none' && (main.style.opacity==='1' || Number(cs.opacity) > 0.5);
   }
-  window.SmartSchoolNoSectionActivation = {
-    hide: hideActivationScreens,
-    markSchoolActive: function(schoolId){
-      if(schoolId) localStorage.setItem('school_activation_confirmed_'+schoolId,'true');
-    }
-  };
+  function isolateManagerUi(){
+    if(!hasSchool() || !mainIsStarted()) return;
+    document.body.classList.add('app-started');
+    ['role-selector-screen','registration-modal','waiting-screen'].forEach(function(id){
+      var el=by(id);
+      if(el){ el.classList.add('login-hidden'); el.classList.add('hidden'); el.style.display='none'; el.style.visibility='hidden'; el.style.pointerEvents='none'; }
+    });
+    var main=by('main-ui');
+    if(main){ main.classList.remove('opacity-0','pointer-events-none'); main.style.display='flex'; main.style.opacity='1'; main.style.pointerEvents='auto'; }
+  }
+  document.addEventListener('DOMContentLoaded',function(){
+    setInterval(isolateManagerUi,250);
+    document.addEventListener('click',function(){setTimeout(isolateManagerUi,100);setTimeout(isolateManagerUi,500);},true);
+  });
 })();
 </script>
-<!-- NO_SECTION_ACTIVATION_AFTER_MANAGER_PATCH_END -->
+<!-- MANAGER_UI_ISOLATION_FIX_END -->
 
 </body></html>';
   }
@@ -2420,27 +2454,50 @@ body.school-link-mode.app-started #manager-invite-copy-btn{display:block}
 </script>
 <!-- MANAGER_FIRST_FLOW_SAFE_PATCH_END -->
 
-<!-- NO_SECTION_ACTIVATION_AFTER_MANAGER_PATCH_START -->
-<script>
+
+<!-- MANAGER_UI_ISOLATION_FIX_START -->
+<style id="manager-ui-isolation-fix-style">
+body.school-link-mode.app-started #role-selector-screen,
+body.school-link-mode.app-started #registration-modal,
+body.school-link-mode.app-started #waiting-screen{
+  display:none!important;
+  visibility:hidden!important;
+  pointer-events:none!important;
+}
+body.school-link-mode.app-started #main-ui{
+  display:flex!important;
+  opacity:1!important;
+  pointer-events:auto!important;
+}
+body.school-link-mode.app-started .login-container{display:none!important}
+</style>
+<script id="manager-ui-isolation-fix-script">
 (function(){
-  'use strict';
   function by(id){return document.getElementById(id);}
-  function hideActivationScreens(){
-    try{
-      var ws=by('waiting-screen'); if(ws) ws.classList.add('hidden');
-      var rs=by('role-selector-screen');
-      if(rs){ rs.classList.add('login-hidden'); rs.style.display='none'; }
-    }catch(e){}
+  function hasSchool(){var q=new URLSearchParams(location.search||'');return q.has('schoolId')||q.has('school_id')||q.has('code')||q.has('school_code')||q.get('register')==='1'||q.get('join')==='1';}
+  function mainIsStarted(){
+    var main=by('main-ui');
+    if(!main) return false;
+    var cs=getComputedStyle(main);
+    return !main.classList.contains('opacity-0') && cs.display!=='none' && (main.style.opacity==='1' || Number(cs.opacity) > 0.5);
   }
-  window.SmartSchoolNoSectionActivation = {
-    hide: hideActivationScreens,
-    markSchoolActive: function(schoolId){
-      if(schoolId) localStorage.setItem('school_activation_confirmed_'+schoolId,'true');
-    }
-  };
+  function isolateManagerUi(){
+    if(!hasSchool() || !mainIsStarted()) return;
+    document.body.classList.add('app-started');
+    ['role-selector-screen','registration-modal','waiting-screen'].forEach(function(id){
+      var el=by(id);
+      if(el){ el.classList.add('login-hidden'); el.classList.add('hidden'); el.style.display='none'; el.style.visibility='hidden'; el.style.pointerEvents='none'; }
+    });
+    var main=by('main-ui');
+    if(main){ main.classList.remove('opacity-0','pointer-events-none'); main.style.display='flex'; main.style.opacity='1'; main.style.pointerEvents='auto'; }
+  }
+  document.addEventListener('DOMContentLoaded',function(){
+    setInterval(isolateManagerUi,250);
+    document.addEventListener('click',function(){setTimeout(isolateManagerUi,100);setTimeout(isolateManagerUi,500);},true);
+  });
 })();
 </script>
-<!-- NO_SECTION_ACTIVATION_AFTER_MANAGER_PATCH_END -->
+<!-- MANAGER_UI_ISOLATION_FIX_END -->
 
 </body>
 </html>

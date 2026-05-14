@@ -1621,98 +1621,56 @@
 
 
 
-<!-- MANAGER_FIRST_SCHOOL_ROUTE_FIX_START -->
-<style id="manager-first-school-route-style">
-  body.school-route #ownerAiDock,
-  body.school-route #owner-bottom-actions-final,
-  body.school-route .owner-ai-dock { display: none !important; }
-  body.school-route .login-container > h2::after { content: ""; }
-  body.school-route .login-container > p { font-size: 0 !important; }
-  body.school-route .login-container > p::after {
-    content: "دخول مدير المدرسة أولًا، ثم دعوة الوكلاء والمعلمين من داخل لوحة المدرسة";
-    font-size: 12px !important;
-    color: #334155 !important;
-  }
+<!-- Clean manager-first school link guard: keeps school invitation links away from owner panel -->
+<style id="clean-manager-first-guard-style">
+body.school-link-mode #owner-bottom-actions-final,
+body.school-link-mode #ownerAiDock,
+body.school-link-mode .owner-ai-dock,
+body.school-link-mode #ownerPanelModal,
+body.school-link-mode #ownerAiModal,
+body.school-link-mode .global-admin-badge { display:none !important; }
+body.school-link-mode #role-selector-screen { display:flex !important; }
+body.school-link-mode #role-selector-screen.login-hidden { display:flex !important; }
+body.school-link-mode .login-container > .grid.grid-cols-3 { display:none !important; }
+body.school-link-mode .login-container h2::after { content:""; }
+body.school-link-mode .school-link-note { color:#64748b; font-size:12px; font-weight:700; margin-top:8px; }
 </style>
-<script id="manager-first-school-route-script">
+<script id="clean-manager-first-guard-script">
 (function(){
-  'use strict';
-  if (window.__managerFirstSchoolRouteFix) return;
-  window.__managerFirstSchoolRouteFix = true;
-
   function params(){ return new URLSearchParams(location.search || ''); }
-  function schoolRoute(){ var p=params(); return p.has('schoolId') || p.has('school_id') || p.has('code') || p.has('school_code') || p.get('register') === '1'; }
-  function routeSchoolId(){ var p=params(); return p.get('schoolId') || p.get('school_id') || ''; }
-  function routeSchoolCode(){ var p=params(); return p.get('code') || p.get('school_code') || ''; }
-  function toast(msg){ try{ if(typeof showToast==='function') showToast(msg); else alert(msg); }catch(e){ alert(msg); } }
-
-  if (!schoolRoute()) return;
-  document.documentElement.classList.add('school-route');
-  document.addEventListener('DOMContentLoaded', function(){ document.body.classList.add('school-route'); });
-
-  // منع فتح لوحة المالك من رابط المدرسة
-  var guardOwner = function(){
-    if (window.SmartOwnerPanel) {
-      window.SmartOwnerPanel.open = function(){ alert('لوحة مالك المنصة غير متاحة من رابط المدرسة.'); };
+  function isSchoolLink(){ var p=params(); return p.has('schoolId') || p.has('school_id') || p.has('code') || p.has('school_code') || p.get('register') === '1'; }
+  function by(id){ return document.getElementById(id); }
+  function closeReg(){ var m=by('registration-modal'); if(m) m.style.display='none'; }
+  function apply(){
+    if(!isSchoolLink()) return;
+    document.body.classList.add('school-link-mode');
+    closeReg();
+    var roleScreen=by('role-selector-screen');
+    if(roleScreen){ roleScreen.classList.remove('login-hidden'); roleScreen.style.display='flex'; }
+    var h=document.querySelector('#role-selector-screen .login-container h2');
+    if(h) h.textContent='دخول مدير المدرسة';
+    var p=document.querySelector('#role-selector-screen .login-container p');
+    if(p) p.textContent='أدخل بيانات المدير للدخول أولًا، ثم أرسل رابط التسجيل للوكلاء والمعلمين من داخل مدرستك.';
+    var name=by('user-display-name'); if(name) name.placeholder='اسم المدير';
+    var email=by('user-madrasati-email'); if(email) email.placeholder='بريد مدير المدرسة';
+    var login=by('mainLoginBtn'); if(login) login.textContent='دخول إلى مدرستي';
+    var newBtn=document.querySelector('#role-selector-screen button[onclick="openRegistrationModal()"]');
+    if(newBtn) newBtn.textContent='تسجيل وكيل / معلم جديد';
+    var box=document.querySelector('#role-selector-screen .login-container .mb-8');
+    if(box && !by('school-link-note')){
+      var note=document.createElement('div'); note.id='school-link-note'; note.className='school-link-note';
+      note.textContent='ملاحظة: المدير يدخل أولًا، أما زر التسجيل فهو لدعوة الوكلاء والمعلمين بعد ذلك.';
+      box.appendChild(note);
     }
-    var dock = document.getElementById('ownerAiDock'); if (dock) dock.style.display = 'none';
-    var bottom = document.getElementById('owner-bottom-actions-final'); if (bottom) bottom.style.display = 'none';
-  };
-  document.addEventListener('DOMContentLoaded', guardOwner);
-  setTimeout(guardOwner, 500);
-  setTimeout(guardOwner, 1500);
-
-  // لا تفتح نافذة التسجيل تلقائيًا؛ المدير يدخل أولًا من نفس شاشة الدخول.
-  window.pendingRegistrationInvite = { schoolId: routeSchoolId(), schoolCode: routeSchoolCode() };
-
-  var oldCheck = window.checkUserStatus;
-  if (typeof oldCheck === 'function') {
-    window.checkUserStatus = async function(){
-      var emailEl = document.getElementById('user-madrasati-email');
-      var email = emailEl ? String(emailEl.value || '').trim() : '';
-      if (!email) { toast('أدخل بريد المدير أو المستخدم للدخول'); return; }
-      try {
-        var u = await window.SupaStore.findUserByEmail(email);
-        if (!u || u.isActive === false) {
-          document.getElementById('role-selector-screen').classList.add('login-hidden');
-          document.getElementById('role-selector-screen').style.display = 'none';
-          document.getElementById('waiting-screen').classList.remove('hidden');
-          return;
-        }
-        var sid = routeSchoolId();
-        if (sid && String(u.schoolId || u.school_id || '') !== String(sid)) {
-          toast('هذا الحساب غير مرتبط بهذه المدرسة');
-          return;
-        }
-        if (typeof startApp === 'function') startApp(u);
-      } catch(e) { console.error(e); toast('تعذر التحقق من الحساب'); }
-    };
   }
-
-  var oldCopy = window.copyRegLinkForUsers;
-  window.copyRegLinkForUsers = function(){
-    if (!window.currentUser || (currentUser.role !== 'leadership' && currentUser.role !== 'manager')) {
-      return toast('رابط التسجيل مخصص لحساب المدير/ة فقط');
-    }
-    var sid = currentUser.schoolId || currentUser.school_id || routeSchoolId();
-    var code = currentUser.schoolCode || currentUser.school_code || routeSchoolCode();
-    if (!sid && typeof oldCopy === 'function') return oldCopy();
-    var base = location.href.split('#')[0].split('?')[0];
-    var link = base + '?register=1&schoolId=' + encodeURIComponent(sid || '') + '&code=' + encodeURIComponent(code || '');
-    var input = document.createElement('input');
-    input.value = link; document.body.appendChild(input); input.select(); document.execCommand('copy'); input.remove();
-    toast('تم نسخ رابط تسجيل المدرسة للوكيل والمعلمين');
-  };
-
   document.addEventListener('DOMContentLoaded', function(){
-    var h = document.querySelector('.login-container h2');
-    if (h) h.textContent = 'دخول مدرسة';
-    var newBtn = document.querySelector('button[onclick="openRegistrationModal()"]');
-    if (newBtn) newBtn.textContent = 'طلب حساب جديد';
+    apply();
+    setTimeout(apply, 250);
+    setTimeout(function(){ if(isSchoolLink()) closeReg(); }, 600);
+    setTimeout(function(){ if(isSchoolLink()) closeReg(); }, 1200);
   });
 })();
 </script>
-<!-- MANAGER_FIRST_SCHOOL_ROUTE_FIX_END -->
 
 </body></html>`;
             const w = window.open('', '_blank');
@@ -1960,7 +1918,60 @@
         '<div class="footnote">منصة المدرسة الرقمية الذكية - محضر معتمد بتاريخ '+esc(today())+'</div>'+
       '</section>'+
       (s.includeAttendance?'<section class="page"><div class="topbar"></div><header><div class="hblock"><b>المملكة العربية السعودية</b><b>وزارة التعليم</b><span>'+esc(s.schoolName||'المدرسة')+'</span></div><div class="logo">وزارة التعليم</div><div class="meta"><div>'+esc(m.date||today())+'</div></div></header><h1>سجل الحضور والتوثيق</h1><table><thead><tr><th>م</th><th>الاسم</th><th>التوقيع</th></tr></thead><tbody>'+rows+'</tbody></table><div class="note">ملاحظة: يلزم توقيع الحاضرين/ات فور انتهاء الاجتماع وتوثيق المحضر رسميًا.</div><div class="footnote">منصة المدرسة الرقمية الذكية - تاريخ التحقق: '+esc(today())+' - '+esc(code)+'</div></section>':'')+
-    '\n</body></html>';
+    '\n
+
+<!-- Clean manager-first school link guard: keeps school invitation links away from owner panel -->
+<style id="clean-manager-first-guard-style">
+body.school-link-mode #owner-bottom-actions-final,
+body.school-link-mode #ownerAiDock,
+body.school-link-mode .owner-ai-dock,
+body.school-link-mode #ownerPanelModal,
+body.school-link-mode #ownerAiModal,
+body.school-link-mode .global-admin-badge { display:none !important; }
+body.school-link-mode #role-selector-screen { display:flex !important; }
+body.school-link-mode #role-selector-screen.login-hidden { display:flex !important; }
+body.school-link-mode .login-container > .grid.grid-cols-3 { display:none !important; }
+body.school-link-mode .login-container h2::after { content:""; }
+body.school-link-mode .school-link-note { color:#64748b; font-size:12px; font-weight:700; margin-top:8px; }
+</style>
+<script id="clean-manager-first-guard-script">
+(function(){
+  function params(){ return new URLSearchParams(location.search || ''); }
+  function isSchoolLink(){ var p=params(); return p.has('schoolId') || p.has('school_id') || p.has('code') || p.has('school_code') || p.get('register') === '1'; }
+  function by(id){ return document.getElementById(id); }
+  function closeReg(){ var m=by('registration-modal'); if(m) m.style.display='none'; }
+  function apply(){
+    if(!isSchoolLink()) return;
+    document.body.classList.add('school-link-mode');
+    closeReg();
+    var roleScreen=by('role-selector-screen');
+    if(roleScreen){ roleScreen.classList.remove('login-hidden'); roleScreen.style.display='flex'; }
+    var h=document.querySelector('#role-selector-screen .login-container h2');
+    if(h) h.textContent='دخول مدير المدرسة';
+    var p=document.querySelector('#role-selector-screen .login-container p');
+    if(p) p.textContent='أدخل بيانات المدير للدخول أولًا، ثم أرسل رابط التسجيل للوكلاء والمعلمين من داخل مدرستك.';
+    var name=by('user-display-name'); if(name) name.placeholder='اسم المدير';
+    var email=by('user-madrasati-email'); if(email) email.placeholder='بريد مدير المدرسة';
+    var login=by('mainLoginBtn'); if(login) login.textContent='دخول إلى مدرستي';
+    var newBtn=document.querySelector('#role-selector-screen button[onclick="openRegistrationModal()"]');
+    if(newBtn) newBtn.textContent='تسجيل وكيل / معلم جديد';
+    var box=document.querySelector('#role-selector-screen .login-container .mb-8');
+    if(box && !by('school-link-note')){
+      var note=document.createElement('div'); note.id='school-link-note'; note.className='school-link-note';
+      note.textContent='ملاحظة: المدير يدخل أولًا، أما زر التسجيل فهو لدعوة الوكلاء والمعلمين بعد ذلك.';
+      box.appendChild(note);
+    }
+  }
+  document.addEventListener('DOMContentLoaded', function(){
+    apply();
+    setTimeout(apply, 250);
+    setTimeout(function(){ if(isSchoolLink()) closeReg(); }, 600);
+    setTimeout(function(){ if(isSchoolLink()) closeReg(); }, 1200);
+  });
+})();
+</script>
+
+</body></html>';
   }
   function printCss(){ return '@page{size:A4;margin:0}*{box-sizing:border-box}body{font-family:Cairo,Arial,sans-serif;margin:0;color:#0f172a;background:#f8fafc}.page{width:210mm;min-height:297mm;background:white;margin:0 auto;padding:14mm 12mm;position:relative;page-break-after:always}.topbar{position:absolute;top:0;left:0;right:0;height:8px;background:#08783f}header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid #e5e7eb;padding-bottom:12px}.hblock{line-height:1.8;color:#065f46;font-size:15px;display:flex;flex-direction:column}.logo{text-align:center;color:#059669;font-weight:800}.logo small{font-size:10px;color:#64748b}.meta{font-size:12px;line-height:2;background:#ecfdf5;border-radius:12px;padding:8px 16px;min-width:140px}h1{text-align:center;color:#047857;font-size:28px;margin:16px 0 10px}h2{color:#047857;font-size:15px;margin:13px 0 7px}.basmala{text-align:center;font-size:13px;color:#475569}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}.field,.notice,.teams{background:#f0fdf4;border:1px solid #d1fae5;border-radius:13px;padding:9px;font-size:13px}.notice{line-height:2}.teams{direction:ltr;text-align:left;word-break:break-all;font-size:11px}ol{margin:0;padding:0 24px;background:#fbfffd;border:1px dashed #bbf7d0;border-radius:12px;min-height:32px}li{padding:4px 0;font-size:13px;line-height:1.7}footer{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end;margin-top:18px;border-top:1px solid #e5e7eb;padding-top:12px;font-size:12px}.sig{max-width:120px;max-height:55px;object-fit:contain}.sigLine{width:120px;height:40px;border-bottom:1px solid #334155}.seal{width:90px;height:90px;object-fit:contain}.sealBox{width:90px;height:90px;border:2px dashed #94a3b8;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#64748b;font-weight:800;font-size:11px}.qr{text-align:center;font-size:10px}.qr svg{border:1px solid #d1fae5}.code{direction:ltr;font-weight:800;color:#047857}.footnote{position:absolute;bottom:9mm;left:12mm;right:12mm;border-top:1px solid #edf2f7;padding-top:6px;color:#047857;font-weight:700;font-size:11px}.note{margin-top:14px;background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:12px;text-align:center;color:#92400e;font-size:13px}table{width:100%;border-collapse:collapse;margin-top:14px}th{background:#08783f;color:white;padding:8px;font-size:13px}td{border:1px solid #e5e7eb;height:24px;padding:4px;font-size:12px}td:first-child{width:35px;text-align:center}@media print{body{background:white}.page{margin:0;box-shadow:none}}'; }
   function dayName(dateStr){ try{ var d=dateStr?new Date(dateStr):new Date(); return ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'][d.getDay()]||'';}catch(e){return '';} }
@@ -2293,6 +2304,7 @@
     refresh:async function(){var st=S(); try{ if(window.SupaStore){ var cloudSchools=await window.SupaStore.listSchools(); var cloudUsers=await window.SupaStore.listUsers(); if(cloudSchools.length) st.saveSchools(cloudSchools); if(cloudUsers.length) st.saveUsers(cloudUsers); }}catch(e){console.warn(e);} var schools=st.schools(); var users=st.users(); var rows=schools.map(function(x){var link=x.registrationLink||linkFor(x); return '<tr><td>'+x.name+'</td><td>'+x.code+'</td><td><span class="owner-link">'+link+'</span></td><td class="'+(x.status==='active'?'owner-status-active':'owner-status-off')+'">'+(x.status==='active'?'مفعلة':'معطلة')+'</td><td>'+users.filter(function(u){return u.schoolId===x.id;}).length+'</td><td>'+(x.cloud||'Supabase')+'</td><td><button onclick="SmartOwnerPanel.copy(\''+link.replace(/'/g,'')+'\')">نسخ</button> <button onclick="SmartOwnerPanel.toggle(\''+x.id+'\')">تفعيل/تعطيل</button> <button onclick="SmartOwnerPanel.remove(\''+x.id+'\')">حذف</button></td></tr>';}).join(''); by('ownerSchoolsTable').innerHTML='<table class="owner-table"><thead><tr><th>اسم المدرسة</th><th>كود المدرسة</th><th>رابط التسجيل الخاص</th><th>الحالة</th><th>عدد المستخدمين</th><th>التخزين السحابي</th><th>إجراءات</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7">لا توجد مدارس مسجلة بعد.</td></tr>')+'</tbody></table>';}
   };
   window.SmartOwnerAI={open:function(){by('ownerAiModal').classList.add('open');},close:function(){by('ownerAiModal').classList.remove('open');},text:function(){return val('ownerAiInput');},out:function(t){by('ownerAiOutput').textContent=t;},summarize:function(){var t=this.text();this.out(t?'ملخص إداري:\n- '+t.slice(0,240)+'\n- تم تحديد أهم النقاط لعرضها على صاحب الصلاحية.':'أدخل نصًا أولًا.');},recommend:function(){this.out('توصيات مقترحة:\n1- تحديد مسؤول تنفيذ لكل بند.\n2- إضافة موعد متابعة.\n3- حفظ النتيجة في الأرشيف ومحفظة الاجتماعات.\n4- إرسال تنبيه للمعنيين.');},polish:function(){var t=this.text();this.out(t?'صياغة رسمية مقترحة:\nبناءً على ما ورد، نأمل الاطلاع واتخاذ اللازم وفق الإجراءات المعتمدة، مع توثيق ما يتم إنجازه ومتابعة مؤشرات التنفيذ.\n\nالنص الأصلي: '+t:'أدخل نصًا أولًا.');}};
+  document.addEventListener('DOMContentLoaded',function(){try{if(new URLSearchParams(location.search).get('register')){if(typeof openRegistrationModal==='function') setTimeout(openRegistrationModal,300);}}catch(e){}});
 })();
 </script>
 <!-- OWNER_PANEL_AND_AI_PATCH_END -->
@@ -2317,6 +2329,90 @@
 
 <script id="clear-stale-preview-mode-safe">
 (function(){try{localStorage.removeItem('smartSchoolUnifiedOpsV2_previewMode');}catch(e){}})();
+</script>
+
+
+
+<!-- SUPABASE_SAFE_CONNECTION_START -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(function(){
+  'use strict';
+  var SUPABASE_URL = "https://cijhgvbtrvmmlcssgxht.supabase.co";
+  var SUPABASE_PUBLISHABLE_KEY = "sb_publishable_3TC1p4w7U3hp2PbzhSauow_2xYLve5l";
+  window.SCHOOL_PLATFORM_SUPABASE_URL = SUPABASE_URL;
+  window.SCHOOL_PLATFORM_SUPABASE_KEY = SUPABASE_PUBLISHABLE_KEY;
+  window.getSchoolSupabaseClient = function(){
+    try {
+      if (!window.supabase) return null;
+      if (!window.schoolPlatformSupabase) {
+        window.schoolPlatformSupabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+      }
+      return window.schoolPlatformSupabase;
+    } catch(e) {
+      console.warn('Supabase connection skipped:', e);
+      return null;
+    }
+  };
+  document.addEventListener('DOMContentLoaded', function(){
+    var client = window.getSchoolSupabaseClient();
+    window.supabaseReady = !!client;
+    if (client) window.dispatchEvent(new CustomEvent('supabaseReady'));
+  });
+})();
+</script>
+<!-- SUPABASE_SAFE_CONNECTION_END -->
+
+
+<!-- Clean manager-first school link guard: keeps school invitation links away from owner panel -->
+<style id="clean-manager-first-guard-style">
+body.school-link-mode #owner-bottom-actions-final,
+body.school-link-mode #ownerAiDock,
+body.school-link-mode .owner-ai-dock,
+body.school-link-mode #ownerPanelModal,
+body.school-link-mode #ownerAiModal,
+body.school-link-mode .global-admin-badge { display:none !important; }
+body.school-link-mode #role-selector-screen { display:flex !important; }
+body.school-link-mode #role-selector-screen.login-hidden { display:flex !important; }
+body.school-link-mode .login-container > .grid.grid-cols-3 { display:none !important; }
+body.school-link-mode .login-container h2::after { content:""; }
+body.school-link-mode .school-link-note { color:#64748b; font-size:12px; font-weight:700; margin-top:8px; }
+</style>
+<script id="clean-manager-first-guard-script">
+(function(){
+  function params(){ return new URLSearchParams(location.search || ''); }
+  function isSchoolLink(){ var p=params(); return p.has('schoolId') || p.has('school_id') || p.has('code') || p.has('school_code') || p.get('register') === '1'; }
+  function by(id){ return document.getElementById(id); }
+  function closeReg(){ var m=by('registration-modal'); if(m) m.style.display='none'; }
+  function apply(){
+    if(!isSchoolLink()) return;
+    document.body.classList.add('school-link-mode');
+    closeReg();
+    var roleScreen=by('role-selector-screen');
+    if(roleScreen){ roleScreen.classList.remove('login-hidden'); roleScreen.style.display='flex'; }
+    var h=document.querySelector('#role-selector-screen .login-container h2');
+    if(h) h.textContent='دخول مدير المدرسة';
+    var p=document.querySelector('#role-selector-screen .login-container p');
+    if(p) p.textContent='أدخل بيانات المدير للدخول أولًا، ثم أرسل رابط التسجيل للوكلاء والمعلمين من داخل مدرستك.';
+    var name=by('user-display-name'); if(name) name.placeholder='اسم المدير';
+    var email=by('user-madrasati-email'); if(email) email.placeholder='بريد مدير المدرسة';
+    var login=by('mainLoginBtn'); if(login) login.textContent='دخول إلى مدرستي';
+    var newBtn=document.querySelector('#role-selector-screen button[onclick="openRegistrationModal()"]');
+    if(newBtn) newBtn.textContent='تسجيل وكيل / معلم جديد';
+    var box=document.querySelector('#role-selector-screen .login-container .mb-8');
+    if(box && !by('school-link-note')){
+      var note=document.createElement('div'); note.id='school-link-note'; note.className='school-link-note';
+      note.textContent='ملاحظة: المدير يدخل أولًا، أما زر التسجيل فهو لدعوة الوكلاء والمعلمين بعد ذلك.';
+      box.appendChild(note);
+    }
+  }
+  document.addEventListener('DOMContentLoaded', function(){
+    apply();
+    setTimeout(apply, 250);
+    setTimeout(function(){ if(isSchoolLink()) closeReg(); }, 600);
+    setTimeout(function(){ if(isSchoolLink()) closeReg(); }, 1200);
+  });
+})();
 </script>
 
 </body>

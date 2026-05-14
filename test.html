@@ -630,36 +630,11 @@
             setTimeout(() => t.remove(), 3000);
         };
 
-        const isSchoolRegistrationRoute = () => {
-            try {
-                const p = new URLSearchParams(window.location.search);
-                return p.get('register') === '1' || p.has('schoolId') || p.has('school_id') || p.has('code') || p.has('school_code');
-            } catch(e) { return false; }
-        };
-
-        const lockOwnerToolsForSchoolRoute = () => {
-            try {
-                if (!isSchoolRegistrationRoute()) return;
-                localStorage.removeItem('is_admin_session');
-                localStorage.removeItem('admin_verified');
-                document.body.classList.add('school-registration-route');
-                ['ownerAiDock','owner-bottom-actions-final','ownerPanelModal','ownerAiModal'].forEach(id => {
-                    const el = document.getElementById(id);
-                    if (el) { el.style.display = 'none'; el.classList.remove('open'); }
-                });
-                const title = document.querySelector('.login-container h2');
-                const sub = document.querySelector('.login-container p');
-                if (title) title.textContent = 'بوابة الانضمام للمدرسة';
-                if (sub) sub.textContent = 'تسجيل أو دخول المستخدمين المرتبطين بهذه المدرسة فقط';
-            } catch(e) {}
-        };
-
         const isManagerAccount = (name, email) => {
-            if (isSchoolRegistrationRoute()) return false;
             const n = (name || "").toLowerCase().trim();
             const e = (email || "").toLowerCase().trim();
-            // حساب المالك فقط من الصفحة الرئيسية، وليس من روابط المدارس.
-            const isMatch = n === 'admin' || e === 'admin' || e.includes('a123456') || n === 'مالك' || localStorage.getItem('is_admin_session') === 'true';
+            // التعرف على الحساب كمدير بناءً على الكلمات المفتاحية أو البريد المرتبط (a123456)
+            const isMatch = n === 'admin' || e === 'admin' || e.includes('a123456') || n === 'مدير' || localStorage.getItem('is_admin_session') === 'true';
             if (isMatch) {
                 localStorage.setItem('is_admin_session', 'true');
                 localStorage.setItem('admin_verified', 'true');
@@ -704,7 +679,7 @@
             const n = document.getElementById('user-display-name').value.trim();
             const e = document.getElementById('user-madrasati-email').value.trim();
             
-            if (!isSchoolRegistrationRoute() && isManagerAccount(n, e)) {
+            if (isManagerAccount(n, e)) {
                 isManagerVerifiedInSession = true;
                 localStorage.setItem('is_admin_session', 'true');
                 document.getElementById('waiting-screen').classList.add('hidden');
@@ -749,7 +724,7 @@
             try {
                 const n = document.getElementById('user-display-name').value.trim();
                 const e = document.getElementById('user-madrasati-email').value.trim();
-                const isRoot = !isSchoolRegistrationRoute() && (isManagerVerifiedInSession || isManagerAccount(n, e) || localStorage.getItem('is_admin_session') === 'true');
+                const isRoot = isManagerVerifiedInSession || isManagerAccount(n, e) || localStorage.getItem('is_admin_session') === 'true';
                 if (isRoot) {
                     document.getElementById('waiting-screen').classList.add('hidden');
                     startApp({ id: 'root', name: n || 'المدير', email: e || 'admin', role: 'leadership', isActive: true });
@@ -1646,137 +1621,98 @@
 
 
 
-<!-- SCHOOL_ROUTE_OWNER_GUARD_START -->
-<style id="school-route-owner-guard-style">
-  body.school-registration-route #ownerAiDock,
-  body.school-registration-route #owner-bottom-actions-final,
-  body.school-registration-route #ownerPanelModal,
-  body.school-registration-route #ownerAiModal { display:none !important; }
-  body.school-registration-route .global-admin-badge { display:none !important; }
-</style>
-<script id="school-route-owner-guard-script">
-(function(){
-  function isSchoolRoute(){try{var p=new URLSearchParams(location.search);return p.get('register')==='1'||p.has('schoolId')||p.has('school_id')||p.has('code')||p.has('school_code');}catch(e){return false;}}
-  function guard(){
-    if(!isSchoolRoute()) return;
-    try{localStorage.removeItem('is_admin_session');localStorage.removeItem('admin_verified');}catch(e){}
-    document.body.classList.add('school-registration-route');
-    ['ownerAiDock','owner-bottom-actions-final','ownerPanelModal','ownerAiModal'].forEach(function(id){var el=document.getElementById(id); if(el){el.style.display='none'; el.classList.remove('open');}});
-    if(window.SmartOwnerPanel){ window.SmartOwnerPanel.open=function(){ alert('لوحة مالك المنصة غير متاحة من رابط المدرسة.'); }; }
-    var t=document.querySelector('.login-container h2'), p=document.querySelector('.login-container p');
-    if(t) t.textContent='بوابة الانضمام للمدرسة';
-    if(p) p.textContent='تسجيل أو دخول المستخدمين المرتبطين بهذه المدرسة فقط';
-    if(typeof openRegistrationModal==='function') setTimeout(function(){try{openRegistrationModal();}catch(e){}},300);
-  }
-  document.addEventListener('DOMContentLoaded',guard);
-  setTimeout(guard,800);
-})();
-</script>
-<!-- SCHOOL_ROUTE_OWNER_GUARD_END -->
-
-
-
-<!-- MANAGER_FIRST_SCHOOL_LOGIN_FLOW_START -->
-<style id="manager-first-school-login-style">
-  body.school-registration-route #ownerAiDock,
-  body.school-registration-route #owner-bottom-actions-final,
-  body.school-registration-route #ownerPanelModal,
-  body.school-registration-route #ownerAiModal,
-  body.school-registration-route .global-admin-badge { display:none !important; }
-  #schoolInviteCopyBtn{
-    position:fixed;left:1.25rem;bottom:5.25rem;z-index:2500;
-    background:#0f766e;color:#fff;border:0;border-radius:999px;
-    padding:.75rem 1.25rem;font-weight:800;font-family:Cairo,Arial,sans-serif;
-    box-shadow:0 12px 30px rgba(15,118,110,.35);cursor:pointer
+<!-- MANAGER_FIRST_SCHOOL_ROUTE_FIX_START -->
+<style id="manager-first-school-route-style">
+  body.school-route #ownerAiDock,
+  body.school-route #owner-bottom-actions-final,
+  body.school-route .owner-ai-dock { display: none !important; }
+  body.school-route .login-container > h2::after { content: ""; }
+  body.school-route .login-container > p { font-size: 0 !important; }
+  body.school-route .login-container > p::after {
+    content: "دخول مدير المدرسة أولًا، ثم دعوة الوكلاء والمعلمين من داخل لوحة المدرسة";
+    font-size: 12px !important;
+    color: #334155 !important;
   }
 </style>
-<script id="manager-first-school-login-script">
+<script id="manager-first-school-route-script">
 (function(){
   'use strict';
-  function params(){try{return new URLSearchParams(location.search);}catch(e){return new URLSearchParams();}}
-  function routeSchoolId(){var p=params();return p.get('schoolId')||p.get('school_id')||'';}
-  function routeSchoolCode(){var p=params();return p.get('code')||p.get('school_code')||'';}
-  function isSchoolRoute(){var p=params();return p.get('register')==='1'||p.has('schoolId')||p.has('school_id')||p.has('code')||p.has('school_code');}
-  function toast(msg){ if(typeof showToast==='function') showToast(msg); else alert(msg); }
-  function by(id){return document.getElementById(id);}
-  function hideOwnerTools(){
-    if(!isSchoolRoute()) return;
-    try{localStorage.removeItem('is_admin_session');localStorage.removeItem('admin_verified');}catch(e){}
-    document.body.classList.add('school-registration-route');
-    ['ownerAiDock','owner-bottom-actions-final','ownerPanelModal','ownerAiModal'].forEach(function(id){var el=by(id); if(el){el.style.display='none'; el.classList.remove('open');}});
-    if(window.SmartOwnerPanel){window.SmartOwnerPanel.open=function(){alert('لوحة مالك المنصة غير متاحة من رابط المدرسة.');};}
-  }
-  function prepareSchoolLogin(){
-    if(!isSchoolRoute()) return;
-    hideOwnerTools();
-    var t=document.querySelector('.login-container h2'), p=document.querySelector('.login-container p');
-    if(t) t.textContent='بوابة دخول المدرسة';
-    if(p) p.textContent='يدخل مدير المدرسة أولاً، ثم يدعو الوكلاء والمعلمين من داخل مدرسته.';
-    var name=by('user-display-name'), email=by('user-madrasati-email'), login=by('mainLoginBtn');
-    if(name) name.placeholder='اسم المدير أو المستخدم';
-    if(email) email.placeholder='البريد المرتبط بالمدرسة';
-    if(login){login.textContent='دخول إلى المدرسة'; login.onclick=function(ev){ev&&ev.preventDefault&&ev.preventDefault(); return window.schoolRouteLogin();};}
-    var newBtn=document.querySelector('button[onclick="openRegistrationModal()"]');
-    if(newBtn) newBtn.textContent='طلب حساب جديد';
-    var modal=by('registration-modal');
-    if(modal) modal.style.display='none';
-    var wait=by('waiting-screen'); if(wait) wait.classList.add('hidden');
-    var roleScreen=by('role-selector-screen'); if(roleScreen){roleScreen.classList.remove('login-hidden'); roleScreen.style.display='flex';}
-  }
-  function makeInviteLink(){
-    var base=location.href.split('#')[0].split('?')[0];
-    var sid=(window.currentUser&& (currentUser.schoolId||currentUser.school_id)) || routeSchoolId();
-    var code=routeSchoolCode();
-    return base+'?register=1&schoolId='+encodeURIComponent(sid||'')+'&code='+encodeURIComponent(code||'');
-  }
-  function addInviteButton(){
-    try{
-      if(!isSchoolRoute() || !window.currentUser || currentUser.role!=='leadership') return;
-      if(by('schoolInviteCopyBtn')) return;
-      var b=document.createElement('button');
-      b.id='schoolInviteCopyBtn';
-      b.textContent='نسخ رابط تسجيل المدرسة';
-      b.onclick=function(){var link=makeInviteLink(); if(navigator.clipboard){navigator.clipboard.writeText(link).then(function(){toast('تم نسخ رابط التسجيل الخاص بالمدرسة');});}else{prompt('انسخ الرابط:',link);}};
-      document.body.appendChild(b);
-    }catch(e){}
-  }
-  window.schoolRouteLogin=async function(){
-    try{
-      var n=(by('user-display-name')&&by('user-display-name').value.trim())||'';
-      var e=(by('user-madrasati-email')&&by('user-madrasati-email').value.trim())||'';
-      if(!e){toast('أدخل البريد المرتبط بالمدرسة');return;}
-      var u=await window.SupaStore.findUserByEmail(e);
-      var sid=routeSchoolId();
-      if(!u){
-        var roleScreen=by('role-selector-screen'); if(roleScreen){roleScreen.classList.add('login-hidden'); roleScreen.style.display='none';}
-        var wait=by('waiting-screen'); if(wait) wait.classList.remove('hidden');
-        toast('لم يتم العثور على حساب مفعّل بهذا البريد داخل المدرسة');
-        return;
-      }
-      if(sid && String(u.schoolId||u.school_id||'')!==String(sid)){
-        toast('هذا الحساب غير مرتبط بهذه المدرسة');return;
-      }
-      if(u.isActive===false || u.status==='pending' || u.status==='disabled'){
-        var rs=by('role-selector-screen'); if(rs){rs.classList.add('login-hidden'); rs.style.display='none';}
-        var ws=by('waiting-screen'); if(ws) ws.classList.remove('hidden');
-        return;
-      }
-      if(n && !u.name) u.name=n;
-      if(typeof startApp==='function') startApp(u); else toast('تعذر فتح واجهة المدرسة');
-      setTimeout(addInviteButton,500);
-    }catch(err){console.error(err); toast('تعذر التحقق من الحساب: '+(err.message||''));}
+  if (window.__managerFirstSchoolRouteFix) return;
+  window.__managerFirstSchoolRouteFix = true;
+
+  function params(){ return new URLSearchParams(location.search || ''); }
+  function schoolRoute(){ var p=params(); return p.has('schoolId') || p.has('school_id') || p.has('code') || p.has('school_code') || p.get('register') === '1'; }
+  function routeSchoolId(){ var p=params(); return p.get('schoolId') || p.get('school_id') || ''; }
+  function routeSchoolCode(){ var p=params(); return p.get('code') || p.get('school_code') || ''; }
+  function toast(msg){ try{ if(typeof showToast==='function') showToast(msg); else alert(msg); }catch(e){ alert(msg); } }
+
+  if (!schoolRoute()) return;
+  document.documentElement.classList.add('school-route');
+  document.addEventListener('DOMContentLoaded', function(){ document.body.classList.add('school-route'); });
+
+  // منع فتح لوحة المالك من رابط المدرسة
+  var guardOwner = function(){
+    if (window.SmartOwnerPanel) {
+      window.SmartOwnerPanel.open = function(){ alert('لوحة مالك المنصة غير متاحة من رابط المدرسة.'); };
+    }
+    var dock = document.getElementById('ownerAiDock'); if (dock) dock.style.display = 'none';
+    var bottom = document.getElementById('owner-bottom-actions-final'); if (bottom) bottom.style.display = 'none';
   };
-  var oldHandle=window.handleAdminDirectEntry;
-  window.handleAdminDirectEntry=function(){ if(isSchoolRoute()) return window.schoolRouteLogin(); return oldHandle?oldHandle.apply(this,arguments):undefined; };
-  var oldCheck=window.checkUserStatus;
-  window.checkUserStatus=function(){ if(isSchoolRoute()) return window.schoolRouteLogin(); return oldCheck?oldCheck.apply(this,arguments):undefined; };
-  var oldStart=window.startApp;
-  window.startApp=function(u){ var r=oldStart?oldStart.apply(this,arguments):undefined; setTimeout(addInviteButton,500); return r; };
-  document.addEventListener('DOMContentLoaded',function(){setTimeout(prepareSchoolLogin,250);setTimeout(prepareSchoolLogin,900);});
-  setTimeout(prepareSchoolLogin,1400);
+  document.addEventListener('DOMContentLoaded', guardOwner);
+  setTimeout(guardOwner, 500);
+  setTimeout(guardOwner, 1500);
+
+  // لا تفتح نافذة التسجيل تلقائيًا؛ المدير يدخل أولًا من نفس شاشة الدخول.
+  window.pendingRegistrationInvite = { schoolId: routeSchoolId(), schoolCode: routeSchoolCode() };
+
+  var oldCheck = window.checkUserStatus;
+  if (typeof oldCheck === 'function') {
+    window.checkUserStatus = async function(){
+      var emailEl = document.getElementById('user-madrasati-email');
+      var email = emailEl ? String(emailEl.value || '').trim() : '';
+      if (!email) { toast('أدخل بريد المدير أو المستخدم للدخول'); return; }
+      try {
+        var u = await window.SupaStore.findUserByEmail(email);
+        if (!u || u.isActive === false) {
+          document.getElementById('role-selector-screen').classList.add('login-hidden');
+          document.getElementById('role-selector-screen').style.display = 'none';
+          document.getElementById('waiting-screen').classList.remove('hidden');
+          return;
+        }
+        var sid = routeSchoolId();
+        if (sid && String(u.schoolId || u.school_id || '') !== String(sid)) {
+          toast('هذا الحساب غير مرتبط بهذه المدرسة');
+          return;
+        }
+        if (typeof startApp === 'function') startApp(u);
+      } catch(e) { console.error(e); toast('تعذر التحقق من الحساب'); }
+    };
+  }
+
+  var oldCopy = window.copyRegLinkForUsers;
+  window.copyRegLinkForUsers = function(){
+    if (!window.currentUser || (currentUser.role !== 'leadership' && currentUser.role !== 'manager')) {
+      return toast('رابط التسجيل مخصص لحساب المدير/ة فقط');
+    }
+    var sid = currentUser.schoolId || currentUser.school_id || routeSchoolId();
+    var code = currentUser.schoolCode || currentUser.school_code || routeSchoolCode();
+    if (!sid && typeof oldCopy === 'function') return oldCopy();
+    var base = location.href.split('#')[0].split('?')[0];
+    var link = base + '?register=1&schoolId=' + encodeURIComponent(sid || '') + '&code=' + encodeURIComponent(code || '');
+    var input = document.createElement('input');
+    input.value = link; document.body.appendChild(input); input.select(); document.execCommand('copy'); input.remove();
+    toast('تم نسخ رابط تسجيل المدرسة للوكيل والمعلمين');
+  };
+
+  document.addEventListener('DOMContentLoaded', function(){
+    var h = document.querySelector('.login-container h2');
+    if (h) h.textContent = 'دخول مدرسة';
+    var newBtn = document.querySelector('button[onclick="openRegistrationModal()"]');
+    if (newBtn) newBtn.textContent = 'طلب حساب جديد';
+  });
 })();
 </script>
-<!-- MANAGER_FIRST_SCHOOL_LOGIN_FLOW_END -->
+<!-- MANAGER_FIRST_SCHOOL_ROUTE_FIX_END -->
 
 </body></html>`;
             const w = window.open('', '_blank');
@@ -2024,141 +1960,7 @@
         '<div class="footnote">منصة المدرسة الرقمية الذكية - محضر معتمد بتاريخ '+esc(today())+'</div>'+
       '</section>'+
       (s.includeAttendance?'<section class="page"><div class="topbar"></div><header><div class="hblock"><b>المملكة العربية السعودية</b><b>وزارة التعليم</b><span>'+esc(s.schoolName||'المدرسة')+'</span></div><div class="logo">وزارة التعليم</div><div class="meta"><div>'+esc(m.date||today())+'</div></div></header><h1>سجل الحضور والتوثيق</h1><table><thead><tr><th>م</th><th>الاسم</th><th>التوقيع</th></tr></thead><tbody>'+rows+'</tbody></table><div class="note">ملاحظة: يلزم توقيع الحاضرين/ات فور انتهاء الاجتماع وتوثيق المحضر رسميًا.</div><div class="footnote">منصة المدرسة الرقمية الذكية - تاريخ التحقق: '+esc(today())+' - '+esc(code)+'</div></section>':'')+
-    '\n
-
-<!-- SCHOOL_ROUTE_OWNER_GUARD_START -->
-<style id="school-route-owner-guard-style">
-  body.school-registration-route #ownerAiDock,
-  body.school-registration-route #owner-bottom-actions-final,
-  body.school-registration-route #ownerPanelModal,
-  body.school-registration-route #ownerAiModal { display:none !important; }
-  body.school-registration-route .global-admin-badge { display:none !important; }
-</style>
-<script id="school-route-owner-guard-script">
-(function(){
-  function isSchoolRoute(){try{var p=new URLSearchParams(location.search);return p.get('register')==='1'||p.has('schoolId')||p.has('school_id')||p.has('code')||p.has('school_code');}catch(e){return false;}}
-  function guard(){
-    if(!isSchoolRoute()) return;
-    try{localStorage.removeItem('is_admin_session');localStorage.removeItem('admin_verified');}catch(e){}
-    document.body.classList.add('school-registration-route');
-    ['ownerAiDock','owner-bottom-actions-final','ownerPanelModal','ownerAiModal'].forEach(function(id){var el=document.getElementById(id); if(el){el.style.display='none'; el.classList.remove('open');}});
-    if(window.SmartOwnerPanel){ window.SmartOwnerPanel.open=function(){ alert('لوحة مالك المنصة غير متاحة من رابط المدرسة.'); }; }
-    var t=document.querySelector('.login-container h2'), p=document.querySelector('.login-container p');
-    if(t) t.textContent='بوابة الانضمام للمدرسة';
-    if(p) p.textContent='تسجيل أو دخول المستخدمين المرتبطين بهذه المدرسة فقط';
-    if(typeof openRegistrationModal==='function') setTimeout(function(){try{openRegistrationModal();}catch(e){}},300);
-  }
-  document.addEventListener('DOMContentLoaded',guard);
-  setTimeout(guard,800);
-})();
-</script>
-<!-- SCHOOL_ROUTE_OWNER_GUARD_END -->
-
-
-
-<!-- MANAGER_FIRST_SCHOOL_LOGIN_FLOW_START -->
-<style id="manager-first-school-login-style">
-  body.school-registration-route #ownerAiDock,
-  body.school-registration-route #owner-bottom-actions-final,
-  body.school-registration-route #ownerPanelModal,
-  body.school-registration-route #ownerAiModal,
-  body.school-registration-route .global-admin-badge { display:none !important; }
-  #schoolInviteCopyBtn{
-    position:fixed;left:1.25rem;bottom:5.25rem;z-index:2500;
-    background:#0f766e;color:#fff;border:0;border-radius:999px;
-    padding:.75rem 1.25rem;font-weight:800;font-family:Cairo,Arial,sans-serif;
-    box-shadow:0 12px 30px rgba(15,118,110,.35);cursor:pointer
-  }
-</style>
-<script id="manager-first-school-login-script">
-(function(){
-  'use strict';
-  function params(){try{return new URLSearchParams(location.search);}catch(e){return new URLSearchParams();}}
-  function routeSchoolId(){var p=params();return p.get('schoolId')||p.get('school_id')||'';}
-  function routeSchoolCode(){var p=params();return p.get('code')||p.get('school_code')||'';}
-  function isSchoolRoute(){var p=params();return p.get('register')==='1'||p.has('schoolId')||p.has('school_id')||p.has('code')||p.has('school_code');}
-  function toast(msg){ if(typeof showToast==='function') showToast(msg); else alert(msg); }
-  function by(id){return document.getElementById(id);}
-  function hideOwnerTools(){
-    if(!isSchoolRoute()) return;
-    try{localStorage.removeItem('is_admin_session');localStorage.removeItem('admin_verified');}catch(e){}
-    document.body.classList.add('school-registration-route');
-    ['ownerAiDock','owner-bottom-actions-final','ownerPanelModal','ownerAiModal'].forEach(function(id){var el=by(id); if(el){el.style.display='none'; el.classList.remove('open');}});
-    if(window.SmartOwnerPanel){window.SmartOwnerPanel.open=function(){alert('لوحة مالك المنصة غير متاحة من رابط المدرسة.');};}
-  }
-  function prepareSchoolLogin(){
-    if(!isSchoolRoute()) return;
-    hideOwnerTools();
-    var t=document.querySelector('.login-container h2'), p=document.querySelector('.login-container p');
-    if(t) t.textContent='بوابة دخول المدرسة';
-    if(p) p.textContent='يدخل مدير المدرسة أولاً، ثم يدعو الوكلاء والمعلمين من داخل مدرسته.';
-    var name=by('user-display-name'), email=by('user-madrasati-email'), login=by('mainLoginBtn');
-    if(name) name.placeholder='اسم المدير أو المستخدم';
-    if(email) email.placeholder='البريد المرتبط بالمدرسة';
-    if(login){login.textContent='دخول إلى المدرسة'; login.onclick=function(ev){ev&&ev.preventDefault&&ev.preventDefault(); return window.schoolRouteLogin();};}
-    var newBtn=document.querySelector('button[onclick="openRegistrationModal()"]');
-    if(newBtn) newBtn.textContent='طلب حساب جديد';
-    var modal=by('registration-modal');
-    if(modal) modal.style.display='none';
-    var wait=by('waiting-screen'); if(wait) wait.classList.add('hidden');
-    var roleScreen=by('role-selector-screen'); if(roleScreen){roleScreen.classList.remove('login-hidden'); roleScreen.style.display='flex';}
-  }
-  function makeInviteLink(){
-    var base=location.href.split('#')[0].split('?')[0];
-    var sid=(window.currentUser&& (currentUser.schoolId||currentUser.school_id)) || routeSchoolId();
-    var code=routeSchoolCode();
-    return base+'?register=1&schoolId='+encodeURIComponent(sid||'')+'&code='+encodeURIComponent(code||'');
-  }
-  function addInviteButton(){
-    try{
-      if(!isSchoolRoute() || !window.currentUser || currentUser.role!=='leadership') return;
-      if(by('schoolInviteCopyBtn')) return;
-      var b=document.createElement('button');
-      b.id='schoolInviteCopyBtn';
-      b.textContent='نسخ رابط تسجيل المدرسة';
-      b.onclick=function(){var link=makeInviteLink(); if(navigator.clipboard){navigator.clipboard.writeText(link).then(function(){toast('تم نسخ رابط التسجيل الخاص بالمدرسة');});}else{prompt('انسخ الرابط:',link);}};
-      document.body.appendChild(b);
-    }catch(e){}
-  }
-  window.schoolRouteLogin=async function(){
-    try{
-      var n=(by('user-display-name')&&by('user-display-name').value.trim())||'';
-      var e=(by('user-madrasati-email')&&by('user-madrasati-email').value.trim())||'';
-      if(!e){toast('أدخل البريد المرتبط بالمدرسة');return;}
-      var u=await window.SupaStore.findUserByEmail(e);
-      var sid=routeSchoolId();
-      if(!u){
-        var roleScreen=by('role-selector-screen'); if(roleScreen){roleScreen.classList.add('login-hidden'); roleScreen.style.display='none';}
-        var wait=by('waiting-screen'); if(wait) wait.classList.remove('hidden');
-        toast('لم يتم العثور على حساب مفعّل بهذا البريد داخل المدرسة');
-        return;
-      }
-      if(sid && String(u.schoolId||u.school_id||'')!==String(sid)){
-        toast('هذا الحساب غير مرتبط بهذه المدرسة');return;
-      }
-      if(u.isActive===false || u.status==='pending' || u.status==='disabled'){
-        var rs=by('role-selector-screen'); if(rs){rs.classList.add('login-hidden'); rs.style.display='none';}
-        var ws=by('waiting-screen'); if(ws) ws.classList.remove('hidden');
-        return;
-      }
-      if(n && !u.name) u.name=n;
-      if(typeof startApp==='function') startApp(u); else toast('تعذر فتح واجهة المدرسة');
-      setTimeout(addInviteButton,500);
-    }catch(err){console.error(err); toast('تعذر التحقق من الحساب: '+(err.message||''));}
-  };
-  var oldHandle=window.handleAdminDirectEntry;
-  window.handleAdminDirectEntry=function(){ if(isSchoolRoute()) return window.schoolRouteLogin(); return oldHandle?oldHandle.apply(this,arguments):undefined; };
-  var oldCheck=window.checkUserStatus;
-  window.checkUserStatus=function(){ if(isSchoolRoute()) return window.schoolRouteLogin(); return oldCheck?oldCheck.apply(this,arguments):undefined; };
-  var oldStart=window.startApp;
-  window.startApp=function(u){ var r=oldStart?oldStart.apply(this,arguments):undefined; setTimeout(addInviteButton,500); return r; };
-  document.addEventListener('DOMContentLoaded',function(){setTimeout(prepareSchoolLogin,250);setTimeout(prepareSchoolLogin,900);});
-  setTimeout(prepareSchoolLogin,1400);
-})();
-</script>
-<!-- MANAGER_FIRST_SCHOOL_LOGIN_FLOW_END -->
-
-</body></html>';
+    '\n</body></html>';
   }
   function printCss(){ return '@page{size:A4;margin:0}*{box-sizing:border-box}body{font-family:Cairo,Arial,sans-serif;margin:0;color:#0f172a;background:#f8fafc}.page{width:210mm;min-height:297mm;background:white;margin:0 auto;padding:14mm 12mm;position:relative;page-break-after:always}.topbar{position:absolute;top:0;left:0;right:0;height:8px;background:#08783f}header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid #e5e7eb;padding-bottom:12px}.hblock{line-height:1.8;color:#065f46;font-size:15px;display:flex;flex-direction:column}.logo{text-align:center;color:#059669;font-weight:800}.logo small{font-size:10px;color:#64748b}.meta{font-size:12px;line-height:2;background:#ecfdf5;border-radius:12px;padding:8px 16px;min-width:140px}h1{text-align:center;color:#047857;font-size:28px;margin:16px 0 10px}h2{color:#047857;font-size:15px;margin:13px 0 7px}.basmala{text-align:center;font-size:13px;color:#475569}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}.field,.notice,.teams{background:#f0fdf4;border:1px solid #d1fae5;border-radius:13px;padding:9px;font-size:13px}.notice{line-height:2}.teams{direction:ltr;text-align:left;word-break:break-all;font-size:11px}ol{margin:0;padding:0 24px;background:#fbfffd;border:1px dashed #bbf7d0;border-radius:12px;min-height:32px}li{padding:4px 0;font-size:13px;line-height:1.7}footer{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end;margin-top:18px;border-top:1px solid #e5e7eb;padding-top:12px;font-size:12px}.sig{max-width:120px;max-height:55px;object-fit:contain}.sigLine{width:120px;height:40px;border-bottom:1px solid #334155}.seal{width:90px;height:90px;object-fit:contain}.sealBox{width:90px;height:90px;border:2px dashed #94a3b8;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#64748b;font-weight:800;font-size:11px}.qr{text-align:center;font-size:10px}.qr svg{border:1px solid #d1fae5}.code{direction:ltr;font-weight:800;color:#047857}.footnote{position:absolute;bottom:9mm;left:12mm;right:12mm;border-top:1px solid #edf2f7;padding-top:6px;color:#047857;font-weight:700;font-size:11px}.note{margin-top:14px;background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:12px;text-align:center;color:#92400e;font-size:13px}table{width:100%;border-collapse:collapse;margin-top:14px}th{background:#08783f;color:white;padding:8px;font-size:13px}td{border:1px solid #e5e7eb;height:24px;padding:4px;font-size:12px}td:first-child{width:35px;text-align:center}@media print{body{background:white}.page{margin:0;box-shadow:none}}'; }
   function dayName(dateStr){ try{ var d=dateStr?new Date(dateStr):new Date(); return ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'][d.getDay()]||'';}catch(e){return '';} }
@@ -2491,7 +2293,6 @@
     refresh:async function(){var st=S(); try{ if(window.SupaStore){ var cloudSchools=await window.SupaStore.listSchools(); var cloudUsers=await window.SupaStore.listUsers(); if(cloudSchools.length) st.saveSchools(cloudSchools); if(cloudUsers.length) st.saveUsers(cloudUsers); }}catch(e){console.warn(e);} var schools=st.schools(); var users=st.users(); var rows=schools.map(function(x){var link=x.registrationLink||linkFor(x); return '<tr><td>'+x.name+'</td><td>'+x.code+'</td><td><span class="owner-link">'+link+'</span></td><td class="'+(x.status==='active'?'owner-status-active':'owner-status-off')+'">'+(x.status==='active'?'مفعلة':'معطلة')+'</td><td>'+users.filter(function(u){return u.schoolId===x.id;}).length+'</td><td>'+(x.cloud||'Supabase')+'</td><td><button onclick="SmartOwnerPanel.copy(\''+link.replace(/'/g,'')+'\')">نسخ</button> <button onclick="SmartOwnerPanel.toggle(\''+x.id+'\')">تفعيل/تعطيل</button> <button onclick="SmartOwnerPanel.remove(\''+x.id+'\')">حذف</button></td></tr>';}).join(''); by('ownerSchoolsTable').innerHTML='<table class="owner-table"><thead><tr><th>اسم المدرسة</th><th>كود المدرسة</th><th>رابط التسجيل الخاص</th><th>الحالة</th><th>عدد المستخدمين</th><th>التخزين السحابي</th><th>إجراءات</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7">لا توجد مدارس مسجلة بعد.</td></tr>')+'</tbody></table>';}
   };
   window.SmartOwnerAI={open:function(){by('ownerAiModal').classList.add('open');},close:function(){by('ownerAiModal').classList.remove('open');},text:function(){return val('ownerAiInput');},out:function(t){by('ownerAiOutput').textContent=t;},summarize:function(){var t=this.text();this.out(t?'ملخص إداري:\n- '+t.slice(0,240)+'\n- تم تحديد أهم النقاط لعرضها على صاحب الصلاحية.':'أدخل نصًا أولًا.');},recommend:function(){this.out('توصيات مقترحة:\n1- تحديد مسؤول تنفيذ لكل بند.\n2- إضافة موعد متابعة.\n3- حفظ النتيجة في الأرشيف ومحفظة الاجتماعات.\n4- إرسال تنبيه للمعنيين.');},polish:function(){var t=this.text();this.out(t?'صياغة رسمية مقترحة:\nبناءً على ما ورد، نأمل الاطلاع واتخاذ اللازم وفق الإجراءات المعتمدة، مع توثيق ما يتم إنجازه ومتابعة مؤشرات التنفيذ.\n\nالنص الأصلي: '+t:'أدخل نصًا أولًا.');}};
-  document.addEventListener('DOMContentLoaded',function(){try{if(new URLSearchParams(location.search).get('register')){if(typeof openRegistrationModal==='function') setTimeout(openRegistrationModal,300);}}catch(e){}});
 })();
 </script>
 <!-- OWNER_PANEL_AND_AI_PATCH_END -->
@@ -2517,171 +2318,6 @@
 <script id="clear-stale-preview-mode-safe">
 (function(){try{localStorage.removeItem('smartSchoolUnifiedOpsV2_previewMode');}catch(e){}})();
 </script>
-
-
-
-<!-- SUPABASE_SAFE_CONNECTION_START -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script>
-(function(){
-  'use strict';
-  var SUPABASE_URL = "https://cijhgvbtrvmmlcssgxht.supabase.co";
-  var SUPABASE_PUBLISHABLE_KEY = "sb_publishable_3TC1p4w7U3hp2PbzhSauow_2xYLve5l";
-  window.SCHOOL_PLATFORM_SUPABASE_URL = SUPABASE_URL;
-  window.SCHOOL_PLATFORM_SUPABASE_KEY = SUPABASE_PUBLISHABLE_KEY;
-  window.getSchoolSupabaseClient = function(){
-    try {
-      if (!window.supabase) return null;
-      if (!window.schoolPlatformSupabase) {
-        window.schoolPlatformSupabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
-      }
-      return window.schoolPlatformSupabase;
-    } catch(e) {
-      console.warn('Supabase connection skipped:', e);
-      return null;
-    }
-  };
-  document.addEventListener('DOMContentLoaded', function(){
-    var client = window.getSchoolSupabaseClient();
-    window.supabaseReady = !!client;
-    if (client) window.dispatchEvent(new CustomEvent('supabaseReady'));
-  });
-})();
-</script>
-<!-- SUPABASE_SAFE_CONNECTION_END -->
-
-
-<!-- SCHOOL_ROUTE_OWNER_GUARD_START -->
-<style id="school-route-owner-guard-style">
-  body.school-registration-route #ownerAiDock,
-  body.school-registration-route #owner-bottom-actions-final,
-  body.school-registration-route #ownerPanelModal,
-  body.school-registration-route #ownerAiModal { display:none !important; }
-  body.school-registration-route .global-admin-badge { display:none !important; }
-</style>
-<script id="school-route-owner-guard-script">
-(function(){
-  function isSchoolRoute(){try{var p=new URLSearchParams(location.search);return p.get('register')==='1'||p.has('schoolId')||p.has('school_id')||p.has('code')||p.has('school_code');}catch(e){return false;}}
-  function guard(){
-    if(!isSchoolRoute()) return;
-    try{localStorage.removeItem('is_admin_session');localStorage.removeItem('admin_verified');}catch(e){}
-    document.body.classList.add('school-registration-route');
-    ['ownerAiDock','owner-bottom-actions-final','ownerPanelModal','ownerAiModal'].forEach(function(id){var el=document.getElementById(id); if(el){el.style.display='none'; el.classList.remove('open');}});
-    if(window.SmartOwnerPanel){ window.SmartOwnerPanel.open=function(){ alert('لوحة مالك المنصة غير متاحة من رابط المدرسة.'); }; }
-    var t=document.querySelector('.login-container h2'), p=document.querySelector('.login-container p');
-    if(t) t.textContent='بوابة الانضمام للمدرسة';
-    if(p) p.textContent='تسجيل أو دخول المستخدمين المرتبطين بهذه المدرسة فقط';
-    if(typeof openRegistrationModal==='function') setTimeout(function(){try{openRegistrationModal();}catch(e){}},300);
-  }
-  document.addEventListener('DOMContentLoaded',guard);
-  setTimeout(guard,800);
-})();
-</script>
-<!-- SCHOOL_ROUTE_OWNER_GUARD_END -->
-
-
-
-<!-- MANAGER_FIRST_SCHOOL_LOGIN_FLOW_START -->
-<style id="manager-first-school-login-style">
-  body.school-registration-route #ownerAiDock,
-  body.school-registration-route #owner-bottom-actions-final,
-  body.school-registration-route #ownerPanelModal,
-  body.school-registration-route #ownerAiModal,
-  body.school-registration-route .global-admin-badge { display:none !important; }
-  #schoolInviteCopyBtn{
-    position:fixed;left:1.25rem;bottom:5.25rem;z-index:2500;
-    background:#0f766e;color:#fff;border:0;border-radius:999px;
-    padding:.75rem 1.25rem;font-weight:800;font-family:Cairo,Arial,sans-serif;
-    box-shadow:0 12px 30px rgba(15,118,110,.35);cursor:pointer
-  }
-</style>
-<script id="manager-first-school-login-script">
-(function(){
-  'use strict';
-  function params(){try{return new URLSearchParams(location.search);}catch(e){return new URLSearchParams();}}
-  function routeSchoolId(){var p=params();return p.get('schoolId')||p.get('school_id')||'';}
-  function routeSchoolCode(){var p=params();return p.get('code')||p.get('school_code')||'';}
-  function isSchoolRoute(){var p=params();return p.get('register')==='1'||p.has('schoolId')||p.has('school_id')||p.has('code')||p.has('school_code');}
-  function toast(msg){ if(typeof showToast==='function') showToast(msg); else alert(msg); }
-  function by(id){return document.getElementById(id);}
-  function hideOwnerTools(){
-    if(!isSchoolRoute()) return;
-    try{localStorage.removeItem('is_admin_session');localStorage.removeItem('admin_verified');}catch(e){}
-    document.body.classList.add('school-registration-route');
-    ['ownerAiDock','owner-bottom-actions-final','ownerPanelModal','ownerAiModal'].forEach(function(id){var el=by(id); if(el){el.style.display='none'; el.classList.remove('open');}});
-    if(window.SmartOwnerPanel){window.SmartOwnerPanel.open=function(){alert('لوحة مالك المنصة غير متاحة من رابط المدرسة.');};}
-  }
-  function prepareSchoolLogin(){
-    if(!isSchoolRoute()) return;
-    hideOwnerTools();
-    var t=document.querySelector('.login-container h2'), p=document.querySelector('.login-container p');
-    if(t) t.textContent='بوابة دخول المدرسة';
-    if(p) p.textContent='يدخل مدير المدرسة أولاً، ثم يدعو الوكلاء والمعلمين من داخل مدرسته.';
-    var name=by('user-display-name'), email=by('user-madrasati-email'), login=by('mainLoginBtn');
-    if(name) name.placeholder='اسم المدير أو المستخدم';
-    if(email) email.placeholder='البريد المرتبط بالمدرسة';
-    if(login){login.textContent='دخول إلى المدرسة'; login.onclick=function(ev){ev&&ev.preventDefault&&ev.preventDefault(); return window.schoolRouteLogin();};}
-    var newBtn=document.querySelector('button[onclick="openRegistrationModal()"]');
-    if(newBtn) newBtn.textContent='طلب حساب جديد';
-    var modal=by('registration-modal');
-    if(modal) modal.style.display='none';
-    var wait=by('waiting-screen'); if(wait) wait.classList.add('hidden');
-    var roleScreen=by('role-selector-screen'); if(roleScreen){roleScreen.classList.remove('login-hidden'); roleScreen.style.display='flex';}
-  }
-  function makeInviteLink(){
-    var base=location.href.split('#')[0].split('?')[0];
-    var sid=(window.currentUser&& (currentUser.schoolId||currentUser.school_id)) || routeSchoolId();
-    var code=routeSchoolCode();
-    return base+'?register=1&schoolId='+encodeURIComponent(sid||'')+'&code='+encodeURIComponent(code||'');
-  }
-  function addInviteButton(){
-    try{
-      if(!isSchoolRoute() || !window.currentUser || currentUser.role!=='leadership') return;
-      if(by('schoolInviteCopyBtn')) return;
-      var b=document.createElement('button');
-      b.id='schoolInviteCopyBtn';
-      b.textContent='نسخ رابط تسجيل المدرسة';
-      b.onclick=function(){var link=makeInviteLink(); if(navigator.clipboard){navigator.clipboard.writeText(link).then(function(){toast('تم نسخ رابط التسجيل الخاص بالمدرسة');});}else{prompt('انسخ الرابط:',link);}};
-      document.body.appendChild(b);
-    }catch(e){}
-  }
-  window.schoolRouteLogin=async function(){
-    try{
-      var n=(by('user-display-name')&&by('user-display-name').value.trim())||'';
-      var e=(by('user-madrasati-email')&&by('user-madrasati-email').value.trim())||'';
-      if(!e){toast('أدخل البريد المرتبط بالمدرسة');return;}
-      var u=await window.SupaStore.findUserByEmail(e);
-      var sid=routeSchoolId();
-      if(!u){
-        var roleScreen=by('role-selector-screen'); if(roleScreen){roleScreen.classList.add('login-hidden'); roleScreen.style.display='none';}
-        var wait=by('waiting-screen'); if(wait) wait.classList.remove('hidden');
-        toast('لم يتم العثور على حساب مفعّل بهذا البريد داخل المدرسة');
-        return;
-      }
-      if(sid && String(u.schoolId||u.school_id||'')!==String(sid)){
-        toast('هذا الحساب غير مرتبط بهذه المدرسة');return;
-      }
-      if(u.isActive===false || u.status==='pending' || u.status==='disabled'){
-        var rs=by('role-selector-screen'); if(rs){rs.classList.add('login-hidden'); rs.style.display='none';}
-        var ws=by('waiting-screen'); if(ws) ws.classList.remove('hidden');
-        return;
-      }
-      if(n && !u.name) u.name=n;
-      if(typeof startApp==='function') startApp(u); else toast('تعذر فتح واجهة المدرسة');
-      setTimeout(addInviteButton,500);
-    }catch(err){console.error(err); toast('تعذر التحقق من الحساب: '+(err.message||''));}
-  };
-  var oldHandle=window.handleAdminDirectEntry;
-  window.handleAdminDirectEntry=function(){ if(isSchoolRoute()) return window.schoolRouteLogin(); return oldHandle?oldHandle.apply(this,arguments):undefined; };
-  var oldCheck=window.checkUserStatus;
-  window.checkUserStatus=function(){ if(isSchoolRoute()) return window.schoolRouteLogin(); return oldCheck?oldCheck.apply(this,arguments):undefined; };
-  var oldStart=window.startApp;
-  window.startApp=function(u){ var r=oldStart?oldStart.apply(this,arguments):undefined; setTimeout(addInviteButton,500); return r; };
-  document.addEventListener('DOMContentLoaded',function(){setTimeout(prepareSchoolLogin,250);setTimeout(prepareSchoolLogin,900);});
-  setTimeout(prepareSchoolLogin,1400);
-})();
-</script>
-<!-- MANAGER_FIRST_SCHOOL_LOGIN_FLOW_END -->
 
 </body>
 </html>

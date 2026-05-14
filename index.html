@@ -6,52 +6,73 @@
     <title>منصة المدرسة الرقمية الذكية - نظام التحكم المركزي</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-    <!-- Supabase SDK + safe local compatibility layer -->
+    
+    <!-- Supabase SDK + compatibility layer -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
     (function(){
       'use strict';
-      const SUPABASE_URL = "https://cijhgvbtrvmmlcssgxht.supabase.co";
-      const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_3TC1p4w7U3hp2PbzhSauow_2xYLve5l";
+      var SUPABASE_URL = "https://cijhgvbtrvmmlcssgxht.supabase.co";
+      var SUPABASE_PUBLISHABLE_KEY = "sb_publishable_3TC1p4w7U3hp2PbzhSauow_2xYLve5l";
       window.SCHOOL_PLATFORM_SUPABASE_URL = SUPABASE_URL;
       window.SCHOOL_PLATFORM_SUPABASE_KEY = SUPABASE_PUBLISHABLE_KEY;
       window.getSchoolSupabaseClient = function(){
-        try {
-          if (!window.supabase || !window.supabase.createClient) return null;
-          if (!window.schoolPlatformSupabase) window.schoolPlatformSupabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
-          return window.schoolPlatformSupabase;
-        } catch(e) { console.warn('Supabase client unavailable:', e); return null; }
+        if (!window.supabase) return null;
+        if (!window.schoolPlatformSupabase) {
+          window.schoolPlatformSupabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+        }
+        return window.schoolPlatformSupabase;
       };
-      window.appId = 'school-platform-local-bridge';
-      window.db = { mode: 'local-bridge' };
-      window.auth = { currentUser: null };
-      function readArray(name){ try { return JSON.parse(localStorage.getItem(name) || '[]'); } catch(e) { return []; } }
-      function writeArray(name, arr){ localStorage.setItem(name, JSON.stringify(Array.isArray(arr) ? arr : [])); if (name === 'offline_users_backup') localStorage.setItem('smart_owner_platform_users', JSON.stringify(Array.isArray(arr) ? arr : [])); }
-      function collectionNameFromPath(pathParts){ const parts=(pathParts||[]).map(String); return parts.includes('notifications') ? 'notifications' : 'users'; }
-      function keyForCollection(name){ return name === 'notifications' ? 'offline_notifications_backup' : 'offline_users_backup'; }
-      function stableUid(){
-        const emailEl = document.getElementById('user-madrasati-email') || document.getElementById('reg-email');
-        const email = (emailEl && emailEl.value ? emailEl.value : localStorage.getItem('last_login_email') || 'local-user').trim().toLowerCase();
-        localStorage.setItem('last_login_email', email);
-        try { return 'user_' + btoa(unescape(encodeURIComponent(email))).replace(/[^a-zA-Z0-9]/g,'').slice(0,32); }
-        catch(e){ return 'user_' + email.replace(/[^a-zA-Z0-9]/g,'_'); }
+      function uuid(){
+        return (crypto && crypto.randomUUID) ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,function(c){var r=Math.random()*16|0,v=c==='x'?r:(r&3|8);return v.toString(16);});
       }
-      window.ensureAuth = async function(){ if (!window.auth.currentUser) window.auth.currentUser = { uid: stableUid() }; window.currentUserUid = window.auth.currentUser.uid; window.dispatchEvent(new CustomEvent('authReady')); return window.auth.currentUser; };
-      window.fs = {
-        doc: function(db){ const parts=Array.prototype.slice.call(arguments,1); return { type:'doc', collection: collectionNameFromPath(parts), id:String(parts[parts.length-1] || stableUid()) }; },
-        collection: function(db){ const parts=Array.prototype.slice.call(arguments,1); return { type:'collection', collection: collectionNameFromPath(parts) }; },
-        query: function(ref){ return ref; },
-        setDoc: async function(ref, data, options){ const key=keyForCollection(ref.collection); const arr=readArray(key); const idx=arr.findIndex(x=>String(x.id)===String(ref.id)); const row=Object.assign({}, (options&&options.merge&&idx>-1?arr[idx]:{}), data||{}, { id:(data&&data.id)||ref.id }); if(idx>-1) arr[idx]=row; else arr.push(row); writeArray(key,arr); return row; },
-        updateDoc: async function(ref,data){ return window.fs.setDoc(ref,data,{merge:true}); },
-        getDoc: async function(ref){ const arr=readArray(keyForCollection(ref.collection)); const row=arr.find(x=>String(x.id)===String(ref.id)); return { exists:()=>!!row, data:()=>row||null }; },
-        addDoc: async function(ref,data){ const id=(ref.collection==='notifications'?'notif_':'doc_')+Date.now()+'_'+Math.random().toString(36).slice(2,7); await window.fs.setDoc({type:'doc',collection:ref.collection,id}, Object.assign({id},data||{}), {merge:true}); return {id}; },
-        deleteDoc: async function(ref){ const key=keyForCollection(ref.collection); writeArray(key, readArray(key).filter(x=>String(x.id)!==String(ref.id))); },
-        onSnapshot: function(ref, cb, errCb){ try{ if(ref.type==='doc'){ const arr=readArray(keyForCollection(ref.collection)); const row=arr.find(x=>String(x.id)===String(ref.id)); cb({exists:()=>!!row,data:()=>row||null}); } else { const arr=readArray(keyForCollection(ref.collection)); cb({docs:arr.map(x=>({id:x.id,data:()=>x}))}); } }catch(e){ if(typeof errCb==='function') errCb(e); } return function(){}; }
+      function normalizeId(id){ return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(id||'')) ? id : uuid(); }
+      window.normalizeSupabaseUuid = normalizeId;
+      window.ensureAuth = async function(){
+        var key='smart_school_current_uid';
+        var id=localStorage.getItem(key);
+        if(!id){ id=uuid(); localStorage.setItem(key,id); }
+        window.currentUserUid = id;
+        return { uid:id };
       };
-      document.addEventListener('DOMContentLoaded', function(){ window.getSchoolSupabaseClient(); });
+      function tableFromArgs(args){ var a=[].slice.call(args).filter(Boolean).map(String); for(var i=a.length-1;i>=0;i--){ if(['users','schools','notifications','meetings','archives'].includes(a[i])) return {table:a[i], id:a[i+1]||null}; } return {table:a[a.length-1]||'', id:null}; }
+      function mapUserToDb(u){
+        var id=normalizeId(u.id); u.id=id;
+        return { id:id, school_id:u.schoolId||u.school_id||null, full_name:u.name||u.full_name||'', email:u.email||'', role:u.role||'performance', is_active:u.isActive!==false, status:(u.isActive===false?'pending':'active'), admin_owner_id:u.adminOwnerId||u.admin_owner_id||null, registration_token:u.registrationToken||u.registration_token||null, registered_via_manager_link:!!u.registeredViaManagerLink, date_joined:u.dateJoined||u.date_joined||new Date().toISOString() };
+      }
+      function mapUserFromDb(u){ return Object.assign({},u,{ id:u.id, name:u.full_name||u.name||'', schoolId:u.school_id||u.schoolId||'', isActive:(u.is_active!==undefined?u.is_active:(u.status==='active'||u.status==='approved')), adminOwnerId:u.admin_owner_id||u.adminOwnerId||'', registrationToken:u.registration_token||u.registrationToken||'' }); }
+      function mapSchoolToDb(x){ var id=normalizeId(x.id); x.id=id; return { id:id, school_code:x.code||x.school_code||'', school_name:x.name||x.school_name||'', registration_link:x.registrationLink||x.registration_link||'' }; }
+      function mapSchoolFromDb(x){ return Object.assign({},x,{ id:x.id, code:x.school_code||x.code||'', name:x.school_name||x.name||'', registrationLink:x.registration_link||x.registrationLink||'', status:x.status||'active', cloud:x.cloud||'Supabase' }); }
+      async function safeUpsert(table, data){
+        var sb=getSchoolSupabaseClient(); if(!sb) throw new Error('Supabase غير متصل');
+        var attempts=[];
+        if(table==='users') attempts=[data,{id:data.id,school_id:data.school_id,full_name:data.full_name,email:data.email},{id:data.id,full_name:data.full_name,email:data.email}];
+        else if(table==='schools') attempts=[data,{id:data.id,school_code:data.school_code,school_name:data.school_name,registration_link:data.registration_link},{id:data.id,school_code:data.school_code,school_name:data.school_name}];
+        else attempts=[data];
+        var last;
+        for(var i=0;i<attempts.length;i++){ var res=await sb.from(table).upsert(attempts[i],{onConflict:'id'}).select().maybeSingle(); if(!res.error) return res.data||attempts[i]; last=res.error; }
+        throw last;
+      }
+      window.SupaStore={
+        uuid:uuid, normalizeId:normalizeId, mapUserToDb:mapUserToDb, mapUserFromDb:mapUserFromDb, mapSchoolToDb:mapSchoolToDb, mapSchoolFromDb:mapSchoolFromDb, safeUpsert:safeUpsert,
+        async listUsers(){ var sb=getSchoolSupabaseClient(); if(!sb) return []; var r=await sb.from('users').select('*'); if(r.error){console.warn(r.error); return [];} return (r.data||[]).map(mapUserFromDb); },
+        async listSchools(){ var sb=getSchoolSupabaseClient(); if(!sb) return []; var r=await sb.from('schools').select('*'); if(r.error){console.warn(r.error); return [];} return (r.data||[]).map(mapSchoolFromDb); },
+        async findUserByEmail(email){ var sb=getSchoolSupabaseClient(); if(!sb) return null; var r=await sb.from('users').select('*').ilike('email', String(email||'').trim()).limit(1).maybeSingle(); if(r.error) return null; return r.data?mapUserFromDb(r.data):null; }
+      };
+      window.fs={
+        doc:function(){var t=tableFromArgs(arguments); return {table:t.table,id:t.id};},
+        collection:function(){var t=tableFromArgs(arguments); return {table:t.table};},
+        setDoc:async function(ref,data,opt){ if(ref.table==='users') return safeUpsert('users',mapUserToDb(data)); if(ref.table==='schools') return safeUpsert('schools',mapSchoolToDb(data)); return safeUpsert(ref.table,Object.assign({},data,{id:ref.id||data.id||uuid()})); },
+        updateDoc:async function(ref,data){ var sb=getSchoolSupabaseClient(); var patch=data; if(ref.table==='users') patch=mapUserToDb(Object.assign({id:ref.id},data)); return sb.from(ref.table).update(patch).eq('id',ref.id); },
+        addDoc:async function(ref,data){ var id=uuid(); return this.setDoc({table:ref.table,id:id},Object.assign({id:id},data)); },
+        onSnapshot:function(ref,cb){ async function load(){ if(ref.table==='users'){ var arr=await window.SupaStore.listUsers(); cb({docs:arr.map(function(x){return {data:function(){return x;}, exists:function(){return true;}}})}); } } load(); return function(){}; }
+      };
+      window.db={}; window.appId='supabase-app';
+      document.addEventListener('DOMContentLoaded',function(){ window.supabaseReady=!!getSchoolSupabaseClient(); });
     })();
     </script>
-<style>
+
+    <style>
         :root { --moe-primary: #1e7b78; --moe-gold: #cfae5d; --moe-navy: #0f172a; }
         body { font-family: 'Cairo', sans-serif; background: var(--moe-navy); color: white; margin: 0; overflow: hidden; height: 100vh; position: relative; }
         body::after { content: ""; position: fixed; inset: 0; z-index: -1; background: radial-gradient(circle at 15% 15%, rgba(30, 123, 120, 0.4), transparent), linear-gradient(to bottom, rgba(15, 23, 42, 0.8), var(--moe-navy)); backdrop-filter: blur(5px); }
@@ -629,30 +650,29 @@
             const email = document.getElementById('reg-email').value.trim();
             const role = document.getElementById('reg-role').value;
             const urlParams = new URLSearchParams(window.location.search);
-            const inviteAdminId = urlParams.get('admin') || window.pendingRegistrationInvite?.admin || '';
-            const inviteToken = urlParams.get('token') || window.pendingRegistrationInvite?.token || '';
+            const schoolId = urlParams.get('schoolId') || urlParams.get('school_id') || window.pendingRegistrationInvite?.schoolId || '';
+            const schoolCode = urlParams.get('code') || urlParams.get('school_code') || '';
             if (!name || !email) { showToast("يرجى إدخال كافة البيانات"); return; }
-            if (!inviteAdminId || !inviteToken) { showToast("رابط التسجيل غير صالح أو غير مرتبط بحساب مدير"); return; }
+            if (!schoolId && !schoolCode) { showToast("رابط التسجيل غير صالح أو غير مرتبط بمدرسة"); return; }
             try {
-                const user = await window.ensureAuth(); 
-                if(!user) throw new Error("Auth Failed");
+                const id = window.normalizeSupabaseUuid((await window.ensureAuth()).uid);
                 const userData = {
-                    id: user.uid,
+                    id,
                     name,
                     email,
                     role,
                     isActive: false,
-                    adminOwnerId: inviteAdminId,
-                    registrationToken: inviteToken,
+                    schoolId: schoolId || null,
+                    schoolCode,
                     registeredViaManagerLink: true,
-                    dateJoined: new Date().toLocaleString('ar-SA')
+                    dateJoined: new Date().toISOString()
                 };
-                await window.fs.setDoc(window.fs.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'users', user.uid), userData, { merge: true });
+                await window.fs.setDoc({table:'users', id}, userData, { merge: true });
                 closeModal('registration-modal');
                 document.getElementById('role-selector-screen').classList.add('login-hidden'); document.getElementById('role-selector-screen').style.display = 'none';
                 document.getElementById('waiting-screen').classList.remove('hidden');
                 showToast("تم إرسال طلب التسجيل للمدير/ة للتفعيل");
-            } catch (err) { showToast("فشل إرسال الطلب لتفعيل الحساب"); }
+            } catch (err) { console.error(err); showToast("فشل إرسال الطلب لتفعيل الحساب: " + (err.message || '')); }
         };
 
         const handleAdminDirectEntry = async () => {
@@ -687,18 +707,17 @@
             const e = document.getElementById('user-madrasati-email').value.trim();
             if (!n || !e) { showToast("يرجى إدخال البيانات"); return; }
             try {
-                const user = await window.ensureAuth();
                 const isManager = isManagerAccount(n, e);
                 if (isManager) {
                     isManagerVerifiedInSession = true;
-                    const userData = { id: user.uid, name: n, email: e, role: 'leadership', isActive: true, isRootAdmin: true };
-                    await window.fs.setDoc(window.fs.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'users', user.uid), userData, { merge: true });
+                    const id = window.normalizeSupabaseUuid((await window.ensureAuth()).uid);
+                    const userData = { id, name: n, email: e, role: 'leadership', isActive: true, isRootAdmin: true };
+                    await window.fs.setDoc({table:'users', id}, userData, { merge: true });
                     startApp(userData);
                     return;
                 }
-                showToast("الدخول للأقسام يتم بعد التسجيل من رابط المدير/ة وتفعيل الحساب فقط");
-                checkUserStatus();
-            } catch(e) { showToast("خطأ في تسجيل البيانات"); }
+                await checkUserStatus();
+            } catch(e) { console.error(e); showToast("خطأ في تسجيل البيانات"); }
         };
 
         const checkUserStatus = async () => {
@@ -706,26 +725,21 @@
                 const n = document.getElementById('user-display-name').value.trim();
                 const e = document.getElementById('user-madrasati-email').value.trim();
                 const isRoot = isManagerVerifiedInSession || isManagerAccount(n, e) || localStorage.getItem('is_admin_session') === 'true';
-                
                 if (isRoot) {
                     document.getElementById('waiting-screen').classList.add('hidden');
                     startApp({ id: 'root', name: n || 'المدير', email: e || 'admin', role: 'leadership', isActive: true });
                     return;
                 }
-
-                const user = await window.ensureAuth();
-                if (!user) return;
-
-                window.fs.onSnapshot(window.fs.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'users', user.uid), (doc) => {
-                    if (doc.exists() && doc.data().isActive) {
-                        document.getElementById('waiting-screen').classList.add('hidden');
-                        startApp(doc.data());
-                    } else {
-                        document.getElementById('role-selector-screen').classList.add('login-hidden'); document.getElementById('role-selector-screen').style.display = 'none';
-                        document.getElementById('waiting-screen').classList.remove('hidden');
-                    }
-                });
-            } catch(e) {}
+                if (!e) { showToast("أدخل البريد للتحقق من الحساب"); return; }
+                const userData = await window.SupaStore.findUserByEmail(e);
+                if (userData && userData.isActive !== false) {
+                    document.getElementById('waiting-screen').classList.add('hidden');
+                    startApp(userData);
+                } else {
+                    document.getElementById('role-selector-screen').classList.add('login-hidden'); document.getElementById('role-selector-screen').style.display = 'none';
+                    document.getElementById('waiting-screen').classList.remove('hidden');
+                }
+            } catch(e) { console.error(e); showToast('تعذر التحقق من الحساب'); }
         };
 
         const startApp = (u) => {
@@ -1851,7 +1865,7 @@
         '<div class="footnote">منصة المدرسة الرقمية الذكية - محضر معتمد بتاريخ '+esc(today())+'</div>'+
       '</section>'+
       (s.includeAttendance?'<section class="page"><div class="topbar"></div><header><div class="hblock"><b>المملكة العربية السعودية</b><b>وزارة التعليم</b><span>'+esc(s.schoolName||'المدرسة')+'</span></div><div class="logo">وزارة التعليم</div><div class="meta"><div>'+esc(m.date||today())+'</div></div></header><h1>سجل الحضور والتوثيق</h1><table><thead><tr><th>م</th><th>الاسم</th><th>التوقيع</th></tr></thead><tbody>'+rows+'</tbody></table><div class="note">ملاحظة: يلزم توقيع الحاضرين/ات فور انتهاء الاجتماع وتوثيق المحضر رسميًا.</div><div class="footnote">منصة المدرسة الرقمية الذكية - تاريخ التحقق: '+esc(today())+' - '+esc(code)+'</div></section>':'')+
-    '</body></html>';
+    '\n</body></html>';
   }
   function printCss(){ return '@page{size:A4;margin:0}*{box-sizing:border-box}body{font-family:Cairo,Arial,sans-serif;margin:0;color:#0f172a;background:#f8fafc}.page{width:210mm;min-height:297mm;background:white;margin:0 auto;padding:14mm 12mm;position:relative;page-break-after:always}.topbar{position:absolute;top:0;left:0;right:0;height:8px;background:#08783f}header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid #e5e7eb;padding-bottom:12px}.hblock{line-height:1.8;color:#065f46;font-size:15px;display:flex;flex-direction:column}.logo{text-align:center;color:#059669;font-weight:800}.logo small{font-size:10px;color:#64748b}.meta{font-size:12px;line-height:2;background:#ecfdf5;border-radius:12px;padding:8px 16px;min-width:140px}h1{text-align:center;color:#047857;font-size:28px;margin:16px 0 10px}h2{color:#047857;font-size:15px;margin:13px 0 7px}.basmala{text-align:center;font-size:13px;color:#475569}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}.field,.notice,.teams{background:#f0fdf4;border:1px solid #d1fae5;border-radius:13px;padding:9px;font-size:13px}.notice{line-height:2}.teams{direction:ltr;text-align:left;word-break:break-all;font-size:11px}ol{margin:0;padding:0 24px;background:#fbfffd;border:1px dashed #bbf7d0;border-radius:12px;min-height:32px}li{padding:4px 0;font-size:13px;line-height:1.7}footer{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end;margin-top:18px;border-top:1px solid #e5e7eb;padding-top:12px;font-size:12px}.sig{max-width:120px;max-height:55px;object-fit:contain}.sigLine{width:120px;height:40px;border-bottom:1px solid #334155}.seal{width:90px;height:90px;object-fit:contain}.sealBox{width:90px;height:90px;border:2px dashed #94a3b8;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#64748b;font-weight:800;font-size:11px}.qr{text-align:center;font-size:10px}.qr svg{border:1px solid #d1fae5}.code{direction:ltr;font-weight:800;color:#047857}.footnote{position:absolute;bottom:9mm;left:12mm;right:12mm;border-top:1px solid #edf2f7;padding-top:6px;color:#047857;font-weight:700;font-size:11px}.note{margin-top:14px;background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:12px;text-align:center;color:#92400e;font-size:13px}table{width:100%;border-collapse:collapse;margin-top:14px}th{background:#08783f;color:white;padding:8px;font-size:13px}td{border:1px solid #e5e7eb;height:24px;padding:4px;font-size:12px}td:first-child{width:35px;text-align:center}@media print{body{background:white}.page{margin:0;box-shadow:none}}'; }
   function dayName(dateStr){ try{ var d=dateStr?new Date(dateStr):new Date(); return ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'][d.getDay()]||'';}catch(e){return '';} }
@@ -2176,12 +2190,12 @@
   window.SmartOwnerPanel={
     open:function(){var m=by('ownerPanelModal'); if(m)m.classList.add('open'); if(!val('ownerSchoolCode')) setv('ownerSchoolCode',code()); this.refresh();},
     close:function(){var m=by('ownerPanelModal'); if(m)m.classList.remove('open');},
-    createSchool:function(){var st=S(); var schoolName=val('ownerSchoolName'), managerName=val('ownerManagerName'), email=val('ownerManagerEmail'), c=val('ownerSchoolCode')||code(); if(!schoolName||!managerName||!email){st.toast('أدخل اسم المدرسة واسم المدير والبريد.');return;} var schools=st.schools(); var id='school_'+Date.now(); var school={id:id,name:schoolName,code:c,status:val('ownerSchoolStatus')||'active',cloud:val('ownerCloudStatus')||'غير مربوط',createdAt:new Date().toISOString()}; school.registrationLink=linkFor(school); schools.unshift(school); st.saveSchools(schools); var users=st.users(); users.unshift({id:'manager_'+Date.now(),name:managerName,email:email,role:'manager',status:'active',isActive:true,schoolId:id,permissions:['owner-created-manager']}); st.saveUsers(users); setv('ownerSchoolName',''); setv('ownerManagerName',''); setv('ownerManagerEmail',''); setv('ownerSchoolCode',code()); st.toast('تم إنشاء المدرسة والمدير ورابط التسجيل.'); this.refresh();},
+    createSchool:async function(){var st=S(); var schoolName=val('ownerSchoolName'), managerName=val('ownerManagerName'), email=val('ownerManagerEmail'), c=val('ownerSchoolCode')||code(); if(!schoolName||!managerName||!email){st.toast('أدخل اسم المدرسة واسم المدير والبريد.');return;} try{ var id=(window.SupaStore&&window.SupaStore.uuid)?window.SupaStore.uuid():('school_'+Date.now()); var school={id:id,name:schoolName,code:c,status:val('ownerSchoolStatus')||'active',cloud:'Supabase',createdAt:new Date().toISOString()}; school.registrationLink=linkFor(school); await window.fs.setDoc({table:'schools',id:id},school,{merge:true}); var managerId=(window.SupaStore&&window.SupaStore.uuid)?window.SupaStore.uuid():('manager_'+Date.now()); var manager={id:managerId,name:managerName,email:email,role:'leadership',status:'active',isActive:true,schoolId:id,permissions:['owner-created-manager']}; await window.fs.setDoc({table:'users',id:managerId},manager,{merge:true}); var schools=st.schools(); schools.unshift(school); st.saveSchools(schools); var users=st.users(); users.unshift(manager); st.saveUsers(users); setv('ownerSchoolName',''); setv('ownerManagerName',''); setv('ownerManagerEmail',''); setv('ownerSchoolCode',code()); st.toast('تم إنشاء المدرسة والمدير وحفظهما في Supabase.'); await this.refresh(); }catch(err){console.error(err); st.toast('فشل الحفظ السحابي: '+(err.message||''));}},
     toggle:function(id){var st=S(); var schools=st.schools(); schools=schools.map(function(x){if(x.id===id){x.status=x.status==='active'?'disabled':'active';}return x;}); st.saveSchools(schools); this.refresh();},
     remove:function(id){var st=S(); if(!confirm('حذف المدرسة من لوحة المالك؟')) return; st.saveSchools(st.schools().filter(function(x){return x.id!==id;})); this.refresh();},
     copy:function(text){navigator.clipboard&&navigator.clipboard.writeText(text); S().toast('تم نسخ رابط التسجيل.');},
     export:function(){var data={schools:S().schools(),users:S().users(),exportedAt:new Date().toISOString()}; var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json;charset=utf-8'}); var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='بيانات_مالك_المنصة.json'; document.body.appendChild(a); a.click(); a.remove();},
-    refresh:function(){var st=S(); var rows=st.schools().map(function(x){return '<tr><td>'+x.name+'</td><td>'+x.code+'</td><td><span class="owner-link">'+x.registrationLink+'</span></td><td class="'+(x.status==='active'?'owner-status-active':'owner-status-off')+'">'+(x.status==='active'?'مفعلة':'معطلة')+'</td><td>'+st.users().filter(function(u){return u.schoolId===x.id;}).length+'</td><td>'+x.cloud+'</td><td><button onclick="SmartOwnerPanel.copy(\''+x.registrationLink.replace(/'/g,'')+'\')">نسخ</button> <button onclick="SmartOwnerPanel.toggle(\''+x.id+'\')">تفعيل/تعطيل</button> <button onclick="SmartOwnerPanel.remove(\''+x.id+'\')">حذف</button></td></tr>';}).join(''); by('ownerSchoolsTable').innerHTML='<table class="owner-table"><thead><tr><th>اسم المدرسة</th><th>كود المدرسة</th><th>رابط التسجيل الخاص</th><th>الحالة</th><th>عدد المستخدمين</th><th>التخزين السحابي</th><th>إجراءات</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7">لا توجد مدارس مسجلة بعد.</td></tr>')+'</tbody></table>';}
+    refresh:async function(){var st=S(); try{ if(window.SupaStore){ var cloudSchools=await window.SupaStore.listSchools(); var cloudUsers=await window.SupaStore.listUsers(); if(cloudSchools.length) st.saveSchools(cloudSchools); if(cloudUsers.length) st.saveUsers(cloudUsers); }}catch(e){console.warn(e);} var schools=st.schools(); var users=st.users(); var rows=schools.map(function(x){var link=x.registrationLink||linkFor(x); return '<tr><td>'+x.name+'</td><td>'+x.code+'</td><td><span class="owner-link">'+link+'</span></td><td class="'+(x.status==='active'?'owner-status-active':'owner-status-off')+'">'+(x.status==='active'?'مفعلة':'معطلة')+'</td><td>'+users.filter(function(u){return u.schoolId===x.id;}).length+'</td><td>'+(x.cloud||'Supabase')+'</td><td><button onclick="SmartOwnerPanel.copy(\''+link.replace(/'/g,'')+'\')">نسخ</button> <button onclick="SmartOwnerPanel.toggle(\''+x.id+'\')">تفعيل/تعطيل</button> <button onclick="SmartOwnerPanel.remove(\''+x.id+'\')">حذف</button></td></tr>';}).join(''); by('ownerSchoolsTable').innerHTML='<table class="owner-table"><thead><tr><th>اسم المدرسة</th><th>كود المدرسة</th><th>رابط التسجيل الخاص</th><th>الحالة</th><th>عدد المستخدمين</th><th>التخزين السحابي</th><th>إجراءات</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7">لا توجد مدارس مسجلة بعد.</td></tr>')+'</tbody></table>';}
   };
   window.SmartOwnerAI={open:function(){by('ownerAiModal').classList.add('open');},close:function(){by('ownerAiModal').classList.remove('open');},text:function(){return val('ownerAiInput');},out:function(t){by('ownerAiOutput').textContent=t;},summarize:function(){var t=this.text();this.out(t?'ملخص إداري:\n- '+t.slice(0,240)+'\n- تم تحديد أهم النقاط لعرضها على صاحب الصلاحية.':'أدخل نصًا أولًا.');},recommend:function(){this.out('توصيات مقترحة:\n1- تحديد مسؤول تنفيذ لكل بند.\n2- إضافة موعد متابعة.\n3- حفظ النتيجة في الأرشيف ومحفظة الاجتماعات.\n4- إرسال تنبيه للمعنيين.');},polish:function(){var t=this.text();this.out(t?'صياغة رسمية مقترحة:\nبناءً على ما ورد، نأمل الاطلاع واتخاذ اللازم وفق الإجراءات المعتمدة، مع توثيق ما يتم إنجازه ومتابعة مؤشرات التنفيذ.\n\nالنص الأصلي: '+t:'أدخل نصًا أولًا.');}};
   document.addEventListener('DOMContentLoaded',function(){try{if(new URLSearchParams(location.search).get('register')){if(typeof openRegistrationModal==='function') setTimeout(openRegistrationModal,300);}}catch(e){}});
@@ -2242,79 +2256,5 @@
 })();
 </script>
 <!-- SUPABASE_SAFE_CONNECTION_END -->
-<script>
-(function(){
-  'use strict';
-  function by(id){ return document.getElementById(id); }
-  function val(id){ var el=by(id); return el ? (el.value || '').trim() : ''; }
-  function setv(id,v){ var el=by(id); if(el) el.value=v; }
-  function toast(msg){ try{ if(window.showToast) window.showToast(msg); else alert(msg); }catch(e){ alert(msg); } }
-  function code(){ return 'SCH-' + Math.random().toString(36).substring(2,6).toUpperCase() + '-' + String(Date.now()).slice(-4); }
-  function read(k,d){ try{return JSON.parse(localStorage.getItem(k)||JSON.stringify(d));}catch(e){return d;} }
-  function write(k,v){ localStorage.setItem(k, JSON.stringify(v)); }
-  function users(){ return read('smart_owner_platform_users', read('offline_users_backup', [])); }
-  function saveUsers(a){ write('smart_owner_platform_users', a); write('offline_users_backup', a); }
-  function schools(){ return read('smart_owner_platform_schools', []); }
-  function saveSchools(a){ write('smart_owner_platform_schools', a); }
-  function linkFor(s){ var base=location.href.split('#')[0].split('?')[0]; return base+'?register=1&schoolId='+encodeURIComponent(s.id)+'&code='+encodeURIComponent(s.code || s.school_code || ''); }
-  function localRow(row){
-    var id = row.id || ('school_'+Date.now());
-    var out = { id:id, name:row.school_name || row.name || '', code:row.school_code || row.code || '', status:row.status || 'active', cloud:row.cloud || 'OneDrive', createdAt:row.created_at || row.createdAt || new Date().toISOString() };
-    out.registrationLink = row.registration_link || row.registrationLink || linkFor(out);
-    return out;
-  }
-  async function loadSchools(){
-    var client = window.getSchoolSupabaseClient && window.getSchoolSupabaseClient();
-    if(!client) return null;
-    var res = await client.from('schools').select('*');
-    if(res.error) throw res.error;
-    return (res.data || []).map(localRow);
-  }
-  function renderRows(list){
-    var box=by('ownerSchoolsTable'); if(!box) return;
-    var u=users();
-    var rows=(list||[]).map(function(x){
-      var link=x.registrationLink || linkFor(x);
-      return '<tr><td>'+ (x.name||'') +'</td><td>'+ (x.code||'') +'</td><td><span class="owner-link">'+ link +'</span></td><td class="'+(x.status==='active'?'owner-status-active':'owner-status-off')+'">'+(x.status==='active'?'مفعلة':'معطلة')+'</td><td>'+u.filter(function(a){return a.schoolId===x.id || a.school_id===x.id;}).length+'</td><td>'+(x.cloud||'OneDrive')+'</td><td><button onclick="SmartOwnerPanel.copy(\''+String(link).replace(/'/g,'')+'\')">نسخ</button> <button onclick="SmartOwnerPanel.remove(\''+x.id+'\')">حذف محلي</button></td></tr>';
-    }).join('');
-    box.innerHTML='<table class="owner-table"><thead><tr><th>اسم المدرسة</th><th>كود المدرسة</th><th>رابط التسجيل الخاص</th><th>الحالة</th><th>عدد المستخدمين</th><th>التخزين السحابي</th><th>إجراءات</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7">لا توجد مدارس مسجلة بعد.</td></tr>')+'</tbody></table>';
-  }
-  function install(){
-    if(!window.SmartOwnerPanel) window.SmartOwnerPanel = {};
-    var oldOpen = window.SmartOwnerPanel.open;
-    window.SmartOwnerPanel.open = function(){ if(oldOpen) oldOpen.call(window.SmartOwnerPanel); setTimeout(function(){ window.SmartOwnerPanel.refresh(); if(!val('ownerSchoolCode')) setv('ownerSchoolCode', code()); }, 50); };
-    window.SmartOwnerPanel.copy = window.SmartOwnerPanel.copy || function(t){ navigator.clipboard && navigator.clipboard.writeText(t); toast('تم نسخ الرابط'); };
-    window.SmartOwnerPanel.remove = function(id){ var arr=schools().filter(function(x){return String(x.id)!==String(id);}); saveSchools(arr); renderRows(arr); toast('تم الحذف محلياً فقط'); };
-    window.SmartOwnerPanel.export = function(){ var data={schools:schools(),users:users(),exportedAt:new Date().toISOString()}; var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json;charset=utf-8'}); var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='بيانات_مالك_المنصة.json'; document.body.appendChild(a); a.click(); a.remove(); };
-    window.SmartOwnerPanel.refresh = async function(){
-      try{ var cloud = await loadSchools(); if(cloud){ saveSchools(cloud); renderRows(cloud); return; } }
-      catch(e){ console.error('Supabase schools load failed:', e); toast('تعذر تحميل المدارس من Supabase، تم عرض النسخة المحلية'); }
-      renderRows(schools());
-    };
-    window.SmartOwnerPanel.createSchool = async function(){
-      var schoolName=val('ownerSchoolName'), managerName=val('ownerManagerName'), email=val('ownerManagerEmail'), c=val('ownerSchoolCode')||code();
-      if(!schoolName || !managerName || !email){ toast('أدخل اسم المدرسة واسم المدير والبريد.'); return; }
-      var id = (crypto && crypto.randomUUID) ? crypto.randomUUID() : ('school_'+Date.now());
-      var local = {id:id,name:schoolName,code:c,status:val('ownerSchoolStatus')||'active',cloud:val('ownerCloudStatus')||'OneDrive',createdAt:new Date().toISOString()};
-      local.registrationLink = linkFor(local);
-      var client = window.getSchoolSupabaseClient && window.getSchoolSupabaseClient();
-      try{
-        if(!client) throw new Error('لم يتم تهيئة اتصال Supabase');
-        var payload = { id:id, school_code:c, school_name:schoolName, registration_link:local.registrationLink };
-        var res = await client.from('schools').insert([payload]).select('*').single();
-        if(res.error) throw res.error;
-        local = localRow(res.data || payload);
-        var arr=schools().filter(function(x){return String(x.id)!==String(local.id);}); arr.unshift(local); saveSchools(arr);
-        var u=users(); u.unshift({id:'manager_'+Date.now(),name:managerName,email:email,role:'manager',status:'active',isActive:true,schoolId:local.id,permissions:['owner-created-manager']}); saveUsers(u);
-        try{ await client.from('users').insert([{name:managerName,email:email,role:'manager',school_id:local.id,is_active:true}]); }catch(e){ console.warn('Optional manager users insert skipped:', e); }
-        setv('ownerSchoolName',''); setv('ownerManagerName',''); setv('ownerManagerEmail',''); setv('ownerSchoolCode',code());
-        toast('تم حفظ المدرسة في Supabase بنجاح ✅');
-        await window.SmartOwnerPanel.refresh();
-      }catch(e){ console.error('Supabase school insert failed:', e); toast('فشل حفظ المدرسة في Supabase: ' + (e.message || e.details || 'تحقق من RLS والأعمدة')); }
-    };
-  }
-  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', install); else install();
-})();
-</script>
 </body>
 </html>

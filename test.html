@@ -2306,125 +2306,87 @@ body.school-link-mode.app-started #manager-invite-copy-btn{display:block!importa
 <!-- SUPABASE_SAFE_CONNECTION_END -->
 
 
-<!-- MANAGER_FIRST_FLOW_SAFE_PATCH_START -->
-<style id="manager-first-flow-safe-style">
+
+
+<!-- SCHOOL_LINK_STABLE_MANAGER_LOGIN_PATCH_START -->
+<style id="school-link-stable-manager-login-style">
 body.school-link-mode #owner-bottom-actions-final,
 body.school-link-mode #ownerAiDock,
 body.school-link-mode .owner-ai-dock,
 body.school-link-mode #ownerPanelModal,
 body.school-link-mode #ownerAiModal,
 body.school-link-mode .global-admin-badge{display:none!important}
-body.school-link-mode #role-selector-screen{display:flex!important}
-body.school-link-mode #role-selector-screen.login-hidden{display:none!important}
-body.school-link-mode.app-started #role-selector-screen{display:none!important}
+body.school-link-mode:not(.app-started) #role-selector-screen{display:flex!important;align-items:center!important;justify-content:flex-end!important;padding-left:24px!important;padding-right:24px!important}
+body.school-link-mode.app-started #role-selector-screen,
+body.school-link-mode.app-started #waiting-screen,
+body.school-link-mode.app-started #registration-modal{display:none!important;visibility:hidden!important;opacity:0!important;pointer-events:none!important}
+body.school-link-mode #role-selector-screen .login-container{transform:none!important;animation:none!important;transition:none!important;position:relative!important;will-change:auto!important;max-width:350px!important;margin:0 0 0 28px!important;background:rgba(255,255,255,.84)!important;color:#0f172a!important;backdrop-filter:blur(12px)!important}
+body.school-link-mode #role-selector-screen *,
+body.school-link-mode #registration-modal *,
+body.school-link-mode #waiting-screen *{animation:none!important;transition:none!important;scroll-behavior:auto!important}
 body.school-link-mode .login-container>.grid.grid-cols-3{display:none!important}
 body.school-link-mode .school-link-note{color:#64748b;font-size:12px;font-weight:800;margin-top:8px;line-height:1.8}
 #manager-invite-copy-btn{position:fixed;right:22px;bottom:22px;z-index:2600;border:0;border-radius:999px;background:#0f766e;color:#fff;padding:12px 18px;font-family:'Cairo',Arial,sans-serif;font-weight:900;box-shadow:0 16px 35px rgba(0,0,0,.25);cursor:pointer;display:none}
-body.school-link-mode.app-started #manager-invite-copy-btn{display:block}
+body.school-link-mode.app-started #manager-invite-copy-btn{display:block!important}
+@media (max-width: 768px){body.school-link-mode:not(.app-started) #role-selector-screen{justify-content:center!important}body.school-link-mode #role-selector-screen .login-container{margin:0!important;max-width:92vw!important}}
 </style>
-<script id="manager-first-flow-safe-script">
-(function(){
-  'use strict';
-  function p(){return new URLSearchParams(location.search||'');}
-  function by(id){return document.getElementById(id);}
-  function hasSchool(){var q=p();return q.has('schoolId')||q.has('school_id')||q.has('code')||q.has('school_code')||q.get('register')==='1'||q.get('join')==='1';}
-  function isJoin(){var q=p();return q.get('join')==='1'||q.get('action')==='register';}
-  function closeReg(){var m=by('registration-modal'); if(m) m.style.display='none';}
-  function openReg(){if(typeof window.openRegistrationModal==='function') window.openRegistrationModal(); else {var m=by('registration-modal'); if(m) m.style.display='flex';}}
-  function schoolId(){var q=p();return q.get('schoolId')||q.get('school_id')||'';}
-  function schoolCode(){var q=p();return q.get('code')||q.get('school_code')||'';}
-  function base(){return location.href.split('#')[0].split('?')[0];}
-  function inviteLink(){return base()+'?join=1&schoolId='+encodeURIComponent(schoolId())+'&code='+encodeURIComponent(schoolCode());}
-  function applyLoginMode(){
-    if(!hasSchool()) return;
-    document.body.classList.add('school-link-mode');
-    var screen=by('role-selector-screen');
-    if(screen){screen.classList.remove('login-hidden');screen.style.display='flex';}
-    var h=document.querySelector('#role-selector-screen .login-container h2');
-    if(h) h.textContent=isJoin()?'تسجيل منسوبي المدرسة':'دخول مدير المدرسة';
-    var sub=document.querySelector('#role-selector-screen .login-container p');
-    if(sub) sub.textContent=isJoin()?'أكمل الطلب ليقوم مدير المدرسة بتفعيل حسابك.':'يدخل المدير أولًا، ثم ينسخ رابط التسجيل للوكلاء والمعلمين من داخل واجهة المدرسة.';
-    var n=by('user-display-name'); if(n){ n.placeholder='الاسم الكامل'; n.style.display='none'; }
-    var e=by('user-madrasati-email'); if(e) e.placeholder='البريد الإلكتروني';
-    var pw=by('user-login-password'); if(pw){ pw.style.display='block'; pw.placeholder='كلمة المرور'; }
-    var login=by('mainLoginBtn'); if(login) login.textContent='دخول إلى مدرستي';
-    var newBtn=document.querySelector('#role-selector-screen button[onclick="openRegistrationModal()"]');
-    if(newBtn) newBtn.textContent='تسجيل وكيل / معلم جديد';
-    var box=document.querySelector('#role-selector-screen .login-container .mb-8')||document.querySelector('#role-selector-screen .login-container');
-    if(box && !by('school-link-note')){var note=document.createElement('div');note.id='school-link-note';note.className='school-link-note';note.textContent='ملاحظة: هذه الصفحة خاصة بهذه المدرسة، ولا تعرض لوحة مالك المنصة.';box.appendChild(note);}
-  }
-  function setupInviteButton(){
-    if(!hasSchool()||by('manager-invite-copy-btn')) return;
-    var btn=document.createElement('button');
-    btn.id='manager-invite-copy-btn';
-    btn.type='button';
-    btn.textContent='نسخ رابط تسجيل الوكلاء والمعلمين';
-    btn.onclick=function(){var link=inviteLink(); if(navigator.clipboard){navigator.clipboard.writeText(link).then(function(){alert('تم نسخ رابط التسجيل');},function(){prompt('انسخ الرابط:',link);});}else prompt('انسخ الرابط:',link);};
-    document.body.appendChild(btn);
-  }
-  function watchStarted(){
-    if(!hasSchool()) return;
-    setupInviteButton();
-    var main=by('main-ui');
-    var role=by('role-selector-screen');
-    var visible=main && (main.style.display==='flex'||main.style.opacity==='1'||!main.classList.contains('opacity-0')) && (!role || role.style.display==='none' || role.classList.contains('login-hidden'));
-    if(visible) document.body.classList.add('app-started');
-  }
-  document.addEventListener('DOMContentLoaded',function(){
-    applyLoginMode();
-    if(isJoin()) setTimeout(openReg,450); else {setTimeout(closeReg,450);setTimeout(closeReg,1000);setTimeout(closeReg,1800);}
-    setInterval(function(){applyLoginMode();watchStarted();if(hasSchool()&&!isJoin()&&!document.body.classList.contains('app-started')) closeReg();},700);
-  });
-})();
-</script>
-<!-- MANAGER_FIRST_FLOW_SAFE_PATCH_END -->
-
-<script id="final-stability-guard">
+<script id="school-link-stable-manager-login-script">
 (function(){
   'use strict';
   function by(id){return document.getElementById(id)}
   function qs(){return new URLSearchParams(location.search||'')}
   function hasSchoolLink(){var q=qs(); return q.has('schoolId')||q.has('school_id')||q.has('code')||q.has('school_code')||q.get('join')==='1'||q.get('register')==='1'}
   function isJoin(){var q=qs(); return q.get('join')==='1'||q.get('action')==='register'}
-  function hide(el){if(el){el.classList.add('hidden');el.classList.add('login-hidden');el.style.display='none';}}
-  function showFlex(el){if(el){el.classList.remove('hidden');el.classList.remove('login-hidden');el.style.display='flex';}}
-  function closeEntryScreens(){hide(by('role-selector-screen'));hide(by('waiting-screen'));hide(by('registration-modal'));document.body.classList.add('app-started');}
-  function showSchoolLogin(){
+  function base(){return location.href.split('#')[0].split('?')[0]}
+  function schoolId(){var q=qs(); return q.get('schoolId')||q.get('school_id')||''}
+  function schoolCode(){var q=qs(); return q.get('code')||q.get('school_code')||''}
+  function inviteLink(){return base()+'?join=1&schoolId='+encodeURIComponent(schoolId())+'&code='+encodeURIComponent(schoolCode())}
+  function hide(el){if(el){el.classList.add('hidden');el.classList.add('login-hidden');el.style.display='none';el.style.visibility='hidden';el.style.opacity='0';el.style.pointerEvents='none'}}
+  function showFlex(el){if(el){el.classList.remove('hidden','login-hidden');el.style.display='flex';el.style.visibility='visible';el.style.opacity='1';el.style.pointerEvents='auto'}}
+  function stableSchoolLogin(){
     if(!hasSchoolLink() || document.body.classList.contains('app-started')) return;
     document.body.classList.add('school-link-mode');
     var screen=by('role-selector-screen'); showFlex(screen);
-    var name=by('user-display-name'); if(name){name.style.display='none'; name.required=false; name.value=name.value||'مدير المدرسة';}
-    var email=by('user-madrasati-email'); if(email){email.placeholder='البريد الإلكتروني'; email.style.display='block';}
-    var pw=by('user-login-password'); if(pw){pw.placeholder='كلمة المرور'; pw.style.display='block';}
+    var name=by('user-display-name'); if(name){name.style.display=isJoin()?'block':'none'; name.required=!!isJoin(); if(!isJoin()) name.value=name.value||'مدير المدرسة'; name.placeholder='الاسم الكامل'}
+    var email=by('user-madrasati-email'); if(email){email.placeholder='البريد الإلكتروني'; email.style.display='block'}
+    var pw=by('user-login-password'); if(pw){pw.placeholder='كلمة المرور'; pw.style.display='block'}
     var title=document.querySelector('#role-selector-screen .login-container h2'); if(title) title.textContent=isJoin()?'تسجيل منسوبي المدرسة':'دخول مدير المدرسة';
     var desc=document.querySelector('#role-selector-screen .login-container p'); if(desc) desc.textContent=isJoin()?'سجّل بياناتك، ثم يقوم المدير بتفعيل حسابك.':'يدخل المدير أولًا، ثم يدعو الوكلاء والمعلمين من داخل المدرسة.';
-    var btn=by('mainLoginBtn'); if(btn) btn.textContent='دخول بالبريد وكلمة المرور';
+    var btn=by('mainLoginBtn'); if(btn) btn.textContent=isJoin()?'إرسال طلب التسجيل':'دخول بالبريد وكلمة المرور';
+    var newBtn=document.querySelector('#role-selector-screen button[onclick="openRegistrationModal()"]'); if(newBtn) newBtn.textContent='تسجيل وكيل / معلم جديد';
+    var box=document.querySelector('#role-selector-screen .login-container .mb-8')||document.querySelector('#role-selector-screen .login-container');
+    if(box && !by('school-link-note')){var note=document.createElement('div'); note.id='school-link-note'; note.className='school-link-note'; note.textContent='هذه الصفحة خاصة بهذه المدرسة، ولا تعرض لوحة مالك المنصة.'; box.appendChild(note)}
+    if(!isJoin()){ hide(by('registration-modal')); hide(by('waiting-screen')); }
   }
   function ensureInviteButton(){
     if(!hasSchoolLink() || by('manager-invite-copy-btn')) return;
     var b=document.createElement('button'); b.id='manager-invite-copy-btn'; b.type='button'; b.textContent='نسخ رابط تسجيل الوكلاء والمعلمين';
-    b.onclick=function(){var q=qs(); var base=location.href.split('#')[0].split('?')[0]; var link=base+'?join=1&schoolId='+encodeURIComponent(q.get('schoolId')||q.get('school_id')||'')+'&code='+encodeURIComponent(q.get('code')||q.get('school_code')||''); if(navigator.clipboard){navigator.clipboard.writeText(link).then(function(){alert('تم نسخ رابط التسجيل');},function(){prompt('انسخ الرابط:',link);});}else prompt('انسخ الرابط:',link);};
+    b.onclick=function(){var link=inviteLink(); if(navigator.clipboard){navigator.clipboard.writeText(link).then(function(){alert('تم نسخ رابط التسجيل')},function(){prompt('انسخ الرابط:',link)})}else prompt('انسخ الرابط:',link)};
     document.body.appendChild(b);
   }
+  function startAppCleanup(user){
+    if(!hasSchoolLink()) return;
+    document.body.classList.add('school-link-mode','app-started');
+    hide(by('role-selector-screen')); hide(by('waiting-screen')); hide(by('registration-modal'));
+    var main=by('main-ui'); if(main){main.classList.remove('opacity-0','pointer-events-none'); main.style.opacity='1'; main.style.display='flex'; main.style.visibility='visible'; main.style.pointerEvents='auto'}
+    ensureInviteButton();
+    try{ if(user && (user.role==='leadership'||user.role==='manager')) localStorage.setItem('school_activated_once','true'); }catch(e){}
+  }
   function patchStart(){
-    if(window.__finalStartPatched) return;
-    if(typeof window.startApp !== 'function') return;
-    window.__finalStartPatched=true;
+    if(window.__stableSchoolStartPatched || typeof window.startApp!=='function') return;
+    window.__stableSchoolStartPatched=true;
     var oldStart=window.startApp;
-    window.startApp=function(u){
-      if(typeof oldStart==='function') oldStart(u);
-      closeEntryScreens();
-      ensureInviteButton();
-      try{ if(u && (u.role==='leadership'||u.role==='manager')) localStorage.setItem('school_activated_once','true'); }catch(e){}
-      var main=by('main-ui'); if(main){main.classList.remove('opacity-0','pointer-events-none'); main.style.opacity='1'; main.style.display='flex';}
-    };
+    window.startApp=function(user){ oldStart.apply(this, arguments); setTimeout(function(){startAppCleanup(user)},0); };
   }
   document.addEventListener('DOMContentLoaded', function(){
-    patchStart(); showSchoolLogin();
-    if(isJoin() && typeof window.openRegistrationModal==='function') setTimeout(window.openRegistrationModal,300);
-    setInterval(function(){ patchStart(); if(!document.body.classList.contains('app-started')) showSchoolLogin(); },500);
+    stableSchoolLogin(); patchStart();
+    if(isJoin() && typeof window.openRegistrationModal==='function') setTimeout(function(){window.openRegistrationModal()},250);
+    setTimeout(function(){stableSchoolLogin(); patchStart()},600);
+    setTimeout(function(){stableSchoolLogin(); patchStart()},1400);
   });
 })();
 </script>
+<!-- SCHOOL_LINK_STABLE_MANAGER_LOGIN_PATCH_END -->
+
 </body>
 </html>

@@ -2052,6 +2052,73 @@ body.app-started #role-selector-screen {
             <button onclick="window.print()" style="padding:10px 25px;border:0;border-radius:12px;background:#1e7b78;color:white;font-weight:bold">طباعة</button>
 
 
+
+<style id="force-remove-floating-registration-button">
+/* إخفاء قاطع لأي زر عائم لنسخ رابط التسجيل خارج قسم المدير */
+#staff-registration-link-btn,
+button#staff-registration-link-btn,
+button[data-staff-registration],
+button[data-registration-copy],
+.floating-registration-link,
+.manager-floating-registration-link {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+</style>
+
+
+<script id="force-remove-floating-registration-button">
+(function(){
+  'use strict';
+
+  function isBadRegistrationButton(el){
+    if(!el) return false;
+    var txt = String(el.textContent || '').trim();
+    var id = String(el.id || '');
+    var cls = String(el.className || '');
+    return (
+      id === 'staff-registration-link-btn' ||
+      id.includes('staff-registration') ||
+      cls.includes('floating-registration') ||
+      txt.includes('نسخ رابط تسجيل الوكلاء والمعلمين') ||
+      txt.includes('نسخ رابط تسجيل المستخدمين')
+    );
+  }
+
+  function removeBadButtons(){
+    Array.from(document.querySelectorAll('button, a, [role="button"], #staff-registration-link-btn')).forEach(function(el){
+      if(isBadRegistrationButton(el)){
+        el.remove();
+      }
+    });
+  }
+
+  // إيقاف أي دالة قديمة تنشئ الزر العائم
+  window.ensureStaffRegistrationButton = function(){
+    removeBadButtons();
+  };
+
+  document.addEventListener('DOMContentLoaded', function(){
+    removeBadButtons();
+
+    // مراقبة أي زر يتم إنشاؤه لاحقًا وحذفه فورًا
+    var obs = new MutationObserver(function(){
+      removeBadButtons();
+    });
+    obs.observe(document.documentElement, {childList:true, subtree:true});
+
+    setInterval(removeBadButtons, 150);
+  });
+
+  window.addEventListener('load', function(){
+    removeBadButtons();
+    setInterval(removeBadButtons, 150);
+  });
+})();
+</script>
+
 </body></html>`;
             const w = window.open('', '_blank');
             w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 500);

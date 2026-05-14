@@ -383,11 +383,6 @@ body.hard-staff-register #registration-modal .modal-content {
 
   function removeFloatingRegistrationButtons(){
     document.querySelectorAll('#staff-registration-link-btn,[data-staff-registration="1"]').forEach(function(x){ x.remove(); });
-    Array.from(document.querySelectorAll('button')).forEach(function(btn){
-      const txt = String(btn.textContent || '').trim();
-      if(txt.includes('نسخ رابط تسجيل الوكلاء والمعلمين') || txt.includes('نسخ رابط تسجيل المستخدمين')){
-        btn.remove();
-      }
     });
   }
 
@@ -601,11 +596,6 @@ body.app-started #role-selector-screen {
       btn.remove();
     });
 
-    Array.from(document.querySelectorAll('button')).forEach(function(btn){
-      var txt = String(btn.textContent || '').trim();
-      if(txt.includes('نسخ رابط تسجيل الوكلاء والمعلمين') || txt.includes('نسخ رابط تسجيل المستخدمين')){
-        btn.remove();
-      }
     });
   }
 
@@ -1051,7 +1041,7 @@ body.app-started #role-selector-screen {
             return isMatch;
         };
 
-        const openRegistrationModal = () => { closeModal('registration-modal'); document.getElementById('registration-modal').style.display = 'flex'; };
+        const openRegistrationModal = () => { closeModal('registration-modal'); };
         const openAddUserModal = () => { openEditModal('user-'+Date.now(), '', '', 'performance'); };
 
         const submitRegistrationRequest = async () => {
@@ -1078,8 +1068,7 @@ body.app-started #role-selector-screen {
                 };
                 await window.fs.setDoc({table:'users', id}, userData, { merge: true });
                 closeModal('registration-modal');
-                document.getElementById('role-selector-screen').classList.add('login-hidden'); document.getElementById('role-selector-screen').style.display = 'none';
-                document.getElementById('waiting-screen').classList.remove('hidden');
+                document.getElementById('role-selector-screen').classList.add('login-hidden'); document.getElementById('waiting-screen').classList.remove('hidden');
                 showToast("تم إرسال طلب التسجيل للمدير/ة للتفعيل");
             } catch (err) { console.error(err); showToast("فشل إرسال الطلب لتفعيل الحساب: " + (err.message || '')); }
         };
@@ -1101,8 +1090,7 @@ body.app-started #role-selector-screen {
                 if (userData.password && String(userData.password) !== String(pw)) { showToast('كلمة المرور غير صحيحة'); return; }
                 if (!userData.password) { showToast('الحساب لا يحتوي على كلمة مرور. راجع مالك النظام.'); return; }
                 if (userData.isActive === false || userData.status === 'pending') {
-                    document.getElementById('role-selector-screen').classList.add('login-hidden'); document.getElementById('role-selector-screen').style.display = 'none';
-                    document.getElementById('waiting-screen').classList.remove('hidden');
+                    document.getElementById('role-selector-screen').classList.add('login-hidden'); document.getElementById('waiting-screen').classList.remove('hidden');
                     return;
                 }
                 userData.originalRole = userData.role;
@@ -1169,8 +1157,7 @@ body.app-started #role-selector-screen {
                     document.getElementById('waiting-screen').classList.add('hidden');
                     startApp(userData);
                 } else {
-                    document.getElementById('role-selector-screen').classList.add('login-hidden'); document.getElementById('role-selector-screen').style.display = 'none';
-                    document.getElementById('waiting-screen').classList.remove('hidden');
+                    document.getElementById('role-selector-screen').classList.add('login-hidden'); document.getElementById('waiting-screen').classList.remove('hidden');
                 }
             } catch(e) { console.error(e); showToast('تعذر التحقق من الحساب'); }
         };
@@ -1178,10 +1165,8 @@ body.app-started #role-selector-screen {
         const startApp = (u) => {
             currentUser = u;
             document.getElementById('waiting-screen').classList.add('hidden');
-            document.getElementById('role-selector-screen').classList.add('login-hidden'); document.getElementById('role-selector-screen').style.display = 'none';
-            document.getElementById('main-ui').classList.remove('opacity-0', 'pointer-events-none');
+            document.getElementById('role-selector-screen').classList.add('login-hidden'); document.getElementById('main-ui').classList.remove('opacity-0', 'pointer-events-none');
             document.getElementById('main-ui').style.opacity = '1';
-            document.getElementById('main-ui').style.display = 'flex';
             document.getElementById('active-role-badge').innerText = (u.role === 'leadership' || u.role === 'manager') ? 'مدير/ة المدرسة' : 'منسوب/ة المدرسة';
             renderGrid(u.role);
             syncCloudData();
@@ -1193,13 +1178,11 @@ body.app-started #role-selector-screen {
             window.fs.onSnapshot(window.fs.collection(window.db, 'artifacts', window.appId, 'public', 'data', 'users'), (snap) => {
                 allUsers = snap.docs.map(d => d.data());
                 localStorage.setItem('offline_users_backup', JSON.stringify(allUsers));
-                if (document.getElementById('user-management-modal').style.display === 'flex') renderUserTable();
-            }, (err) => {
+                if (}, (err) => {
                 const backup = localStorage.getItem('offline_users_backup');
                 if (backup) {
                     allUsers = JSON.parse(backup);
-                    if (document.getElementById('user-management-modal').style.display === 'flex') renderUserTable();
-                }
+                    if (}
             });
         };
 
@@ -1284,7 +1267,6 @@ body.app-started #role-selector-screen {
         };
 
         const showUserManagement = () => {
-            document.getElementById('user-management-modal').style.display = 'flex';
             renderUserTable();
         };
 
@@ -1361,8 +1343,7 @@ body.app-started #role-selector-screen {
                 card.innerHTML = `<div><div class="font-bold text-sm">${u.name || 'بدون اسم'}</div><div class="text-[10px] text-slate-500">${u.email || ''}</div><div class="text-[10px] font-bold mt-1">${status} - ${roleLabel(u.role)}</div></div>${monitorButton}`;
                 container.appendChild(card);
             });
-            document.getElementById('role-list-modal').style.display = 'flex';
-        };
+            };
 
         const applyMonitoringRestrictions = (iframe) => {
             if (!iframe) return;
@@ -1412,7 +1393,6 @@ body.app-started #role-selector-screen {
             const v = document.getElementById('viewport-monitoring');
             if (v) {
                 v.classList.add('active');
-                document.getElementById('main-ui').style.display = 'none';
                 document.getElementById('monitored-user-name').innerText = name;
                 document.getElementById('backBtn').classList.add('visible');
                 const files = { 'agency': 'التقارير الرقمية لوكالة المدرسة الذكية.html', 'performance': 'نظام تقارير الأداء الذكي.html' };
@@ -1469,8 +1449,7 @@ body.app-started #role-selector-screen {
             document.getElementById('notif-select-all').checked = false;
             updateNotifCounter();
             renderNotifRecipients();
-            document.getElementById('send-notif-modal').style.display = 'flex';
-        };
+            };
 
         const readNotifAttachment = () => new Promise((resolve) => {
             const fileInput = document.getElementById('notif-file');
@@ -1536,8 +1515,7 @@ body.app-started #role-selector-screen {
                 div.innerHTML = `<div class="font-bold text-xs mb-1">${n.sender || 'مرسل غير محدد'} <span class="font-normal opacity-70">${new Date(n.timestamp || Date.now()).toLocaleString('ar-SA')}</span></div><div class="text-sm whitespace-pre-wrap">${n.text || ''}</div>${recipientsText}${linkHtml}${attachmentHtml}`;
                 container.appendChild(div);
             });
-            document.getElementById('alerts-popup-modal').style.display = 'flex';
-        };
+            };
 
         const openEditModal = (uid, n, e, r, active = true) => { 
             document.getElementById('edit-uid').value = uid; 
@@ -1547,8 +1525,7 @@ body.app-started #role-selector-screen {
             const activeSelect = document.getElementById('edit-active');
             if (activeSelect) activeSelect.value = active ? 'true' : 'false';
             document.getElementById('edit-modal-title').innerText = uid && String(uid).startsWith('user-') ? 'إضافة مستخدم جديد' : 'تعديل المستخدم والصلاحيات';
-            document.getElementById('edit-user-modal').style.display = 'flex'; 
-        };
+            };
 
         // تفعيل وحل مشكلة الحفظ للمدير (إضافة وتعديل)
         const saveUserEdit = async () => {
@@ -1646,7 +1623,6 @@ body.app-started #role-selector-screen {
 
         const showMeetingsRoom = () => {
             if (!currentUser) return showToast('يرجى تسجيل الدخول أولاً');
-            document.getElementById('meetings-room-modal').style.display = 'flex';
             if (!document.getElementById('meeting-date').value) document.getElementById('meeting-date').valueAsDate = new Date();
             if (!document.getElementById('meeting-time').value) {
                 const d = new Date();
@@ -1809,7 +1785,6 @@ body.app-started #role-selector-screen {
         });
 
         const openMeetingPortfolio = () => {
-            document.getElementById('meetings-portfolio-modal').style.display = 'flex';
             renderMeetingPortfolio();
         };
 
@@ -2088,10 +2063,6 @@ button[data-registration-copy],
   }
 
   function removeBadButtons(){
-    Array.from(document.querySelectorAll('button, a, [role="button"], #staff-registration-link-btn')).forEach(function(el){
-      if(isBadRegistrationButton(el)){
-        el.remove();
-      }
     });
   }
 
@@ -2233,23 +2204,39 @@ body.manager-route-v6:not(.manager-entered-v6) #role-selector-screen .flex:has(b
 })();
 </script>
 
+
+<script id="remove-visible-js-leaks-source-v8">
+(function(){
+  function cleanLeaks(){
+    if(!document.body) return;
+    const markers = ['window.open','document.write','URLSearchParams','localStorage.clear','querySelectorAll','getElementById','const logout','const urlParams','=>'];
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const bad = [];
+    while(walker.nextNode()){
+      const n = walker.currentNode;
+      const t = String(n.nodeValue || '').trim();
+      if(t.length > 20 && markers.some(m => t.includes(m))){
+        bad.push(n);
+      }
+    }
+    bad.forEach(n => { n.nodeValue = ''; });
+  }
+  document.addEventListener('DOMContentLoaded', function(){
+    cleanLeaks();
+    setInterval(cleanLeaks, 300);
+  });
+  window.addEventListener('load', cleanLeaks);
+})();
+</script>
+
 </body></html>`;
-            const w = window.open('', '_blank');
-            w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 500);
+            w.focus(); setTimeout(() => w.print(), 500);
         };
 
-        const logout = () => { localStorage.clear(); location.reload(); };
-        const closeModal = (id) => document.getElementById(id).style.display = 'none';
-        const closeApp = () => { document.getElementById('main-ui').style.display = 'flex'; document.querySelectorAll('.app-iframe-container').forEach(v => v.classList.remove('active')); document.getElementById('backBtn').classList.remove('visible'); };
+        ;
+        const closeModal = (id) => const closeApp = () => { document.querySelectorAll('.app-iframe-container').forEach(v => v.classList.remove('active')); document.getElementById('backBtn').classList.remove('visible'); };
         
         window.onload = () => { 
-            const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.get('mode') === 'register') {
-                const admin = urlParams.get('admin');
-                const token = urlParams.get('token');
-                window.pendingRegistrationInvite = { admin, token };
-                document.getElementById('role-selector-screen').style.display = 'flex';
-                setTimeout(openRegistrationModal, 500);
             } else {
                 checkUserStatus();
             } 

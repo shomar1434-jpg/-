@@ -38,7 +38,7 @@
       function tableFromArgs(args){ var a=[].slice.call(args).filter(Boolean).map(String); for(var i=a.length-1;i>=0;i--){ if(['users','schools','notifications','meetings','archives'].includes(a[i])) return {table:a[i], id:a[i+1]||null}; } return {table:a[a.length-1]||'', id:null}; }
       function mapUserToDb(u){
         var id=normalizeId(u.id); u.id=id;
-        return { id:id, school_id:u.schoolId||u.school_id||null, full_name:u.name||u.full_name||'', email:u.email||'', role:u.role||'performance', is_active:u.isActive!==false, status:(u.isActive===false?'pending':'active'), admin_owner_id:u.adminOwnerId||u.admin_owner_id||null, registration_token:u.registrationToken||u.registration_token||null, registered_via_manager_link:!!u.registeredViaManagerLink, date_joined:u.dateJoined||u.date_joined||new Date().toISOString() };
+        return { id:id, school_id:u.schoolId||u.school_id||null, full_name:u.name||u.full_name||'', email:u.email||'', password:u.password||'', role:u.role||'performance', is_active:u.isActive!==false, status:(u.isActive===false?'pending':'active'), admin_owner_id:u.adminOwnerId||u.admin_owner_id||null, registration_token:u.registrationToken||u.registration_token||null, registered_via_manager_link:!!u.registeredViaManagerLink, date_joined:u.dateJoined||u.date_joined||new Date().toISOString() };
       }
       function mapUserFromDb(u){ return Object.assign({},u,{ id:u.id, name:u.full_name||u.name||'', schoolId:u.school_id||u.schoolId||'', isActive:(u.is_active!==undefined?u.is_active:(u.status==='active'||u.status==='approved')), adminOwnerId:u.admin_owner_id||u.adminOwnerId||'', registrationToken:u.registration_token||u.registrationToken||'' }); }
       function mapSchoolToDb(x){ var id=normalizeId(x.id); x.id=id; return { id:id, school_code:x.code||x.school_code||'', school_name:x.name||x.school_name||'', registration_link:x.registrationLink||x.registration_link||'' }; }
@@ -46,7 +46,7 @@
       async function safeUpsert(table, data){
         var sb=getSchoolSupabaseClient(); if(!sb) throw new Error('Supabase غير متصل');
         var attempts=[];
-        if(table==='users') attempts=[data,{id:data.id,school_id:data.school_id,full_name:data.full_name,email:data.email,role:data.role||'teacher'},{id:data.id,full_name:data.full_name,email:data.email,role:data.role||'teacher'}];
+        if(table==='users') attempts=[data,{id:data.id,school_id:data.school_id,full_name:data.full_name,email:data.email,password:data.password||'',role:data.role||'teacher',is_active:data.is_active!==false,status:data.status||'active'},{id:data.id,full_name:data.full_name,email:data.email,password:data.password||'',role:data.role||'teacher'}];
         else if(table==='schools') attempts=[data,{id:data.id,school_code:data.school_code,school_name:data.school_name,registration_link:data.registration_link},{id:data.id,school_code:data.school_code,school_name:data.school_name}];
         else attempts=[data];
         var last;
@@ -277,6 +277,9 @@
 
                 <input type="email" id="user-madrasati-email" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-form-type="other" placeholder="بريد منصة مدرستي" 
                        class="w-full p-3 rounded-xl bg-white/10 border border-white/20 text-white text-center outline-none focus:border-teal-400">
+
+                <input type="password" id="user-login-password" autocomplete="current-password" data-lpignore="true" data-form-type="password" placeholder="كلمة المرور" 
+                       class="w-full p-3 rounded-xl bg-white/10 border border-white/20 text-white text-center outline-none focus:border-teal-400" style="display:none;">
             </div>
 
             <div class="grid grid-cols-3 gap-3">
@@ -678,6 +681,30 @@
         const handleAdminDirectEntry = async () => {
             const n = document.getElementById('user-display-name').value.trim();
             const e = document.getElementById('user-madrasati-email').value.trim();
+            const pwEl = document.getElementById('user-login-password');
+            const pw = pwEl ? pwEl.value.trim() : '';
+            const schoolParams = new URLSearchParams(location.search);
+            const linkSchoolId = schoolParams.get('schoolId') || schoolParams.get('school_id') || '';
+            const isSchoolLogin = !!(linkSchoolId || schoolParams.get('code') || schoolParams.get('school_code'));
+
+            if (isSchoolLogin) {
+                if (!e || !pw) { showToast('أدخل البريد الإلكتروني وكلمة المرور'); return; }
+                const userData = await window.SupaStore.findUserByEmail(e);
+                if (!userData) { showToast('لم يتم العثور على الحساب داخل هذه المدرسة'); return; }
+                if (linkSchoolId && userData.schoolId && String(userData.schoolId) !== String(linkSchoolId)) { showToast('هذا الحساب غير مرتبط بهذه المدرسة'); return; }
+                if (userData.password && String(userData.password) !== String(pw)) { showToast('كلمة المرور غير صحيحة'); return; }
+                if (!userData.password) { showToast('الحساب لا يحتوي على كلمة مرور. راجع مالك النظام.'); return; }
+                if (userData.isActive === false || userData.status === 'pending') {
+                    document.getElementById('role-selector-screen').classList.add('login-hidden'); document.getElementById('role-selector-screen').style.display = 'none';
+                    document.getElementById('waiting-screen').classList.remove('hidden');
+                    return;
+                }
+                userData.originalRole = userData.role;
+                if (userData.role === 'manager') userData.role = 'leadership';
+                document.getElementById('waiting-screen').classList.add('hidden');
+                startApp(userData);
+                return;
+            }
             
             if (isManagerAccount(n, e)) {
                 isManagerVerifiedInSession = true;
@@ -749,7 +776,7 @@
             document.getElementById('main-ui').classList.remove('opacity-0', 'pointer-events-none');
             document.getElementById('main-ui').style.opacity = '1';
             document.getElementById('main-ui').style.display = 'flex';
-            document.getElementById('active-role-badge').innerText = u.role === 'leadership' ? 'مدير/ة المدرسة' : 'منسوب/ة المدرسة';
+            document.getElementById('active-role-badge').innerText = (u.role === 'leadership' || u.role === 'manager') ? 'مدير/ة المدرسة' : 'منسوب/ة المدرسة';
             renderGrid(u.role);
             syncCloudData();
             syncNotifications();
@@ -2190,7 +2217,7 @@
   window.SmartOwnerPanel={
     open:function(){var m=by('ownerPanelModal'); if(m)m.classList.add('open'); if(!val('ownerSchoolCode')) setv('ownerSchoolCode',code()); this.refresh();},
     close:function(){var m=by('ownerPanelModal'); if(m)m.classList.remove('open');},
-    createSchool:async function(){var st=S(); var schoolName=val('ownerSchoolName'), managerName=val('ownerManagerName'), email=val('ownerManagerEmail'), c=val('ownerSchoolCode')||code(); if(!schoolName||!managerName||!email){st.toast('أدخل اسم المدرسة واسم المدير والبريد.');return;} try{ var id=(window.SupaStore&&window.SupaStore.uuid)?window.SupaStore.uuid():('school_'+Date.now()); var school={id:id,name:schoolName,code:c,status:val('ownerSchoolStatus')||'active',cloud:'Supabase',createdAt:new Date().toISOString()}; school.registrationLink=linkFor(school); await window.fs.setDoc({table:'schools',id:id},school,{merge:true}); var managerId=(window.SupaStore&&window.SupaStore.uuid)?window.SupaStore.uuid():('manager_'+Date.now()); var manager={id:managerId,name:managerName,email:email,role:'leadership',status:'active',isActive:true,schoolId:id,permissions:['owner-created-manager']}; await window.fs.setDoc({table:'users',id:managerId},manager,{merge:true}); var schools=st.schools(); schools.unshift(school); st.saveSchools(schools); var users=st.users(); users.unshift(manager); st.saveUsers(users); setv('ownerSchoolName',''); setv('ownerManagerName',''); setv('ownerManagerEmail',''); setv('ownerSchoolCode',code()); st.toast('تم إنشاء المدرسة والمدير وحفظهما في Supabase.'); await this.refresh(); }catch(err){console.error(err); st.toast('فشل الحفظ السحابي: '+(err.message||''));}},
+    createSchool:async function(){var st=S(); var schoolName=val('ownerSchoolName'), managerName=val('ownerManagerName'), email=val('ownerManagerEmail'), c=val('ownerSchoolCode')||code(); if(!schoolName||!managerName||!email){st.toast('أدخل اسم المدرسة واسم المدير والبريد.');return;} try{ var id=(window.SupaStore&&window.SupaStore.uuid)?window.SupaStore.uuid():('school_'+Date.now()); var school={id:id,name:schoolName,code:c,status:val('ownerSchoolStatus')||'active',cloud:'Supabase',createdAt:new Date().toISOString()}; school.registrationLink=linkFor(school); await window.fs.setDoc({table:'schools',id:id},school,{merge:true}); var managerId=(window.SupaStore&&window.SupaStore.uuid)?window.SupaStore.uuid():('manager_'+Date.now()); var manager={id:managerId,name:managerName,email:email,password:'123456',role:'manager',status:'active',isActive:true,schoolId:id,permissions:['owner-created-manager']}; await window.fs.setDoc({table:'users',id:managerId},manager,{merge:true}); var schools=st.schools(); schools.unshift(school); st.saveSchools(schools); var users=st.users(); users.unshift(manager); st.saveUsers(users); setv('ownerSchoolName',''); setv('ownerManagerName',''); setv('ownerManagerEmail',''); setv('ownerSchoolCode',code()); st.toast('تم إنشاء المدرسة والمدير وحفظهما في Supabase. كلمة مرور المدير الافتراضية: 123456'); await this.refresh(); }catch(err){console.error(err); st.toast('فشل الحفظ السحابي: '+(err.message||''));}},
     toggle:function(id){var st=S(); var schools=st.schools(); schools=schools.map(function(x){if(x.id===id){x.status=x.status==='active'?'disabled':'active';}return x;}); st.saveSchools(schools); this.refresh();},
     remove:function(id){var st=S(); if(!confirm('حذف المدرسة من لوحة المالك؟')) return; st.saveSchools(st.schools().filter(function(x){return x.id!==id;})); this.refresh();},
     copy:function(text){navigator.clipboard&&navigator.clipboard.writeText(text); S().toast('تم نسخ رابط التسجيل.');},
@@ -2296,8 +2323,9 @@ body.school-link-mode.app-started #manager-invite-copy-btn{display:block}
     if(h) h.textContent=isJoin()?'تسجيل منسوبي المدرسة':'دخول مدير المدرسة';
     var sub=document.querySelector('#role-selector-screen .login-container p');
     if(sub) sub.textContent=isJoin()?'أكمل الطلب ليقوم مدير المدرسة بتفعيل حسابك.':'يدخل المدير أولًا، ثم ينسخ رابط التسجيل للوكلاء والمعلمين من داخل واجهة المدرسة.';
-    var n=by('user-display-name'); if(n) n.placeholder='اسم المدير';
-    var e=by('user-madrasati-email'); if(e) e.placeholder='بريد مدير المدرسة';
+    var n=by('user-display-name'); if(n){ n.placeholder='الاسم الكامل'; n.style.display='none'; }
+    var e=by('user-madrasati-email'); if(e) e.placeholder='البريد الإلكتروني';
+    var pw=by('user-login-password'); if(pw){ pw.style.display='block'; pw.placeholder='كلمة المرور'; }
     var login=by('mainLoginBtn'); if(login) login.textContent='دخول إلى مدرستي';
     var newBtn=document.querySelector('#role-selector-screen button[onclick="openRegistrationModal()"]');
     if(newBtn) newBtn.textContent='تسجيل وكيل / معلم جديد';

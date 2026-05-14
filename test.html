@@ -544,6 +544,123 @@ body.hard-staff-register #registration-modal .modal-content {
 })();
 </script>
 
+
+<style id="fix-only-manager-after-login">
+/* تصحيحان فقط:
+   1) إخفاء زر نسخ رابط التسجيل من شاشة الأقسام الرئيسية.
+   2) إظهار أقسام المدير بعد دخوله وعدم ترك الشاشة فارغة.
+*/
+
+/* لا يظهر زر التسجيل العائم خارج قسم المدير */
+#staff-registration-link-btn,
+button#staff-registration-link-btn,
+button[data-staff-registration="1"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+/* بعد دخول المدير يجب أن تظهر واجهة الأقسام */
+body.hard-manager-entered #main-ui,
+body.app-started #main-ui {
+    display: flex !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+}
+
+body.hard-manager-entered #apps-grid,
+body.app-started #apps-grid {
+    display: grid !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+body.hard-manager-entered .app-card,
+body.app-started .app-card {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+/* بعد دخول المدير لا تظهر شاشة الدخول */
+body.hard-manager-entered #role-selector-screen,
+body.app-started #role-selector-screen {
+    display: none !important;
+}
+</style>
+
+
+<script id="fix-only-manager-after-login">
+(function(){
+  'use strict';
+
+  function removeFloatingRegistrationButtons(){
+    document.querySelectorAll('#staff-registration-link-btn,[data-staff-registration="1"]').forEach(function(btn){
+      btn.remove();
+    });
+
+    Array.from(document.querySelectorAll('button')).forEach(function(btn){
+      var txt = String(btn.textContent || '').trim();
+      if(txt.includes('نسخ رابط تسجيل الوكلاء والمعلمين') || txt.includes('نسخ رابط تسجيل المستخدمين')){
+        btn.remove();
+      }
+    });
+  }
+
+  function forceShowManagerSectionsAfterLogin(){
+    if(!(document.body.classList.contains('hard-manager-entered') || document.body.classList.contains('app-started'))) return;
+
+    var roleScreen = document.getElementById('role-selector-screen');
+    if(roleScreen) roleScreen.style.display = 'none';
+
+    var main = document.getElementById('main-ui');
+    if(main){
+      main.style.display = 'flex';
+      main.style.opacity = '1';
+      main.style.visibility = 'visible';
+      main.classList.remove('opacity-0','pointer-events-none');
+    }
+
+    var grid = document.getElementById('apps-grid');
+    if(grid){
+      grid.style.display = 'grid';
+      grid.style.opacity = '1';
+      grid.style.visibility = 'visible';
+    }
+
+    document.querySelectorAll('.app-card').forEach(function(card){
+      card.style.display = 'flex';
+      card.style.opacity = '1';
+      card.style.visibility = 'visible';
+    });
+
+    removeFloatingRegistrationButtons();
+  }
+
+  // لا نسمح لأي دالة قديمة بإنشاء زر عائم في الشاشة الرئيسية
+  window.ensureStaffRegistrationButton = function(){
+    removeFloatingRegistrationButtons();
+  };
+
+  document.addEventListener('DOMContentLoaded', function(){
+    removeFloatingRegistrationButtons();
+    forceShowManagerSectionsAfterLogin();
+
+    setInterval(function(){
+      removeFloatingRegistrationButtons();
+      forceShowManagerSectionsAfterLogin();
+    }, 500);
+  });
+
+  window.addEventListener('load', function(){
+    removeFloatingRegistrationButtons();
+    forceShowManagerSectionsAfterLogin();
+  });
+})();
+</script>
+
 </head>
 <body>
 

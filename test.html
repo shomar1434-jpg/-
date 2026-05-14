@@ -260,126 +260,43 @@
 }
 </style>
 
-<style id="final-corrected-manager-staff-flow-v3">
-/* رابط المدير من المالك: واجهة دخول المدير فقط */
-body.manager-login-link:not(.app-started) #main-ui,
-body.manager-login-link:not(.app-started) #apps-grid,
-body.manager-login-link:not(.app-started) .app-card,
-body.manager-login-link:not(.app-started) #staff-registration-link-btn {
-    display: none !important;
-}
-body.manager-login-link:not(.app-started) #role-selector-screen {
-    position: fixed !important;
-    right: 24px !important;
-    left: auto !important;
-    bottom: 24px !important;
-    top: auto !important;
-    width: 420px !important;
-    max-width: calc(100vw - 48px) !important;
-    height: auto !important;
-    min-height: auto !important;
-    z-index: 6000 !important;
-    display: flex !important;
-    align-items: flex-end !important;
-    justify-content: flex-end !important;
-    background: transparent !important;
-    transform: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
-}
-body.manager-login-link:not(.app-started) #role-selector-screen .login-container {
-    width: 100% !important;
-    max-width: 420px !important;
-    margin: 0 !important;
-    transform: none !important;
-}
-/* إخفاء زر مستخدم جديد وبطاقات اختيار الدور من شاشة المدير */
-body.manager-login-link:not(.app-started) #role-selector-screen button[onclick*="openRegistrationModal"],
-body.manager-login-link:not(.app-started) #role-selector-screen .grid.grid-cols-3 {
-    display: none !important;
-}
-body.manager-login-link:not(.app-started) #mainLoginBtn {
-    display: inline-flex !important;
-}
-body.manager-login-link:not(.app-started) #user-login-password {
-    display: block !important;
-}
-
-/* بعد دخول المدير: تختفي نافذة الدخول وتظهر واجهة القسم */
-body.app-started #role-selector-screen,
-body.manager-login-link.app-started #role-selector-screen {
-    display: none !important;
-}
-body.manager-login-link.app-started #main-ui {
-    display: flex !important;
-    opacity: 1 !important;
-    pointer-events: auto !important;
-}
-
-/* زر رابط تسجيل المستخدمين داخل واجهة المدير أعلى الشاشة */
-#staff-registration-link-btn {
-    position: fixed !important;
-    top: 18px !important;
-    right: 150px !important;
-    z-index: 5000 !important;
-    background: #0f7f73 !important;
-    color: #fff !important;
-    border: none !important;
-    border-radius: 9999px !important;
-    padding: 10px 18px !important;
-    font-weight: 800 !important;
-    box-shadow: 0 10px 26px rgba(15,127,115,.25) !important;
-    cursor: pointer !important;
-    display: none;
-}
+<style id="section-only-registration-link-fix">
+/* منع ظهور أزرار نسخ رابط التسجيل في شاشة الأقسام الثلاثة */
+#staff-registration-link-btn,
+button#staff-registration-link-btn,
 body.manager-login-link.app-started #staff-registration-link-btn {
-    display: block !important;
-}
-
-/* رابط الوكيل/المعلم: نموذج التسجيل فقط */
-body.staff-registration-link #role-selector-screen,
-body.staff-registration-link #main-ui,
-body.staff-registration-link #apps-grid,
-body.staff-registration-link .app-card,
-body.staff-registration-link #staff-registration-link-btn {
     display: none !important;
 }
-body.staff-registration-link #registration-modal {
-    display: flex !important;
-    position: fixed !important;
-    inset: 0 !important;
-    z-index: 9000 !important;
-    align-items: center !important;
-    justify-content: center !important;
-    background: rgba(0,0,0,.72) !important;
-}
-body.staff-registration-link #registration-modal .modal-content {
-    max-width: 520px !important;
-    width: calc(100vw - 36px) !important;
-    margin: auto !important;
+
+/* السماح بزر النسخ فقط إذا كان داخل واجهة/إطار قسم المدير */
+.manager-section-copy-registration,
+#manager-section-copy-registration {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    background: #0f7f73;
+    color: #fff;
+    border: none;
+    border-radius: 9999px;
+    padding: 9px 14px;
+    font-weight: 800;
+    cursor: pointer;
+    box-shadow: 0 8px 20px rgba(15,127,115,.22);
 }
 </style>
 
 
-<script id="final-corrected-manager-staff-flow-v3">
+<script id="section-only-registration-link-fix">
 (function(){
   'use strict';
-  function by(id){ return document.getElementById(id); }
+
   function params(){ return new URLSearchParams(location.search || ''); }
-  function hasSchoolInfo(){
-    var p=params();
-    return p.has('schoolId') || p.has('school_id') || p.has('code') || p.has('school_code');
-  }
-  function isStaffRegistrationLink(){
-    var p=params();
-    return p.get('mode')==='register' || p.get('invite')==='1' || p.get('staff')==='1';
-  }
   function schoolId(){
-    var p=params();
+    var p = params();
     return p.get('schoolId') || p.get('school_id') || localStorage.getItem('currentSchoolId') || localStorage.getItem('registration_school_id') || '';
   }
   function schoolCode(){
-    var p=params();
+    var p = params();
     return p.get('code') || p.get('school_code') || localStorage.getItem('registration_school_code') || '';
   }
   function makeStaffRegistrationLink(){
@@ -392,59 +309,72 @@ body.staff-registration-link #registration-modal .modal-content {
     url.searchParams.delete('register');
     return url.toString();
   }
-  window.ensureStaffRegistrationButton = function(){
-    if(!document.body.classList.contains('app-started')) return;
-    var old = Array.from(document.querySelectorAll('#staff-registration-link-btn'));
-    old.slice(1).forEach(x=>x.remove());
-    var btn = by('staff-registration-link-btn');
-    if(!btn){
-      btn = document.createElement('button');
-      btn.id = 'staff-registration-link-btn';
-      btn.type = 'button';
-      btn.textContent = 'نسخ رابط تسجيل الوكلاء والمعلمين';
-      btn.onclick = async function(){
-        var link = makeStaffRegistrationLink();
-        try{
-          await navigator.clipboard.writeText(link);
-          alert('تم نسخ رابط تسجيل الوكلاء والمعلمين');
-        }catch(e){
-          prompt('انسخ رابط التسجيل:', link);
-        }
-      };
-      document.body.appendChild(btn);
-    }
-    btn.style.display = 'block';
-  };
-  function applyModes(){
-    if(isStaffRegistrationLink()){
-      document.body.classList.add('staff-registration-link');
-      document.body.classList.remove('manager-login-link');
-      var rs=by('role-selector-screen'); if(rs) rs.style.display='none';
-      var main=by('main-ui'); if(main) main.style.display='none';
-      var reg=by('registration-modal');
-      if(reg){ reg.style.display='flex'; reg.classList.remove('hidden'); }
-      if(schoolId()) localStorage.setItem('registration_school_id', schoolId());
-      if(schoolCode()) localStorage.setItem('registration_school_code', schoolCode());
-      return;
-    }
-    if(hasSchoolInfo()){
-      document.body.classList.add('manager-login-link');
-      document.body.classList.remove('staff-registration-link');
-      var pass=by('user-login-password'); if(pass) pass.style.display='block';
-      var userName=by('user-display-name'); if(userName) userName.style.display='none';
-      var login=by('mainLoginBtn'); if(login){ login.style.display='inline-flex'; login.textContent='دخول إلى مدرستي'; }
-      var rs2=by('role-selector-screen'); if(rs2 && !document.body.classList.contains('app-started')) rs2.style.display='flex';
-    }
-    if(document.body.classList.contains('app-started')) {
-      var rs3=by('role-selector-screen'); if(rs3) rs3.style.display='none';
-      window.ensureStaffRegistrationButton && window.ensureStaffRegistrationButton();
+
+  function removeFloatingButtons(){
+    document.querySelectorAll('#staff-registration-link-btn').forEach(function(btn){ btn.remove(); });
+    Array.from(document.querySelectorAll('button')).forEach(function(btn){
+      var txt = String(btn.textContent || '').trim();
+      if(txt.includes('نسخ رابط تسجيل الوكلاء والمعلمين') && !btn.classList.contains('manager-section-copy-registration')){
+        btn.remove();
+      }
+    });
+  }
+
+  async function copyRegistrationLink(){
+    var link = makeStaffRegistrationLink();
+    try{
+      await navigator.clipboard.writeText(link);
+      alert('تم نسخ رابط تسجيل الوكلاء والمعلمين');
+    }catch(e){
+      prompt('انسخ رابط التسجيل:', link);
     }
   }
+
+  function installCopyOnManagerIcon(){
+    /*
+      نبحث عن أيقونة الرابط العلوية داخل واجهة المدير، ولا نضيف زرًا عائمًا.
+      غالبًا تكون زرًا دائريًا أزرق فيه رمز 🔗 أو رابط.
+    */
+    var candidates = Array.from(document.querySelectorAll('button, a, [role="button"], .icon-btn, .top-icon, .floating-action'));
+    candidates.forEach(function(el){
+      var txt = String(el.textContent || '').trim();
+      var title = String(el.title || el.getAttribute('aria-label') || '').trim();
+      var looksLikeLink = txt.includes('🔗') || title.includes('رابط') || title.toLowerCase().includes('link') || el.innerHTML.includes('🔗') || el.innerHTML.includes('link');
+
+      // لا نربط إلا عندما تكون واجهة المدير/القسم ظاهرة بعد الدخول
+      if(looksLikeLink && document.body.classList.contains('app-started')){
+        if(el.getAttribute('data-registration-copy-bound') === '1') return;
+        el.setAttribute('data-registration-copy-bound','1');
+        el.classList.add('manager-section-copy-registration');
+        if(!title) el.title = 'نسخ رابط تسجيل الوكلاء والمعلمين';
+        el.addEventListener('click', function(ev){
+          ev.preventDefault();
+          ev.stopPropagation();
+          copyRegistrationLink();
+        }, true);
+      }
+    });
+  }
+
+  // تعطيل الدالة القديمة التي كانت تنشئ زرًا عائمًا مكررًا
+  window.ensureStaffRegistrationButton = function(){
+    removeFloatingButtons();
+    installCopyOnManagerIcon();
+  };
+
   document.addEventListener('DOMContentLoaded', function(){
-    applyModes();
-    setInterval(applyModes, 800);
+    removeFloatingButtons();
+    installCopyOnManagerIcon();
+    setInterval(function(){
+      removeFloatingButtons();
+      installCopyOnManagerIcon();
+    }, 700);
   });
-  window.addEventListener('load', applyModes);
+
+  window.addEventListener('load', function(){
+    removeFloatingButtons();
+    installCopyOnManagerIcon();
+  });
 })();
 </script>
 
@@ -846,53 +776,18 @@ body.staff-registration-link #registration-modal .modal-content {
             const email = document.getElementById('reg-email').value.trim();
             const role = document.getElementById('reg-role').value;
             const urlParams = new URLSearchParams(window.location.search);
-            const schoolId = urlParams.get('schoolId') || urlParams.get('school_id') || localStorage.getItem('registration_school_id') || window.pendingRegistrationInvite?.schoolId || '';
-            const schoolCode = urlParams.get('code') || urlParams.get('school_code') || localStorage.getItem('registration_school_code') || '';
-            if (!email) { showToast("يرجى إدخال البريد الإلكتروني"); return; }
+            const schoolId = urlParams.get('schoolId') || urlParams.get('school_id') || window.pendingRegistrationInvite?.schoolId || '';
+            const schoolCode = urlParams.get('code') || urlParams.get('school_code') || '';
+            if (!name || !email) { showToast("يرجى إدخال كافة البيانات"); return; }
             if (!schoolId && !schoolCode) { showToast("رابط التسجيل غير صالح أو غير مرتبط بمدرسة"); return; }
-
             try {
-                const existing = await window.SupaStore.findUserByEmail(email);
-                if (existing) {
-                    const isActive = !(existing.isActive === false || existing.active === false || existing.status === 'pending');
-                    if (!isActive) {
-                        closeModal('registration-modal');
-                        document.getElementById('waiting-screen').classList.remove('hidden');
-                        showToast('حسابك قيد التفعيل من مدير المدرسة');
-                        return;
-                    }
-
-                    closeModal('registration-modal');
-                    document.body.classList.add('app-started');
-                    document.getElementById('waiting-screen').classList.add('hidden');
-                    document.getElementById('role-selector-screen').classList.add('login-hidden');
-                    document.getElementById('role-selector-screen').style.display = 'none';
-
-                    const roleLower = String(existing.role || '').toLowerCase();
-                    if (roleLower === 'agency' || roleLower === 'agent') {
-                        existing.role = 'agency';
-                        startApp(existing);
-                        setTimeout(() => launchApp('agency'), 250);
-                    } else {
-                        existing.role = 'performance';
-                        startApp(existing);
-                        setTimeout(() => launchApp('performance'), 250);
-                    }
-                    return;
-                }
-
-                if (!name) { showToast("يرجى إدخال الاسم الرباعي"); return; }
-
                 const id = window.normalizeSupabaseUuid((await window.ensureAuth()).uid);
                 const userData = {
                     id,
                     name,
                     email,
-                    password: '123456',
                     role,
                     isActive: false,
-                    active: false,
-                    status: 'pending',
                     schoolId: schoolId || null,
                     schoolCode,
                     registeredViaManagerLink: true,
@@ -900,14 +795,15 @@ body.staff-registration-link #registration-modal .modal-content {
                 };
                 await window.fs.setDoc({table:'users', id}, userData, { merge: true });
                 closeModal('registration-modal');
+                document.getElementById('role-selector-screen').classList.add('login-hidden'); document.getElementById('role-selector-screen').style.display = 'none';
                 document.getElementById('waiting-screen').classList.remove('hidden');
                 showToast("تم إرسال طلب التسجيل للمدير/ة للتفعيل");
             } catch (err) { console.error(err); showToast("فشل إرسال الطلب لتفعيل الحساب: " + (err.message || '')); }
         };
 
         const handleAdminDirectEntry = async () => {
-            const n = document.getElementById('user-display-name')?.value?.trim() || '';
-            const e = document.getElementById('user-madrasati-email')?.value?.trim() || '';
+            const n = document.getElementById('user-display-name').value.trim();
+            const e = document.getElementById('user-madrasati-email').value.trim();
             const pwEl = document.getElementById('user-login-password');
             const pw = pwEl ? pwEl.value.trim() : '';
             const schoolParams = new URLSearchParams(location.search);
@@ -919,45 +815,20 @@ body.staff-registration-link #registration-modal .modal-content {
                 const userData = await window.SupaStore.findUserByEmail(e);
                 if (!userData) { showToast('لم يتم العثور على الحساب داخل هذه المدرسة'); return; }
                 if (linkSchoolId && userData.schoolId && String(userData.schoolId) !== String(linkSchoolId)) { showToast('هذا الحساب غير مرتبط بهذه المدرسة'); return; }
+                if (userData.password && String(userData.password) !== String(pw)) { showToast('كلمة المرور غير صحيحة'); return; }
                 if (!userData.password) { showToast('الحساب لا يحتوي على كلمة مرور. راجع مالك النظام.'); return; }
-                if (String(userData.password) !== String(pw)) { showToast('كلمة المرور غير صحيحة'); return; }
-
-                const roleLower = String(userData.role || '').toLowerCase();
-                const isActive = !(userData.isActive === false || userData.active === false || userData.status === 'pending');
-                if (!isActive) {
-                    document.getElementById('role-selector-screen').classList.add('login-hidden');
-                    document.getElementById('role-selector-screen').style.display = 'none';
+                if (userData.isActive === false || userData.status === 'pending') {
+                    document.getElementById('role-selector-screen').classList.add('login-hidden'); document.getElementById('role-selector-screen').style.display = 'none';
                     document.getElementById('waiting-screen').classList.remove('hidden');
                     return;
                 }
-
-                document.body.classList.add('app-started');
+                userData.originalRole = userData.role;
+                if (userData.role === 'manager') userData.role = 'leadership';
                 document.getElementById('waiting-screen').classList.add('hidden');
-                document.getElementById('role-selector-screen').classList.add('login-hidden');
-                document.getElementById('role-selector-screen').style.display = 'none';
-
-                if (roleLower === 'manager' || roleLower === 'leadership' || roleLower === 'admin') {
-                    userData.originalRole = userData.role;
-                    userData.role = 'leadership';
-                    startApp(userData);
-                    ensureStaffRegistrationButton();
-                    setTimeout(() => launchApp('leadership'), 250);
-                    return;
-                }
-
-                if (roleLower === 'agency' || roleLower === 'agent') {
-                    userData.role = 'agency';
-                    startApp(userData);
-                    setTimeout(() => launchApp('agency'), 250);
-                    return;
-                }
-
-                userData.role = 'performance';
                 startApp(userData);
-                setTimeout(() => launchApp('performance'), 250);
                 return;
             }
-
+            
             if (isManagerAccount(n, e)) {
                 isManagerVerifiedInSession = true;
                 localStorage.setItem('is_admin_session', 'true');
@@ -969,6 +840,7 @@ body.staff-registration-link #registration-modal .modal-content {
                 try {
                     const user = await window.ensureAuth();
                     if (user) {
+                        // حفظ بيانات المدير في المجموعة العامة ليظهر في القائمة
                         await window.fs.setDoc(window.fs.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'users', user.uid), { ...tempAdminData, id: user.uid }, {merge:true});
                         currentUser.id = user.uid;
                         localStorage.setItem('cached_manager_uid', user.uid);

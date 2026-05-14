@@ -260,135 +260,65 @@
 }
 </style>
 
-<style id="manager-login-final-display-fix">
-/* موضع نافذة دخول المدير + منع تداخل بطاقات الأقسام قبل تسجيل الدخول */
-body.school-link-mode #role-selector-screen {
-    position: fixed !important;
-    right: 24px !important;
-    left: auto !important;
-    bottom: 24px !important;
-    top: auto !important;
-    width: 420px !important;
-    max-width: calc(100vw - 48px) !important;
-    height: auto !important;
-    min-height: auto !important;
-    z-index: 5000 !important;
-    display: flex !important;
-    align-items: flex-end !important;
-    justify-content: flex-end !important;
-    background: transparent !important;
-    transform: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
-}
-body.school-link-mode #role-selector-screen .login-container {
-    width: 100% !important;
-    max-width: 420px !important;
-    margin: 0 !important;
-    transform: none !important;
-}
-
-/* قبل دخول المدير نخفي بطاقات الأقسام حتى لا تتداخل خلف نافذة الدخول */
-body.school-link-mode:not(.app-started) .app-card,
-body.school-link-mode:not(.app-started) #manager-invite-copy-btn {
+<style id="registration-overlap-fix">
+/* عند فتح نافذة تسجيل الوكيل/المعلم نخفي صندوق دخول المدير منعًا للتداخل */
+body.registration-open #role-selector-screen {
     display: none !important;
 }
 
-/* بعد دخول المدير نخفي نافذة الدخول ونظهر الأقسام */
-body.school-link-mode.app-started #role-selector-screen {
-    display: none !important;
+/* تثبيت نافذة التسجيل في المنتصف فقط */
+body.registration-open #registration-modal,
+body.registration-open .modal {
+    z-index: 7000 !important;
 }
-body.school-link-mode.app-started .app-card {
-    display: flex !important;
-}
-body.school-link-mode.app-started #manager-invite-copy-btn {
-    display: block !important;
+
+body.registration-open #registration-modal .modal-content,
+body.registration-open .modal-content {
+    position: relative !important;
+    margin: auto !important;
 }
 </style>
 
 
-<script id="manager-login-final-display-fix">
+<script id="registration-overlap-fix">
 (function(){
-  'use strict';
-
-  function q(){ return new URLSearchParams(location.search || ''); }
-  function hasSchoolLink(){
-    var p = q();
-    return p.has('schoolId') || p.has('school_id') || p.has('code') || p.has('school_code') || p.get('register') === '1' || p.get('join') === '1';
-  }
   function by(id){ return document.getElementById(id); }
 
-  function markSchoolMode(){
-    if(!hasSchoolLink()) return;
-    document.body.classList.add('school-link-mode');
-    if(!document.body.classList.contains('app-started')){
-      var rs = by('role-selector-screen');
-      if(rs) rs.style.display = 'flex';
-    }
+  function isVisible(el){
+    if(!el) return false;
+    var s = window.getComputedStyle(el);
+    return s.display !== 'none' && s.visibility !== 'hidden' && el.offsetParent !== null;
   }
 
-  function setStarted(){
-    if(!hasSchoolLink()) return;
-    document.body.classList.add('school-link-mode');
-    document.body.classList.add('app-started');
-    var rs = by('role-selector-screen');
-    if(rs) rs.style.display = 'none';
-    var wait = by('waiting-screen');
-    if(wait) wait.classList.add('hidden');
+  function syncRegistrationState(){
     var reg = by('registration-modal');
-    if(reg) reg.style.display = 'none';
-  }
-
-  async function verifyManagerLogin(){
-    try{
-      if(!hasSchoolLink() || document.body.classList.contains('app-started')) return false;
-      var emailEl = by('user-madrasati-email');
-      var passEl = by('user-login-password');
-      var email = emailEl ? String(emailEl.value || '').trim() : '';
-      var pass = passEl ? String(passEl.value || '').trim() : '';
-      if(!email || !pass || !window.SupaStore || !window.SupaStore.findUserByEmail) return false;
-
-      var user = await window.SupaStore.findUserByEmail(email);
-      if(!user) return false;
-
-      var role = String(user.role || '').toLowerCase();
-      var active = (user.active === true || user.isActive === true || user.status === 'active' || user.status === 'approved');
-      var passwordOk = String(user.password || '') === pass;
-
-      if(passwordOk && active && (role === 'manager' || role === 'leadership' || role === 'admin')) {
-        localStorage.setItem('currentSchoolUserEmail', email);
-        localStorage.setItem('currentSchoolUserRole', 'manager');
-        localStorage.setItem('currentSchoolId', user.schoolId || user.school_id || '');
-        setTimeout(setStarted, 150);
-        setTimeout(setStarted, 700);
-        setTimeout(setStarted, 1400);
-        return true;
+    var open = isVisible(reg);
+    if(open){
+      document.body.classList.add('registration-open');
+      var rs = by('role-selector-screen');
+      if(rs) rs.style.display = 'none';
+    } else {
+      document.body.classList.remove('registration-open');
+      var p = new URLSearchParams(location.search || '');
+      var isSchoolLink = p.has('schoolId') || p.has('school_id') || p.has('code') || p.has('school_code') || p.get('register') === '1';
+      if(isSchoolLink && !document.body.classList.contains('app-started')){
+        var rs = by('role-selector-screen');
+        if(rs) rs.style.display = 'flex';
       }
-    }catch(e){
-      console.warn('manager login display fix:', e);
     }
-    return false;
   }
 
   document.addEventListener('DOMContentLoaded', function(){
-    markSchoolMode();
-
-    document.addEventListener('click', function(ev){
-      var t = ev.target;
-      if(!t) return;
-      var txt = String(t.textContent || '').trim();
-      if(t.id === 'mainLoginBtn' || txt.includes('دخول إلى مدرستي')) {
-        verifyManagerLogin();
+    document.addEventListener('click', function(e){
+      var t = e.target;
+      var txt = String((t && t.textContent) || '').trim();
+      if(txt.includes('تسجيل وكيل') || txt.includes('معلم جديد') || txt.includes('مستخدم جديد') || txt.includes('إلغاء')){
+        setTimeout(syncRegistrationState, 100);
+        setTimeout(syncRegistrationState, 500);
       }
     }, true);
 
-    setInterval(function(){
-      markSchoolMode();
-      if(document.body.classList.contains('app-started')) {
-        var rs = by('role-selector-screen');
-        if(rs) rs.style.display = 'none';
-      }
-    }, 500);
+    setInterval(syncRegistrationState, 500);
   });
 })();
 </script>

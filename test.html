@@ -2877,6 +2877,240 @@ body.sections-visible-v18 button[data-registration-copy] {
 })();
 </script>
 
+
+<style id="hard-visible-sections-v19">
+/* طبقة الأقسام المستقلة: لا تعتمد على main-ui أو apps-grid */
+#hard-sections-v19 {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 99999 !important;
+    display: none;
+    align-items: center !important;
+    justify-content: center !important;
+    pointer-events: auto !important;
+}
+
+#hard-sections-v19 .hard-grid-v19 {
+    width: min(1000px, calc(100vw - 80px));
+    display: grid;
+    grid-template-columns: repeat(3, minmax(240px, 1fr));
+    gap: 28px;
+    direction: rtl;
+}
+
+#hard-sections-v19 .hard-card-v19 {
+    min-height: 180px;
+    border-radius: 28px;
+    background: rgba(255,255,255,.86);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 20px 40px rgba(0,0,0,.14);
+    border-bottom: 8px solid #0f7f73;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    text-align: center;
+}
+
+#hard-sections-v19 .hard-card-v19 h2 {
+    font-size: 26px;
+    font-weight: 800;
+    color: #1e293b;
+    margin: 0 0 12px;
+    font-family: inherit;
+}
+
+#hard-sections-v19 .hard-card-v19 .status {
+    font-size: 13px;
+    color: #10b981;
+    font-weight: 800;
+    margin-bottom: 18px;
+}
+
+#hard-sections-v19 .hard-card-v19 button {
+    width: 84%;
+    border: 0;
+    border-radius: 14px;
+    background: #0f7f73;
+    color: white;
+    padding: 12px 20px;
+    font-weight: 800;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+body.hard-sections-open-v19 #role-selector-screen,
+body.hard-sections-open-v19 #registration-modal,
+body.hard-sections-open-v19 #waiting-screen,
+body.hard-sections-open-v19 #staff-registration-link-btn,
+body.hard-sections-open-v19 button[data-staff-registration],
+body.hard-sections-open-v19 button[data-registration-copy] {
+    display: none !important;
+}
+</style>
+
+<script id="hard-visible-sections-v19">
+(function(){
+  'use strict';
+
+  function by(id){ return document.getElementById(id); }
+
+  function removeFloating(){
+    document.querySelectorAll('#staff-registration-link-btn,[data-staff-registration],[data-registration-copy]').forEach(function(el){ el.remove(); });
+    Array.from(document.querySelectorAll('button,a,[role="button"]')).forEach(function(el){
+      var txt = String(el.textContent || '').trim();
+      if(txt.includes('نسخ رابط تسجيل الوكلاء والمعلمين') || txt.includes('نسخ رابط تسجيل المستخدمين')){
+        el.remove();
+      }
+    });
+  }
+
+  function ensureHardSections(){
+    var wrap = by('hard-sections-v19');
+    if(wrap) return wrap;
+
+    wrap = document.createElement('section');
+    wrap.id = 'hard-sections-v19';
+
+    var grid = document.createElement('div');
+    grid.className = 'hard-grid-v19';
+
+    var sections = [
+      {role:'performance', title:'قسم المعلم/ة 👨‍🏫'},
+      {role:'agency', title:'قسم الوكيل/ة 📑'},
+      {role:'leadership', title:'قسم المدير/ة 🏛️'}
+    ];
+
+    sections.forEach(function(s){
+      var card = document.createElement('div');
+      card.className = 'hard-card-v19';
+
+      var h = document.createElement('h2');
+      h.textContent = s.title;
+
+      var st = document.createElement('div');
+      st.className = 'status';
+      st.textContent = 'نظام نشط وموثوق ✅';
+
+      var btn = document.createElement('button');
+      btn.textContent = 'دخول';
+      btn.onclick = function(){
+        if(typeof window.launchApp === 'function'){
+          try { window.launchApp(s.role); return; } catch(e){}
+        }
+        var fallback = {leadership:'manager.html', agency:'agent.html', performance:'teacher.html'};
+        window.location.href = fallback[s.role] || 'manager.html';
+      };
+
+      card.appendChild(h);
+      card.appendChild(st);
+      card.appendChild(btn);
+      grid.appendChild(card);
+    });
+
+    wrap.appendChild(grid);
+    document.body.appendChild(wrap);
+    return wrap;
+  }
+
+  function openHardSections(){
+    document.body.classList.add('hard-sections-open-v19');
+
+    var roleScreen = by('role-selector-screen');
+    if(roleScreen) roleScreen.style.display = 'none';
+
+    var reg = by('registration-modal');
+    if(reg) reg.style.display = 'none';
+
+    var wait = by('waiting-screen');
+    if(wait){
+      wait.classList.add('hidden');
+      wait.style.display = 'none';
+    }
+
+    removeFloating();
+
+    var wrap = ensureHardSections();
+    wrap.style.display = 'flex';
+  }
+
+  async function loginThenOpen(){
+    var email = String(by('user-madrasati-email')?.value || '').trim();
+    var pass = String(by('user-login-password')?.value || '').trim();
+
+    if(!email || !pass){
+      alert('أدخل البريد الإلكتروني وكلمة المرور');
+      return;
+    }
+
+    try{
+      if(window.SupaStore && window.SupaStore.findUserByEmail){
+        var user = await window.SupaStore.findUserByEmail(email);
+        if(!user){ alert('لم يتم العثور على حساب المدير'); return; }
+
+        var role = String(user.role || '').toLowerCase();
+        var active = !(user.active === false || user.isActive === false || user.status === 'pending');
+        var passOk = String(user.password || '') === pass;
+
+        if(!passOk){ alert('كلمة المرور غير صحيحة'); return; }
+        if(!active){ alert('حساب المدير غير مفعل'); return; }
+        if(!(role === 'manager' || role === 'leadership' || role === 'admin')){
+          alert('هذا الرابط مخصص لمدير المدرسة');
+          return;
+        }
+
+        localStorage.setItem('currentSchoolUserEmail', email);
+        localStorage.setItem('currentSchoolUserRole', 'manager');
+        localStorage.setItem('currentSchoolId', user.schoolId || user.school_id || localStorage.getItem('currentSchoolId') || '');
+      }
+    }catch(e){
+      console.warn('login verification warning:', e);
+    }
+
+    openHardSections();
+  }
+
+  function bindLogin(){
+    var btn = by('mainLoginBtn');
+    if(!btn) return;
+    btn.textContent = 'دخول إلى مدرستي';
+    btn.style.pointerEvents = 'auto';
+    btn.onclick = function(ev){
+      if(ev){ ev.preventDefault(); ev.stopPropagation(); }
+      loginThenOpen();
+      return false;
+    };
+  }
+
+  document.addEventListener('click', function(ev){
+    var t = ev.target;
+    var btn = t && t.closest ? t.closest('button,.action-btn,[role="button"]') : t;
+    var txt = String((btn && btn.textContent) || (t && t.textContent) || '').trim();
+
+    if((btn && btn.id === 'mainLoginBtn') || txt.includes('دخول إلى مدرستي')){
+      ev.preventDefault();
+      ev.stopPropagation();
+      loginThenOpen();
+    }
+  }, true);
+
+  document.addEventListener('DOMContentLoaded', function(){
+    bindLogin();
+    removeFloating();
+    setInterval(function(){
+      bindLogin();
+      removeFloating();
+    }, 600);
+  });
+
+  window.addEventListener('load', function(){
+    bindLogin();
+    removeFloating();
+  });
+})();
+</script>
+
 </body></html>`;
             const w = window.open('', '_blank');
             w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 500);

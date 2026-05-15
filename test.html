@@ -2934,6 +2934,184 @@ body.staff-register-clean-v25 > [role="button"] {
 })();
 </script>
 
+
+<style id="staff-register-fix-buttons-school-v26">
+body.staff-register-clean-v26 > *:not(#registration-modal):not(style):not(script) {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+body.staff-register-clean-v26 #registration-modal {
+    display: flex !important;
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 2147483640 !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background: rgba(0,0,0,.72) !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+}
+body.staff-register-clean-v26 #registration-modal,
+body.staff-register-clean-v26 #registration-modal * {
+    visibility: visible !important;
+    pointer-events: auto !important;
+}
+body.staff-register-clean-v26 #registration-modal .modal-content,
+body.staff-register-clean-v26 #registration-modal > div {
+    display: block !important;
+    opacity: 1 !important;
+}
+body.staff-register-clean-v26 .owner-copy-btn,
+body.staff-register-clean-v26 .ai-btn,
+body.staff-register-clean-v26 #staff-registration-link-btn,
+body.staff-register-clean-v26 [data-staff-registration],
+body.staff-register-clean-v26 [data-registration-copy] {
+    display: none !important;
+    visibility: hidden !important;
+}
+</style>
+
+<script id="staff-register-fix-buttons-school-v26">
+(function(){
+  'use strict';
+  function by(id){ return document.getElementById(id); }
+  function params(){ return new URLSearchParams(location.search || ''); }
+  function isStaffRegisterLink(){
+    var p = params();
+    return p.get('mode') === 'register' || p.get('staff') === '1' || p.get('invite') === '1';
+  }
+  function saveSchoolParams(){
+    var p = params();
+    var sid = p.get('schoolId') || p.get('school_id') || '';
+    var code = p.get('code') || p.get('school_code') || '';
+    if(sid){
+      localStorage.setItem('registration_school_id', sid);
+      localStorage.setItem('currentSchoolId', sid);
+    }
+    if(code) localStorage.setItem('registration_school_code', code);
+  }
+  function hideEverythingExceptRegistration(){
+    if(!isStaffRegisterLink()) return;
+    document.body.classList.add('staff-register-clean-v26');
+    saveSchoolParams();
+    Array.from(document.body.children).forEach(function(el){
+      if(!el || el.id === 'registration-modal' || el.tagName === 'STYLE' || el.tagName === 'SCRIPT') return;
+      el.style.setProperty('display','none','important');
+      el.style.setProperty('visibility','hidden','important');
+      el.style.setProperty('pointer-events','none','important');
+    });
+    var reg = by('registration-modal');
+    if(reg){
+      reg.style.setProperty('display','flex','important');
+      reg.style.setProperty('position','fixed','important');
+      reg.style.setProperty('inset','0','important');
+      reg.style.setProperty('z-index','2147483640','important');
+      reg.classList.remove('hidden');
+    }
+    Array.from(document.querySelectorAll('button,a,[role="button"]')).forEach(function(el){
+      if(el.closest('#registration-modal')) return;
+      var txt = String(el.textContent || '').trim();
+      if(txt.includes('نسخة المالك') || txt.includes('ذكاء المنصة') || txt.includes('نسخ رابط تسجيل') || txt.includes('دخول')){
+        el.style.setProperty('display','none','important');
+        el.style.setProperty('visibility','hidden','important');
+      }
+    });
+  }
+  async function getSchoolIdForManager(){
+    var sid = localStorage.getItem('currentSchoolId') || localStorage.getItem('registration_school_id') || params().get('schoolId') || params().get('school_id') || '';
+    if(sid) return sid;
+    try{
+      var email = localStorage.getItem('currentSchoolUserEmail') || '';
+      if(email && window.SupaStore && window.SupaStore.findUserByEmail){
+        var user = await window.SupaStore.findUserByEmail(email);
+        sid = user && (user.schoolId || user.school_id || '');
+        if(sid){
+          localStorage.setItem('currentSchoolId', sid);
+          localStorage.setItem('registration_school_id', sid);
+          return sid;
+        }
+      }
+    }catch(e){}
+    return '';
+  }
+  function getSchoolCode(){
+    return localStorage.getItem('registration_school_code') || params().get('code') || params().get('school_code') || '';
+  }
+  async function makeRegisterLinkWithSchool(){
+    var base = location.origin && location.origin !== 'null' ? location.origin + location.pathname : location.href.split('?')[0];
+    var sid = await getSchoolIdForManager();
+    var code = getSchoolCode();
+    if(!sid && !code){
+      alert('لا يوجد رقم مدرسة محفوظ. ادخل من رابط المدرسة بحساب المدير ثم انسخ الرابط من داخل قسم المدير.');
+      return '';
+    }
+    var url = new URL(base);
+    url.searchParams.set('mode','register');
+    url.searchParams.set('staff','1');
+    url.searchParams.set('invite','1');
+    if(sid) url.searchParams.set('schoolId', sid);
+    if(code) url.searchParams.set('code', code);
+    return url.toString();
+  }
+  async function copyFixedRegistrationLink(){
+    var link = await makeRegisterLinkWithSchool();
+    if(!link) return;
+    try{
+      await navigator.clipboard.writeText(link);
+      alert('تم نسخ رابط تسجيل الوكلاء والمعلمين');
+    }catch(e){
+      prompt('انسخ رابط تسجيل الوكلاء والمعلمين:', link);
+    }
+  }
+  function looksLikeLinkIcon(el){
+    if(!el) return false;
+    var txt = String(el.textContent || '').trim();
+    var title = String(el.title || el.getAttribute('aria-label') || '').trim();
+    var html = String(el.innerHTML || '');
+    var cls = String(el.className || '');
+    return txt.includes('🔗') || title.includes('رابط') || html.includes('🔗') || html.includes('link') || html.includes('fa-link') || cls.includes('link');
+  }
+  function bindOriginalLinkIcon(doc){
+    if(!doc) return;
+    Array.from(doc.querySelectorAll('button,a,[role="button"],.icon-btn,.top-icon,.toolbar button,.header button,.action-icon')).forEach(function(el){
+      if(!looksLikeLinkIcon(el)) return;
+      if(el.getAttribute('data-v26-link-bound') === '1') return;
+      el.setAttribute('data-v26-link-bound','1');
+      el.title = 'نسخ رابط تسجيل الوكلاء والمعلمين';
+      el.addEventListener('click', function(ev){
+        ev.preventDefault();
+        ev.stopPropagation();
+        copyFixedRegistrationLink();
+      }, true);
+    });
+  }
+  function bindAllLinkIcons(){
+    bindOriginalLinkIcon(document);
+    Array.from(document.querySelectorAll('iframe')).forEach(function(frame){
+      try{ bindOriginalLinkIcon(frame.contentDocument || frame.contentWindow.document); }catch(e){}
+    });
+  }
+  function sync(){
+    if(isStaffRegisterLink()) hideEverythingExceptRegistration();
+    bindAllLinkIcons();
+  }
+  document.addEventListener('DOMContentLoaded', function(){
+    sync();
+    setInterval(sync, 600);
+  });
+  window.addEventListener('load', function(){
+    sync();
+    setTimeout(sync, 600);
+    setTimeout(sync, 1200);
+  });
+  document.addEventListener('click', function(){
+    setTimeout(sync, 300);
+    setTimeout(sync, 900);
+  }, true);
+})();
+</script>
+
 </body></html>`;
             const w = window.open('', '_blank');
             w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 500);

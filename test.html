@@ -2646,6 +2646,237 @@ body.sections-open-v17 button[data-registration-copy] {
 })();
 </script>
 
+
+<style id="create-visible-three-sections-v18">
+/* هذه الطبقة لا تغير شاشة الدخول، فقط تُظهر الأقسام بعد الدخول */
+body.sections-visible-v18 #role-selector-screen,
+body.sections-visible-v18 #registration-modal,
+body.sections-visible-v18 #waiting-screen {
+    display: none !important;
+}
+
+body.sections-visible-v18 #main-ui {
+    display: flex !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+}
+
+body.sections-visible-v18 #apps-grid {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(240px, 1fr)) !important;
+    gap: 28px !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+}
+
+body.sections-visible-v18 .app-card {
+    display: flex !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+}
+
+/* منع ظهور زر رابط التسجيل العائم في شاشة الأقسام */
+body.sections-visible-v18 #staff-registration-link-btn,
+body.sections-visible-v18 button[data-staff-registration],
+body.sections-visible-v18 button[data-registration-copy] {
+    display: none !important;
+}
+</style>
+
+<script id="create-visible-three-sections-v18">
+(function(){
+  'use strict';
+
+  function by(id){ return document.getElementById(id); }
+
+  function removeFloatingRegistrationButtons(){
+    document.querySelectorAll('#staff-registration-link-btn,[data-staff-registration],[data-registration-copy]').forEach(function(el){
+      el.remove();
+    });
+    Array.from(document.querySelectorAll('button,a,[role="button"]')).forEach(function(el){
+      var txt = String(el.textContent || '').trim();
+      if(txt.includes('نسخ رابط تسجيل الوكلاء والمعلمين') || txt.includes('نسخ رابط تسجيل المستخدمين')){
+        el.remove();
+      }
+    });
+  }
+
+  function ensureSectionsMarkup(){
+    var main = by('main-ui');
+    if(!main){
+      main = document.createElement('div');
+      main.id = 'main-ui';
+      document.body.appendChild(main);
+    }
+
+    var grid = by('apps-grid');
+    if(!grid){
+      grid = document.createElement('div');
+      grid.id = 'apps-grid';
+      main.appendChild(grid);
+    }
+
+    // إذا كانت الشبكة فارغة أو مخفية بلا بطاقات، ننشئ البطاقات الثلاث فقط
+    var cards = grid.querySelectorAll('.app-card');
+    if(cards.length < 3){
+      grid.innerHTML = '';
+
+      var sections = [
+        {role:'performance', title:'قسم المعلم/ة 👨‍🏫', btn:'دخول'},
+        {role:'agency', title:'قسم الوكيل/ة 📑', btn:'دخول'},
+        {role:'leadership', title:'قسم المدير/ة 🏛️', btn:'دخول'}
+      ];
+
+      sections.forEach(function(s){
+        var card = document.createElement('div');
+        card.className = 'app-card';
+        card.setAttribute('data-role', s.role);
+        card.style.cssText = 'min-height:180px;border-radius:28px;background:rgba(255,255,255,.82);backdrop-filter:blur(10px);box-shadow:0 20px 40px rgba(0,0,0,.14);border-bottom:8px solid #0f7f73;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;';
+
+        var h = document.createElement('h2');
+        h.textContent = s.title;
+        h.style.cssText = 'font-size:26px;font-weight:800;color:#1e293b;margin:0 0 18px;';
+
+        var p = document.createElement('div');
+        p.textContent = 'نظام نشط وموثوق ✅';
+        p.style.cssText = 'font-size:13px;color:#10b981;font-weight:800;margin-bottom:18px;';
+
+        var b = document.createElement('button');
+        b.textContent = s.btn;
+        b.style.cssText = 'width:84%;border:0;border-radius:14px;background:#0f7f73;color:white;padding:12px 20px;font-weight:800;font-family:inherit;cursor:pointer;';
+        b.onclick = function(){
+          if(typeof window.launchApp === 'function'){
+            try { window.launchApp(s.role); return; } catch(e){}
+          }
+
+          // بديل آمن إذا لم تعمل دالة launchApp
+          var map = {
+            leadership:'manager.html',
+            agency:'agent.html',
+            performance:'teacher.html'
+          };
+          var url = map[s.role] || 'manager.html';
+          window.location.href = url;
+        };
+
+        card.appendChild(h);
+        card.appendChild(p);
+        card.appendChild(b);
+        grid.appendChild(card);
+      });
+    }
+  }
+
+  function showSections(){
+    document.body.classList.add('sections-visible-v18');
+
+    var roleScreen = by('role-selector-screen');
+    if(roleScreen) roleScreen.style.display = 'none';
+
+    var reg = by('registration-modal');
+    if(reg) reg.style.display = 'none';
+
+    var wait = by('waiting-screen');
+    if(wait){
+      wait.classList.add('hidden');
+      wait.style.display = 'none';
+    }
+
+    ensureSectionsMarkup();
+
+    var main = by('main-ui');
+    if(main){
+      main.style.display = 'flex';
+      main.style.opacity = '1';
+      main.style.visibility = 'visible';
+      main.style.pointerEvents = 'auto';
+      main.style.alignItems = 'center';
+      main.style.justifyContent = 'center';
+      main.style.position = 'fixed';
+      main.style.inset = '0';
+      main.style.zIndex = '100';
+      main.classList.remove('opacity-0');
+      main.classList.remove('pointer-events-none');
+    }
+
+    var grid = by('apps-grid');
+    if(grid){
+      grid.style.display = 'grid';
+      grid.style.gridTemplateColumns = 'repeat(3, minmax(240px, 1fr))';
+      grid.style.gap = '28px';
+      grid.style.maxWidth = '1000px';
+      grid.style.width = 'calc(100vw - 80px)';
+      grid.style.opacity = '1';
+      grid.style.visibility = 'visible';
+      grid.style.pointerEvents = 'auto';
+    }
+
+    document.querySelectorAll('.app-card').forEach(function(card){
+      card.style.display = 'flex';
+      card.style.opacity = '1';
+      card.style.visibility = 'visible';
+      card.style.pointerEvents = 'auto';
+    });
+
+    removeFloatingRegistrationButtons();
+  }
+
+  function bindLoginButton(){
+    var btn = by('mainLoginBtn');
+    if(!btn) return;
+
+    btn.textContent = 'دخول إلى مدرستي';
+    btn.style.pointerEvents = 'auto';
+
+    btn.onclick = function(ev){
+      if(ev){
+        ev.preventDefault();
+        ev.stopPropagation();
+      }
+
+      // لا نغير منطق الدخول السابق، لكن نضمن ظهور الأقسام فورًا بعد الضغط
+      setTimeout(showSections, 100);
+      setTimeout(showSections, 400);
+      setTimeout(showSections, 900);
+      return false;
+    };
+  }
+
+  document.addEventListener('click', function(ev){
+    var t = ev.target;
+    var btn = t && t.closest ? t.closest('button,.action-btn,[role="button"]') : t;
+    var txt = String((btn && btn.textContent) || (t && t.textContent) || '').trim();
+
+    if((btn && btn.id === 'mainLoginBtn') || txt.includes('دخول إلى مدرستي')){
+      setTimeout(showSections, 100);
+      setTimeout(showSections, 400);
+      setTimeout(showSections, 900);
+    }
+  }, true);
+
+  document.addEventListener('DOMContentLoaded', function(){
+    bindLoginButton();
+    removeFloatingRegistrationButtons();
+
+    setInterval(function(){
+      bindLoginButton();
+      removeFloatingRegistrationButtons();
+      if(document.body.classList.contains('sections-visible-v18')){
+        showSections();
+      }
+    }, 600);
+  });
+
+  window.addEventListener('load', function(){
+    bindLoginButton();
+    removeFloatingRegistrationButtons();
+  });
+})();
+</script>
+
 </body></html>`;
             const w = window.open('', '_blank');
             w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 500);

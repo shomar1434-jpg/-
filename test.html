@@ -2427,6 +2427,140 @@ pre:not(.allow-pre), code:not(.allow-code), .code-leak-cleaner{
 })();
 </script>
 
+
+<style id="show-sections-after-manager-login-v16">
+/* بعد دخول المدير: إظهار واجهة الأقسام الثلاثة الأصلية فقط */
+body.manager-entered-v15 #role-selector-screen,
+body.manager-entered-v15 #registration-modal,
+body.manager-entered-v15 #waiting-screen,
+body.manager-entered-v16 #role-selector-screen,
+body.manager-entered-v16 #registration-modal,
+body.manager-entered-v16 #waiting-screen {
+    display: none !important;
+}
+
+body.manager-entered-v15 #main-ui,
+body.manager-entered-v16 #main-ui {
+    display: flex !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+}
+
+body.manager-entered-v15 #apps-grid,
+body.manager-entered-v16 #apps-grid {
+    display: grid !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+body.manager-entered-v15 .app-card,
+body.manager-entered-v16 .app-card {
+    display: flex !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+/* لا نضيف أي زر رابط تسجيل في شاشة الأقسام */
+body.manager-entered-v15 #staff-registration-link-btn,
+body.manager-entered-v16 #staff-registration-link-btn,
+body.manager-entered-v15 button[data-staff-registration],
+body.manager-entered-v16 button[data-staff-registration],
+body.manager-entered-v15 button[data-registration-copy],
+body.manager-entered-v16 button[data-registration-copy] {
+    display: none !important;
+}
+</style>
+
+<script id="show-sections-after-manager-login-v16">
+(function(){
+  'use strict';
+
+  function by(id){ return document.getElementById(id); }
+
+  function removeFloatingRegistrationButtons(){
+    document.querySelectorAll('#staff-registration-link-btn,[data-staff-registration],[data-registration-copy]').forEach(function(el){
+      el.remove();
+    });
+    Array.from(document.querySelectorAll('button,a,[role="button"]')).forEach(function(el){
+      var t = String(el.textContent || '').trim();
+      if(t.includes('نسخ رابط تسجيل الوكلاء والمعلمين') || t.includes('نسخ رابط تسجيل المستخدمين')){
+        el.remove();
+      }
+    });
+  }
+
+  function showOriginalSections(){
+    document.body.classList.add('manager-entered-v15');
+    document.body.classList.add('manager-entered-v16');
+
+    var roleScreen = by('role-selector-screen');
+    if(roleScreen) roleScreen.style.display = 'none';
+
+    var reg = by('registration-modal');
+    if(reg) reg.style.display = 'none';
+
+    var wait = by('waiting-screen');
+    if(wait){
+      wait.classList.add('hidden');
+      wait.style.display = 'none';
+    }
+
+    var main = by('main-ui');
+    if(main){
+      main.style.display = 'flex';
+      main.style.opacity = '1';
+      main.style.visibility = 'visible';
+      main.style.pointerEvents = 'auto';
+      main.classList.remove('opacity-0', 'pointer-events-none');
+    }
+
+    var grid = by('apps-grid');
+    if(grid){
+      grid.style.display = 'grid';
+      grid.style.opacity = '1';
+      grid.style.visibility = 'visible';
+    }
+
+    document.querySelectorAll('.app-card').forEach(function(card){
+      card.style.display = 'flex';
+      card.style.opacity = '1';
+      card.style.visibility = 'visible';
+      card.style.pointerEvents = 'auto';
+    });
+
+    removeFloatingRegistrationButtons();
+  }
+
+  function hookManagerButton(){
+    var btn = by('mainLoginBtn');
+    if(!btn) return;
+
+    btn.textContent = 'دخول إلى مدرستي';
+    btn.style.pointerEvents = 'auto';
+
+    btn.addEventListener('click', function(){
+      setTimeout(showOriginalSections, 250);
+      setTimeout(showOriginalSections, 700);
+      setTimeout(showOriginalSections, 1300);
+    }, true);
+  }
+
+  document.addEventListener('DOMContentLoaded', function(){
+    hookManagerButton();
+
+    setInterval(function(){
+      removeFloatingRegistrationButtons();
+      if(document.body.classList.contains('manager-entered-v15') || document.body.classList.contains('manager-entered-v16')){
+        showOriginalSections();
+      }
+    }, 600);
+  });
+
+  window.addEventListener('load', hookManagerButton);
+})();
+</script>
+
 </body></html>`;
             const w = window.open('', '_blank');
             w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 500);

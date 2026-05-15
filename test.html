@@ -2778,1374 +2778,161 @@ window.addEventListener('load',function(){
 </script>
 
 
-<style id="top-icons-stable-patch-v1">
-.section-home-btn,.users-manage-btn,.copy-register-link-btn{
-cursor:pointer!important;
+<style id="home-icon-root-fix-v1">
+body.home-sections-mode-v1 #role-selector-screen,
+body.home-sections-mode-v1 #registration-modal,
+body.home-sections-mode-v1 #waiting-screen,
+body.home-sections-mode-v1 #users-management-modal,
+body.home-sections-mode-v1 .modal,
+body.home-sections-mode-v1 .global-admin-badge,
+body.home-sections-mode-v1 .owner-copy-btn,
+body.home-sections-mode-v1 .ai-btn,
+body.home-sections-mode-v1 #ownerBtn,
+body.home-sections-mode-v1 #aiBtn {
+  display:none!important;
+  visibility:hidden!important;
+  pointer-events:none!important;
 }
-#users-management-modal{
-display:none;
-position:fixed;
-inset:0;
-background:rgba(0,0,0,.75);
-z-index:99999;
-align-items:center;
-justify-content:center;
+body.home-sections-mode-v1 #main-ui {
+  display:flex!important;
+  visibility:visible!important;
+  opacity:1!important;
+  pointer-events:auto!important;
 }
-#users-management-modal.active{
-display:flex;
+body.home-sections-mode-v1 #apps-grid {
+  display:grid!important;
+  visibility:visible!important;
+  opacity:1!important;
+  pointer-events:auto!important;
 }
-.users-modal-box{
-background:white;
-width:min(900px,95%);
-max-height:85vh;
-overflow:auto;
-border-radius:24px;
-padding:24px;
-color:#111827;
+body.home-sections-mode-v1 .app-card {
+  display:flex!important;
+  visibility:visible!important;
+  opacity:1!important;
+  pointer-events:auto!important;
 }
-.user-row{
-display:flex;
-justify-content:space-between;
-align-items:center;
-padding:12px;
-border-bottom:1px solid #e5e7eb;
-gap:12px;
-}
-.user-actions button{
-margin-inline:4px;
-padding:6px 12px;
-border-radius:10px;
-font-weight:700;
-}
-</style>
-
-<div id="users-management-modal">
-  <div class="users-modal-box">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-      <h2 style="font-size:24px;font-weight:800;">إدارة المستخدمين</h2>
-      <button id="close-users-modal-btn" style="background:#ef4444;color:white;padding:8px 16px;border-radius:12px;">إغلاق</button>
-    </div>
-    <div id="users-list-container"></div>
-  </div>
-</div>
-
-<script id="top-icons-stable-script-v1">
-(function(){
-'use strict';
-
-function q(s){return document.querySelector(s);}
-function qa(s){return Array.from(document.querySelectorAll(s));}
-
-function showSections(){
-  const apps = document.getElementById('apps-grid');
-  const role = document.getElementById('role-selector-screen');
-  const iframes = qa('.app-iframe-container');
-
-  if(iframes.length){
-    iframes.forEach(x=>x.classList.remove('active'));
-  }
-
-  if(apps){
-    apps.style.display='grid';
-    apps.style.visibility='visible';
-  }
-
-  if(role){
-    role.style.display='none';
-  }
-
-  const backBtn = q('.back-button');
-  if(backBtn){
-    backBtn.classList.remove('visible');
-  }
-}
-
-function schoolInfo(){
-  return {
-    schoolId: localStorage.getItem('currentSchoolId') || localStorage.getItem('registration_school_id') || '',
-    schoolCode: localStorage.getItem('registration_school_code') || ''
-  };
-}
-
-async function copyRegisterLink(){
-  const info = schoolInfo();
-
-  const url = new URL(location.href.split('?')[0]);
-  url.searchParams.set('mode','register');
-  url.searchParams.set('staff','1');
-  url.searchParams.set('invite','1');
-
-  if(info.schoolId){
-    url.searchParams.set('schoolId', info.schoolId);
-  }
-
-  if(info.schoolCode){
-    url.searchParams.set('code', info.schoolCode);
-  }
-
-  try{
-    await navigator.clipboard.writeText(url.toString());
-    alert('تم نسخ رابط تسجيل الوكلاء والمعلمين');
-  }catch(e){
-    prompt('انسخ الرابط:', url.toString());
-  }
-}
-
-async function loadUsers(){
-  const box = document.getElementById('users-list-container');
-  if(!box) return;
-
-  box.innerHTML = '<div style="padding:20px;text-align:center;">جاري تحميل المستخدمين...</div>';
-
-  let users = [];
-
-  try{
-    if(window.SupaStore && window.SupaStore.listUsers){
-      users = await window.SupaStore.listUsers();
-    }
-  }catch(e){
-    console.error(e);
-  }
-
-  if(!users.length){
-    box.innerHTML = '<div style="padding:20px;text-align:center;">لا يوجد مستخدمون</div>';
-    return;
-  }
-
-  box.innerHTML = users.map(function(u){
-    const active = !(u.active===false || u.isActive===false || u.status==='pending');
-    return `
-      <div class="user-row">
-        <div>
-          <div style="font-weight:800;">${u.name || 'مستخدم'}</div>
-          <div style="font-size:13px;color:#6b7280;">${u.email || ''}</div>
-          <div style="margin-top:4px;font-size:13px;">
-            ${u.role === 'agency' ? 'وكيل' : 'معلم'} - 
-            <span style="font-weight:700;color:${active ? '#16a34a':'#dc2626'};">
-              ${active ? 'مفعل':'قيد التفعيل'}
-            </span>
-          </div>
-        </div>
-
-        <div class="user-actions">
-          <button onclick="toggleUserActivation('${u.id}', ${active})" style="background:${active ? '#f59e0b':'#16a34a'};color:white;">
-            ${active ? 'تعطيل':'تفعيل'}
-          </button>
-        </div>
-      </div>
-    `;
-  }).join('');
-}
-
-window.toggleUserActivation = async function(id, active){
-  try{
-    if(window.fs && window.fs.updateDoc){
-      await window.fs.updateDoc({table:'users', id:id},{
-        active:!active,
-        isActive:!active,
-        status:!active ? 'active':'pending'
-      });
-
-      loadUsers();
-    }
-  }catch(e){
-    console.error(e);
-    alert('فشل تحديث المستخدم');
-  }
-};
-
-function openUsersModal(){
-  const modal = document.getElementById('users-management-modal');
-  if(modal){
-    modal.classList.add('active');
-    loadUsers();
-  }
-}
-
-function closeUsersModal(){
-  const modal = document.getElementById('users-management-modal');
-  if(modal){
-    modal.classList.remove('active');
-  }
-}
-
-function bindIcons(){
-  qa('button,a,.icon-btn,.top-icon').forEach(function(el){
-
-    const txt = (el.textContent || '').trim();
-    const title = (el.title || '').trim();
-    const html = (el.innerHTML || '');
-
-    // أيقونة الصفحة الرئيسية
-    if(
-      txt.includes('🏠') ||
-      title.includes('الرئيسية') ||
-      html.includes('home')
-    ){
-      if(el.dataset.homeBound === '1') return;
-      el.dataset.homeBound = '1';
-
-      el.addEventListener('click', function(ev){
-        ev.preventDefault();
-        ev.stopPropagation();
-        showSections();
-      }, true);
-    }
-
-    // أيقونة الرابط
-    if(
-      txt.includes('🔗') ||
-      title.includes('رابط') ||
-      html.includes('link')
-    ){
-      if(el.dataset.linkBound === '1') return;
-      el.dataset.linkBound = '1';
-
-      el.addEventListener('click', function(ev){
-        ev.preventDefault();
-        ev.stopPropagation();
-        copyRegisterLink();
-      }, true);
-    }
-
-    // أيقونة المستخدمين
-    if(
-      txt.includes('👥') ||
-      title.includes('المستخدم') ||
-      title.includes('المستخدمين') ||
-      html.includes('users')
-    ){
-      if(el.dataset.usersBound === '1') return;
-      el.dataset.usersBound = '1';
-
-      el.addEventListener('click', function(ev){
-        ev.preventDefault();
-        ev.stopPropagation();
-        openUsersModal();
-      }, true);
-    }
-
-  });
-}
-
-document.addEventListener('DOMContentLoaded', function(){
-  bindIcons();
-
-  const closeBtn = document.getElementById('close-users-modal-btn');
-  if(closeBtn){
-    closeBtn.addEventListener('click', closeUsersModal);
-  }
-
-  setInterval(bindIcons, 1000);
-});
-})();
-</script>
-
-
-<style id="fix-home-and-register-route-v2">
-/* رابط تسجيل المستخدمين: إخفاء قاطع لأي شيء غير نافذة التسجيل */
-body.staff-register-only-v2 #role-selector-screen,
-body.staff-register-only-v2 #main-ui,
-body.staff-register-only-v2 #apps-grid,
-body.staff-register-only-v2 .app-card,
-body.staff-register-only-v2 #direct-sections-v23,
-body.staff-register-only-v2 #sections-v22,
-body.staff-register-only-v2 #users-management-modal,
-body.staff-register-only-v2 .global-admin-badge,
-body.staff-register-only-v2 .exit-app-btn,
-body.staff-register-only-v2 .back-button,
-body.staff-register-only-v2 .owner-copy-btn,
-body.staff-register-only-v2 .ai-btn,
-body.staff-register-only-v2 #ownerBtn,
-body.staff-register-only-v2 #aiBtn,
-body.staff-register-only-v2 [onclick*="owner"],
-body.staff-register-only-v2 [onclick*="Owner"],
-body.staff-register-only-v2 [onclick*="ذكاء"],
-body.staff-register-only-v2 [onclick*="ذكي"],
-body.staff-register-only-v2 #staff-registration-link-btn,
-body.staff-register-only-v2 [data-staff-registration],
-body.staff-register-only-v2 [data-registration-copy] {
-  display: none !important;
-  visibility: hidden !important;
-  pointer-events: none !important;
-}
-
-body.staff-register-only-v2 #registration-modal {
-  display: flex !important;
-  position: fixed !important;
-  inset: 0 !important;
-  z-index: 2147483640 !important;
-  align-items: center !important;
-  justify-content: center !important;
-  background: rgba(0,0,0,.72) !important;
-  visibility: visible !important;
-  pointer-events: auto !important;
-}
-
-body.staff-register-only-v2 #registration-modal,
-body.staff-register-only-v2 #registration-modal * {
-  visibility: visible !important;
-  opacity: 1 !important;
-  pointer-events: auto !important;
-}
-
-/* وضع العودة للأقسام: منع ظهور بوابة المالك */
-body.sections-only-v2 #role-selector-screen,
-body.sections-only-v2 #registration-modal,
-body.sections-only-v2 .global-admin-badge,
-body.sections-only-v2 .owner-copy-btn,
-body.sections-only-v2 .ai-btn,
-body.sections-only-v2 #ownerBtn,
-body.sections-only-v2 #aiBtn,
-body.sections-only-v2 [onclick*="owner"],
-body.sections-only-v2 [onclick*="Owner"],
-body.sections-only-v2 [onclick*="ذكاء"],
-body.sections-only-v2 [onclick*="ذكي"] {
-  display: none !important;
-  visibility: hidden !important;
-  pointer-events: none !important;
-}
-
-body.sections-only-v2 #direct-sections-v23 {
-  display: flex !important;
+body.home-sections-mode-v1 .app-iframe-container,
+body.home-sections-mode-v1 .app-iframe-container.active,
+body.home-sections-mode-v1 .back-button {
+  display:none!important;
 }
 </style>
 
-<script id="fix-home-and-register-route-v2">
+<script id="home-icon-root-fix-v1">
 (function(){
   'use strict';
 
   function by(id){ return document.getElementById(id); }
-  function qs(){ return new URLSearchParams(location.search || ''); }
 
-  function isStaffRegisterLink(){
-    const p = qs();
-    return p.get('mode') === 'register' || p.get('staff') === '1' || p.get('invite') === '1';
+  function hide(el){
+    if(!el) return;
+    el.style.setProperty('display','none','important');
+    el.style.setProperty('visibility','hidden','important');
+    el.style.setProperty('pointer-events','none','important');
   }
 
-  function getSchoolId(){
-    const p = qs();
-    const sid = p.get('schoolId') || p.get('school_id') ||
-      localStorage.getItem('currentSchoolId') ||
-      localStorage.getItem('registration_school_id') ||
-      localStorage.getItem('managerSchoolId') || '';
-    if(sid){
-      localStorage.setItem('currentSchoolId', sid);
-      localStorage.setItem('registration_school_id', sid);
-    }
-    return sid;
+  function show(el, display){
+    if(!el) return;
+    el.style.setProperty('display', display || 'flex','important');
+    el.style.setProperty('visibility','visible','important');
+    el.style.setProperty('opacity','1','important');
+    el.style.setProperty('pointer-events','auto','important');
   }
 
-  function getSchoolCode(){
-    const p = qs();
-    const code = p.get('code') || p.get('school_code') || p.get('schoolCode') ||
-      localStorage.getItem('registration_school_code') ||
-      localStorage.getItem('managerSchoolCode') || '';
-    if(code) localStorage.setItem('registration_school_code', code);
-    return code;
-  }
+  function returnToThreeSections(){
+    document.body.classList.add('home-sections-mode-v1');
 
-  function hideOwnerAndAI(){
-    Array.from(document.querySelectorAll('button,a,[role="button"],.owner-copy-btn,.ai-btn,.global-admin-badge')).forEach(function(el){
-      if(document.body.classList.contains('staff-register-only-v2') && el.closest('#registration-modal')) return;
-
-      const txt = String(el.textContent || '').trim();
-      const id = String(el.id || '');
-      const cls = String(el.className || '');
-      const onclick = String(el.getAttribute('onclick') || '');
-
-      const bad =
-        txt.includes('نسخة المالك') ||
-        txt.includes('ذكاء المنصة') ||
-        txt.includes('بوابة التحكم المركزي') ||
-        txt.includes('نسخ رابط تسجيل') ||
-        id.includes('owner') ||
-        id.includes('ai') ||
-        cls.includes('owner') ||
-        cls.includes('ai') ||
-        cls.includes('global-admin') ||
-        onclick.includes('owner') ||
-        onclick.includes('Owner') ||
-        onclick.includes('ذكاء') ||
-        onclick.includes('ذكي');
-
-      if(bad){
-        el.style.setProperty('display','none','important');
-        el.style.setProperty('visibility','hidden','important');
-        el.style.setProperty('pointer-events','none','important');
-      }
+    document.querySelectorAll('.app-iframe-container').forEach(function(el){
+      el.classList.remove('active');
+      hide(el);
     });
+
+    ['role-selector-screen','registration-modal','waiting-screen','users-management-modal'].forEach(function(id){
+      hide(by(id));
+    });
+
+    document.querySelectorAll('.modal,.global-admin-badge,.owner-copy-btn,.ai-btn,#ownerBtn,#aiBtn').forEach(hide);
+
+    var back = document.querySelector('.back-button');
+    if(back){
+      back.classList.remove('visible');
+      hide(back);
+    }
+
+    show(by('main-ui'),'flex');
+    show(by('apps-grid'),'grid');
+
+    document.querySelectorAll('.app-card').forEach(function(card){
+      show(card,'flex');
+    });
+
+    if(typeof window.renderGrid === 'function'){
+      try { window.renderGrid('leadership'); } catch(e) {}
+    }
   }
 
-  function ensureSectionsLayer(){
-    let wrap = by('direct-sections-v23');
-    if(wrap) return wrap;
+  function isHome(el){
+    if(!el) return false;
+    var txt = String(el.textContent || '').trim();
+    var title = String(el.title || el.getAttribute('aria-label') || '').trim();
+    var html = String(el.innerHTML || '');
+    var cls = String(el.className || '');
+    return txt.indexOf('🏠') !== -1 ||
+           title.indexOf('الرئيسية') !== -1 ||
+           title.indexOf('القائمة') !== -1 ||
+           title.indexOf('الأقسام') !== -1 ||
+           html.indexOf('home') !== -1 ||
+           html.indexOf('house') !== -1 ||
+           html.indexOf('fa-home') !== -1 ||
+           cls.indexOf('home') !== -1;
+  }
 
-    wrap = document.createElement('section');
-    wrap.id = 'direct-sections-v23';
-    wrap.style.cssText = 'position:fixed;inset:0;z-index:2147482000;display:none;align-items:center;justify-content:center;pointer-events:auto;';
+  function bindDoc(doc){
+    if(!doc) return;
+    Array.from(doc.querySelectorAll('button,a,[role="button"],.icon-btn,.top-icon,.toolbar button,.header button,.action-icon')).forEach(function(el){
+      if(!isHome(el)) return;
+      if(el.getAttribute('data-home-root-fixed-v1') === '1') return;
 
-    const grid = document.createElement('div');
-    grid.style.cssText = 'width:min(1000px,calc(100vw - 80px));display:grid;grid-template-columns:repeat(3,minmax(240px,1fr));gap:28px;direction:ltr;';
+      el.setAttribute('data-home-root-fixed-v1','1');
+      el.title = 'العودة إلى واجهة الأقسام الثلاثة';
 
-    const sections = [
-      ['leadership','قسم المدير/ة 🏛️'],
-      ['agency','قسم الوكيل/ة 📑'],
-      ['performance','قسم المعلم/ة 👨‍🏫']
-    ];
+      el.addEventListener('click', function(ev){
+        ev.preventDefault();
+        ev.stopPropagation();
+        if(ev.stopImmediatePropagation) ev.stopImmediatePropagation();
 
-    sections.forEach(([role,title])=>{
-      const card = document.createElement('div');
-      card.style.cssText = 'min-height:180px;border-radius:28px;background:rgba(255,255,255,.88);backdrop-filter:blur(10px);box-shadow:0 20px 40px rgba(0,0,0,.16);border-bottom:8px solid #0f7f73;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;direction:rtl;';
-      card.innerHTML = '<h2 style="font-size:26px;font-weight:800;color:#1e293b;margin:0 0 12px;font-family:inherit;">'+title+'</h2><div style="font-size:13px;color:#10b981;font-weight:800;margin-bottom:18px;">نظام نشط وموثوق ✅</div>';
-      const btn = document.createElement('button');
-      btn.textContent = 'دخول';
-      btn.style.cssText = 'width:84%;border:0;border-radius:14px;background:#0f7f73;color:white;padding:12px 20px;font-weight:800;font-family:inherit;cursor:pointer;';
-      btn.onclick = function(ev){
-        if(ev){ ev.preventDefault(); ev.stopPropagation(); }
-        if(typeof window.launchApp === 'function'){
-          try{ window.launchApp(role); wrap.style.display='none'; return false; }catch(e){}
+        if(window.parent && window.parent !== window && window.parent.showOriginalSectionsFromHomeIcon){
+          window.parent.showOriginalSectionsFromHomeIcon();
+        } else {
+          returnToThreeSections();
         }
-        const map = {leadership:'manager.html', agency:'agent.html', performance:'teacher.html'};
-        location.href = map[role] || 'manager.html';
         return false;
-      };
-      card.appendChild(btn);
-      grid.appendChild(card);
-    });
-
-    wrap.appendChild(grid);
-    document.body.appendChild(wrap);
-    return wrap;
-  }
-
-  function showSectionsOnly(){
-    document.body.classList.remove('staff-register-only-v2');
-    document.body.classList.add('sections-only-v2');
-
-    ['role-selector-screen','registration-modal','waiting-screen','main-ui','apps-grid'].forEach(id=>{
-      const el = by(id);
-      if(el) el.style.setProperty('display','none','important');
-    });
-
-    const frames = Array.from(document.querySelectorAll('.app-iframe-container'));
-    frames.forEach(f => f.classList.remove('active'));
-
-    const wrap = ensureSectionsLayer();
-    wrap.style.setProperty('display','flex','important');
-    hideOwnerAndAI();
-  }
-
-  async function makeRegisterLink(){
-    const base = location.origin && location.origin !== 'null'
-      ? location.origin + location.pathname
-      : location.href.split('?')[0];
-
-    const url = new URL(base);
-    url.searchParams.set('mode','register');
-    url.searchParams.set('staff','1');
-    url.searchParams.set('invite','1');
-
-    const sid = getSchoolId();
-    const code = getSchoolCode();
-
-    if(sid) url.searchParams.set('schoolId', sid);
-    if(code) url.searchParams.set('code', code);
-
-    // نضيف قيمة fallback تمنع اعتبار الرابط فارغًا
-    if(!sid && !code) url.searchParams.set('schoolCode','manager-linked');
-
-    return url.toString();
-  }
-
-  async function copyRegisterLink(){
-    const link = await makeRegisterLink();
-    try{
-      await navigator.clipboard.writeText(link);
-      alert('تم نسخ رابط تسجيل الوكلاء والمعلمين');
-    }catch(e){
-      prompt('انسخ رابط تسجيل الوكلاء والمعلمين:', link);
-    }
-  }
-
-  function openStaffRegisterOnly(){
-    if(!isStaffRegisterLink()) return;
-
-    document.body.classList.add('staff-register-only-v2');
-    getSchoolId();
-    getSchoolCode();
-
-    ['role-selector-screen','main-ui','apps-grid','direct-sections-v23','users-management-modal','waiting-screen'].forEach(id=>{
-      const el = by(id);
-      if(el) el.style.setProperty('display','none','important');
-    });
-
-    const modal = by('registration-modal');
-    if(modal){
-      modal.style.setProperty('display','flex','important');
-      modal.style.setProperty('position','fixed','important');
-      modal.style.setProperty('inset','0','important');
-      modal.style.setProperty('z-index','2147483640','important');
-      modal.classList.remove('hidden');
-    }
-
-    hideOwnerAndAI();
-  }
-
-  function bindIconsFixed(){
-    // الصفحة الرئيسية
-    Array.from(document.querySelectorAll('button,a,[role="button"],.icon-btn,.top-icon')).forEach(function(el){
-      const txt = String(el.textContent || '').trim();
-      const title = String(el.title || el.getAttribute('aria-label') || '').trim();
-      const html = String(el.innerHTML || '');
-
-      const isHome = txt.includes('🏠') || title.includes('الرئيسية') || title.includes('الأقسام') || html.includes('home');
-      const isLink = txt.includes('🔗') || title.includes('رابط') || html.includes('link') || html.includes('fa-link');
-
-      if(isHome && el.getAttribute('data-v2-home-bound') !== '1'){
-        el.setAttribute('data-v2-home-bound','1');
-        el.addEventListener('click', function(ev){
-          ev.preventDefault();
-          ev.stopPropagation();
-          if(ev.stopImmediatePropagation) ev.stopImmediatePropagation();
-          showSectionsOnly();
-        }, true);
-      }
-
-      if(isLink && el.getAttribute('data-v2-link-bound') !== '1'){
-        el.setAttribute('data-v2-link-bound','1');
-        el.title = 'نسخ رابط تسجيل الوكلاء والمعلمين';
-        el.addEventListener('click', function(ev){
-          if(isStaffRegisterLink()) return;
-          ev.preventDefault();
-          ev.stopPropagation();
-          if(ev.stopImmediatePropagation) ev.stopImmediatePropagation();
-          copyRegisterLink();
-        }, true);
-      }
+      }, true);
     });
   }
 
-  function sync(){
-    openStaffRegisterOnly();
-    bindIconsFixed();
-    if(document.body.classList.contains('staff-register-only-v2') || document.body.classList.contains('sections-only-v2')) hideOwnerAndAI();
+  function bindAll(){
+    bindDoc(document);
+    document.querySelectorAll('iframe').forEach(function(frame){
+      try {
+        bindDoc(frame.contentDocument || frame.contentWindow.document);
+      } catch(e) {}
+    });
   }
+
+  window.showOriginalSectionsFromHomeIcon = returnToThreeSections;
 
   document.addEventListener('DOMContentLoaded', function(){
-    sync();
-    setInterval(sync, 500);
+    bindAll();
+    setInterval(bindAll, 700);
   });
-
   window.addEventListener('load', function(){
-    sync();
-    setTimeout(sync, 700);
+    bindAll();
+    setTimeout(bindAll, 500);
   });
-
-  document.addEventListener('click', function(){
-    setTimeout(sync, 150);
-    setTimeout(sync, 700);
-  }, true);
 })();
 </script>
-
-
-<style id="fix-manager-activation-link-home-v3">
-/* منع ظهور بوابة المالك عند الرجوع للأقسام */
-body.sections-only-v3 #role-selector-screen,
-body.sections-only-v3 #registration-modal,
-body.sections-only-v3 .global-admin-badge,
-body.sections-only-v3 .owner-copy-btn,
-body.sections-only-v3 .ai-btn,
-body.sections-only-v3 #ownerBtn,
-body.sections-only-v3 #aiBtn,
-body.sections-only-v3 [onclick*="owner"],
-body.sections-only-v3 [onclick*="Owner"],
-body.sections-only-v3 [onclick*="ذكاء"],
-body.sections-only-v3 [onclick*="ذكي"] {
-  display:none!important;
-  visibility:hidden!important;
-  pointer-events:none!important;
-}
-
-/* رابط التسجيل: لا يظهر إلا التسجيل */
-body.staff-register-only-v3 #role-selector-screen,
-body.staff-register-only-v3 #main-ui,
-body.staff-register-only-v3 #apps-grid,
-body.staff-register-only-v3 #direct-sections-v23,
-body.staff-register-only-v3 .global-admin-badge,
-body.staff-register-only-v3 .owner-copy-btn,
-body.staff-register-only-v3 .ai-btn,
-body.staff-register-only-v3 #ownerBtn,
-body.staff-register-only-v3 #aiBtn,
-body.staff-register-only-v3 [onclick*="owner"],
-body.staff-register-only-v3 [onclick*="Owner"],
-body.staff-register-only-v3 [onclick*="ذكاء"],
-body.staff-register-only-v3 [onclick*="ذكي"],
-body.staff-register-only-v3 #staff-registration-link-btn,
-body.staff-register-only-v3 [data-staff-registration],
-body.staff-register-only-v3 [data-registration-copy],
-body.staff-register-only-v3 #users-management-modal {
-  display:none!important;
-  visibility:hidden!important;
-  pointer-events:none!important;
-}
-
-body.staff-register-only-v3 #registration-modal {
-  display:flex!important;
-  position:fixed!important;
-  inset:0!important;
-  z-index:2147483640!important;
-  align-items:center!important;
-  justify-content:center!important;
-  background:rgba(0,0,0,.72)!important;
-}
-</style>
-
-<script id="fix-manager-activation-link-home-v3">
-(function(){
-'use strict';
-
-function by(id){return document.getElementById(id);}
-function qs(){return new URLSearchParams(location.search||'');}
-
-function isStaffLink(){
-  const p=qs();
-  return p.get('mode')==='register'||p.get('staff')==='1'||p.get('invite')==='1';
-}
-
-function hideOwnerAI(){
-  Array.from(document.querySelectorAll('button,a,[role="button"],.owner-copy-btn,.ai-btn,.global-admin-badge')).forEach(function(el){
-    if(document.body.classList.contains('staff-register-only-v3') && el.closest('#registration-modal')) return;
-    const txt=String(el.textContent||'').trim();
-    const id=String(el.id||'');
-    const cls=String(el.className||'');
-    const onclick=String(el.getAttribute('onclick')||'');
-    const bad=txt.includes('نسخة المالك')||txt.includes('ذكاء المنصة')||txt.includes('بوابة التحكم المركزي')||txt.includes('نسخ رابط تسجيل')||
-      id.includes('owner')||id.includes('ai')||cls.includes('owner')||cls.includes('ai')||cls.includes('global-admin')||
-      onclick.includes('owner')||onclick.includes('Owner')||onclick.includes('ذكاء')||onclick.includes('ذكي');
-    if(bad){
-      el.style.setProperty('display','none','important');
-      el.style.setProperty('visibility','hidden','important');
-      el.style.setProperty('pointer-events','none','important');
-    }
-  });
-}
-
-function normalizeManagerRole(role){
-  role=String(role||'').toLowerCase();
-  return role==='manager'||role==='leadership'||role==='admin'||role==='مدير';
-}
-
-async function activateCurrentManager(){
-  try{
-    const emailEl=by('user-madrasati-email');
-    const email=(emailEl?String(emailEl.value||'').trim():'') || localStorage.getItem('currentSchoolUserEmail') || '';
-    if(!email || !window.SupaStore || !window.SupaStore.findUserByEmail) return null;
-
-    const user=await window.SupaStore.findUserByEmail(email);
-    if(!user) return null;
-    if(!normalizeManagerRole(user.role)) return user;
-
-    const sid=user.schoolId||user.school_id||localStorage.getItem('currentSchoolId')||localStorage.getItem('registration_school_id')||'';
-    const code=user.schoolCode||user.school_code||localStorage.getItem('registration_school_code')||'';
-
-    localStorage.setItem('currentSchoolUserEmail', email);
-    localStorage.setItem('currentSchoolUserRole','manager');
-    if(sid){
-      localStorage.setItem('currentSchoolId', sid);
-      localStorage.setItem('registration_school_id', sid);
-    }
-    if(code){
-      localStorage.setItem('registration_school_code', code);
-    }
-
-    if(window.fs && window.fs.updateDoc && user.id){
-      await window.fs.updateDoc({table:'users', id:user.id},{
-        active:true,
-        isActive:true,
-        status:'active'
-      });
-    }else if(window.fs && window.fs.setDoc && user.id){
-      user.active=true;
-      user.isActive=true;
-      user.status='active';
-      await window.fs.setDoc({table:'users', id:user.id}, user, {merge:true});
-    }
-
-    return Object.assign({}, user, {active:true, isActive:true, status:'active'});
-  }catch(e){
-    console.warn('activate manager warning', e);
-    return null;
-  }
-}
-
-function ensureSectionsLayer(){
-  let wrap=by('direct-sections-v23');
-  if(wrap) return wrap;
-
-  wrap=document.createElement('section');
-  wrap.id='direct-sections-v23';
-  wrap.style.cssText='position:fixed;inset:0;z-index:2147482000;display:none;align-items:center;justify-content:center;pointer-events:auto;';
-  const grid=document.createElement('div');
-  grid.style.cssText='width:min(1000px,calc(100vw - 80px));display:grid;grid-template-columns:repeat(3,minmax(240px,1fr));gap:28px;direction:ltr;';
-
-  const sections=[['leadership','قسم المدير/ة 🏛️'],['agency','قسم الوكيل/ة 📑'],['performance','قسم المعلم/ة 👨‍🏫']];
-  sections.forEach(function(pair){
-    const role=pair[0],title=pair[1];
-    const card=document.createElement('div');
-    card.style.cssText='min-height:180px;border-radius:28px;background:rgba(255,255,255,.88);backdrop-filter:blur(10px);box-shadow:0 20px 40px rgba(0,0,0,.16);border-bottom:8px solid #0f7f73;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;direction:rtl;';
-    card.innerHTML='<h2 style="font-size:26px;font-weight:800;color:#1e293b;margin:0 0 12px;font-family:inherit;">'+title+'</h2><div style="font-size:13px;color:#10b981;font-weight:800;margin-bottom:18px;">نظام نشط وموثوق ✅</div>';
-    const btn=document.createElement('button');
-    btn.textContent='دخول';
-    btn.style.cssText='width:84%;border:0;border-radius:14px;background:#0f7f73;color:white;padding:12px 20px;font-weight:800;font-family:inherit;cursor:pointer;';
-    btn.onclick=function(ev){
-      if(ev){ev.preventDefault();ev.stopPropagation();}
-      if(typeof window.launchApp==='function'){
-        try{window.launchApp(role);wrap.style.display='none';return false;}catch(e){}
-      }
-      const map={leadership:'manager.html',agency:'agent.html',performance:'teacher.html'};
-      location.href=map[role]||'manager.html';
-      return false;
-    };
-    card.appendChild(btn);
-    grid.appendChild(card);
-  });
-  wrap.appendChild(grid);
-  document.body.appendChild(wrap);
-  return wrap;
-}
-
-function showSectionsOnly(){
-  document.body.classList.remove('staff-register-only-v3');
-  document.body.classList.add('sections-only-v3');
-
-  ['role-selector-screen','registration-modal','waiting-screen','main-ui','apps-grid','users-management-modal'].forEach(function(id){
-    const el=by(id);
-    if(el) el.style.setProperty('display','none','important');
-  });
-  Array.from(document.querySelectorAll('.app-iframe-container')).forEach(function(f){f.classList.remove('active');});
-
-  const wrap=ensureSectionsLayer();
-  wrap.style.setProperty('display','flex','important');
-  hideOwnerAI();
-}
-
-function getSchoolId(){
-  const p=qs();
-  const sid=p.get('schoolId')||p.get('school_id')||localStorage.getItem('currentSchoolId')||localStorage.getItem('registration_school_id')||'';
-  if(sid){
-    localStorage.setItem('currentSchoolId',sid);
-    localStorage.setItem('registration_school_id',sid);
-  }
-  return sid;
-}
-
-function getSchoolCode(){
-  const p=qs();
-  const code=p.get('code')||p.get('school_code')||p.get('schoolCode')||localStorage.getItem('registration_school_code')||'';
-  if(code) localStorage.setItem('registration_school_code',code);
-  return code;
-}
-
-async function buildRegisterLink(){
-  await activateCurrentManager();
-
-  const base=location.origin&&location.origin!=='null'?location.origin+location.pathname:location.href.split('?')[0];
-  const url=new URL(base);
-  url.searchParams.set('mode','register');
-  url.searchParams.set('staff','1');
-  url.searchParams.set('invite','1');
-
-  let sid=getSchoolId();
-  let code=getSchoolCode();
-
-  // إذا لم يوجد schoolId نستخدم بريد المدير كمرجع ربط حتى لا يكون الرابط فارغًا
-  if(sid) url.searchParams.set('schoolId',sid);
-  if(code) url.searchParams.set('code',code);
-
-  const email=localStorage.getItem('currentSchoolUserEmail')||'';
-  if(!sid && email) url.searchParams.set('managerEmail',email);
-
-  return url.toString();
-}
-
-async function copyRegisterLink(){
-  const link=await buildRegisterLink();
-  try{
-    await navigator.clipboard.writeText(link);
-    alert('تم نسخ رابط تسجيل الوكلاء والمعلمين');
-  }catch(e){
-    prompt('انسخ رابط تسجيل الوكلاء والمعلمين:',link);
-  }
-}
-
-function openStaffRegisterOnly(){
-  if(!isStaffLink()) return;
-
-  document.body.classList.add('staff-register-only-v3');
-  getSchoolId();
-  getSchoolCode();
-
-  ['role-selector-screen','main-ui','apps-grid','direct-sections-v23','users-management-modal','waiting-screen'].forEach(function(id){
-    const el=by(id);
-    if(el) el.style.setProperty('display','none','important');
-  });
-
-  const modal=by('registration-modal');
-  if(modal){
-    modal.style.setProperty('display','flex','important');
-    modal.style.setProperty('position','fixed','important');
-    modal.style.setProperty('inset','0','important');
-    modal.style.setProperty('z-index','2147483640','important');
-    modal.classList.remove('hidden');
-  }
-
-  hideOwnerAI();
-}
-
-function bindIcons(){
-  Array.from(document.querySelectorAll('button,a,[role="button"],.icon-btn,.top-icon')).forEach(function(el){
-    const txt=String(el.textContent||'').trim();
-    const title=String(el.title||el.getAttribute('aria-label')||'').trim();
-    const html=String(el.innerHTML||'');
-
-    const isHome=txt.includes('🏠')||title.includes('الرئيسية')||title.includes('الأقسام')||html.includes('home');
-    const isLink=txt.includes('🔗')||title.includes('رابط')||html.includes('link')||html.includes('fa-link');
-
-    if(isHome && el.getAttribute('data-v3-home-bound')!=='1'){
-      el.setAttribute('data-v3-home-bound','1');
-      el.addEventListener('click',function(ev){
-        ev.preventDefault();ev.stopPropagation();
-        if(ev.stopImmediatePropagation) ev.stopImmediatePropagation();
-        showSectionsOnly();
-      },true);
-    }
-
-    if(isLink && el.getAttribute('data-v3-link-bound')!=='1'){
-      el.setAttribute('data-v3-link-bound','1');
-      el.title='نسخ رابط تسجيل الوكلاء والمعلمين';
-      el.addEventListener('click',function(ev){
-        if(isStaffLink()) return;
-        ev.preventDefault();ev.stopPropagation();
-        if(ev.stopImmediatePropagation) ev.stopImmediatePropagation();
-        copyRegisterLink();
-      },true);
-    }
-  });
-}
-
-// ربط زر دخول المدير بتفعيل المدير تلقائيًا عند الدخول
-function bindManagerLoginActivation(){
-  Array.from(document.querySelectorAll('button,.action-btn,[role="button"]')).forEach(function(btn){
-    const txt=String(btn.textContent||'').trim();
-    if((btn.id==='mainLoginBtn'||txt.includes('دخول إلى مدرستي')) && btn.getAttribute('data-v3-manager-activation')!=='1'){
-      btn.setAttribute('data-v3-manager-activation','1');
-      btn.addEventListener('click',function(){
-        setTimeout(activateCurrentManager,300);
-        setTimeout(activateCurrentManager,1200);
-      },true);
-    }
-  });
-}
-
-function sync(){
-  openStaffRegisterOnly();
-  bindIcons();
-  bindManagerLoginActivation();
-  if(document.body.classList.contains('staff-register-only-v3')||document.body.classList.contains('sections-only-v3')) hideOwnerAI();
-}
-
-document.addEventListener('DOMContentLoaded',function(){
-  sync();
-  setInterval(sync,500);
-});
-window.addEventListener('load',function(){
-  sync();
-  setTimeout(sync,800);
-});
-document.addEventListener('click',function(){
-  setTimeout(sync,150);
-  setTimeout(sync,700);
-},true);
-})();
-</script>
-
-
-<style id="final-fix-home-register-v4">
-/* عند رابط تسجيل الوكيل/المعلم: لا يظهر إلا نموذج التسجيل */
-body.staff-register-v4 .owner-ai-dock,
-body.staff-register-v4 #ownerAiDock,
-body.staff-register-v4 #ownerPanelModal,
-body.staff-register-v4 #ownerAiModal,
-body.staff-register-v4 .owner-modal,
-body.staff-register-v4 .owner-copy-btn,
-body.staff-register-v4 .ai-btn,
-body.staff-register-v4 .owner-btn,
-body.staff-register-v4 #ownerBtn,
-body.staff-register-v4 #aiBtn,
-body.staff-register-v4 .global-admin-badge,
-body.staff-register-v4 .exit-app-btn,
-body.staff-register-v4 .back-button,
-body.staff-register-v4 #role-selector-screen,
-body.staff-register-v4 #main-ui,
-body.staff-register-v4 #apps-grid,
-body.staff-register-v4 #direct-sections-v23,
-body.staff-register-v4 #users-management-modal,
-body.staff-register-v4 #staff-registration-link-btn,
-body.staff-register-v4 [data-staff-registration],
-body.staff-register-v4 [data-registration-copy],
-body.staff-register-v4 [onclick*="SmartOwner"],
-body.staff-register-v4 [onclick*="owner"],
-body.staff-register-v4 [onclick*="Owner"],
-body.staff-register-v4 [onclick*="ذكاء"],
-body.staff-register-v4 [onclick*="ذكي"]{
-  display:none!important;
-  visibility:hidden!important;
-  opacity:0!important;
-  pointer-events:none!important;
-}
-
-body.staff-register-v4 #registration-modal{
-  display:flex!important;
-  position:fixed!important;
-  inset:0!important;
-  z-index:2147483640!important;
-  align-items:center!important;
-  justify-content:center!important;
-  background:rgba(0,0,0,.72)!important;
-  visibility:visible!important;
-  opacity:1!important;
-  pointer-events:auto!important;
-}
-body.staff-register-v4 #registration-modal,
-body.staff-register-v4 #registration-modal *{
-  visibility:visible!important;
-  opacity:1!important;
-  pointer-events:auto!important;
-}
-
-/* عند العودة للأقسام لا تظهر بوابة المالك */
-body.sections-v4 #role-selector-screen,
-body.sections-v4 #registration-modal,
-body.sections-v4 .owner-ai-dock,
-body.sections-v4 #ownerAiDock,
-body.sections-v4 #ownerPanelModal,
-body.sections-v4 #ownerAiModal,
-body.sections-v4 .owner-modal,
-body.sections-v4 .owner-copy-btn,
-body.sections-v4 .ai-btn,
-body.sections-v4 .owner-btn,
-body.sections-v4 .global-admin-badge,
-body.sections-v4 [onclick*="SmartOwner"],
-body.sections-v4 [onclick*="owner"],
-body.sections-v4 [onclick*="Owner"],
-body.sections-v4 [onclick*="ذكاء"],
-body.sections-v4 [onclick*="ذكي"]{
-  display:none!important;
-  visibility:hidden!important;
-  pointer-events:none!important;
-}
-</style>
-
-<script id="final-fix-home-register-v4">
-(function(){
-'use strict';
-
-function by(id){return document.getElementById(id);}
-function qs(){return new URLSearchParams(location.search||'');}
-
-function isStaffLink(){
-  const p=qs();
-  return p.get('mode')==='register'||p.get('staff')==='1'||p.get('invite')==='1';
-}
-
-function normalizeRole(role){
-  role=String(role||'').toLowerCase();
-  if(role==='agency'||role==='agent'||role==='vice'||role.includes('وكيل')) return 'agency';
-  if(role==='leadership'||role==='manager'||role==='admin'||role.includes('مدير')) return 'leadership';
-  return 'performance';
-}
-
-function userActive(u){
-  return !(u && (u.active===false || u.isActive===false || u.is_active===false || u.status==='pending'));
-}
-
-async function findUser(email){
-  if(window.SupaStore && window.SupaStore.findUserByEmail){
-    return await window.SupaStore.findUserByEmail(email);
-  }
-  return null;
-}
-
-function saveSchool(sid, code){
-  if(sid){
-    localStorage.setItem('currentSchoolId', sid);
-    localStorage.setItem('registration_school_id', sid);
-  }
-  if(code){
-    localStorage.setItem('registration_school_code', code);
-  }
-}
-
-async function resolveSchoolInfo(){
-  const p=qs();
-  let sid = p.get('schoolId') || p.get('school_id') || localStorage.getItem('currentSchoolId') || localStorage.getItem('registration_school_id') || '';
-  let code = p.get('code') || p.get('school_code') || p.get('schoolCode') || localStorage.getItem('registration_school_code') || '';
-  let managerEmail = p.get('managerEmail') || localStorage.getItem('currentSchoolUserEmail') || '';
-
-  if((!sid || !code) && managerEmail){
-    try{
-      const manager = await findUser(managerEmail);
-      if(manager){
-        sid = sid || manager.schoolId || manager.school_id || '';
-        code = code || manager.schoolCode || manager.school_code || '';
-      }
-    }catch(e){}
-  }
-
-  saveSchool(sid, code);
-  return {schoolId:sid, schoolCode:code, managerEmail};
-}
-
-async function activateManagerFromLogin(){
-  try{
-    const email = String((by('user-madrasati-email')||{}).value || localStorage.getItem('currentSchoolUserEmail') || '').trim();
-    if(!email) return null;
-
-    const u = await findUser(email);
-    if(!u) return null;
-
-    const role = normalizeRole(u.role);
-    if(role !== 'leadership') return u;
-
-    localStorage.setItem('currentSchoolUserEmail', email);
-    localStorage.setItem('currentSchoolUserRole', 'manager');
-
-    saveSchool(u.schoolId || u.school_id || '', u.schoolCode || u.school_code || '');
-
-    if(window.fs && window.fs.updateDoc && u.id){
-      await window.fs.updateDoc({table:'users', id:u.id}, {active:true, isActive:true, status:'active'});
-    }
-
-    return Object.assign({}, u, {active:true, isActive:true, status:'active'});
-  }catch(e){
-    console.warn('manager activation failed', e);
-    return null;
-  }
-}
-
-function hideOwnerAI(){
-  Array.from(document.querySelectorAll('button,a,[role="button"],.owner-ai-dock,#ownerAiDock,.owner-modal,#ownerPanelModal,#ownerAiModal,.owner-copy-btn,.owner-btn,.ai-btn,.global-admin-badge')).forEach(function(el){
-    if(document.body.classList.contains('staff-register-v4') && el.closest('#registration-modal')) return;
-
-    const txt=String(el.textContent||'').trim();
-    const id=String(el.id||'');
-    const cls=String(el.className||'');
-    const onclick=String(el.getAttribute('onclick')||'');
-
-    const bad =
-      txt.includes('نسخة المالك') ||
-      txt.includes('ذكاء المنصة') ||
-      txt.includes('بوابة التحكم المركزي') ||
-      txt.includes('نسخ رابط تسجيل') ||
-      id.includes('owner') || id.includes('Owner') || id.includes('Ai') || id.includes('ai') ||
-      cls.includes('owner') || cls.includes('ai') || cls.includes('global-admin') ||
-      onclick.includes('SmartOwner') || onclick.includes('owner') || onclick.includes('Owner') ||
-      onclick.includes('ذكاء') || onclick.includes('ذكي');
-
-    if(bad){
-      el.style.setProperty('display','none','important');
-      el.style.setProperty('visibility','hidden','important');
-      el.style.setProperty('opacity','0','important');
-      el.style.setProperty('pointer-events','none','important');
-    }
-  });
-}
-
-function ensureSectionsLayer(){
-  let wrap = by('direct-sections-v23');
-  if(wrap) return wrap;
-
-  wrap=document.createElement('section');
-  wrap.id='direct-sections-v23';
-  wrap.style.cssText='position:fixed;inset:0;z-index:2147482000;display:none;align-items:center;justify-content:center;pointer-events:auto;';
-  const grid=document.createElement('div');
-  grid.style.cssText='width:min(1000px,calc(100vw - 80px));display:grid;grid-template-columns:repeat(3,minmax(240px,1fr));gap:28px;direction:ltr;';
-
-  [['leadership','قسم المدير/ة 🏛️'],['agency','قسم الوكيل/ة 📑'],['performance','قسم المعلم/ة 👨‍🏫']].forEach(function(x){
-    const role=x[0], title=x[1];
-    const card=document.createElement('div');
-    card.style.cssText='min-height:180px;border-radius:28px;background:rgba(255,255,255,.88);backdrop-filter:blur(10px);box-shadow:0 20px 40px rgba(0,0,0,.16);border-bottom:8px solid #0f7f73;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;direction:rtl;';
-    card.innerHTML='<h2 style="font-size:26px;font-weight:800;color:#1e293b;margin:0 0 12px;font-family:inherit;">'+title+'</h2><div style="font-size:13px;color:#10b981;font-weight:800;margin-bottom:18px;">نظام نشط وموثوق ✅</div>';
-    const btn=document.createElement('button');
-    btn.textContent='دخول';
-    btn.style.cssText='width:84%;border:0;border-radius:14px;background:#0f7f73;color:white;padding:12px 20px;font-weight:800;font-family:inherit;cursor:pointer;';
-    btn.onclick=function(ev){
-      if(ev){ev.preventDefault();ev.stopPropagation();}
-      if(typeof window.launchApp==='function'){
-        try{window.launchApp(role); wrap.style.display='none'; return false;}catch(e){}
-      }
-      const map={leadership:'manager.html', agency:'agent.html', performance:'teacher.html'};
-      location.href = map[role] || 'manager.html';
-      return false;
-    };
-    card.appendChild(btn);
-    grid.appendChild(card);
-  });
-
-  wrap.appendChild(grid);
-  document.body.appendChild(wrap);
-  return wrap;
-}
-
-function showSectionsOnly(){
-  document.body.classList.remove('staff-register-v4');
-  document.body.classList.add('sections-v4');
-
-  ['role-selector-screen','registration-modal','waiting-screen','main-ui','apps-grid','users-management-modal'].forEach(function(id){
-    const el=by(id);
-    if(el) el.style.setProperty('display','none','important');
-  });
-
-  Array.from(document.querySelectorAll('.app-iframe-container')).forEach(function(f){f.classList.remove('active');});
-
-  const wrap=ensureSectionsLayer();
-  wrap.style.setProperty('display','flex','important');
-
-  hideOwnerAI();
-}
-
-async function buildRegisterLink(){
-  await activateManagerFromLogin();
-  const info = await resolveSchoolInfo();
-
-  const base = location.origin && location.origin !== 'null' ? location.origin + location.pathname : location.href.split('?')[0];
-  const url = new URL(base);
-  url.searchParams.set('mode','register');
-  url.searchParams.set('staff','1');
-  url.searchParams.set('invite','1');
-
-  if(info.schoolId) url.searchParams.set('schoolId', info.schoolId);
-  if(info.schoolCode) url.searchParams.set('code', info.schoolCode);
-  if(info.managerEmail) url.searchParams.set('managerEmail', info.managerEmail);
-
-  // ضمان وجود مرجع يمنع الرابط الفارغ
-  if(!info.schoolId && !info.schoolCode && !info.managerEmail){
-    const email = localStorage.getItem('currentSchoolUserEmail') || String((by('user-madrasati-email')||{}).value || '').trim();
-    if(email) url.searchParams.set('managerEmail', email);
-  }
-
-  return url.toString();
-}
-
-async function copyRegisterLink(){
-  const link=await buildRegisterLink();
-  try{
-    await navigator.clipboard.writeText(link);
-    alert('تم نسخ رابط تسجيل الوكلاء والمعلمين');
-  }catch(e){
-    prompt('انسخ رابط تسجيل الوكلاء والمعلمين:', link);
-  }
-}
-
-function openStaffRegisterOnly(){
-  if(!isStaffLink()) return;
-
-  document.body.classList.add('staff-register-v4');
-  resolveSchoolInfo();
-
-  ['role-selector-screen','main-ui','apps-grid','direct-sections-v23','users-management-modal','waiting-screen'].forEach(function(id){
-    const el=by(id);
-    if(el) el.style.setProperty('display','none','important');
-  });
-
-  const modal=by('registration-modal');
-  if(modal){
-    modal.style.setProperty('display','flex','important');
-    modal.style.setProperty('position','fixed','important');
-    modal.style.setProperty('inset','0','important');
-    modal.style.setProperty('z-index','2147483640','important');
-    modal.classList.remove('hidden');
-  }
-
-  hideOwnerAI();
-}
-
-function getRegFields(){
-  return {
-    name: String((by('reg-name')||{}).value || '').trim(),
-    email: String((by('reg-email')||{}).value || '').trim(),
-    role: normalizeRole(String((by('reg-role')||{}).value || 'performance'))
-  };
-}
-
-function showPending(){
-  const modal=by('registration-modal');
-  if(modal) modal.style.setProperty('display','none','important');
-
-  const wait=by('waiting-screen');
-  if(wait){
-    wait.classList.remove('hidden');
-    wait.style.setProperty('display','flex','important');
-    wait.style.setProperty('z-index','2147483640','important');
-  }else{
-    alert('حسابك قيد التفعيل من مدير المدرسة');
-  }
-}
-
-function openUserSection(u){
-  const role=normalizeRole(u.role);
-  localStorage.setItem('currentSchoolUserEmail', u.email || '');
-  localStorage.setItem('currentSchoolUserRole', role);
-  saveSchool(u.schoolId || u.school_id || '', u.schoolCode || u.school_code || '');
-
-  const modal=by('registration-modal');
-  if(modal) modal.style.setProperty('display','none','important');
-
-  if(typeof window.startApp==='function'){
-    try{u.role=role; window.startApp(u);}catch(e){}
-  }
-
-  setTimeout(function(){
-    if(typeof window.launchApp==='function'){
-      try{window.launchApp(role); return;}catch(e){}
-    }
-    location.href = role==='agency' ? 'agent.html' : 'teacher.html';
-  },200);
-}
-
-async function submitRegisterFixed(){
-  const f=getRegFields();
-  if(!f.email){ alert('أدخل البريد الإلكتروني'); return; }
-  if(!f.name){ alert('أدخل الاسم الرباعي'); return; }
-
-  try{
-    const existing=await findUser(f.email);
-    if(existing){
-      if(userActive(existing)) openUserSection(existing);
-      else showPending();
-      return;
-    }
-
-    const info=await resolveSchoolInfo();
-
-    if(window.ensureAuth && window.fs && window.fs.setDoc){
-      const auth=await window.ensureAuth();
-      const id=window.normalizeSupabaseUuid ? window.normalizeSupabaseUuid(auth.uid) : auth.uid;
-      await window.fs.setDoc({table:'users', id:id}, {
-        id:id,
-        name:f.name,
-        email:f.email,
-        password:'123456',
-        role:f.role,
-        active:false,
-        isActive:false,
-        status:'pending',
-        schoolId:info.schoolId || null,
-        schoolCode:info.schoolCode || '',
-        adminOwnerId:info.managerEmail || '',
-        registeredViaManagerLink:true,
-        dateJoined:new Date().toISOString()
-      }, {merge:true});
-      showPending();
-      return;
-    }
-
-    alert('تعذر الاتصال بالنظام لحفظ الطلب');
-  }catch(e){
-    console.error(e);
-    alert('فشل إرسال طلب التسجيل');
-  }
-}
-
-function bindSubmit(){
-  if(!isStaffLink()) return;
-
-  Array.from(document.querySelectorAll('#registration-modal button, #submit-registration-btn, #submitRegistrationBtn')).forEach(function(btn){
-    const txt=String(btn.textContent||'').trim();
-    if(!txt.includes('إرسال') && !txt.includes('تفعيل')) return;
-    if(btn.getAttribute('data-v4-submit')==='1') return;
-
-    btn.setAttribute('data-v4-submit','1');
-    btn.addEventListener('click', function(ev){
-      ev.preventDefault();
-      ev.stopPropagation();
-      if(ev.stopImmediatePropagation) ev.stopImmediatePropagation();
-      submitRegisterFixed();
-    }, true);
-  });
-}
-
-function bindIcons(){
-  Array.from(document.querySelectorAll('button,a,[role="button"],.icon-btn,.top-icon')).forEach(function(el){
-    const txt=String(el.textContent||'').trim();
-    const title=String(el.title||el.getAttribute('aria-label')||'').trim();
-    const html=String(el.innerHTML||'');
-
-    const isHome = txt.includes('🏠') || title.includes('الرئيسية') || title.includes('الأقسام') || html.includes('home');
-    const isLink = txt.includes('🔗') || title.includes('رابط') || html.includes('link') || html.includes('fa-link');
-
-    if(isHome && el.getAttribute('data-v4-home')!=='1'){
-      el.setAttribute('data-v4-home','1');
-      el.addEventListener('click',function(ev){
-        ev.preventDefault(); ev.stopPropagation();
-        if(ev.stopImmediatePropagation) ev.stopImmediatePropagation();
-        showSectionsOnly();
-      },true);
-    }
-
-    if(isLink && el.getAttribute('data-v4-link')!=='1'){
-      el.setAttribute('data-v4-link','1');
-      el.title='نسخ رابط تسجيل الوكلاء والمعلمين';
-      el.addEventListener('click',function(ev){
-        if(isStaffLink()) return;
-        ev.preventDefault(); ev.stopPropagation();
-        if(ev.stopImmediatePropagation) ev.stopImmediatePropagation();
-        copyRegisterLink();
-      },true);
-    }
-  });
-}
-
-function bindManagerLoginActivation(){
-  Array.from(document.querySelectorAll('button,.action-btn,[role="button"]')).forEach(function(btn){
-    const txt=String(btn.textContent||'').trim();
-    if((btn.id==='mainLoginBtn'||txt.includes('دخول إلى مدرستي')) && btn.getAttribute('data-v4-manager-login')!=='1'){
-      btn.setAttribute('data-v4-manager-login','1');
-      btn.addEventListener('click',function(){
-        setTimeout(activateManagerFromLogin,300);
-        setTimeout(activateManagerFromLogin,1200);
-      },true);
-    }
-  });
-}
-
-function sync(){
-  openStaffRegisterOnly();
-  bindSubmit();
-  bindIcons();
-  bindManagerLoginActivation();
-  if(document.body.classList.contains('staff-register-v4') || document.body.classList.contains('sections-v4')) hideOwnerAI();
-}
-
-document.addEventListener('DOMContentLoaded',function(){
-  sync();
-  setInterval(sync,500);
-});
-window.addEventListener('load',function(){
-  sync();
-  setTimeout(sync,700);
-  setTimeout(sync,1500);
-});
-document.addEventListener('click',function(){
-  setTimeout(sync,150);
-  setTimeout(sync,800);
-},true);
-})();
-</script>
-
-</body></html>`;
+\n</body></html>`;
             const w = window.open('', '_blank');
             w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 500);
         };
@@ -4392,270 +3179,161 @@ document.addEventListener('click',function(){
       '</section>'+
       (s.includeAttendance?'<section class="page"><div class="topbar"></div><header><div class="hblock"><b>المملكة العربية السعودية</b><b>وزارة التعليم</b><span>'+esc(s.schoolName||'المدرسة')+'</span></div><div class="logo">وزارة التعليم</div><div class="meta"><div>'+esc(m.date||today())+'</div></div></header><h1>سجل الحضور والتوثيق</h1><table><thead><tr><th>م</th><th>الاسم</th><th>التوقيع</th></tr></thead><tbody>'+rows+'</tbody></table><div class="note">ملاحظة: يلزم توقيع الحاضرين/ات فور انتهاء الاجتماع وتوثيق المحضر رسميًا.</div><div class="footnote">منصة المدرسة الرقمية الذكية - تاريخ التحقق: '+esc(today())+' - '+esc(code)+'</div></section>':'')+
     '\n
-<style id="top-icons-stable-patch-v1">
-.section-home-btn,.users-manage-btn,.copy-register-link-btn{
-cursor:pointer!important;
+<style id="home-icon-root-fix-v1">
+body.home-sections-mode-v1 #role-selector-screen,
+body.home-sections-mode-v1 #registration-modal,
+body.home-sections-mode-v1 #waiting-screen,
+body.home-sections-mode-v1 #users-management-modal,
+body.home-sections-mode-v1 .modal,
+body.home-sections-mode-v1 .global-admin-badge,
+body.home-sections-mode-v1 .owner-copy-btn,
+body.home-sections-mode-v1 .ai-btn,
+body.home-sections-mode-v1 #ownerBtn,
+body.home-sections-mode-v1 #aiBtn {
+  display:none!important;
+  visibility:hidden!important;
+  pointer-events:none!important;
 }
-#users-management-modal{
-display:none;
-position:fixed;
-inset:0;
-background:rgba(0,0,0,.75);
-z-index:99999;
-align-items:center;
-justify-content:center;
+body.home-sections-mode-v1 #main-ui {
+  display:flex!important;
+  visibility:visible!important;
+  opacity:1!important;
+  pointer-events:auto!important;
 }
-#users-management-modal.active{
-display:flex;
+body.home-sections-mode-v1 #apps-grid {
+  display:grid!important;
+  visibility:visible!important;
+  opacity:1!important;
+  pointer-events:auto!important;
 }
-.users-modal-box{
-background:white;
-width:min(900px,95%);
-max-height:85vh;
-overflow:auto;
-border-radius:24px;
-padding:24px;
-color:#111827;
+body.home-sections-mode-v1 .app-card {
+  display:flex!important;
+  visibility:visible!important;
+  opacity:1!important;
+  pointer-events:auto!important;
 }
-.user-row{
-display:flex;
-justify-content:space-between;
-align-items:center;
-padding:12px;
-border-bottom:1px solid #e5e7eb;
-gap:12px;
-}
-.user-actions button{
-margin-inline:4px;
-padding:6px 12px;
-border-radius:10px;
-font-weight:700;
+body.home-sections-mode-v1 .app-iframe-container,
+body.home-sections-mode-v1 .app-iframe-container.active,
+body.home-sections-mode-v1 .back-button {
+  display:none!important;
 }
 </style>
 
-<div id="users-management-modal">
-  <div class="users-modal-box">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-      <h2 style="font-size:24px;font-weight:800;">إدارة المستخدمين</h2>
-      <button id="close-users-modal-btn" style="background:#ef4444;color:white;padding:8px 16px;border-radius:12px;">إغلاق</button>
-    </div>
-    <div id="users-list-container"></div>
-  </div>
-</div>
-
-<script id="top-icons-stable-script-v1">
+<script id="home-icon-root-fix-v1">
 (function(){
-'use strict';
+  'use strict';
 
-function q(s){return document.querySelector(s);}
-function qa(s){return Array.from(document.querySelectorAll(s));}
+  function by(id){ return document.getElementById(id); }
 
-function showSections(){
-  const apps = document.getElementById('apps-grid');
-  const role = document.getElementById('role-selector-screen');
-  const iframes = qa('.app-iframe-container');
-
-  if(iframes.length){
-    iframes.forEach(x=>x.classList.remove('active'));
+  function hide(el){
+    if(!el) return;
+    el.style.setProperty('display','none','important');
+    el.style.setProperty('visibility','hidden','important');
+    el.style.setProperty('pointer-events','none','important');
   }
 
-  if(apps){
-    apps.style.display='grid';
-    apps.style.visibility='visible';
+  function show(el, display){
+    if(!el) return;
+    el.style.setProperty('display', display || 'flex','important');
+    el.style.setProperty('visibility','visible','important');
+    el.style.setProperty('opacity','1','important');
+    el.style.setProperty('pointer-events','auto','important');
   }
 
-  if(role){
-    role.style.display='none';
-  }
+  function returnToThreeSections(){
+    document.body.classList.add('home-sections-mode-v1');
 
-  const backBtn = q('.back-button');
-  if(backBtn){
-    backBtn.classList.remove('visible');
-  }
-}
+    document.querySelectorAll('.app-iframe-container').forEach(function(el){
+      el.classList.remove('active');
+      hide(el);
+    });
 
-function schoolInfo(){
-  return {
-    schoolId: localStorage.getItem('currentSchoolId') || localStorage.getItem('registration_school_id') || '',
-    schoolCode: localStorage.getItem('registration_school_code') || ''
-  };
-}
+    ['role-selector-screen','registration-modal','waiting-screen','users-management-modal'].forEach(function(id){
+      hide(by(id));
+    });
 
-async function copyRegisterLink(){
-  const info = schoolInfo();
+    document.querySelectorAll('.modal,.global-admin-badge,.owner-copy-btn,.ai-btn,#ownerBtn,#aiBtn').forEach(hide);
 
-  const url = new URL(location.href.split('?')[0]);
-  url.searchParams.set('mode','register');
-  url.searchParams.set('staff','1');
-  url.searchParams.set('invite','1');
-
-  if(info.schoolId){
-    url.searchParams.set('schoolId', info.schoolId);
-  }
-
-  if(info.schoolCode){
-    url.searchParams.set('code', info.schoolCode);
-  }
-
-  try{
-    await navigator.clipboard.writeText(url.toString());
-    alert('تم نسخ رابط تسجيل الوكلاء والمعلمين');
-  }catch(e){
-    prompt('انسخ الرابط:', url.toString());
-  }
-}
-
-async function loadUsers(){
-  const box = document.getElementById('users-list-container');
-  if(!box) return;
-
-  box.innerHTML = '<div style="padding:20px;text-align:center;">جاري تحميل المستخدمين...</div>';
-
-  let users = [];
-
-  try{
-    if(window.SupaStore && window.SupaStore.listUsers){
-      users = await window.SupaStore.listUsers();
+    var back = document.querySelector('.back-button');
+    if(back){
+      back.classList.remove('visible');
+      hide(back);
     }
-  }catch(e){
-    console.error(e);
-  }
 
-  if(!users.length){
-    box.innerHTML = '<div style="padding:20px;text-align:center;">لا يوجد مستخدمون</div>';
-    return;
-  }
+    show(by('main-ui'),'flex');
+    show(by('apps-grid'),'grid');
 
-  box.innerHTML = users.map(function(u){
-    const active = !(u.active===false || u.isActive===false || u.status==='pending');
-    return `
-      <div class="user-row">
-        <div>
-          <div style="font-weight:800;">${u.name || 'مستخدم'}</div>
-          <div style="font-size:13px;color:#6b7280;">${u.email || ''}</div>
-          <div style="margin-top:4px;font-size:13px;">
-            ${u.role === 'agency' ? 'وكيل' : 'معلم'} - 
-            <span style="font-weight:700;color:${active ? '#16a34a':'#dc2626'};">
-              ${active ? 'مفعل':'قيد التفعيل'}
-            </span>
-          </div>
-        </div>
+    document.querySelectorAll('.app-card').forEach(function(card){
+      show(card,'flex');
+    });
 
-        <div class="user-actions">
-          <button onclick="toggleUserActivation('${u.id}', ${active})" style="background:${active ? '#f59e0b':'#16a34a'};color:white;">
-            ${active ? 'تعطيل':'تفعيل'}
-          </button>
-        </div>
-      </div>
-    `;
-  }).join('');
-}
-
-window.toggleUserActivation = async function(id, active){
-  try{
-    if(window.fs && window.fs.updateDoc){
-      await window.fs.updateDoc({table:'users', id:id},{
-        active:!active,
-        isActive:!active,
-        status:!active ? 'active':'pending'
-      });
-
-      loadUsers();
+    if(typeof window.renderGrid === 'function'){
+      try { window.renderGrid('leadership'); } catch(e) {}
     }
-  }catch(e){
-    console.error(e);
-    alert('فشل تحديث المستخدم');
   }
-};
 
-function openUsersModal(){
-  const modal = document.getElementById('users-management-modal');
-  if(modal){
-    modal.classList.add('active');
-    loadUsers();
+  function isHome(el){
+    if(!el) return false;
+    var txt = String(el.textContent || '').trim();
+    var title = String(el.title || el.getAttribute('aria-label') || '').trim();
+    var html = String(el.innerHTML || '');
+    var cls = String(el.className || '');
+    return txt.indexOf('🏠') !== -1 ||
+           title.indexOf('الرئيسية') !== -1 ||
+           title.indexOf('القائمة') !== -1 ||
+           title.indexOf('الأقسام') !== -1 ||
+           html.indexOf('home') !== -1 ||
+           html.indexOf('house') !== -1 ||
+           html.indexOf('fa-home') !== -1 ||
+           cls.indexOf('home') !== -1;
   }
-}
 
-function closeUsersModal(){
-  const modal = document.getElementById('users-management-modal');
-  if(modal){
-    modal.classList.remove('active');
-  }
-}
+  function bindDoc(doc){
+    if(!doc) return;
+    Array.from(doc.querySelectorAll('button,a,[role="button"],.icon-btn,.top-icon,.toolbar button,.header button,.action-icon')).forEach(function(el){
+      if(!isHome(el)) return;
+      if(el.getAttribute('data-home-root-fixed-v1') === '1') return;
 
-function bindIcons(){
-  qa('button,a,.icon-btn,.top-icon').forEach(function(el){
-
-    const txt = (el.textContent || '').trim();
-    const title = (el.title || '').trim();
-    const html = (el.innerHTML || '');
-
-    // أيقونة الصفحة الرئيسية
-    if(
-      txt.includes('🏠') ||
-      title.includes('الرئيسية') ||
-      html.includes('home')
-    ){
-      if(el.dataset.homeBound === '1') return;
-      el.dataset.homeBound = '1';
+      el.setAttribute('data-home-root-fixed-v1','1');
+      el.title = 'العودة إلى واجهة الأقسام الثلاثة';
 
       el.addEventListener('click', function(ev){
         ev.preventDefault();
         ev.stopPropagation();
-        showSections();
+        if(ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+
+        if(window.parent && window.parent !== window && window.parent.showOriginalSectionsFromHomeIcon){
+          window.parent.showOriginalSectionsFromHomeIcon();
+        } else {
+          returnToThreeSections();
+        }
+        return false;
       }, true);
-    }
+    });
+  }
 
-    // أيقونة الرابط
-    if(
-      txt.includes('🔗') ||
-      title.includes('رابط') ||
-      html.includes('link')
-    ){
-      if(el.dataset.linkBound === '1') return;
-      el.dataset.linkBound = '1';
+  function bindAll(){
+    bindDoc(document);
+    document.querySelectorAll('iframe').forEach(function(frame){
+      try {
+        bindDoc(frame.contentDocument || frame.contentWindow.document);
+      } catch(e) {}
+    });
+  }
 
-      el.addEventListener('click', function(ev){
-        ev.preventDefault();
-        ev.stopPropagation();
-        copyRegisterLink();
-      }, true);
-    }
+  window.showOriginalSectionsFromHomeIcon = returnToThreeSections;
 
-    // أيقونة المستخدمين
-    if(
-      txt.includes('👥') ||
-      title.includes('المستخدم') ||
-      title.includes('المستخدمين') ||
-      html.includes('users')
-    ){
-      if(el.dataset.usersBound === '1') return;
-      el.dataset.usersBound = '1';
-
-      el.addEventListener('click', function(ev){
-        ev.preventDefault();
-        ev.stopPropagation();
-        openUsersModal();
-      }, true);
-    }
-
+  document.addEventListener('DOMContentLoaded', function(){
+    bindAll();
+    setInterval(bindAll, 700);
   });
-}
-
-document.addEventListener('DOMContentLoaded', function(){
-  bindIcons();
-
-  const closeBtn = document.getElementById('close-users-modal-btn');
-  if(closeBtn){
-    closeBtn.addEventListener('click', closeUsersModal);
-  }
-
-  setInterval(bindIcons, 1000);
-});
+  window.addEventListener('load', function(){
+    bindAll();
+    setTimeout(bindAll, 500);
+  });
 })();
 </script>
-
-</body></html>';
+\n</body></html>';
   }
   function printCss(){ return '@page{size:A4;margin:0}*{box-sizing:border-box}body{font-family:Cairo,Arial,sans-serif;margin:0;color:#0f172a;background:#f8fafc}.page{width:210mm;min-height:297mm;background:white;margin:0 auto;padding:14mm 12mm;position:relative;page-break-after:always}.topbar{position:absolute;top:0;left:0;right:0;height:8px;background:#08783f}header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid #e5e7eb;padding-bottom:12px}.hblock{line-height:1.8;color:#065f46;font-size:15px;display:flex;flex-direction:column}.logo{text-align:center;color:#059669;font-weight:800}.logo small{font-size:10px;color:#64748b}.meta{font-size:12px;line-height:2;background:#ecfdf5;border-radius:12px;padding:8px 16px;min-width:140px}h1{text-align:center;color:#047857;font-size:28px;margin:16px 0 10px}h2{color:#047857;font-size:15px;margin:13px 0 7px}.basmala{text-align:center;font-size:13px;color:#475569}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}.field,.notice,.teams{background:#f0fdf4;border:1px solid #d1fae5;border-radius:13px;padding:9px;font-size:13px}.notice{line-height:2}.teams{direction:ltr;text-align:left;word-break:break-all;font-size:11px}ol{margin:0;padding:0 24px;background:#fbfffd;border:1px dashed #bbf7d0;border-radius:12px;min-height:32px}li{padding:4px 0;font-size:13px;line-height:1.7}footer{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end;margin-top:18px;border-top:1px solid #e5e7eb;padding-top:12px;font-size:12px}.sig{max-width:120px;max-height:55px;object-fit:contain}.sigLine{width:120px;height:40px;border-bottom:1px solid #334155}.seal{width:90px;height:90px;object-fit:contain}.sealBox{width:90px;height:90px;border:2px dashed #94a3b8;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#64748b;font-weight:800;font-size:11px}.qr{text-align:center;font-size:10px}.qr svg{border:1px solid #d1fae5}.code{direction:ltr;font-weight:800;color:#047857}.footnote{position:absolute;bottom:9mm;left:12mm;right:12mm;border-top:1px solid #edf2f7;padding-top:6px;color:#047857;font-weight:700;font-size:11px}.note{margin-top:14px;background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:12px;text-align:center;color:#92400e;font-size:13px}table{width:100%;border-collapse:collapse;margin-top:14px}th{background:#08783f;color:white;padding:8px;font-size:13px}td{border:1px solid #e5e7eb;height:24px;padding:4px;font-size:12px}td:first-child{width:35px;text-align:center}@media print{body{background:white}.page{margin:0;box-shadow:none}}'; }
   function dayName(dateStr){ try{ var d=dateStr?new Date(dateStr):new Date(); return ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'][d.getDay()]||'';}catch(e){return '';} }
@@ -5121,268 +3799,159 @@ body.school-link-mode.app-started #manager-invite-copy-btn{display:block}
 </script>
 <!-- MANAGER_FIRST_FLOW_SAFE_PATCH_END -->
 
-<style id="top-icons-stable-patch-v1">
-.section-home-btn,.users-manage-btn,.copy-register-link-btn{
-cursor:pointer!important;
+<style id="home-icon-root-fix-v1">
+body.home-sections-mode-v1 #role-selector-screen,
+body.home-sections-mode-v1 #registration-modal,
+body.home-sections-mode-v1 #waiting-screen,
+body.home-sections-mode-v1 #users-management-modal,
+body.home-sections-mode-v1 .modal,
+body.home-sections-mode-v1 .global-admin-badge,
+body.home-sections-mode-v1 .owner-copy-btn,
+body.home-sections-mode-v1 .ai-btn,
+body.home-sections-mode-v1 #ownerBtn,
+body.home-sections-mode-v1 #aiBtn {
+  display:none!important;
+  visibility:hidden!important;
+  pointer-events:none!important;
 }
-#users-management-modal{
-display:none;
-position:fixed;
-inset:0;
-background:rgba(0,0,0,.75);
-z-index:99999;
-align-items:center;
-justify-content:center;
+body.home-sections-mode-v1 #main-ui {
+  display:flex!important;
+  visibility:visible!important;
+  opacity:1!important;
+  pointer-events:auto!important;
 }
-#users-management-modal.active{
-display:flex;
+body.home-sections-mode-v1 #apps-grid {
+  display:grid!important;
+  visibility:visible!important;
+  opacity:1!important;
+  pointer-events:auto!important;
 }
-.users-modal-box{
-background:white;
-width:min(900px,95%);
-max-height:85vh;
-overflow:auto;
-border-radius:24px;
-padding:24px;
-color:#111827;
+body.home-sections-mode-v1 .app-card {
+  display:flex!important;
+  visibility:visible!important;
+  opacity:1!important;
+  pointer-events:auto!important;
 }
-.user-row{
-display:flex;
-justify-content:space-between;
-align-items:center;
-padding:12px;
-border-bottom:1px solid #e5e7eb;
-gap:12px;
-}
-.user-actions button{
-margin-inline:4px;
-padding:6px 12px;
-border-radius:10px;
-font-weight:700;
+body.home-sections-mode-v1 .app-iframe-container,
+body.home-sections-mode-v1 .app-iframe-container.active,
+body.home-sections-mode-v1 .back-button {
+  display:none!important;
 }
 </style>
 
-<div id="users-management-modal">
-  <div class="users-modal-box">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-      <h2 style="font-size:24px;font-weight:800;">إدارة المستخدمين</h2>
-      <button id="close-users-modal-btn" style="background:#ef4444;color:white;padding:8px 16px;border-radius:12px;">إغلاق</button>
-    </div>
-    <div id="users-list-container"></div>
-  </div>
-</div>
-
-<script id="top-icons-stable-script-v1">
+<script id="home-icon-root-fix-v1">
 (function(){
-'use strict';
+  'use strict';
 
-function q(s){return document.querySelector(s);}
-function qa(s){return Array.from(document.querySelectorAll(s));}
+  function by(id){ return document.getElementById(id); }
 
-function showSections(){
-  const apps = document.getElementById('apps-grid');
-  const role = document.getElementById('role-selector-screen');
-  const iframes = qa('.app-iframe-container');
-
-  if(iframes.length){
-    iframes.forEach(x=>x.classList.remove('active'));
+  function hide(el){
+    if(!el) return;
+    el.style.setProperty('display','none','important');
+    el.style.setProperty('visibility','hidden','important');
+    el.style.setProperty('pointer-events','none','important');
   }
 
-  if(apps){
-    apps.style.display='grid';
-    apps.style.visibility='visible';
+  function show(el, display){
+    if(!el) return;
+    el.style.setProperty('display', display || 'flex','important');
+    el.style.setProperty('visibility','visible','important');
+    el.style.setProperty('opacity','1','important');
+    el.style.setProperty('pointer-events','auto','important');
   }
 
-  if(role){
-    role.style.display='none';
-  }
+  function returnToThreeSections(){
+    document.body.classList.add('home-sections-mode-v1');
 
-  const backBtn = q('.back-button');
-  if(backBtn){
-    backBtn.classList.remove('visible');
-  }
-}
+    document.querySelectorAll('.app-iframe-container').forEach(function(el){
+      el.classList.remove('active');
+      hide(el);
+    });
 
-function schoolInfo(){
-  return {
-    schoolId: localStorage.getItem('currentSchoolId') || localStorage.getItem('registration_school_id') || '',
-    schoolCode: localStorage.getItem('registration_school_code') || ''
-  };
-}
+    ['role-selector-screen','registration-modal','waiting-screen','users-management-modal'].forEach(function(id){
+      hide(by(id));
+    });
 
-async function copyRegisterLink(){
-  const info = schoolInfo();
+    document.querySelectorAll('.modal,.global-admin-badge,.owner-copy-btn,.ai-btn,#ownerBtn,#aiBtn').forEach(hide);
 
-  const url = new URL(location.href.split('?')[0]);
-  url.searchParams.set('mode','register');
-  url.searchParams.set('staff','1');
-  url.searchParams.set('invite','1');
-
-  if(info.schoolId){
-    url.searchParams.set('schoolId', info.schoolId);
-  }
-
-  if(info.schoolCode){
-    url.searchParams.set('code', info.schoolCode);
-  }
-
-  try{
-    await navigator.clipboard.writeText(url.toString());
-    alert('تم نسخ رابط تسجيل الوكلاء والمعلمين');
-  }catch(e){
-    prompt('انسخ الرابط:', url.toString());
-  }
-}
-
-async function loadUsers(){
-  const box = document.getElementById('users-list-container');
-  if(!box) return;
-
-  box.innerHTML = '<div style="padding:20px;text-align:center;">جاري تحميل المستخدمين...</div>';
-
-  let users = [];
-
-  try{
-    if(window.SupaStore && window.SupaStore.listUsers){
-      users = await window.SupaStore.listUsers();
+    var back = document.querySelector('.back-button');
+    if(back){
+      back.classList.remove('visible');
+      hide(back);
     }
-  }catch(e){
-    console.error(e);
-  }
 
-  if(!users.length){
-    box.innerHTML = '<div style="padding:20px;text-align:center;">لا يوجد مستخدمون</div>';
-    return;
-  }
+    show(by('main-ui'),'flex');
+    show(by('apps-grid'),'grid');
 
-  box.innerHTML = users.map(function(u){
-    const active = !(u.active===false || u.isActive===false || u.status==='pending');
-    return `
-      <div class="user-row">
-        <div>
-          <div style="font-weight:800;">${u.name || 'مستخدم'}</div>
-          <div style="font-size:13px;color:#6b7280;">${u.email || ''}</div>
-          <div style="margin-top:4px;font-size:13px;">
-            ${u.role === 'agency' ? 'وكيل' : 'معلم'} - 
-            <span style="font-weight:700;color:${active ? '#16a34a':'#dc2626'};">
-              ${active ? 'مفعل':'قيد التفعيل'}
-            </span>
-          </div>
-        </div>
+    document.querySelectorAll('.app-card').forEach(function(card){
+      show(card,'flex');
+    });
 
-        <div class="user-actions">
-          <button onclick="toggleUserActivation('${u.id}', ${active})" style="background:${active ? '#f59e0b':'#16a34a'};color:white;">
-            ${active ? 'تعطيل':'تفعيل'}
-          </button>
-        </div>
-      </div>
-    `;
-  }).join('');
-}
-
-window.toggleUserActivation = async function(id, active){
-  try{
-    if(window.fs && window.fs.updateDoc){
-      await window.fs.updateDoc({table:'users', id:id},{
-        active:!active,
-        isActive:!active,
-        status:!active ? 'active':'pending'
-      });
-
-      loadUsers();
+    if(typeof window.renderGrid === 'function'){
+      try { window.renderGrid('leadership'); } catch(e) {}
     }
-  }catch(e){
-    console.error(e);
-    alert('فشل تحديث المستخدم');
   }
-};
 
-function openUsersModal(){
-  const modal = document.getElementById('users-management-modal');
-  if(modal){
-    modal.classList.add('active');
-    loadUsers();
+  function isHome(el){
+    if(!el) return false;
+    var txt = String(el.textContent || '').trim();
+    var title = String(el.title || el.getAttribute('aria-label') || '').trim();
+    var html = String(el.innerHTML || '');
+    var cls = String(el.className || '');
+    return txt.indexOf('🏠') !== -1 ||
+           title.indexOf('الرئيسية') !== -1 ||
+           title.indexOf('القائمة') !== -1 ||
+           title.indexOf('الأقسام') !== -1 ||
+           html.indexOf('home') !== -1 ||
+           html.indexOf('house') !== -1 ||
+           html.indexOf('fa-home') !== -1 ||
+           cls.indexOf('home') !== -1;
   }
-}
 
-function closeUsersModal(){
-  const modal = document.getElementById('users-management-modal');
-  if(modal){
-    modal.classList.remove('active');
-  }
-}
+  function bindDoc(doc){
+    if(!doc) return;
+    Array.from(doc.querySelectorAll('button,a,[role="button"],.icon-btn,.top-icon,.toolbar button,.header button,.action-icon')).forEach(function(el){
+      if(!isHome(el)) return;
+      if(el.getAttribute('data-home-root-fixed-v1') === '1') return;
 
-function bindIcons(){
-  qa('button,a,.icon-btn,.top-icon').forEach(function(el){
-
-    const txt = (el.textContent || '').trim();
-    const title = (el.title || '').trim();
-    const html = (el.innerHTML || '');
-
-    // أيقونة الصفحة الرئيسية
-    if(
-      txt.includes('🏠') ||
-      title.includes('الرئيسية') ||
-      html.includes('home')
-    ){
-      if(el.dataset.homeBound === '1') return;
-      el.dataset.homeBound = '1';
+      el.setAttribute('data-home-root-fixed-v1','1');
+      el.title = 'العودة إلى واجهة الأقسام الثلاثة';
 
       el.addEventListener('click', function(ev){
         ev.preventDefault();
         ev.stopPropagation();
-        showSections();
+        if(ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+
+        if(window.parent && window.parent !== window && window.parent.showOriginalSectionsFromHomeIcon){
+          window.parent.showOriginalSectionsFromHomeIcon();
+        } else {
+          returnToThreeSections();
+        }
+        return false;
       }, true);
-    }
+    });
+  }
 
-    // أيقونة الرابط
-    if(
-      txt.includes('🔗') ||
-      title.includes('رابط') ||
-      html.includes('link')
-    ){
-      if(el.dataset.linkBound === '1') return;
-      el.dataset.linkBound = '1';
+  function bindAll(){
+    bindDoc(document);
+    document.querySelectorAll('iframe').forEach(function(frame){
+      try {
+        bindDoc(frame.contentDocument || frame.contentWindow.document);
+      } catch(e) {}
+    });
+  }
 
-      el.addEventListener('click', function(ev){
-        ev.preventDefault();
-        ev.stopPropagation();
-        copyRegisterLink();
-      }, true);
-    }
+  window.showOriginalSectionsFromHomeIcon = returnToThreeSections;
 
-    // أيقونة المستخدمين
-    if(
-      txt.includes('👥') ||
-      title.includes('المستخدم') ||
-      title.includes('المستخدمين') ||
-      html.includes('users')
-    ){
-      if(el.dataset.usersBound === '1') return;
-      el.dataset.usersBound = '1';
-
-      el.addEventListener('click', function(ev){
-        ev.preventDefault();
-        ev.stopPropagation();
-        openUsersModal();
-      }, true);
-    }
-
+  document.addEventListener('DOMContentLoaded', function(){
+    bindAll();
+    setInterval(bindAll, 700);
   });
-}
-
-document.addEventListener('DOMContentLoaded', function(){
-  bindIcons();
-
-  const closeBtn = document.getElementById('close-users-modal-btn');
-  if(closeBtn){
-    closeBtn.addEventListener('click', closeUsersModal);
-  }
-
-  setInterval(bindIcons, 1000);
-});
+  window.addEventListener('load', function(){
+    bindAll();
+    setTimeout(bindAll, 500);
+  });
 })();
 </script>
-
-</body>
+\n</body>
 </html>

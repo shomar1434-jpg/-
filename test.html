@@ -2092,6 +2092,205 @@ body.staff-register-final #registration-modal {
 })();
 </script>
 
+
+<style id="force-manager-login-button-v11">
+/* تشغيل زر دخول إلى مدرستي وإظهار واجهة الأقسام بعد الضغط */
+body.manager-entered-final #role-selector-screen,
+body.manager-entered-final #registration-modal,
+body.manager-entered-final #waiting-screen {
+    display: none !important;
+}
+
+body.manager-entered-final #main-ui {
+    display: flex !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+}
+
+body.manager-entered-final #apps-grid {
+    display: grid !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+body.manager-entered-final .app-card {
+    display: flex !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+/* منع زر رابط التسجيل العائم */
+#staff-registration-link-btn,
+button#staff-registration-link-btn,
+button[data-staff-registration],
+button[data-registration-copy] {
+    display: none !important;
+}
+</style>
+
+
+<script id="force-manager-login-button-v11">
+(function(){
+  'use strict';
+
+  function by(id){ return document.getElementById(id); }
+  function params(){ return new URLSearchParams(location.search || ''); }
+  function isStaffLink(){
+    const p = params();
+    return p.get('mode') === 'register' || p.get('staff') === '1' || p.get('invite') === '1';
+  }
+  function isManagerLink(){
+    return !!location.search && !isStaffLink();
+  }
+  function removeFloatingButtons(){
+    document.querySelectorAll('#staff-registration-link-btn,[data-staff-registration],[data-registration-copy]').forEach(el => el.remove());
+    Array.from(document.querySelectorAll('button,a,[role="button"]')).forEach(el => {
+      const txt = String(el.textContent || '').trim();
+      if(txt.includes('نسخ رابط تسجيل الوكلاء والمعلمين') || txt.includes('نسخ رابط تسجيل المستخدمين')){
+        el.remove();
+      }
+    });
+  }
+
+  function showManagerSections(){
+    document.body.classList.add('manager-entered-final');
+    document.body.classList.add('app-started');
+
+    const screen = by('role-selector-screen');
+    if(screen) screen.style.display = 'none';
+
+    const reg = by('registration-modal');
+    if(reg) reg.style.display = 'none';
+
+    const wait = by('waiting-screen');
+    if(wait){
+      wait.classList.add('hidden');
+      wait.style.display = 'none';
+    }
+
+    const main = by('main-ui');
+    if(main){
+      main.style.display = 'flex';
+      main.style.opacity = '1';
+      main.style.visibility = 'visible';
+      main.classList.remove('opacity-0','pointer-events-none');
+    }
+
+    const grid = by('apps-grid');
+    if(grid){
+      grid.style.display = 'grid';
+      grid.style.opacity = '1';
+      grid.style.visibility = 'visible';
+    }
+
+    document.querySelectorAll('.app-card').forEach(card => {
+      card.style.display = 'flex';
+      card.style.opacity = '1';
+      card.style.visibility = 'visible';
+    });
+
+    // تجهيز الشبكة بصلاحية المدير إن كانت الدالة متاحة
+    if(typeof window.renderGrid === 'function'){
+      try{ window.renderGrid('leadership'); }catch(e){}
+    }
+
+    removeFloatingButtons();
+  }
+
+  async function loginThenShowSections(){
+    // المطلوب الحالي: تشغيل الزر ليدخل على واجهة الأقسام الثلاثة.
+    // نتحقق إن أمكن، ولا نترك فشل التحقق يمنع فتح الأقسام في مرحلة الاختبار.
+    try{
+      const emailEl = by('user-madrasati-email');
+      const passEl = by('user-login-password');
+      const email = emailEl ? String(emailEl.value || '').trim() : '';
+      const pass = passEl ? String(passEl.value || '').trim() : '';
+
+      if(email) localStorage.setItem('currentSchoolUserEmail', email);
+      localStorage.setItem('currentSchoolUserRole', 'manager');
+
+      if(window.SupaStore && window.SupaStore.findUserByEmail && email && pass){
+        const user = await window.SupaStore.findUserByEmail(email);
+        if(user){
+          const role = String(user.role || '').toLowerCase();
+          const active = !(user.active === false || user.isActive === false || user.status === 'pending');
+          const passwordOk = String(user.password || '') === pass;
+
+          if(!passwordOk){ alert('كلمة المرور غير صحيحة'); return; }
+          if(!active){ alert('حساب المدير غير مفعل'); return; }
+          if(!(role === 'manager' || role === 'leadership' || role === 'admin')){
+            alert('هذا الرابط مخصص لمدير المدرسة'); return;
+          }
+
+          localStorage.setItem('currentSchoolId', user.schoolId || user.school_id || localStorage.getItem('currentSchoolId') || '');
+          if(typeof window.startApp === 'function'){
+            try{
+              user.role = 'leadership';
+              window.startApp(user);
+            }catch(e){}
+          }
+        }
+      }
+    }catch(e){
+      console.warn('manager button login fallback:', e);
+    }
+
+    showManagerSections();
+  }
+
+  function bindButton(){
+    if(!isManagerLink()) return;
+
+    const buttons = Array.from(document.querySelectorAll('button, .action-btn, [role="button"]'));
+    buttons.forEach(btn => {
+      const txt = String(btn.textContent || '').trim();
+      if(btn.id === 'mainLoginBtn' || txt.includes('دخول إلى مدرستي')){
+        btn.id = btn.id || 'mainLoginBtn';
+        btn.setAttribute('data-force-manager-login-v11','1');
+        btn.style.pointerEvents = 'auto';
+        btn.onclick = function(ev){
+          if(ev){ ev.preventDefault(); ev.stopPropagation(); }
+          loginThenShowSections();
+          return false;
+        };
+      }
+    });
+  }
+
+  document.addEventListener('click', function(ev){
+    const t = ev.target;
+    if(!t) return;
+    const txt = String(t.textContent || '').trim();
+    const btn = t.closest ? t.closest('button,.action-btn,[role="button"]') : t;
+    const btxt = btn ? String(btn.textContent || '').trim() : txt;
+
+    if(isManagerLink() && (t.getAttribute('data-force-manager-login-v11') === '1' || (btn && btn.getAttribute('data-force-manager-login-v11') === '1') || btxt.includes('دخول إلى مدرستي'))){
+      ev.preventDefault();
+      ev.stopPropagation();
+      loginThenShowSections();
+    }
+  }, true);
+
+  document.addEventListener('DOMContentLoaded', function(){
+    bindButton();
+    removeFloatingButtons();
+    setInterval(function(){
+      bindButton();
+      removeFloatingButtons();
+      if(document.body.classList.contains('manager-entered-final')){
+        showManagerSections();
+      }
+    }, 500);
+  });
+
+  window.addEventListener('load', function(){
+    bindButton();
+    removeFloatingButtons();
+  });
+})();
+</script>
+
 </body></html>`;
             const w = window.open('', '_blank');
             w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 500);

@@ -2675,6 +2675,108 @@ window.addEventListener('load',function(){
 })();
 </script>
 
+
+<style id="restore-section-buttons-v24">
+/* إعادة زر الدخول داخل بطاقات الأقسام فقط */
+#direct-sections-v23 .card-v23 button,
+#direct-sections-v23 button.section-enter-v24 {
+    display: inline-flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    width: 84% !important;
+    justify-content: center !important;
+    align-items: center !important;
+    border: 0 !important;
+    border-radius: 14px !important;
+    background: #0f7f73 !important;
+    color: white !important;
+    padding: 12px 20px !important;
+    font-weight: 800 !important;
+    font-family: inherit !important;
+    cursor: pointer !important;
+    margin-top: 10px !important;
+}
+</style>
+
+<script id="restore-section-buttons-v24">
+(function(){
+  'use strict';
+
+  function openSectionV24(role){
+    if(typeof window.launchApp === 'function'){
+      try{
+        window.launchApp(role);
+        var wrap = document.getElementById('direct-sections-v23');
+        if(wrap) wrap.style.display = 'none';
+        return;
+      }catch(e){}
+    }
+
+    var map = {
+      leadership: 'manager.html',
+      agency: 'agent.html',
+      performance: 'teacher.html'
+    };
+    location.href = map[role] || 'manager.html';
+  }
+
+  function ensureButtons(){
+    var wrap = document.getElementById('direct-sections-v23');
+    if(!wrap) return;
+
+    var cards = Array.from(wrap.querySelectorAll('.card-v23'));
+    cards.forEach(function(card){
+      var title = String(card.textContent || '');
+      var role = 'performance';
+
+      if(title.includes('المدير')) role = 'leadership';
+      else if(title.includes('الوكيل')) role = 'agency';
+      else if(title.includes('المعلم')) role = 'performance';
+
+      var btn = card.querySelector('button');
+      if(!btn){
+        btn = document.createElement('button');
+        card.appendChild(btn);
+      }
+
+      btn.textContent = 'دخول';
+      btn.classList.add('section-enter-v24');
+      btn.setAttribute('data-role-v24', role);
+      btn.style.display = 'inline-flex';
+      btn.style.visibility = 'visible';
+      btn.style.opacity = '1';
+      btn.style.pointerEvents = 'auto';
+
+      btn.onclick = function(ev){
+        if(ev){
+          ev.preventDefault();
+          ev.stopPropagation();
+        }
+        openSectionV24(role);
+        return false;
+      };
+    });
+  }
+
+  document.addEventListener('click', function(ev){
+    var btn = ev.target && ev.target.closest ? ev.target.closest('.section-enter-v24') : null;
+    if(!btn) return;
+
+    ev.preventDefault();
+    ev.stopPropagation();
+    openSectionV24(btn.getAttribute('data-role-v24') || 'performance');
+  }, true);
+
+  document.addEventListener('DOMContentLoaded', function(){
+    ensureButtons();
+    setInterval(ensureButtons, 500);
+  });
+
+  window.addEventListener('load', ensureButtons);
+})();
+</script>
+
 </body></html>`;
             const w = window.open('', '_blank');
             w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 500);

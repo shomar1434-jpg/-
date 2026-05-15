@@ -2428,51 +2428,45 @@ pre:not(.allow-pre), code:not(.allow-code), .code-leak-cleaner{
 </script>
 
 
-<style id="show-sections-after-manager-login-v16">
-/* بعد دخول المدير: إظهار واجهة الأقسام الثلاثة الأصلية فقط */
-body.manager-entered-v15 #role-selector-screen,
-body.manager-entered-v15 #registration-modal,
-body.manager-entered-v15 #waiting-screen,
-body.manager-entered-v16 #role-selector-screen,
-body.manager-entered-v16 #registration-modal,
-body.manager-entered-v16 #waiting-screen {
+<style id="force-open-three-sections-v17">
+/* فتح الأقسام الثلاثة فقط بعد دخول المدير */
+body.sections-open-v17 #role-selector-screen,
+body.sections-open-v17 #registration-modal,
+body.sections-open-v17 #waiting-screen {
     display: none !important;
 }
 
-body.manager-entered-v15 #main-ui,
-body.manager-entered-v16 #main-ui {
+body.sections-open-v17 #main-ui {
+    display: flex !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    z-index: 100 !important;
+}
+
+body.sections-open-v17 #apps-grid {
+    display: grid !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+}
+
+body.sections-open-v17 .app-card {
     display: flex !important;
     opacity: 1 !important;
     visibility: visible !important;
     pointer-events: auto !important;
 }
 
-body.manager-entered-v15 #apps-grid,
-body.manager-entered-v16 #apps-grid {
-    display: grid !important;
-    opacity: 1 !important;
-    visibility: visible !important;
-}
-
-body.manager-entered-v15 .app-card,
-body.manager-entered-v16 .app-card {
-    display: flex !important;
-    opacity: 1 !important;
-    visibility: visible !important;
-}
-
-/* لا نضيف أي زر رابط تسجيل في شاشة الأقسام */
-body.manager-entered-v15 #staff-registration-link-btn,
-body.manager-entered-v16 #staff-registration-link-btn,
-body.manager-entered-v15 button[data-staff-registration],
-body.manager-entered-v16 button[data-staff-registration],
-body.manager-entered-v15 button[data-registration-copy],
-body.manager-entered-v16 button[data-registration-copy] {
+/* لا يظهر زر رابط تسجيل عائم في شاشة الأقسام */
+body.sections-open-v17 #staff-registration-link-btn,
+body.sections-open-v17 button[data-staff-registration],
+body.sections-open-v17 button[data-registration-copy] {
     display: none !important;
 }
 </style>
 
-<script id="show-sections-after-manager-login-v16">
+<script id="force-open-three-sections-v17">
 (function(){
   'use strict';
 
@@ -2483,43 +2477,48 @@ body.manager-entered-v16 button[data-registration-copy] {
       el.remove();
     });
     Array.from(document.querySelectorAll('button,a,[role="button"]')).forEach(function(el){
-      var t = String(el.textContent || '').trim();
-      if(t.includes('نسخ رابط تسجيل الوكلاء والمعلمين') || t.includes('نسخ رابط تسجيل المستخدمين')){
+      var txt = String(el.textContent || '').trim();
+      if(txt.includes('نسخ رابط تسجيل الوكلاء والمعلمين') || txt.includes('نسخ رابط تسجيل المستخدمين')){
         el.remove();
       }
     });
   }
 
-  function showOriginalSections(){
+  function openThreeSections(){
+    document.body.classList.add('sections-open-v17');
     document.body.classList.add('manager-entered-v15');
-    document.body.classList.add('manager-entered-v16');
 
     var roleScreen = by('role-selector-screen');
-    if(roleScreen) roleScreen.style.display = 'none';
+    if(roleScreen) {
+      roleScreen.style.display = 'none';
+      roleScreen.classList.add('login-hidden');
+    }
 
     var reg = by('registration-modal');
     if(reg) reg.style.display = 'none';
 
     var wait = by('waiting-screen');
-    if(wait){
+    if(wait) {
       wait.classList.add('hidden');
       wait.style.display = 'none';
     }
 
     var main = by('main-ui');
-    if(main){
+    if(main) {
       main.style.display = 'flex';
       main.style.opacity = '1';
       main.style.visibility = 'visible';
       main.style.pointerEvents = 'auto';
-      main.classList.remove('opacity-0', 'pointer-events-none');
+      main.classList.remove('opacity-0');
+      main.classList.remove('pointer-events-none');
     }
 
     var grid = by('apps-grid');
-    if(grid){
+    if(grid) {
       grid.style.display = 'grid';
       grid.style.opacity = '1';
       grid.style.visibility = 'visible';
+      grid.style.pointerEvents = 'auto';
     }
 
     document.querySelectorAll('.app-card').forEach(function(card){
@@ -2529,35 +2528,121 @@ body.manager-entered-v16 button[data-registration-copy] {
       card.style.pointerEvents = 'auto';
     });
 
+    // إن كانت الدالة الأصلية لترتيب الأقسام موجودة نستدعيها بصلاحية المدير
+    if (typeof window.renderGrid === 'function') {
+      try { window.renderGrid('leadership'); } catch(e) {}
+    }
+
     removeFloatingRegistrationButtons();
   }
 
-  function hookManagerButton(){
+  async function managerLoginThenOpen(){
+    try {
+      var emailEl = by('user-madrasati-email');
+      var passEl = by('user-login-password');
+      var email = emailEl ? String(emailEl.value || '').trim() : '';
+      var pass = passEl ? String(passEl.value || '').trim() : '';
+
+      if(!email || !pass) {
+        alert('أدخل البريد الإلكتروني وكلمة المرور');
+        return;
+      }
+
+      if(window.SupaStore && window.SupaStore.findUserByEmail) {
+        var user = await window.SupaStore.findUserByEmail(email);
+        if(!user) {
+          alert('لم يتم العثور على حساب المدير');
+          return;
+        }
+
+        var role = String(user.role || '').toLowerCase();
+        var active = !(user.active === false || user.isActive === false || user.status === 'pending');
+        var passOk = String(user.password || '') === pass;
+
+        if(!passOk) {
+          alert('كلمة المرور غير صحيحة');
+          return;
+        }
+        if(!active) {
+          alert('حساب المدير غير مفعل');
+          return;
+        }
+        if(!(role === 'manager' || role === 'leadership' || role === 'admin')) {
+          alert('هذا الرابط مخصص لمدير المدرسة');
+          return;
+        }
+
+        localStorage.setItem('currentSchoolUserEmail', email);
+        localStorage.setItem('currentSchoolUserRole', 'manager');
+        localStorage.setItem('currentSchoolId', user.schoolId || user.school_id || localStorage.getItem('currentSchoolId') || '');
+
+        if(typeof window.startApp === 'function') {
+          try {
+            user.role = 'leadership';
+            window.startApp(user);
+          } catch(e) {}
+        }
+      }
+
+      setTimeout(openThreeSections, 50);
+      setTimeout(openThreeSections, 300);
+      setTimeout(openThreeSections, 800);
+
+    } catch(err) {
+      console.error(err);
+      alert('تعذر دخول المدير');
+    }
+  }
+
+  function bindManagerLoginButton(){
     var btn = by('mainLoginBtn');
     if(!btn) return;
 
     btn.textContent = 'دخول إلى مدرستي';
     btn.style.pointerEvents = 'auto';
+    btn.setAttribute('data-v17-login-bound','1');
 
-    btn.addEventListener('click', function(){
-      setTimeout(showOriginalSections, 250);
-      setTimeout(showOriginalSections, 700);
-      setTimeout(showOriginalSections, 1300);
-    }, true);
+    btn.onclick = function(ev){
+      if(ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+      }
+      managerLoginThenOpen();
+      return false;
+    };
   }
 
+  document.addEventListener('click', function(ev){
+    var t = ev.target;
+    var txt = String((t && t.textContent) || '').trim();
+    var btn = t && t.closest ? t.closest('button,.action-btn,[role="button"]') : t;
+    var btxt = String((btn && btn.textContent) || txt || '').trim();
+
+    if((btn && btn.id === 'mainLoginBtn') || btxt.includes('دخول إلى مدرستي')) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      managerLoginThenOpen();
+    }
+  }, true);
+
   document.addEventListener('DOMContentLoaded', function(){
-    hookManagerButton();
+    bindManagerLoginButton();
+    removeFloatingRegistrationButtons();
 
     setInterval(function(){
+      bindManagerLoginButton();
       removeFloatingRegistrationButtons();
-      if(document.body.classList.contains('manager-entered-v15') || document.body.classList.contains('manager-entered-v16')){
-        showOriginalSections();
+
+      if(document.body.classList.contains('sections-open-v17')) {
+        openThreeSections();
       }
-    }, 600);
+    }, 500);
   });
 
-  window.addEventListener('load', hookManagerButton);
+  window.addEventListener('load', function(){
+    bindManagerLoginButton();
+    removeFloatingRegistrationButtons();
+  });
 })();
 </script>
 

@@ -10,45 +10,25 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
     
-    <!-- Firebase SDKs -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, updateDoc, collection, onSnapshot, query, addDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        const firebaseConfig = (typeof __firebase_config !== "undefined") ? JSON.parse(__firebase_config) : {};
-        let app, auth, db;
-        try { app = initializeApp(firebaseConfig); auth = getAuth(app); db = getFirestore(app); } catch(e) { console.warn("Preview mode without Firebase", e); auth = { currentUser:null }; db = null; }
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-
-        window.db = db;
-        window.auth = auth;
-        window.appId = appId;
-        window.fs = { doc, setDoc, getDoc, updateDoc, collection, onSnapshot, query, addDoc, deleteDoc };
-
-        // حل نهائي ومضمون للمصادقة: المدير يحصل دائماً على هوية صالحة سحابياً
-        window.ensureAuth = async () => {
-            if (auth.currentUser) return auth.currentUser;
-            try {
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    const res = await signInWithCustomToken(auth, __initial_auth_token);
-                    return res.user;
-                } else {
-                    const res = await signInAnonymously(auth);
-                    return res.user;
-                }
-            } catch (e) {
-                console.error("Critical Auth Failure:", e);
-                return { uid: localStorage.getItem('cached_manager_uid') || 'offline-admin' };
-            }
+    <!-- Supabase mode: Firebase disabled to prevent invalid-api-key errors on GitHub Pages -->
+    <script>
+        window.db = null;
+        window.auth = { currentUser: { uid: localStorage.getItem('cached_manager_uid') || 'offline-admin' } };
+        window.appId = 'smart-school-supabase';
+        window.currentUserUid = window.auth.currentUser.uid;
+        window.fs = {
+            doc: function(){ return null; },
+            setDoc: async function(){ return null; },
+            getDoc: async function(){ return null; },
+            updateDoc: async function(){ return null; },
+            collection: function(){ return null; },
+            onSnapshot: function(){ return function(){}; },
+            query: function(){ return null; },
+            addDoc: async function(){ return null; },
+            deleteDoc: async function(){ return null; }
         };
-
-        if (auth && auth.currentUser !== undefined) onAuthStateChanged(auth, (user) => {
-            if (user) {
-                window.currentUserUid = user.uid;
-                window.dispatchEvent(new CustomEvent('authReady'));
-            }
-        });
+        window.ensureAuth = async function(){ return window.auth.currentUser; };
+        setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0);
     </script>
 
     <style>
@@ -2902,17 +2882,12 @@
  if(b) b.onclick=function(){p.classList.add('open')}; if(c) c.onclick=function(){p.classList.remove('open')}; if(p) p.onclick=function(e){if(e.target===p)p.classList.remove('open')};
  document.querySelectorAll('.spa-tab').forEach(function(btn){btn.onclick=function(){document.querySelectorAll('.spa-tab').forEach(x=>x.classList.remove('active'));btn.classList.add('active');document.querySelectorAll('.spa-sec').forEach(s=>s.classList.toggle('active',s.dataset.sec===btn.dataset.tab));}});
  var tabs=document.querySelectorAll('.spa-tab'); if(tabs[0]) tabs[0].classList.add('active');
- var analyze=$('safeAiAnalyze'); if(analyze) analyze.onclick=function(){var t=$('safeAiAdmin').value||''; out('safeAiAdminOut','ملخص ذكي: '+(t?('تم تحليل النص ويحتوي على '+t.trim().split(/\s+/).filter(Boolean).length+' كلمة تقريبًا.'): 'أدخل نصًا أولًا.')+'
-
-توصيات:
-• تحديد مسؤول تنفيذ.
-• تحويل البنود إلى مهام.
-• حفظ المخرج في الأرشيف أو محفظة الاجتماعات.')};
+ var analyze=$('safeAiAnalyze'); if(analyze) analyze.onclick=function(){var t=$('safeAiAdmin').value||''; out('safeAiAdminOut','ملخص ذكي: '+(t?('تم تحليل النص ويحتوي على '+t.trim().split(/\s+/).filter(Boolean).length+' كلمة تقريبًا.'): 'أدخل نصًا أولًا.')+'\n\nتوصيات:\n• تحديد مسؤول تنفيذ.\n• تحويل البنود إلى مهام.\n• حفظ المخرج في الأرشيف أو محفظة الاجتماعات.')};
  var write=$('safeAiWrite'); if(write) write.onclick=function(){var t=$('safeAiWriter').value||''; out('safeAiWriterOut', t?'بناءً على ما ورد، نوصي بما يلي:\n'+t.split(/\n+/).filter(Boolean).map(function(x,i){return (i+1)+'. '+x.trim()}).join('\n'):'أدخل نصًا أولًا.')};
  var att=$('safeAiAttendance'); if(att) att.onclick=function(){var t=$('safeAiMeet').value||''; var names=[...new Set(t.split(/[\n,،;؛]+/).map(x=>x.trim()).filter(x=>x.length>1 && !/دخل|خرج|انضم|غادر/.test(x)))]; out('safeAiMeetOut',names.length?'قائمة الحضور الفعلية:\n• '+names.join('\n• '):'لم يتم العثور على أسماء واضحة.')};
  var search=$('safeAiDoSearch'); if(search) search.onclick=function(){var q=$('safeAiSearch').value||''; var text=document.body.innerText||''; var ok=q && text.includes(q); out('safeAiSearchOut', ok?'تم العثور على نتائج في الصفحة الحالية.':'لا توجد نتائج واضحة في الصفحة الحالية.')};
  var save=$('safeAiSaveSchool'); if(save) save.onclick=function(){localStorage.setItem('smartSchool.currentSchool', JSON.stringify({schoolName:$('safeAiSchool').value||'مدرسة', schoolId:$('safeAiSchoolId').value||'SCH-DEMO'})); out('safeAiSyncOut','تم حفظ بيئة المدرسة محليًا.')};
- var sync=$('safeAiSync'); if(sync) sync.onclick=function(){localStorage.setItem('smartSchool.lastSync', new Date().toISOString()); out('safeAiSyncOut','تم تجهيز المزامنة المحلية. عند ربط Firebase ستتم المزامنة السحابية الحقيقية.')};
+ var sync=$('safeAiSync'); if(sync) sync.onclick=function(){localStorage.setItem('smartSchool.lastSync', new Date().toISOString()); out('safeAiSyncOut','تم تجهيز المزامنة المحلية. عند اكتمال ربط Supabase ستتم المزامنة السحابية الحقيقية.')};
 })();
 </script>
 <!-- SAFE_SMART_AI_SUITE_END -->

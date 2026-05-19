@@ -66,6 +66,28 @@
     if(error) throw error;
     return (data||[]).map(normalizeSchool);
   }
+  async function insertUserCompat(row){
+    const sb = getClient();
+    let q = await sb.from('users').insert(row).select('*').single();
+    if(q.error && /full_name/i.test(q.error.message || '')){
+      const fallback = Object.assign({}, row, { name: row.full_name });
+      delete fallback.full_name;
+      q = await sb.from('users').insert(fallback).select('*').single();
+    }
+    if(q.error) throw q.error;
+    return q.data;
+  }
+  async function updateUserCompat(row, id){
+    const sb = getClient();
+    let q = await sb.from('users').update(row).eq('id',id).select('*').single();
+    if(q.error && /full_name/i.test(q.error.message || '')){
+      const fallback = Object.assign({}, row, { name: row.full_name });
+      delete fallback.full_name;
+      q = await sb.from('users').update(fallback).eq('id',id).select('*').single();
+    }
+    if(q.error) throw q.error;
+    return q.data;
+  }
   async function createSchoolWithManager(payload){
     const sb = getClient(); if(!sb) throw new Error('Supabase غير جاهز');
     const schoolCode = payload.schoolCode || ('SCH-' + Math.random().toString(36).slice(2,8).toUpperCase());
@@ -81,7 +103,7 @@
       login_link: payload.loginLink || null
     }).select('*').single();
     if(schoolErr) throw schoolErr;
-    const {data:user,error:userErr} = await sb.from('users').insert({
+    const user = await insertUserCompat({
       school_id: school.id,
       full_name: payload.managerName,
       email: payload.email,
@@ -90,8 +112,7 @@
       status: 'active',
       is_primary_manager: true,
       must_change_password: false
-    }).select('*').single();
-    if(userErr) throw userErr;
+    });
     return { school: normalizeSchool(school), manager: normalizeUser(user, school) };
   }
   async function updateSchoolStatus(schoolId,status){
@@ -116,7 +137,7 @@
     if(!schoolId) throw new Error('الرابط غير مرتبط بمدرسة صحيحة');
     const {data:existing} = await sb.from('users').select('id').eq('email',payload.email).eq('school_id',schoolId).maybeSingle();
     if(existing) throw new Error('يوجد طلب أو حساب سابق بنفس البريد داخل هذه المدرسة');
-    const {data:user,error} = await sb.from('users').insert({
+    const user = await insertUserCompat({
       school_id: schoolId,
       full_name: payload.name,
       email: payload.email,
@@ -125,8 +146,7 @@
       status: 'pending',
       is_primary_manager: false,
       must_change_password: false
-    }).select('*').single();
-    if(error) throw error;
+    });
     return normalizeUser(user, school);
   }
   async function listUsersBySchool(schoolId){
@@ -152,23 +172,22 @@
       status: payload.status || 'pending',
       is_primary_manager: !!payload.isPrimaryManager
     };
-    let q;
-    if(payload.id){
-      q = await sb.from('users').update(row).eq('id',payload.id).select('*').single();
-    } else {
-      q = await sb.from('users').insert(row).select('*').single();
-    }
-    if(q.error) throw q.error;
-    return normalizeUser(q.data);
+    const data = payload.id ? await updateUserCompat(row, payload.id) : await insertUserCompat(row);
+    return normalizeUser(data);
   }
   async function login(email,password,schoolId){
     const sb = getClient(); if(!sb) throw new Error('Supabase غير جاهز');
-    let query = sb.from('users').select('*, schools(*)').eq('email',email).eq('password',password).neq('status','deleted');
+    let query = sb.from('users').select('*').eq('email',email).eq('password',password).neq('status','deleted');
     if(schoolId) query = query.eq('school_id',schoolId);
     const {data,error} = await query.maybeSingle();
     if(error) throw error;
     if(!data) return null;
-    return normalizeUser(data, data.schools);
+    let school = null;
+    if(data.school_id){
+      const sch = await sb.from('schools').select('*').eq('id',data.school_id).maybeSingle();
+      if(!sch.error) school = sch.data;
+    }
+    return normalizeUser(data, school);
   }
   window.SmartSchoolSupabase = { getClient, appRoleToDb, dbRoleToApp, normalizeUser, normalizeSchool, listSchools, createSchoolWithManager, updateSchoolStatus, registerSchoolUser, listUsersBySchool, updateUserStatus, upsertSchoolUser, login };
 })();

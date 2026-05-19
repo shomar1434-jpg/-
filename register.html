@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>تسجيل مستخدم جديد - منصة المدرسة الرقمية الذكية</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--primary:#1e7b78;--navy:#0f172a}
+*{box-sizing:border-box}
+body{font-family:'Cairo',sans-serif;background:var(--navy);min-height:100vh;margin:0;color:#0f172a;display:flex;align-items:center;justify-content:center;padding:18px;overflow-x:hidden}
+body:before{content:"";position:fixed;inset:0;background:radial-gradient(circle at 20% 10%,rgba(30,123,120,.46),transparent 35%),linear-gradient(135deg,#0f172a,#123b3a);z-index:-1}.card{background:white;border-radius:30px;box-shadow:0 30px 80px rgba(0,0,0,.35);width:100%;max-width:620px;overflow:hidden}.head{background:var(--primary);color:white;padding:24px;text-align:center}.field{width:100%;border:1px solid #cbd5e1;border-radius:16px;padding:15px;font-size:15px;outline:none;background:white}.field:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(30,123,120,.12)}.btn{background:var(--primary);color:white;border:none;border-radius:16px;padding:15px;font-weight:800;width:100%;cursor:pointer;font-size:16px}.hint{background:#f0fdfa;border:1px solid #ccfbf1;color:#115e59;border-radius:18px;padding:14px;font-size:12px;line-height:1.9}.success{display:none;text-align:center;padding:34px}.hide{display:none!important}.err{color:#dc2626}.ok{color:#0f766e}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="head">
+    <h1 class="text-2xl font-extrabold">واجهة تسجيل المستخدمين</h1>
+    <p id="school-title" class="text-sm opacity-90 mt-2">رابط تسجيل مرتبط بالمدرسة</p>
+  </div>
+  <form id="reg-form" class="p-6 space-y-4">
+    <div class="hint">املأ بياناتك، وسيظهر طلبك في أيقونة <b>حسابات المستخدمين</b> بحالة <b>معلّق</b> حتى يقوم المدير/ة بالتفعيل.</div>
+    <input class="field" id="name" required placeholder="الاسم">
+    <input class="field" id="email" required type="email" placeholder="بريد منصة مدرستي">
+    <input class="field" id="password" required type="password" placeholder="الرقم السري">
+    <select class="field" id="role" required>
+      <option value="" selected disabled>القسم</option>
+      <option value="agent">قسم الوكيل/ة</option>
+      <option value="teacher">قسم المعلم/ة</option>
+    </select>
+    <button class="btn" type="submit">إرسال طلب التسجيل</button>
+    <p id="msg" class="text-center text-xs font-bold"></p>
+  </form>
+  <div id="success" class="success">
+    <div class="text-6xl mb-4">✅</div>
+    <h2 class="text-2xl font-extrabold text-teal-800">تم إرسال طلب التسجيل</h2>
+    <p class="text-slate-500 text-sm mt-3">سيظهر الطلب لدى المدير/ة في حسابات المستخدمين بحالة معلّق.</p>
+  </div>
+</div>
+<script>
+(function(){
+  const qs=new URLSearchParams(location.search);
+  const invite={
+    admin:qs.get('admin')||qs.get('owner')||'smartSchoolUnifiedOpsV2',
+    token:qs.get('token')||qs.get('register')||'',
+    schoolId:qs.get('schoolId')||'',
+    schoolName:qs.get('schoolName')||''
+  };
+  const title=document.getElementById('school-title');
+  title.textContent=invite.schoolName?('رابط تسجيل خاص بمدرسة: '+invite.schoolName):'رابط تسجيل مرتبط بالمدرسة';
+  document.getElementById('reg-form').addEventListener('submit',function(e){
+    e.preventDefault();
+    const msg=document.getElementById('msg'); msg.textContent=''; msg.className='text-center text-xs font-bold err';
+    if(!invite.admin||!invite.token){ msg.textContent='الرابط غير صالح لأنه غير مرتبط بحساب مدير/ة.'; return; }
+    const name=document.getElementById('name').value.trim();
+    const email=document.getElementById('email').value.trim();
+    const password=document.getElementById('password').value.trim();
+    const role=document.getElementById('role').value;
+    if(!name||!email||!password||!role){ msg.textContent='يرجى تعبئة الاسم والبريد والرقم السري والقسم.'; return; }
+    const account={
+      id:'reg_'+Date.now()+'_'+Math.random().toString(36).slice(2),
+      name,email,password,loginPassword:password,passwordMasked:'••••••',role,
+      phone:'',nationalId:'',schoolName:invite.schoolName,schoolId:invite.schoolId,
+      isActive:false,status:'pending',source:'registration_link',
+      adminOwnerId:invite.admin,registrationToken:invite.token,registeredViaManagerLink:true,
+      permissions:[],
+      dateJoined:new Date().toLocaleString('ar-SA')
+    };
+    const keys=['smartSchoolUnifiedOpsV2_users','smart_school_users'];
+    for(const key of keys){
+      const all=JSON.parse(localStorage.getItem(key)||'[]');
+      const exists=all.some(u=>String(u.email||'').toLowerCase()===email.toLowerCase() && String(u.adminOwnerId||invite.admin)===String(invite.admin));
+      if(exists){ msg.textContent='يوجد طلب أو حساب سابق بنفس البريد داخل هذه المدرسة.'; return; }
+    }
+    for(const key of keys){
+      const all=JSON.parse(localStorage.getItem(key)||'[]');
+      all.push(account);
+      localStorage.setItem(key,JSON.stringify(all));
+    }
+    document.getElementById('reg-form').classList.add('hide');
+    document.getElementById('success').style.display='block';
+  });
+})();
+</script>
+</body>
+</html>

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>منصة المدرسة الرقمية الذكية - نظام التحكم المركزي</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
     
     <!-- Firebase SDKs -->
@@ -216,21 +217,6 @@
     </style>
 
 <style id="remove-main-cloud-toolbar">#ssCloudToolbar,.ss-cloud-toolbar{display:none!important;visibility:hidden!important;pointer-events:none!important}</style>
-
-<style id="lower-main-sections-safe-final">
-/* التعديل الأخير: إنزال بطاقات الأقسام الثلاثة فقط لإظهار عنوان المنصة والخلفية بوضوح، دون المساس بسكربتات الدخول أو وضع المعاينة */
-#main-ui #apps-grid {
-    margin-top: clamp(4.5rem, 9vh, 7.5rem) !important;
-}
-#main-ui header {
-    margin-bottom: 0 !important;
-}
-@media (max-width: 768px) {
-    #main-ui #apps-grid {
-        margin-top: 3rem !important;
-    }
-}
-</style>
 </head>
 <body>
 
@@ -247,7 +233,7 @@
                        class="w-full p-3 rounded-xl bg-white/10 border border-white/20 text-white text-center outline-none focus:border-teal-400">
                 
                 <div class="flex items-center justify-between px-2">
-                    <button onclick="openRegistrationModal()" class="action-btn text-xs text-slate-300">مستخدم جديد</button>
+                    <button onclick="openSchoolRequestModal()" class="action-btn text-xs text-slate-300">مدرسة جديدة</button>
                     <button id="mainLoginBtn" onclick="handleAdminDirectEntry()" class="action-btn bg-teal-600 text-white border-none shadow-lg">دخول</button>
                 </div>
 
@@ -256,26 +242,57 @@
             </div>
 
             <div class="grid grid-cols-3 gap-3">
-                <button onclick="handleRoleSelection('leadership')" class="role-btn rounded-2xl flex flex-col items-center">🏛️<br><span class="text-[10px] font-bold text-white">قسم المدير/ة</span></button>
+                <button onclick="handleRoleSelection('leadership')" class="role-btn rounded-2xl flex flex-col items-center">🏛️<br><span class="text-[10px] font-bold text-white">قسم مدير النظام</span></button>
                 <button onclick="handleRoleSelection('agency')" class="role-btn rounded-2xl flex flex-col items-center">📑<br><span class="text-[10px] font-bold text-white">قسم الوكيل/ة</span></button>
                 <button onclick="handleRoleSelection('performance')" class="role-btn rounded-2xl flex flex-col items-center">👨‍🏫<br><span class="text-[10px] font-bold text-white">قسم المعلم/ة</span></button>
             </div>
         </div>
     </div>
 
-    <!-- نافذة طلب تسجيل جديد -->
+    <!-- نافذة طلب تسجيل جديد مرتبطة برابط المدرسة وبنفس خانات قالب Excel -->
     <div id="registration-modal" class="modal">
-        <div class="modal-content max-w-md text-right">
-            <h3 class="text-xl font-bold mb-4">طلب تسجيل حساب جديد</h3>
-            <div class="space-y-4">
-                <input type="text" id="reg-name" class="w-full p-3 border rounded-xl text-sm" placeholder="الاسم الرباعي">
-                <input type="email" id="reg-email" class="w-full p-3 border rounded-xl text-sm" placeholder="البريد الإلكتروني">
+        <div class="modal-content max-w-xl text-right">
+            <h3 class="text-xl font-bold mb-2">طلب تسجيل حساب جديد</h3>
+            <p class="text-xs text-slate-500 mb-4">هذا النموذج مرتبط برابط المدرسة، وسيظهر الطلب في حسابات المستخدمين بحالة معلّق حتى تفعيل المدير/ة.</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <input type="text" id="reg-name" class="w-full p-3 border rounded-xl text-sm" placeholder="الاسم">
+                <input type="email" id="reg-email" class="w-full p-3 border rounded-xl text-sm" placeholder="بريد منصة مدرستي">
+                <input type="password" id="reg-password" class="w-full p-3 border rounded-xl text-sm" placeholder="الرقم السري">
                 <select id="reg-role" class="w-full p-3 border rounded-xl text-sm">
                     <option value="performance">معلم/ة</option>
                     <option value="agency">وكيل/ة مدرسة</option>
+                    <option value="leadership">مدير النظام</option>
                 </select>
+                <input type="tel" id="reg-phone" class="w-full p-3 border rounded-xl text-sm" placeholder="الجوال">
+                <input type="text" id="reg-national-id" class="w-full p-3 border rounded-xl text-sm" placeholder="الهوية">
+                <input type="text" id="reg-school-name" class="w-full p-3 border rounded-xl text-sm" placeholder="اسم المدرسة">
+                <input type="text" id="reg-school-id" class="w-full p-3 border rounded-xl text-sm" placeholder="معرف المدرسة">
+            </div>
+            <div class="space-y-3 mt-4">
                 <button onclick="submitRegistrationRequest()" class="w-full bg-teal-700 text-white py-3 rounded-xl font-bold shadow-lg">إرسال الطلب لتفعيل الحساب</button>
                 <button onclick="closeModal('registration-modal')" class="w-full text-slate-400 text-xs text-center mt-2">إلغاء</button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- نافذة طلب مدرسة جديدة / مدير مدرسة مستقل -->
+    <div id="school-request-modal" class="modal">
+        <div class="modal-content max-w-xl text-right">
+            <h3 class="text-xl font-bold mb-2">طلب إنشاء مدرسة جديدة</h3>
+            <p class="text-xs text-slate-500 mb-4">هذا الطلب ينشئ مدير مدرسة مستقل بحالة معلّق حتى يعتمده مدير النظام. بعد التفعيل يرتبط المدير بمدرسته ويُستخدم رابط التسجيل الداخلي لإضافة مستخدمي المدرسة.</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <input type="text" id="school-req-school-name" class="w-full p-3 border rounded-xl text-sm" placeholder="اسم المدرسة">
+                <input type="text" id="school-req-manager-name" class="w-full p-3 border rounded-xl text-sm" placeholder="اسم المدير">
+                <input type="email" id="school-req-email" class="w-full p-3 border rounded-xl text-sm" placeholder="بريد منصة مدرستي للمدير">
+                <input type="password" id="school-req-password" class="w-full p-3 border rounded-xl text-sm" placeholder="الرقم السري الأولي">
+            </div>
+            <div class="mt-4 p-3 rounded-xl bg-amber-50 border border-amber-100 text-xs text-amber-800 leading-6">
+                عند اعتماد مدير النظام لهذا الطلب سيتم إنشاء معرف مدرسة مستقل وربط المدير بها، ثم يستخدم المدير رابط التسجيل الداخلي لإضافة الوكلاء والمعلمين.
+            </div>
+            <div class="space-y-3 mt-4">
+                <button onclick="submitSchoolRequest()" class="w-full bg-teal-700 text-white py-3 rounded-xl font-bold shadow-lg">إرسال طلب المدرسة للاعتماد</button>
+                <button onclick="closeModal('school-request-modal')" class="w-full text-slate-400 text-xs text-center mt-2">إلغاء</button>
             </div>
         </div>
     </div>
@@ -300,6 +317,20 @@
             <h1 class="text-3xl md:text-4xl font-black text-white drop-shadow-md">منصة المدرسة الرقمية الذكية</h1>
             <p class="text-teal-300 text-xs mt-2 font-bold">النظام السحابي نشط ✅</p>
         </header>
+
+        <!-- جرس التنبيهات -->
+        <div id="bell-container" class="w-full max-w-4xl mx-auto flex justify-center mb-8" style="visibility:hidden; pointer-events:none;">
+            <div id="bell-element" class="p-4 rounded-3xl border border-white/20 shadow-2xl cursor-pointer flex items-center gap-4 bg-slate-800 transition-all hover:scale-105" onclick="openAlertsPopup()">
+                <div class="relative">
+                    <span class="text-3xl">🔔</span>
+                    <div id="bell-badge" class="notification-badge hidden">0</div>
+                </div>
+                <div class="text-right">
+                    <div class="text-xs font-extrabold text-white">تنبيهات النظام</div>
+                    <div class="text-[10px] text-slate-400 font-bold">لديك رسائل إدارية هامة</div>
+                </div>
+            </div>
+        </div>
 
         <div id="apps-grid" class="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto w-full px-4"></div>
     </div>
@@ -468,7 +499,18 @@
                 </select>
             </div>
 
+            <div class="bg-slate-50 border border-slate-200 rounded-2xl p-3 mb-4">
+                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                    <div class="text-xs text-slate-600 font-bold">حدد محضر اجتماع واحد بعلامة صح، ثم نفّذ الإجراء المطلوب عليه.</div>
+                    <div class="flex flex-wrap gap-2">
+                        <button onclick="previewSelectedMeetingPortfolio()" class="bg-teal-700 text-white px-4 py-2 rounded-xl text-xs font-extrabold">معاينة</button>
+                        <button onclick="downloadSelectedMeetingPortfolio()" class="bg-slate-800 text-white px-4 py-2 rounded-xl text-xs font-extrabold">تنزيل</button>
+                        <button onclick="openMeetingArchiveFolderPicker()" class="bg-amber-600 text-white px-4 py-2 rounded-xl text-xs font-extrabold">إرسال للأرشيف</button>
+                    </div>
+                </div>
+            </div>
             <div id="meetings-portfolio-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+            <div id="meeting-archive-picker" class="hidden mt-5 bg-amber-50 border border-amber-200 rounded-3xl p-4"></div>
             <div id="meeting-portfolio-details" class="hidden mt-5 bg-slate-50 border border-slate-200 rounded-3xl p-4"></div>
         </div>
     </div>
@@ -480,6 +522,8 @@
                 <h3 class="text-lg font-bold">👥 إدارة حسابات المنصة</h3>
                 <div class="flex gap-2">
                     <button onclick="openAddUserModal()" class="bg-teal-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold shadow-md">+ إضافة حساب</button>
+                    <button onclick="openExcelImportModal()" class="bg-emerald-700 text-white px-4 py-1.5 rounded-lg text-xs font-bold shadow-md">📥 استيراد Excel</button>
+                    <button onclick="downloadUsersExcelTemplate()" class="bg-slate-700 text-white px-4 py-1.5 rounded-lg text-xs font-bold shadow-md">📄 قالب Excel</button>
                     <button onclick="closeModal('user-management-modal')" class="text-slate-400 font-bold">إغلاق</button>
                 </div>
             </div>
@@ -507,7 +551,7 @@
                 <select id="edit-role" class="w-full p-2 border rounded-lg text-sm">
                     <option value="performance">قسم المعلم/ة</option>
                     <option value="agency">قسم الوكيل/ة</option>
-                    <option value="leadership">قسم المدير/ة</option>
+                    <option value="leadership">قسم مدير النظام</option>
                 </select>
                 <select id="edit-active" class="w-full p-2 border rounded-lg text-sm">
                     <option value="true">مفعل / نشط</option>
@@ -516,6 +560,49 @@
                 <p class="text-[10px] text-slate-500 leading-relaxed">يمكن من هنا إضافة المستخدم، تحديد صلاحية الدخول، ثم تفعيل الحساب أو تعليقه.</p>
                 <button id="saveUserBtn" onclick="saveUserEdit()" class="w-full bg-teal-700 text-white py-2 rounded-lg font-bold shadow-lg">حفظ المستخدم والصلاحيات</button>
                 <button onclick="closeModal('edit-user-modal')" class="text-slate-400 text-xs text-center mt-2">إلغاء</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="excel-import-modal" class="modal">
+        <div class="modal-content max-w-4xl text-right">
+            <div class="flex justify-between items-center mb-5">
+                <div>
+                    <h3 class="text-lg font-bold">📥 استيراد طلبات المستخدمين من Excel</h3>
+                    <p class="text-[11px] text-slate-500 mt-1 font-bold">يتم إنشاء الحسابات بحالة معلق تلقائيًا، ولا يستطيع المستخدم الدخول إلا بعد تفعيل المدير.</p>
+                </div>
+                <button onclick="closeModal('excel-import-modal')" class="text-slate-400 font-bold">إغلاق</button>
+            </div>
+            <div class="bg-emerald-50 border border-emerald-100 rounded-2xl p-4 mb-4 text-[12px] text-emerald-900 leading-7">
+                الأعمدة المقبولة في ملف Excel: <b>الاسم</b>، <b>بريد منصة مدرستي</b>، <b>الرقم السري</b>، <b>الدور</b>، <b>الجوال</b>، <b>الهوية</b>. يمكن أن تكون التسميات عربية أو إنجليزية.
+                <br>القيم المقبولة للدور: مدير، وكيل، معلم، leadership، agency، performance.
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 items-end mb-4">
+                <label class="md:col-span-2 block">
+                    <span class="text-xs font-bold text-slate-600">اختر ملف Excel</span>
+                    <input id="users-excel-file" type="file" accept=".xlsx,.xls" class="w-full mt-1 p-2 border rounded-xl text-xs bg-white">
+                </label>
+                <button onclick="previewUsersExcelImport()" class="bg-emerald-700 text-white py-3 rounded-xl text-xs font-bold shadow-md">معاينة الملف</button>
+            </div>
+            <div id="excel-import-summary" class="hidden mb-4 rounded-2xl bg-slate-50 border p-3 text-xs font-bold text-slate-700"></div>
+            <div class="overflow-x-auto max-h-80 border rounded-2xl">
+                <table class="w-full text-right text-xs">
+                    <thead class="bg-slate-100 sticky top-0"><tr>
+                        <th class="p-3 border-b">الاسم</th>
+                        <th class="p-3 border-b">بريد منصة مدرستي</th>
+                        <th class="p-3 text-center border-b">الرقم السري</th>
+                        <th class="p-3 text-center border-b">الدور</th>
+                        <th class="p-3 text-center border-b">الحالة</th>
+                        <th class="p-3 border-b">ملاحظات</th>
+                    </tr></thead>
+                    <tbody id="excel-import-preview-body">
+                        <tr><td colspan="6" class="p-6 text-center text-slate-400">لم يتم اختيار ملف بعد.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="flex justify-between items-center gap-3 mt-5">
+                <button onclick="downloadUsersExcelTemplate()" class="bg-slate-100 text-slate-700 px-4 py-2 rounded-xl text-xs font-bold">تحميل قالب Excel</button>
+                <button id="confirm-excel-import-btn" onclick="confirmUsersExcelImport()" disabled class="bg-teal-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-6 py-2 rounded-xl text-xs font-bold shadow-md">اعتماد الاستيراد كطلبات معلقة</button>
             </div>
         </div>
     </div>
@@ -619,37 +706,119 @@
         };
 
         const openRegistrationModal = () => { closeModal('registration-modal'); document.getElementById('registration-modal').style.display = 'flex'; };
+        const openSchoolRequestModal = () => { closeModal('school-request-modal'); document.getElementById('school-request-modal').style.display = 'flex'; };
         const openAddUserModal = () => { openEditModal('user-'+Date.now(), '', '', 'performance'); };
+
+        const makeSchoolId = (schoolName, email) => {
+            const base = String(schoolName || email || 'school').replace(/[^a-zA-Z0-9؀-ۿ]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 20) || 'school';
+            return 'SCH-' + base + '-' + Math.random().toString(36).slice(2, 7).toUpperCase();
+        };
+
+        const submitSchoolRequest = async () => {
+            const schoolName = document.getElementById('school-req-school-name').value.trim();
+            const managerName = document.getElementById('school-req-manager-name').value.trim();
+            const email = document.getElementById('school-req-email').value.trim();
+            const password = document.getElementById('school-req-password').value.trim();
+            if (!schoolName || !managerName || !email || !password) { showToast('يرجى تعبئة اسم المدرسة واسم المدير والبريد والرقم السري'); return; }
+            const emailKey = email.toLowerCase();
+            const allUsers = JSON.parse(localStorage.getItem('smart_school_users') || '[]');
+            if (allUsers.some(u => String(u.email || '').toLowerCase() === emailKey)) { showToast('يوجد طلب أو حساب سابق بنفس البريد'); return; }
+            const requestId = 'school_req_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+            const schoolId = makeSchoolId(schoolName, email);
+            const managerData = {
+                id: requestId,
+                name: managerName,
+                email,
+                password,
+                loginPassword: password,
+                passwordMasked: '••••••',
+                role: 'leadership',
+                accountType: 'school_manager',
+                isPrimaryManager: true,
+                isSchoolOwner: true,
+                schoolName,
+                schoolId,
+                status: 'pending',
+                isActive: false,
+                source: 'school_request',
+                workspaceReady: false,
+                registrationToken: 'REG-' + Math.random().toString(36).slice(2, 8).toUpperCase(),
+                dateJoined: new Date().toLocaleString('ar-SA')
+            };
+            const schools = JSON.parse(localStorage.getItem('smart_school_schools') || '[]');
+            schools.push({ id: schoolId, schoolId, schoolName, managerEmail: email, managerName, status: 'pending', source: 'school_request', requestId, createdAt: new Date().toISOString() });
+            allUsers.push(managerData);
+            localStorage.setItem('smart_school_users', JSON.stringify(allUsers));
+            localStorage.setItem('smart_school_schools', JSON.stringify(schools));
+            localStorage.setItem('offline_users_backup', JSON.stringify(allUsers));
+            try {
+                if (window.db && window.fs) {
+                    await window.fs.setDoc(window.fs.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'users', requestId), managerData, { merge: true });
+                    await window.fs.setDoc(window.fs.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'schools', schoolId), schools[schools.length-1], { merge: true });
+                }
+            } catch(e) { console.warn('School request cloud sync skipped', e); }
+            closeModal('school-request-modal');
+            showToast('تم إرسال طلب المدرسة الجديدة. سيظهر لدى مدير النظام للاعتماد.');
+            if (document.getElementById('user-management-modal') && document.getElementById('user-management-modal').style.display === 'flex') {
+                allUsers.splice(0, allUsers.length, ...JSON.parse(localStorage.getItem('smart_school_users') || '[]'));
+                renderUserTable();
+            }
+        };
 
         const submitRegistrationRequest = async () => {
             const name = document.getElementById('reg-name').value.trim();
             const email = document.getElementById('reg-email').value.trim();
+            const password = document.getElementById('reg-password').value.trim();
             const role = document.getElementById('reg-role').value;
+            const phone = document.getElementById('reg-phone').value.trim();
+            const nationalId = document.getElementById('reg-national-id').value.trim();
+            const schoolName = document.getElementById('reg-school-name').value.trim() || (window.pendingRegistrationInvite?.schoolName || '');
+            const schoolId = document.getElementById('reg-school-id').value.trim() || (window.pendingRegistrationInvite?.schoolId || '');
             const urlParams = new URLSearchParams(window.location.search);
             const inviteAdminId = urlParams.get('admin') || window.pendingRegistrationInvite?.admin || '';
             const inviteToken = urlParams.get('token') || window.pendingRegistrationInvite?.token || '';
-            if (!name || !email) { showToast("يرجى إدخال كافة البيانات"); return; }
+            if (!name || !email || !password || !role) { showToast("يرجى تعبئة الاسم وبريد منصة مدرستي والرقم السري والدور"); return; }
             if (!inviteAdminId || !inviteToken) { showToast("رابط التسجيل غير صالح أو غير مرتبط بحساب مدير"); return; }
+            const requestId = 'reg_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+            const userData = {
+                id: requestId,
+                name,
+                email,
+                password,
+                loginPassword: password,
+                passwordMasked: '••••••',
+                role,
+                phone,
+                nationalId,
+                schoolName,
+                schoolId,
+                isActive: false,
+                status: 'pending',
+                source: 'registration_link',
+                adminOwnerId: inviteAdminId,
+                registrationToken: inviteToken,
+                registeredViaManagerLink: true,
+                dateJoined: new Date().toLocaleString('ar-SA')
+            };
             try {
-                const user = await window.ensureAuth(); 
-                if(!user) throw new Error("Auth Failed");
-                const userData = {
-                    id: user.uid,
-                    name,
-                    email,
-                    role,
-                    isActive: false,
-                    adminOwnerId: inviteAdminId,
-                    registrationToken: inviteToken,
-                    registeredViaManagerLink: true,
-                    dateJoined: new Date().toLocaleString('ar-SA')
-                };
-                await window.fs.setDoc(window.fs.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'users', user.uid), userData, { merge: true });
+                const allUsers = JSON.parse(localStorage.getItem('smart_school_users') || '[]');
+                const emailKey = email.toLowerCase();
+                const exists = allUsers.some(u => String(u.email || '').toLowerCase() === emailKey && String(u.adminOwnerId || '') === String(inviteAdminId));
+                if (exists) { showToast("يوجد طلب أو حساب سابق بنفس البريد داخل هذه المدرسة"); return; }
+                allUsers.push(userData);
+                localStorage.setItem('smart_school_users', JSON.stringify(allUsers));
+                if (window.db && window.fs) {
+                    await window.fs.setDoc(window.fs.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'users', requestId), userData, { merge: true });
+                }
                 closeModal('registration-modal');
-                document.getElementById('role-selector-screen').classList.add('login-hidden'); document.getElementById('role-selector-screen').style.display = 'none';
+                document.getElementById('role-selector-screen').classList.add('login-hidden');
+                document.getElementById('role-selector-screen').style.display = 'none';
                 document.getElementById('waiting-screen').classList.remove('hidden');
                 showToast("تم إرسال طلب التسجيل للمدير/ة للتفعيل");
-            } catch (err) { showToast("فشل إرسال الطلب لتفعيل الحساب"); }
+            } catch (err) {
+                console.error(err);
+                showToast("تم حفظ الطلب محليًا، وتعذرت المزامنة السحابية مؤقتًا");
+            }
         };
 
         const handleAdminDirectEntry = async () => {
@@ -732,7 +901,7 @@
             document.getElementById('main-ui').classList.remove('opacity-0', 'pointer-events-none');
             document.getElementById('main-ui').style.opacity = '1';
             document.getElementById('main-ui').style.display = 'flex';
-            document.getElementById('active-role-badge').innerText = u.role === 'leadership' ? 'مدير/ة المدرسة' : 'منسوب/ة المدرسة';
+            document.getElementById('active-role-badge').innerText = u.role === 'leadership' ? 'مدير النظام' : 'منسوب/ة المدرسة';
             renderGrid(u.role);
             syncCloudData();
             syncNotifications();
@@ -742,7 +911,7 @@
             if (!window.db || !window.auth.currentUser) return;
             window.fs.onSnapshot(window.fs.collection(window.db, 'artifacts', window.appId, 'public', 'data', 'users'), (snap) => {
                 allUsers = snap.docs.map(d => d.data());
-                localStorage.setItem('offline_users_backup', JSON.stringify(allUsers));
+                saveUnifiedUserStores(allUsers);
                 if (document.getElementById('user-management-modal').style.display === 'flex') renderUserTable();
             }, (err) => {
                 const backup = localStorage.getItem('offline_users_backup');
@@ -775,7 +944,7 @@
             grid.innerHTML = '';
             const apps = role === 'leadership' ? ['leadership', 'agency', 'performance'] : [role];
             apps.forEach(appId => {
-                const titles = { 'leadership': '🏛️ قسم المدير/ة', 'agency': '📑 قسم الوكيل/ة', 'performance': '👨‍🏫 قسم المعلم/ة' };
+                const titles = { 'leadership': '🏛️ قسم مدير النظام', 'agency': '📑 قسم الوكيل/ة', 'performance': '👨‍🏫 قسم المعلم/ة' };
                 const card = document.createElement('div');
                 card.className = "app-card p-8 text-center cursor-pointer shadow-lg hover:shadow-2xl transition-all hover:scale-105";
                 card.innerHTML = `<h2 class="font-bold text-xl text-slate-800">${titles[appId]}</h2><p class="text-[10px] text-teal-600 mt-2 font-bold">نظام نشط ومؤمن ✅</p><button class="mt-6 bg-teal-700 text-white px-6 py-2 rounded-xl w-full font-bold shadow-md">دخول</button>`;
@@ -800,7 +969,7 @@
         };
 
         const roleLabel = (role) => {
-            const labels = { leadership: 'قسم المدير/ة', agency: 'قسم الوكيل/ة', performance: 'قسم المعلم/ة' };
+            const labels = { leadership: 'قسم مدير النظام', agency: 'قسم الوكيل/ة', performance: 'قسم المعلم/ة' };
             return labels[role] || role || 'غير محدد';
         };
 
@@ -817,7 +986,7 @@
             // المدير/ة يرى حسابه، الوكلاء/الوكيلات، والمعلمين/المعلمات المرتبطين به.
             if (currentUser.role === 'leadership') {
                 return allUsers.filter(u => {
-                    if (!u) return false;
+                    if (!u || u.isDeleted === true) return false;
                     if (u.id === currentUser.id || u.isRootAdmin || isManagerAccount(u.name, u.email)) return true;
                     return !u.adminOwnerId || u.adminOwnerId === ownerId || u.createdByAdminId === ownerId;
                 });
@@ -825,12 +994,12 @@
             // الوكيل/ة يرى حسابه وقائمة المعلمين/المعلمات فقط لغرض المتابعة والتنبيهات.
             if (currentUser.role === 'agency') {
                 return allUsers.filter(u => {
-                    if (!u) return false;
+                    if (!u || u.isDeleted === true) return false;
                     if (u.id === currentUser.id) return true;
                     return u.role === 'performance' && u.isActive !== false;
                 });
             }
-            return allUsers.filter(u => u?.id === currentUser?.id);
+            return allUsers.filter(u => u?.id === currentUser?.id && u?.isDeleted !== true);
         };
 
         const showUserManagement = () => {
@@ -863,6 +1032,7 @@
                         <div class="flex justify-center gap-2 flex-wrap">
                             <button onclick="openEditModal('${safeJs(u.id)}', '${safeJs(u.name)}', '${safeJs(u.email)}', '${safeJs(u.role)}', ${u.isActive ? 'true' : 'false'})" class="text-blue-600 font-bold text-[10px] hover:underline">تعديل الصلاحيات</button>
                             ${!isAdminAccount ? `<button onclick="toggleActive('${safeJs(u.id)}', ${u.isActive ? 'true' : 'false'})" class="text-orange-600 font-bold text-[10px] hover:underline">${u.isActive ? 'تعليق' : 'تفعيل'}</button>` : ''}
+                            ${!isAdminAccount && !isMe ? `<button title="حذف الحساب" onclick="deleteUserAccount('${safeJs(u.id)}')" class="text-red-600 font-bold text-[12px] hover:scale-110 transition">🗑️</button>` : ''}
                         </div>
                     </td>
                 </tr>`;
@@ -871,21 +1041,204 @@
 
         const toggleActive = async (uid, current) => {
             const newStatus = !current;
+            let localUsers = collectLocalUsersForWorkspace();
+            let activatedUser = null;
+            localUsers = localUsers.map(u => {
+                if (String(u.id) !== String(uid)) return u;
+                const next = newStatus ? ensureUserWorkspaceReady({ ...u, isActive: true, status: 'active' }) : { ...u, isActive: false, status: 'pending' };
+                activatedUser = next;
+                return next;
+            });
+            saveUnifiedUserStores(localUsers);
+            renderUserTable();
+            try {
+                const payload = newStatus ? buildWorkspacePayload(activatedUser || { id: uid }) : { isActive: false, status: 'pending' };
+                await window.fs.updateDoc(window.fs.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'users', uid), payload);
+                showToast(newStatus ? 'تم تفعيل الحساب وتجهيز مساحته الخاصة للدخول والمتابعة' : 'تم تعليق الحساب');
+            } catch(e) { showToast(newStatus ? 'تم تفعيل الحساب محليًا وتجهيز مساحته، والسحابة قيد المزامنة' : 'تم التحديث محلياً، والسحابة قيد المزامنة'); }
+        };
+
+        const deleteUserAccount = async (uid) => {
+            if (!uid) return showToast('لم يتم تحديد الحساب');
+            const target = allUsers.find(u => u.id === uid);
+            if (!target) return showToast('لم يتم العثور على الحساب');
+            const isSelf = uid === currentUser?.id || uid === window.auth?.currentUser?.uid;
+            const isProtected = isSelf || target.isRootAdmin || target.isPrimaryManager || isManagerAccount(target.name, target.email) || target.role === 'leadership';
+            if (isProtected) return showToast('لا يمكن حذف حساب المدير الرئيسي أو الحساب الحالي');
+            const ok = confirm(`هل تريد حذف حساب ${target.name || 'هذا المستخدم'}؟
+سيتم إخفاؤه من حسابات المستخدمين وتعطيل دخوله دون حذف بياناته المرتبطة.`);
+            if (!ok) return;
+
+            const deletedPayload = {
+                isDeleted: true,
+                isActive: false,
+                deletedAt: new Date().toISOString(),
+                deletedByAdminId: getManagerOwnerId()
+            };
+
             const backup = localStorage.getItem('offline_users_backup');
             let localUsers = backup ? JSON.parse(backup) : allUsers;
-            localUsers = localUsers.map(u => u.id === uid ? { ...u, isActive: newStatus } : u);
+            localUsers = localUsers.map(u => u.id === uid ? { ...u, ...deletedPayload } : u);
+            allUsers = localUsers;
+            localStorage.setItem('offline_users_backup', JSON.stringify(localUsers));
+            renderUserTable();
+
+            try {
+                await window.fs.updateDoc(window.fs.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'users', uid), deletedPayload);
+                showToast('تم حذف الحساب من القائمة وتعطيل دخوله');
+            } catch(e) {
+                showToast('تم حذف الحساب محلياً، والسحابة قيد المزامنة');
+            }
+        };
+
+        let pendingExcelUsersImport = [];
+
+        const normalizeExcelKey = (key) => String(key || '')
+            .replace(/[‏‎]/g, '')
+            .replace(/\s+/g, '')
+            .trim()
+            .toLowerCase();
+
+        const getExcelField = (row, keys) => {
+            const normalized = {};
+            Object.keys(row || {}).forEach(k => normalized[normalizeExcelKey(k)] = row[k]);
+            for (const key of keys) {
+                const value = normalized[normalizeExcelKey(key)];
+                if (value !== undefined && value !== null && String(value).trim() !== '') return String(value).trim();
+            }
+            return '';
+        };
+
+        const normalizeImportedRole = (value) => {
+            const v = String(value || '').trim().toLowerCase();
+            if (!v) return 'performance';
+            if (['leadership', 'manager', 'admin', 'مدير', 'مديرة', 'قائد', 'قائدة', 'المدير', 'المديرة'].includes(v)) return 'leadership';
+            if (['agency', 'agent', 'vice', 'وكيل', 'وكيلة', 'الوكيل', 'الوكيلة'].includes(v)) return 'agency';
+            if (['performance', 'teacher', 'معلم', 'معلمة', 'المعلم', 'المعلمة'].includes(v)) return 'performance';
+            return 'performance';
+        };
+
+        const openExcelImportModal = () => {
+            if (currentUser?.role !== 'leadership') return showToast('استيراد الحسابات مخصص للمدير/ة فقط');
+            pendingExcelUsersImport = [];
+            const input = document.getElementById('users-excel-file');
+            if (input) input.value = '';
+            document.getElementById('excel-import-preview-body').innerHTML = '<tr><td colspan="6" class="p-6 text-center text-slate-400">لم يتم اختيار ملف بعد.</td></tr>';
+            document.getElementById('excel-import-summary').classList.add('hidden');
+            document.getElementById('confirm-excel-import-btn').disabled = true;
+            document.getElementById('excel-import-modal').style.display = 'flex';
+        };
+
+        const downloadUsersExcelTemplate = () => {
+            if (typeof XLSX === 'undefined') return showToast('تعذر تحميل مكتبة Excel، تحقق من الاتصال بالإنترنت');
+            const rows = [
+                { 'الاسم': 'أحمد محمد', 'بريد منصة مدرستي': 'teacher@example.com', 'الرقم السري': 'Pass@12345', 'الدور': 'معلم', 'الجوال': '05XXXXXXXX', 'الهوية': '1XXXXXXXXX' },
+                { 'الاسم': 'سارة عبدالله', 'بريد منصة مدرستي': 'agent@example.com', 'الرقم السري': 'Pass@12345', 'الدور': 'وكيل', 'الجوال': '05XXXXXXXX', 'الهوية': '1XXXXXXXXX' }
+            ];
+            const ws = XLSX.utils.json_to_sheet(rows, { header: ['الاسم', 'بريد منصة مدرستي', 'الرقم السري', 'الدور', 'الجوال', 'الهوية'] });
+            ws['!cols'] = [{wch:24},{wch:32},{wch:18},{wch:14},{wch:16},{wch:16}];
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'طلبات المستخدمين');
+            XLSX.writeFile(wb, 'قالب_استيراد_حسابات_المستخدمين.xlsx');
+        };
+
+        const previewUsersExcelImport = async () => {
+            const file = document.getElementById('users-excel-file')?.files?.[0];
+            if (!file) return showToast('اختر ملف Excel أولاً');
+            if (typeof XLSX === 'undefined') return showToast('تعذر تحميل مكتبة Excel، تحقق من الاتصال بالإنترنت');
+            const buffer = await file.arrayBuffer();
+            const workbook = XLSX.read(buffer, { type: 'array' });
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+            const existingEmails = new Set((allUsers || []).map(u => String(u.email || '').trim().toLowerCase()).filter(Boolean));
+            const seenEmails = new Set();
+            pendingExcelUsersImport = [];
+            const previewRows = [];
+
+            rows.forEach((row, index) => {
+                const name = getExcelField(row, ['الاسم', 'اسم المستخدم', 'name', 'user name', 'fullname', 'full name']);
+                const email = getExcelField(row, ['بريد منصة مدرستي', 'بريد مدرستي', 'البريد', 'البريد الإلكتروني', 'الايميل', 'الإيميل', 'email', 'mail', 'madrasati email']);
+                const password = getExcelField(row, ['الرقم السري', 'كلمة المرور', 'كلمة السر', 'password', 'pass', 'login password']);
+                const rawRole = getExcelField(row, ['الدور', 'الصلاحية', 'القسم', 'role', 'permission']);
+                const phone = getExcelField(row, ['الجوال', 'رقم الجوال', 'الهاتف', 'phone', 'mobile']);
+                const nationalId = getExcelField(row, ['الهوية', 'رقم الهوية', 'السجل المدني', 'id', 'national id']);
+                const normalizedEmail = email.toLowerCase();
+                const notes = [];
+                let valid = true;
+                if (!name) { valid = false; notes.push('الاسم مفقود'); }
+                if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { valid = false; notes.push('بريد منصة مدرستي غير صحيح'); }
+                if (!password) { valid = false; notes.push('الرقم السري مفقود'); }
+                if (existingEmails.has(normalizedEmail)) { valid = false; notes.push('البريد موجود مسبقًا'); }
+                if (seenEmails.has(normalizedEmail)) { valid = false; notes.push('البريد مكرر داخل الملف'); }
+                if (normalizedEmail) seenEmails.add(normalizedEmail);
+                const role = normalizeImportedRole(rawRole);
+                const userData = {
+                    id: 'excel-' + Date.now() + '-' + index + '-' + Math.random().toString(36).slice(2, 8),
+                    name,
+                    email,
+                    password,
+                    loginPassword: password,
+                    passwordMasked: password ? '••••••' : '',
+                    role,
+                    phone,
+                    nationalId,
+                    isActive: false,
+                    importSource: 'excel',
+                    importedAt: Date.now(),
+                    adminOwnerId: getManagerOwnerId(),
+                    createdByAdminId: getManagerOwnerId()
+                };
+                if (valid) pendingExcelUsersImport.push(userData);
+                previewRows.push({ ...userData, valid, notes: notes.join('، ') || 'جاهز للاستيراد' });
+            });
+
+            const tbody = document.getElementById('excel-import-preview-body');
+            if (!previewRows.length) {
+                tbody.innerHTML = '<tr><td colspan="6" class="p-6 text-center text-slate-400">الملف لا يحتوي على بيانات قابلة للقراءة.</td></tr>';
+            } else {
+                tbody.innerHTML = previewRows.map(u => `<tr class="${u.valid ? 'bg-white' : 'bg-red-50'}">
+                    <td class="p-3 border-b font-bold">${u.name || '-'}</td>
+                    <td class="p-3 border-b text-slate-500">${u.email || '-'}</td>
+                    <td class="p-3 border-b text-center font-bold text-slate-500">${u.passwordMasked || (u.password ? '••••••' : '-')}</td>
+                    <td class="p-3 border-b text-center font-bold">${roleLabel(u.role)}</td>
+                    <td class="p-3 border-b text-center text-yellow-600 font-bold">معلق</td>
+                    <td class="p-3 border-b ${u.valid ? 'text-emerald-700' : 'text-red-600'} font-bold">${u.notes}</td>
+                </tr>`).join('');
+            }
+            const summary = document.getElementById('excel-import-summary');
+            summary.innerText = `تمت قراءة ${previewRows.length} صف، الصالح للاستيراد ${pendingExcelUsersImport.length}، وسيتم حفظ الحسابات الصالحة فقط بحالة معلقة مع الاحتفاظ بالرقم السري لواجهة الدخول المستقبلية.`;
+            summary.classList.remove('hidden');
+            document.getElementById('confirm-excel-import-btn').disabled = pendingExcelUsersImport.length === 0;
+        };
+
+        const confirmUsersExcelImport = async () => {
+            if (!pendingExcelUsersImport.length) return showToast('لا توجد حسابات صالحة للاستيراد');
+            const backup = localStorage.getItem('offline_users_backup');
+            let localUsers = backup ? JSON.parse(backup) : (Array.isArray(allUsers) ? [...allUsers] : []);
+            const byEmail = new Set(localUsers.map(u => String(u.email || '').trim().toLowerCase()).filter(Boolean));
+            const accepted = pendingExcelUsersImport.filter(u => !byEmail.has(String(u.email || '').trim().toLowerCase()));
+            accepted.forEach(u => { byEmail.add(String(u.email || '').trim().toLowerCase()); localUsers.push(u); });
             allUsers = localUsers;
             localStorage.setItem('offline_users_backup', JSON.stringify(localUsers));
             renderUserTable();
             try {
-                await window.fs.updateDoc(window.fs.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'users', uid), { isActive: newStatus });
-                showToast(newStatus ? 'تم تفعيل الحساب' : 'تم تعليق الحساب');
-            } catch(e) { showToast('تم التحديث محلياً، والسحابة قيد المزامنة'); }
+                await window.ensureAuth();
+                if (window.db && window.fs) {
+                    for (const u of accepted) {
+                        await window.fs.setDoc(window.fs.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'users', u.id), u, { merge: true });
+                    }
+                }
+                showToast(`تم استيراد ${accepted.length} حساب بحالة معلقة ✅`);
+            } catch (e) {
+                showToast(`تم استيراد ${accepted.length} حساب محليًا، والسحابة قيد المزامنة`);
+            }
+            pendingExcelUsersImport = [];
+            closeModal('excel-import-modal');
         };
 
         const canMonitorRole = (targetRole) => {
-            if (currentUser?.role === 'leadership') return ['agency', 'performance'].includes(targetRole);
-            if (currentUser?.role === 'agency') return targetRole === 'performance';
+            if (['leadership','manager'].includes(currentUser?.role)) return ['agency', 'performance', 'agent', 'teacher'].includes(targetRole);
+            if (['agency','agent'].includes(currentUser?.role)) return ['performance','teacher'].includes(targetRole);
             return false;
         };
 
@@ -894,11 +1247,11 @@
             if (currentUser?.role === 'agency' && role !== 'performance') {
                 return showToast('صلاحية الوكيل/ة تشمل متابعة المعلمين/المعلمات فقط');
             }
-            const titleMap = { leadership: '🏛️ قائمة قسم المدير/ة', agency: '📑 قائمة قسم الوكيل/ة', performance: '👨‍🏫 قائمة قسم المعلم/ة' };
+            const titleMap = { leadership: '🏛️ قائمة قسم مدير النظام', agency: '📑 قائمة قسم الوكيل/ة', performance: '👨‍🏫 قائمة قسم المعلم/ة' };
             document.getElementById('role-list-title').innerText = titleMap[role] || 'القائمة';
             const container = document.getElementById('role-list-container');
             container.innerHTML = '';
-            const filtered = getVisibleUsersForCurrentManager().filter(u => u.role === role).sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''), 'ar'));
+            const filtered = getVisibleUsersForCurrentManager().filter(u => u.role === role && u.isActive === true && u.isDeleted !== true).sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''), 'ar'));
             if (filtered.length === 0) container.innerHTML = '<p class="text-center text-slate-400 text-xs py-10 col-span-2">لا يوجد مستخدمون مسجلون في هذا القسم</p>';
             filtered.forEach(u => {
                 const card = document.createElement('div');
@@ -908,7 +1261,10 @@
                 const monitorButton = u.isActive && canMonitorRole(u.role)
                     ? `<button onclick="launchMonitoring('${safeJs(u.id)}', '${safeJs(u.name)}', '${safeJs(u.role)}')" class="bg-teal-700 text-white px-3 py-1 rounded-lg text-[9px] font-bold">الدخول للتفقد 👁️</button>`
                     : `<span class="text-[10px] text-slate-400 font-bold">${u.isActive ? 'لا توجد صلاحية متابعة' : 'غير مفعل'}</span>`;
-                card.innerHTML = `<div><div class="font-bold text-sm">${u.name || 'بدون اسم'}</div><div class="text-[10px] text-slate-500">${u.email || ''}</div><div class="text-[10px] font-bold mt-1">${status} - ${roleLabel(u.role)}</div></div>${monitorButton}`;
+                const clickableName = u.isActive && canMonitorRole(u.role)
+                    ? `<button onclick="launchMonitoring('${safeJs(u.id)}', '${safeJs(u.name)}', '${safeJs(u.role)}')" class="font-bold text-sm text-teal-800 hover:text-teal-600 underline decoration-dotted underline-offset-4 text-right">${u.name || 'بدون اسم'}</button>`
+                    : `<div class="font-bold text-sm">${u.name || 'بدون اسم'}</div>`;
+                card.innerHTML = `<div>${clickableName}<div class="text-[10px] text-slate-500">${u.email || ''}</div><div class="text-[10px] font-bold mt-1">${status} - ${roleLabel(u.role)}</div></div>${monitorButton}`;
                 container.appendChild(card);
             });
             document.getElementById('role-list-modal').style.display = 'flex';
@@ -927,7 +1283,7 @@
                         st.textContent = `
                             [data-monitor-hidden="true"]{display:none!important;}
                             .monitoring-readonly-lock{pointer-events:none!important;opacity:.55!important;filter:grayscale(.35)!important;}
-                            body::before{content:'وضع التفقد: تقرير جديد محجوب، والأرشيف الذكي للمعاينة فقط';position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:2147483647;background:#0f766e;color:white;padding:6px 14px;border-radius:999px;font:700 11px Cairo,Arial;box-shadow:0 8px 20px rgba(0,0,0,.2);}
+                            body::before{content:'وضع التفقد: تقرير جديد محجوب، والأرشيف للمعاينة والبحث فقط';position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:2147483647;background:#0f766e;color:white;padding:6px 14px;border-radius:999px;font:700 11px Cairo,Arial;box-shadow:0 8px 20px rgba(0,0,0,.2);}
                         `;
                         doc.head.appendChild(st);
                     }
@@ -940,7 +1296,7 @@
                         }
                         if (/حذف|تعديل|تحرير|رفع|إضافة|حفظ|اعتماد|إرسال|استيراد|delete|edit|upload|save|submit/i.test(t)) {
                             const area = el.closest('[id*=archive],[class*=archive],[id*=أرشيف],[class*=أرشيف]') || el.closest('[id*=smart],[class*=smart]');
-                            if (area || /أرشيف|archive|ذكي/.test(t)) {
+                            if (area) {
                                 el.classList.add('monitoring-readonly-lock');
                                 el.disabled = true;
                                 el.onclick = ev => { ev.preventDefault(); ev.stopPropagation(); return false; };
@@ -949,7 +1305,9 @@
                     });
                     doc.querySelectorAll('input,textarea,select').forEach(el => {
                         const area = el.closest('[id*=archive],[class*=archive],[id*=أرشيف],[class*=أرشيف],[id*=smart],[class*=smart]');
-                        if (area) { el.readOnly = true; el.disabled = true; el.classList.add('monitoring-readonly-lock'); }
+                        const label = textOf(el) + ' ' + (el.placeholder || '') + ' ' + (el.id || '') + ' ' + (el.name || '') + ' ' + (el.className || '');
+                        const isSearch = /بحث|search|filter|query/i.test(label);
+                        if (area && !isSearch) { el.readOnly = true; el.disabled = true; el.classList.add('monitoring-readonly-lock'); }
                     });
                 } catch(e) { console.warn('Monitoring restrictions need same-origin access', e); }
             };
@@ -958,16 +1316,29 @@
         };
 
         const launchMonitoring = (uid, name, role) => {
-            if (!canMonitorRole(role)) return showToast('ليست لديك صلاحية الدخول لهذا الحساب');
+            const localUsers = collectLocalUsersForWorkspace();
+            let target = localUsers.find(u => String(u.id) === String(uid));
+            if (!target) target = localUsers.find(u => normalizeAccountEmail(u.email || u.schoolEmail) && normalizeAccountEmail(u.email || u.schoolEmail) === normalizeAccountEmail(name));
+            if (!target) target = { id: uid, name, role };
+            if (!canMonitorRole(target.role || role)) return showToast('ليست لديك صلاحية الدخول لهذا الحساب');
+            if (target.isActive !== true) return showToast('الحساب غير مفعل بعد');
+            target = ensureUserWorkspaceReady(target);
+            const updatedUsers = localUsers.map(u => (normalizeAccountEmail(u.email || u.schoolEmail) && normalizeAccountEmail(u.email || u.schoolEmail) === normalizeAccountEmail(target.email || target.schoolEmail)) || String(u.id) === String(target.id) ? { ...u, ...target } : u);
+            saveUnifiedUserStores(updatedUsers);
+
             const v = document.getElementById('viewport-monitoring');
             if (v) {
                 v.classList.add('active');
                 document.getElementById('main-ui').style.display = 'none';
-                document.getElementById('monitored-user-name').innerText = name;
+                document.getElementById('monitored-user-name').innerText = target.name || name || 'مستخدم';
                 document.getElementById('backBtn').classList.add('visible');
-                const files = { 'agency': 'التقارير الرقمية لوكالة المدرسة الذكية.html', 'performance': 'نظام تقارير الأداء الذكي.html' };
+                const targetRole = target.role || role;
+                const files = { 'agency': 'agent.html', 'agent': 'agent.html', 'performance': 'teacher.html', 'teacher': 'teacher.html' };
                 const iframe = v.querySelector('iframe');
-                iframe.src = files[role] + `?uid=${encodeURIComponent(uid)}&monitoring=true&viewerRole=${encodeURIComponent(currentUser.role)}&blockNewReport=true&archiveReadOnly=true`;
+                const file = files[targetRole] || (String(targetRole).includes('agent') ? 'agent.html' : 'teacher.html');
+                const followEmail = normalizeAccountEmail(target.email || target.schoolEmail);
+                sessionStorage.setItem('smartSchoolUnifiedOpsV2_last_follow_target', JSON.stringify({id:target.id || uid,name:target.name || name,role:targetRole,email:followEmail,workspaceReady:true}));
+                iframe.src = file + `?follow=1&readonly=1&mode=supervisor_readonly&targetUser=${encodeURIComponent(target.id || uid)}&followUserId=${encodeURIComponent(target.id || uid)}&userId=${encodeURIComponent(target.id || uid)}&uid=${encodeURIComponent(target.id || uid)}&followEmail=${encodeURIComponent(followEmail)}&targetEmail=${encodeURIComponent(followEmail)}&targetRole=${encodeURIComponent(targetRole)}&viewer=${encodeURIComponent(currentUser.role)}&viewerRole=${encodeURIComponent(currentUser.role)}&blockNewReport=true&archiveReadOnly=true&workspaceReady=true`;
                 applyMonitoringRestrictions(iframe);
             }
             closeModal('role-list-modal');
@@ -1149,7 +1520,7 @@
                 if(isEditingSelfAdmin) {
                     currentUser.name = name;
                     currentUser.email = email;
-                    document.getElementById('active-role-badge').innerText = 'مدير/ة المدرسة';
+                    document.getElementById('active-role-badge').innerText = 'مدير النظام';
                 }
             } catch(e) {
                 showToast("تم الحفظ محلياً بنجاح ⚠️ (السحابة قيد المزامنة)");
@@ -1166,17 +1537,19 @@
                 token = (crypto?.randomUUID?.() || ('reg-' + Date.now() + '-' + Math.random().toString(36).slice(2)));
                 localStorage.setItem(storageKey, token);
             }
-            const base = window.location.origin && window.location.origin !== 'null'
-                ? window.location.origin + window.location.pathname
-                : window.location.href.split('?')[0];
-            const regLink = `${base}?mode=register&admin=${encodeURIComponent(adminId)}&token=${encodeURIComponent(token)}`;
+            const currentPath = window.location.href.split('?')[0];
+            const basePath = currentPath.substring(0, currentPath.lastIndexOf('/') + 1);
+            const registerPath = basePath + 'register.html';
+            const schoolId = localStorage.getItem('current_school_id') || ('school_' + adminId);
+            const schoolName = localStorage.getItem('current_school_name') || 'مدرستي';
+            const regLink = `${registerPath}?admin=${encodeURIComponent(adminId)}&token=${encodeURIComponent(token)}&schoolId=${encodeURIComponent(schoolId)}&schoolName=${encodeURIComponent(schoolName)}`;
             const t = document.createElement('input');
             t.value = regLink;
             document.body.appendChild(t);
             t.select();
             document.execCommand('copy');
             document.body.removeChild(t);
-            showToast("تم نسخ رابط تسجيل فريد مرتبط بحساب المدير/ة"); 
+            showToast("تم نسخ رابط التسجيل المرتبط بالمدرسة ويفتح نموذج التسجيل مباشرة"); 
         };
 
 
@@ -1384,29 +1757,155 @@
             setText('portfolio-participation', stats.participation);
             if (type) items = items.filter(m => m.type === type);
             if (search) items = items.filter(m => [m.title, m.type, m.date, m.time, m.agenda, m.recommendations, m.tasks, m.createdBy, ...(m.participants || []).map(p => p.name)].join(' ').toLowerCase().includes(search));
+            const details = document.getElementById('meeting-portfolio-details');
+            const picker = document.getElementById('meeting-archive-picker');
+            if (picker) picker.classList.add('hidden');
             if (!items.length) {
                 box.innerHTML = '<div class="col-span-full text-center text-slate-400 bg-white rounded-2xl border p-6 text-sm">لا توجد محاضر مطابقة في محفظة الاجتماعات</div>';
-                const details = document.getElementById('meeting-portfolio-details'); if (details) details.classList.add('hidden');
+                if (details) details.classList.add('hidden');
                 return;
             }
             box.innerHTML = items.map(m => `
-                <div class="bg-white border rounded-2xl p-4 shadow-sm hover:shadow-md transition">
+                <label class="bg-white border rounded-2xl p-4 shadow-sm hover:shadow-md transition block cursor-pointer">
                     <div class="flex justify-between gap-2 items-start mb-2">
-                        <div class="font-extrabold text-slate-800 text-sm">${m.title || 'اجتماع بدون عنوان'}</div>
+                        <div class="flex gap-2 items-start">
+                            <input type="checkbox" name="meetingPortfolioSelect" value="${safeJs(m.id)}" class="mt-1" onchange="document.querySelectorAll('input[name=meetingPortfolioSelect]').forEach(cb=>{ if(cb!==this) cb.checked=false; });">
+                            <div class="font-extrabold text-slate-800 text-sm">${m.title || 'اجتماع بدون عنوان'}</div>
+                        </div>
                         <span class="bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-1 rounded-lg text-[10px] font-bold">${m.type || 'اجتماع'}</span>
                     </div>
                     <div class="text-[11px] text-slate-500 mb-2">📅 ${m.date || 'بدون تاريخ'} - ⏰ ${m.time || ''}</div>
                     <div class="text-[11px] text-teal-700 font-bold mb-2">منشئ المحضر: ${m.createdBy || 'غير محدد'}</div>
                     <div class="text-[11px] text-slate-500 mb-3 line-clamp-2">${(m.recommendations || m.agenda || 'لا توجد توصيات مسجلة').slice(0, 120)}</div>
-                    <div class="text-[10px] text-slate-400 mb-3">📎 ${(m.attachments || []).length} مرفق | 👥 ${(m.participants || []).length} مشارك | ${m.teamsUrl ? '🎙️ Teams متاح' : 'بدون رابط Teams'}</div>
-                    <div class="flex flex-wrap gap-2">
-                        ${m.teamsUrl ? `<a href="${m.teamsUrl}" target="_blank" class="bg-purple-700 text-white px-3 py-1 rounded-lg text-[10px] font-bold">انضم عبر Teams</a>` : ''}
-                        <button onclick="showMeetingPortfolioDetails('${m.id}')" class="bg-teal-700 text-white px-3 py-1 rounded-lg text-[10px] font-bold">معاينة</button>
-                        <button onclick="printMeetingById('${m.id}')" class="bg-slate-800 text-white px-3 py-1 rounded-lg text-[10px] font-bold">طباعة</button>
-                        ${(currentUser?.role === 'leadership' || m.createdBy === currentUser?.name) ? `<button onclick="deleteMeetingById('${m.id}'); renderMeetingPortfolio();" class="bg-red-50 text-red-700 border border-red-100 px-3 py-1 rounded-lg text-[10px] font-bold">حذف</button>` : ''}
-                    </div>
-                </div>
+                    <div class="text-[10px] text-slate-400 mb-3">📎 ${(m.attachments || []).length} مرفق | 👥 ${(m.participants || []).length} مشارك | ${m.teamsUrl ? '🔗 رابط Teams متاح' : 'بدون رابط Teams'}</div>
+                    ${m.teamsUrl ? `<a href="${m.teamsUrl}" target="_blank" onclick="event.stopPropagation()" class="inline-block bg-purple-700 text-white px-3 py-1 rounded-lg text-[10px] font-bold">فتح رابط Teams</a>` : ''}
+                </label>
             `).join('');
+        };
+
+        const selectedMeetingPortfolioId = () => {
+            const el = document.querySelector('input[name="meetingPortfolioSelect"]:checked');
+            return el ? el.value : '';
+        };
+
+        const selectedMeetingPortfolioRecord = () => {
+            const id = selectedMeetingPortfolioId();
+            if (!id) {
+                showToast('يرجى تحديد محضر اجتماع أولًا بوضع علامة صح');
+                return null;
+            }
+            const m = getStoredMeetings().find(x => String(x.id) === String(id));
+            if (!m) showToast('تعذر العثور على محضر الاجتماع المحدد');
+            return m || null;
+        };
+
+        const previewSelectedMeetingPortfolio = () => {
+            const m = selectedMeetingPortfolioRecord();
+            if (!m) return;
+            showMeetingPortfolioDetails(m.id);
+        };
+
+        const meetingPlainText = (m) => [
+            'محضر اجتماع',
+            'العنوان: ' + (m.title || ''),
+            'النوع: ' + (m.type || ''),
+            'التاريخ: ' + (m.date || '') + ' ' + (m.time || ''),
+            'منشئ المحضر: ' + (m.createdBy || ''),
+            m.teamsUrl ? ('رابط Teams: ' + m.teamsUrl) : '',
+            '',
+            'المشاركون:',
+            (m.participants || []).map(p => (p.name || '') + ' - ' + roleLabel(p.role)).join('\n') || 'غير محدد',
+            '',
+            'محاور الاجتماع:',
+            m.agenda || '',
+            '',
+            'التوصيات والقرارات:',
+            m.recommendations || '',
+            '',
+            'المهام الناتجة:',
+            m.tasks || ''
+        ].filter(Boolean).join('\n');
+
+        const downloadSelectedMeetingPortfolio = () => {
+            const m = selectedMeetingPortfolioRecord();
+            if (!m) return;
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob([meetingPlainText(m)], { type: 'text/plain;charset=utf-8' }));
+            a.download = ((m.title || 'محضر_اجتماع').replace(/[\\/:*?"<>|]/g, '_')) + '.txt';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        };
+
+        const meetingArchiveFoldersForCurrentSection = () => {
+            try {
+                if (window.SmartSchoolCloudStorage && typeof window.SmartSchoolCloudStorage.structure === 'function') {
+                    const folders = (window.SmartSchoolCloudStorage.structure().folders || []).filter(Boolean);
+                    if (folders.length) return folders.map((path, idx) => ({ id: 'cloud-folder-' + idx, name: String(path).split('/').pop() || path, path }));
+                }
+            } catch(e) {}
+            const role = currentUser?.role || 'main';
+            const base = role === 'leadership' ? ['محاضر اجتماعات الإدارة','التقارير الرسمية','التعاميم','الخطط','الشواهد'] : role === 'agency' ? ['محاضر اجتماعات الوكيل','متابعة المعلمين','التقارير الرسمية','الشواهد'] : ['محاضر الاجتماعات','التقارير الصفية','الشواهد','ملفات مرفقة'];
+            return base.map((name, idx) => ({ id: 'folder-' + idx, name, path: name }));
+        };
+
+        const openMeetingArchiveFolderPicker = () => {
+            const m = selectedMeetingPortfolioRecord();
+            if (!m) return;
+            const picker = document.getElementById('meeting-archive-picker');
+            if (!picker) return;
+            const folders = meetingArchiveFoldersForCurrentSection();
+            picker.classList.remove('hidden');
+            picker.innerHTML = `
+                <div class="flex flex-col md:flex-row md:items-end gap-3">
+                    <div class="flex-1">
+                        <div class="font-extrabold text-slate-800 mb-1">إرسال محضر الاجتماع إلى الأرشيف</div>
+                        <div class="text-[11px] text-slate-500 mb-2">المحضر المحدد: ${m.title || 'محضر اجتماع'}</div>
+                        <select id="meetingArchiveFolderSelect" class="w-full p-3 border rounded-xl text-sm bg-white">
+                            ${folders.map(f => `<option value="${safeJs(f.id)}" data-path="${safeJs(f.path)}">${f.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <button onclick="sendSelectedMeetingToArchive()" class="bg-amber-600 text-white px-6 py-3 rounded-xl text-xs font-extrabold">إرسال</button>
+                    <button onclick="document.getElementById('meeting-archive-picker').classList.add('hidden')" class="bg-white border text-slate-600 px-6 py-3 rounded-xl text-xs font-bold">إلغاء</button>
+                </div>`;
+            picker.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        };
+
+        const sendSelectedMeetingToArchive = () => {
+            const m = selectedMeetingPortfolioRecord();
+            if (!m) return;
+            const select = document.getElementById('meetingArchiveFolderSelect');
+            if (!select) return showToast('اختر مجلد الأرشيف أولًا');
+            const selectedOption = select.options[select.selectedIndex];
+            const folderName = selectedOption?.textContent || 'محاضر الاجتماعات';
+            const folderPath = selectedOption?.dataset?.path || folderName;
+            const record = {
+                id: 'meeting-archive-' + Date.now(),
+                title: 'محضر اجتماع - ' + (m.title || 'بدون عنوان'),
+                category: select.value,
+                folderName,
+                folderPath,
+                createdAt: new Date().toISOString(),
+                date: m.date || new Date().toISOString().slice(0,10),
+                isComplete: true,
+                readOnly: true,
+                archiveType: 'meetingMinutes',
+                source: 'meeting_wallet',
+                meetingId: m.id,
+                content: `<div class="meeting-minutes-readonly"><h2>محضر اجتماع</h2><h3>${m.title || 'محضر اجتماع'}</h3><p><b>النوع:</b> ${m.type || ''}</p><p><b>التاريخ:</b> ${m.date || ''} ${m.time || ''}</p><p><b>منشئ المحضر:</b> ${m.createdBy || ''}</p>${m.teamsUrl ? `<p><b>رابط Teams:</b> <a target="_blank" href="${m.teamsUrl}">فتح الرابط</a></p>` : ''}<hr><h4>المشاركون</h4><p>${(m.participants || []).map(p => (p.name || '') + ' - ' + roleLabel(p.role)).join('<br>') || 'غير محدد'}</p><h4>محاور الاجتماع</h4><div style="white-space:pre-wrap">${m.agenda || ''}</div><h4>التوصيات والقرارات</h4><div style="white-space:pre-wrap">${m.recommendations || ''}</div><h4>المهام الناتجة</h4><div style="white-space:pre-wrap">${m.tasks || ''}</div></div>`
+            };
+            const keys = ['reports_archive', 'school_reports', 'meeting_minutes_archive_' + (currentUser?.role || 'main')];
+            keys.forEach(key => {
+                try {
+                    const arr = JSON.parse(localStorage.getItem(key) || '[]');
+                    arr.unshift(record);
+                    localStorage.setItem(key, JSON.stringify(arr));
+                } catch(e) {}
+            });
+            const picker = document.getElementById('meeting-archive-picker');
+            if (picker) picker.classList.add('hidden');
+            showToast('تم إرسال محضر الاجتماع إلى الأرشيف كمعاينة فقط');
         };
 
         const showMeetingPortfolioDetails = (id) => {
@@ -1614,11 +2113,12 @@
         window.onload = () => { 
             const urlParams = new URLSearchParams(window.location.search);
             if (urlParams.get('mode') === 'register') {
-                const admin = urlParams.get('admin');
-                const token = urlParams.get('token');
-                window.pendingRegistrationInvite = { admin, token };
-                document.getElementById('role-selector-screen').style.display = 'flex';
-                setTimeout(openRegistrationModal, 500);
+                const currentPath = window.location.href.split('?')[0];
+                const registerPath = currentPath.substring(0, currentPath.lastIndexOf('/') + 1) + 'register.html';
+                const params = new URLSearchParams();
+                ['admin','token','schoolId','schoolName'].forEach(k => { if (urlParams.get(k)) params.set(k, urlParams.get(k)); });
+                window.location.replace(registerPath + '?' + params.toString());
+                return;
             } else {
                 checkUserStatus();
             } 
@@ -1848,8 +2348,7 @@
         '<div class="footnote">منصة المدرسة الرقمية الذكية - محضر معتمد بتاريخ '+esc(today())+'</div>'+
       '</section>'+
       (s.includeAttendance?'<section class="page"><div class="topbar"></div><header><div class="hblock"><b>المملكة العربية السعودية</b><b>وزارة التعليم</b><span>'+esc(s.schoolName||'المدرسة')+'</span></div><div class="logo">وزارة التعليم</div><div class="meta"><div>'+esc(m.date||today())+'</div></div></header><h1>سجل الحضور والتوثيق</h1><table><thead><tr><th>م</th><th>الاسم</th><th>التوقيع</th></tr></thead><tbody>'+rows+'</tbody></table><div class="note">ملاحظة: يلزم توقيع الحاضرين/ات فور انتهاء الاجتماع وتوثيق المحضر رسميًا.</div><div class="footnote">منصة المدرسة الرقمية الذكية - تاريخ التحقق: '+esc(today())+' - '+esc(code)+'</div></section>':'')+
-    '\n
-</body></html>';
+    '\n</body></html>';
   }
   function printCss(){ return '@page{size:A4;margin:0}*{box-sizing:border-box}body{font-family:Cairo,Arial,sans-serif;margin:0;color:#0f172a;background:#f8fafc}.page{width:210mm;min-height:297mm;background:white;margin:0 auto;padding:14mm 12mm;position:relative;page-break-after:always}.topbar{position:absolute;top:0;left:0;right:0;height:8px;background:#08783f}header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid #e5e7eb;padding-bottom:12px}.hblock{line-height:1.8;color:#065f46;font-size:15px;display:flex;flex-direction:column}.logo{text-align:center;color:#059669;font-weight:800}.logo small{font-size:10px;color:#64748b}.meta{font-size:12px;line-height:2;background:#ecfdf5;border-radius:12px;padding:8px 16px;min-width:140px}h1{text-align:center;color:#047857;font-size:28px;margin:16px 0 10px}h2{color:#047857;font-size:15px;margin:13px 0 7px}.basmala{text-align:center;font-size:13px;color:#475569}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}.field,.notice,.teams{background:#f0fdf4;border:1px solid #d1fae5;border-radius:13px;padding:9px;font-size:13px}.notice{line-height:2}.teams{direction:ltr;text-align:left;word-break:break-all;font-size:11px}ol{margin:0;padding:0 24px;background:#fbfffd;border:1px dashed #bbf7d0;border-radius:12px;min-height:32px}li{padding:4px 0;font-size:13px;line-height:1.7}footer{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end;margin-top:18px;border-top:1px solid #e5e7eb;padding-top:12px;font-size:12px}.sig{max-width:120px;max-height:55px;object-fit:contain}.sigLine{width:120px;height:40px;border-bottom:1px solid #334155}.seal{width:90px;height:90px;object-fit:contain}.sealBox{width:90px;height:90px;border:2px dashed #94a3b8;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#64748b;font-weight:800;font-size:11px}.qr{text-align:center;font-size:10px}.qr svg{border:1px solid #d1fae5}.code{direction:ltr;font-weight:800;color:#047857}.footnote{position:absolute;bottom:9mm;left:12mm;right:12mm;border-top:1px solid #edf2f7;padding-top:6px;color:#047857;font-weight:700;font-size:11px}.note{margin-top:14px;background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:12px;text-align:center;color:#92400e;font-size:13px}table{width:100%;border-collapse:collapse;margin-top:14px}th{background:#08783f;color:white;padding:8px;font-size:13px}td{border:1px solid #e5e7eb;height:24px;padding:4px;font-size:12px}td:first-child{width:35px;text-align:center}@media print{body{background:white}.page{margin:0;box-shadow:none}}'; }
   function dayName(dateStr){ try{ var d=dateStr?new Date(dateStr):new Date(); return ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'][d.getDay()]||'';}catch(e){return '';} }
@@ -2116,98 +2615,55 @@
 </script>
 
 
-
-
-
-
-<!-- SMART_OWNER_SAFE_PATCH_START -->
-<script id="smart-owner-safe-utils">
+<!-- SAFE_SMART_AI_SUITE_START -->
+<style>
+.safe-ai-launch{position:fixed;bottom:22px;left:22px;z-index:99990;background:#0f766e;color:#fff;border:0;border-radius:999px;padding:10px 14px;font-family:Cairo,Arial;font-weight:800;box-shadow:0 10px 25px rgba(0,0,0,.22);cursor:pointer}
+.safe-ai-panel{position:fixed;inset:0;z-index:99989;background:rgba(15,23,42,.55);display:none;align-items:center;justify-content:center;font-family:Cairo,Arial}
+.safe-ai-panel.open{display:flex}
+.safe-ai-box{background:#fff;color:#0f172a;width:min(860px,94vw);max-height:88vh;overflow:auto;border-radius:24px;padding:18px;box-shadow:0 30px 80px rgba(0,0,0,.3)}
+.safe-ai-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px}
+.safe-ai-close{border:0;background:#ef4444;color:#fff;border-radius:999px;padding:7px 12px;font-weight:800;cursor:pointer}
+.safe-ai-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.spa-tab{border:0;background:#e0f2f1;color:#0f766e;border-radius:999px;padding:8px 12px;font-weight:800;cursor:pointer}
+.spa-tab.active{background:#0f766e;color:#fff}
+.spa-sec{display:none;border:1px solid #d1fae5;border-radius:18px;padding:12px;background:#f8fffd}
+.spa-sec.active{display:block}
+.safe-ai-box textarea,.safe-ai-box input,.safe-ai-box select{width:100%;border:1px solid #cbd5e1;border-radius:12px;padding:10px;margin:6px 0;background:#fff}
+.safe-ai-action{background:#0f766e;color:#fff;border:0;border-radius:12px;padding:9px 14px;font-weight:800;cursor:pointer;margin:4px}
+.safe-ai-out{white-space:pre-wrap;background:#f1f5f9;border-radius:14px;padding:12px;margin-top:8px;min-height:70px}
+</style>
+<button type="button" class="safe-ai-launch" id="safeAiLaunch">✨ ذكاء المنصة</button>
+<div class="safe-ai-panel" id="safeAiPanel" aria-hidden="true"><div class="safe-ai-box"><div class="safe-ai-head"><b>أدوات الذكاء الإداري</b><button type="button" class="safe-ai-close" id="safeAiClose">إغلاق</button></div><div class="safe-ai-tabs"><button type="button" class="spa-tab" data-tab="0">المساعد الإداري</button><button type="button" class="spa-tab" data-tab="1">البحث الشامل</button><button type="button" class="spa-tab" data-tab="2">المزامنة متعددة المدارس</button></div>
+<div class="spa-sec active" data-sec="0"><textarea id="safeAiAdmin" placeholder="اكتب نص التقرير أو المحضر أو الملاحظة لتحليلها"></textarea><button class="safe-ai-action" id="safeAiAnalyze">تحليل واقتراح توصيات</button><div class="safe-ai-out" id="safeAiAdminOut"></div></div>
+<div class="spa-sec" data-sec="1"><input id="safeAiSearch" placeholder="بحث شامل في النصوص والتنبيهات والمحاضر المحلية"><button class="safe-ai-action" id="safeAiDoSearch">بحث</button><div class="safe-ai-out" id="safeAiSearchOut"></div></div>
+<div class="spa-sec" data-sec="2"><input id="safeAiSchool" placeholder="اسم المدرسة"><input id="safeAiSchoolId" placeholder="معرف المدرسة مثل SCH-001"><button class="safe-ai-action" id="safeAiSaveSchool">حفظ بيئة المدرسة</button><button class="safe-ai-action" id="safeAiSync">مزامنة تجريبية</button><div class="safe-ai-out" id="safeAiSyncOut"></div></div>
+<div class="spa-sec" data-sec="3"><textarea id="safeAiWriter" placeholder="اكتب نقاطًا مختصرة ليعيد المساعد صياغتها رسميًا"></textarea><button class="safe-ai-action" id="safeAiWrite">صياغة احترافية</button><div class="safe-ai-out" id="safeAiWriterOut"></div></div>
+<div class="spa-sec" data-sec="4"><textarea id="safeAiMeet" placeholder="ألصق قائمة المشاركين أو ملاحظات الاجتماع"></textarea><button class="safe-ai-action" id="safeAiAttendance">استخراج حضور فعلي</button><div class="safe-ai-out" id="safeAiMeetOut"></div></div>
+</div></div>
+<script>
 (function(){
-  if(window.__SmartOwnerSafeUtils) return; window.__SmartOwnerSafeUtils=true;
-  var NS='smartSchoolUnifiedOpsV2';
-  function read(k,d){try{return JSON.parse(localStorage.getItem(k)||JSON.stringify(d));}catch(e){return d;}}
-  function write(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
-  function norm(r){return r==='leadership'||r==='manager'?'manager':(r==='agency'||r==='agent'?'agent':(r==='performance'||r==='teacher'?'teacher':r));}
-  function roleLabel(r){r=norm(r); return r==='manager'?'مدير':(r==='agent'?'وكيل':'معلم');}
-  function fileFor(r){r=norm(r); return r==='manager'?'manager.html':(r==='agent'?'agent.html':'teacher.html');}
-  window.SmartOwnerStore={
-    ns:NS,
-    read:read,
-    write:write,
-    norm:norm,
-    roleLabel:roleLabel,
-    fileFor:fileFor,
-    users:function(){return read(NS+'_users',[]);},
-    saveUsers:function(a){write(NS+'_users',a);},
-    schools:function(){return read(NS+'_schools',[]);},
-    saveSchools:function(a){write(NS+'_schools',a);},
-    toast:function(msg){try{if(typeof window.showToast==='function') window.showToast(msg); else alert(msg);}catch(e){alert(msg);}}
-  };
+ if(window.__safeSmartAiSuite) return; window.__safeSmartAiSuite=true;
+ function $(id){return document.getElementById(id)}
+ function safe(v){return String(v||'').replace(/[<>]/g,'')}
+ function out(id,t){var e=$(id); if(e)e.textContent=t}
+ var p=$('safeAiPanel'), b=$('safeAiLaunch'), c=$('safeAiClose');
+ if(b) b.onclick=function(){p.classList.add('open')}; if(c) c.onclick=function(){p.classList.remove('open')}; if(p) p.onclick=function(e){if(e.target===p)p.classList.remove('open')};
+ document.querySelectorAll('.spa-tab').forEach(function(btn){btn.onclick=function(){document.querySelectorAll('.spa-tab').forEach(x=>x.classList.remove('active'));btn.classList.add('active');document.querySelectorAll('.spa-sec').forEach(s=>s.classList.toggle('active',s.dataset.sec===btn.dataset.tab));}});
+ var tabs=document.querySelectorAll('.spa-tab'); if(tabs[0]) tabs[0].classList.add('active');
+ var analyze=$('safeAiAnalyze'); if(analyze) analyze.onclick=function(){var t=$('safeAiAdmin').value||''; out('safeAiAdminOut','ملخص ذكي: '+(t?('تم تحليل النص ويحتوي على '+t.trim().split(/\s+/).filter(Boolean).length+' كلمة تقريبًا.'): 'أدخل نصًا أولًا.')+'
+
+توصيات:
+• تحديد مسؤول تنفيذ.
+• تحويل البنود إلى مهام.
+• حفظ المخرج في الأرشيف أو محفظة الاجتماعات.')};
+ var write=$('safeAiWrite'); if(write) write.onclick=function(){var t=$('safeAiWriter').value||''; out('safeAiWriterOut', t?'بناءً على ما ورد، نوصي بما يلي:\n'+t.split(/\n+/).filter(Boolean).map(function(x,i){return (i+1)+'. '+x.trim()}).join('\n'):'أدخل نصًا أولًا.')};
+ var att=$('safeAiAttendance'); if(att) att.onclick=function(){var t=$('safeAiMeet').value||''; var names=[...new Set(t.split(/[\n,،;؛]+/).map(x=>x.trim()).filter(x=>x.length>1 && !/دخل|خرج|انضم|غادر/.test(x)))]; out('safeAiMeetOut',names.length?'قائمة الحضور الفعلية:\n• '+names.join('\n• '):'لم يتم العثور على أسماء واضحة.')};
+ var search=$('safeAiDoSearch'); if(search) search.onclick=function(){var q=$('safeAiSearch').value||''; var text=document.body.innerText||''; var ok=q && text.includes(q); out('safeAiSearchOut', ok?'تم العثور على نتائج في الصفحة الحالية.':'لا توجد نتائج واضحة في الصفحة الحالية.')};
+ var save=$('safeAiSaveSchool'); if(save) save.onclick=function(){localStorage.setItem('smartSchool.currentSchool', JSON.stringify({schoolName:$('safeAiSchool').value||'مدرسة', schoolId:$('safeAiSchoolId').value||'SCH-DEMO'})); out('safeAiSyncOut','تم حفظ بيئة المدرسة محليًا.')};
+ var sync=$('safeAiSync'); if(sync) sync.onclick=function(){localStorage.setItem('smartSchool.lastSync', new Date().toISOString()); out('safeAiSyncOut','تم تجهيز المزامنة المحلية. عند ربط Firebase ستتم المزامنة السحابية الحقيقية.')};
 })();
 </script>
-<!-- SMART_OWNER_SAFE_PATCH_END -->
-
-<!-- OWNER_PANEL_AND_AI_PATCH_START -->
-<style id="owner-panel-ai-style">
-  .owner-ai-dock{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:2147483000;display:flex;gap:10px;align-items:center;justify-content:center;direction:rtl;font-family:'Cairo',Arial,sans-serif;pointer-events:auto}
-  .owner-ai-dock button{border:0;border-radius:999px;padding:11px 18px;font-size:12px;font-weight:900;color:#fff;box-shadow:0 14px 34px rgba(0,0,0,.28);cursor:pointer;white-space:nowrap}
-  .owner-btn{background:linear-gradient(135deg,#b45309,#d97706)}.ai-btn{background:linear-gradient(135deg,#0f766e,#1e7b78)}
-  .owner-modal{display:none;position:fixed;inset:0;background:rgba(15,23,42,.76);z-index:2147483100;align-items:center;justify-content:center;padding:16px;direction:rtl;font-family:'Cairo',Arial,sans-serif}.owner-modal.open{display:flex}
-  .owner-card{width:min(980px,96vw);max-height:90vh;overflow:auto;background:#fff;color:#0f172a;border-radius:28px;box-shadow:0 30px 90px rgba(0,0,0,.42);padding:22px;text-align:right}
-  .owner-card h2{margin:0 0 12px;color:#0f766e;font-size:22px;font-weight:900}.owner-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:14px 0}.owner-grid input,.owner-grid select{border:1px solid #cbd5e1;border-radius:13px;padding:11px;color:#0f172a;background:#fff}.owner-actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.owner-actions button{border:0;border-radius:13px;padding:10px 14px;font-weight:900;cursor:pointer}.owner-primary{background:#0f766e;color:#fff}.owner-muted{background:#475569;color:#fff}.owner-danger{background:#dc2626;color:#fff}.owner-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:12px}.owner-table th,.owner-table td{border-bottom:1px solid #e2e8f0;padding:9px;text-align:right}.owner-table th{background:#f8fafc;color:#334155}.owner-link{font-family:monospace;direction:ltr;text-align:left;display:block;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.owner-status-active{color:#047857;font-weight:900}.owner-status-off{color:#dc2626;font-weight:900}
-  .ai-box textarea{width:100%;min-height:160px;border:1px solid #cbd5e1;border-radius:16px;padding:12px;color:#0f172a}.ai-output{background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;padding:12px;line-height:1.9;white-space:pre-wrap;margin-top:10px;color:#334155}
-  @media(max-width:700px){.owner-grid{grid-template-columns:1fr}.owner-ai-dock{bottom:10px}.owner-ai-dock button{padding:10px 12px;font-size:11px}}
-</style>
-<div class="owner-ai-dock" id="ownerAiDock">
-  <button type="button" class="owner-btn" onclick="SmartOwnerPanel.open()">👑 نسخة المالك</button>
-  <button type="button" class="ai-btn" onclick="SmartOwnerAI.open()">✨ ذكاء المنصة</button>
-</div>
-<div class="owner-modal" id="ownerPanelModal"><div class="owner-card"><h2>👑 لوحة مالك المنصة</h2><p style="color:#64748b;font-size:12px;margin:0 0 12px">إدارة المدارس والمدراء وروابط التسجيل وحالة المدرسة والتخزين السحابي.</p><div class="owner-grid"><input id="ownerSchoolName" placeholder="اسم المدرسة"><input id="ownerManagerName" placeholder="اسم المدير"><input id="ownerManagerEmail" placeholder="بريد المدير"><input id="ownerSchoolCode" placeholder="كود المدرسة - يولد تلقائيًا"><select id="ownerCloudStatus"><option value="غير مربوط">التخزين السحابي: غير مربوط</option><option value="OneDrive">OneDrive</option><option value="Google Drive">Google Drive</option><option value="منصة داخلية">منصة داخلية</option></select><select id="ownerSchoolStatus"><option value="active">مفعلة</option><option value="disabled">معطلة</option></select></div><div class="owner-actions"><button class="owner-primary" onclick="SmartOwnerPanel.createSchool()">إنشاء مدرسة ومدير</button><button class="owner-muted" onclick="SmartOwnerPanel.refresh()">تحديث القائمة</button><button class="owner-muted" onclick="SmartOwnerPanel.export()">تصدير البيانات</button><button class="owner-danger" onclick="SmartOwnerPanel.close()">إغلاق</button></div><div id="ownerSchoolsTable"></div></div></div>
-<div class="owner-modal" id="ownerAiModal"><div class="owner-card ai-box"><h2>✨ ذكاء المنصة</h2><p style="color:#64748b;font-size:12px">مساعد محلي لصياغة التوصيات والتلخيص والبحث المبدئي. الربط الحقيقي بالذكاء الاصطناعي يتم لاحقًا عبر API عند النشر السحابي.</p><textarea id="ownerAiInput" placeholder="اكتب نص التقرير أو محضر الاجتماع أو الطلب الإداري هنا..."></textarea><div class="owner-actions"><button class="owner-primary" onclick="SmartOwnerAI.summarize()">تلخيص</button><button class="owner-primary" onclick="SmartOwnerAI.recommend()">توصيات</button><button class="owner-muted" onclick="SmartOwnerAI.polish()">صياغة رسمية</button><button class="owner-danger" onclick="SmartOwnerAI.close()">إغلاق</button></div><div class="ai-output" id="ownerAiOutput">النتيجة ستظهر هنا.</div></div></div>
-<script id="owner-panel-ai-script">
-(function(){
-  if(window.__OwnerPanelAIReady) return; window.__OwnerPanelAIReady=true;
-  var S=function(){return window.SmartOwnerStore;};
-  function by(id){return document.getElementById(id);} function val(id){var e=by(id);return e?String(e.value||'').trim():'';} function setv(id,v){var e=by(id);if(e)e.value=v||'';}
-  function code(){return 'SCH-'+Math.random().toString(36).slice(2,6).toUpperCase()+'-'+Date.now().toString().slice(-4);}
-  function linkFor(s){var base=location.href.split('#')[0].split('?')[0];return base+'?register=1&schoolId='+encodeURIComponent(s.id)+'&code='+encodeURIComponent(s.code);} 
-  window.SmartOwnerPanel={
-    open:function(){var m=by('ownerPanelModal'); if(m)m.classList.add('open'); if(!val('ownerSchoolCode')) setv('ownerSchoolCode',code()); this.refresh();},
-    close:function(){var m=by('ownerPanelModal'); if(m)m.classList.remove('open');},
-    createSchool:function(){var st=S(); var schoolName=val('ownerSchoolName'), managerName=val('ownerManagerName'), email=val('ownerManagerEmail'), c=val('ownerSchoolCode')||code(); if(!schoolName||!managerName||!email){st.toast('أدخل اسم المدرسة واسم المدير والبريد.');return;} var schools=st.schools(); var id='school_'+Date.now(); var school={id:id,name:schoolName,code:c,status:val('ownerSchoolStatus')||'active',cloud:val('ownerCloudStatus')||'غير مربوط',createdAt:new Date().toISOString()}; school.registrationLink=linkFor(school); schools.unshift(school); st.saveSchools(schools); var users=st.users(); users.unshift({id:'manager_'+Date.now(),name:managerName,email:email,role:'manager',status:'active',isActive:true,schoolId:id,permissions:['owner-created-manager']}); st.saveUsers(users); setv('ownerSchoolName',''); setv('ownerManagerName',''); setv('ownerManagerEmail',''); setv('ownerSchoolCode',code()); st.toast('تم إنشاء المدرسة والمدير ورابط التسجيل.'); this.refresh();},
-    toggle:function(id){var st=S(); var schools=st.schools(); schools=schools.map(function(x){if(x.id===id){x.status=x.status==='active'?'disabled':'active';}return x;}); st.saveSchools(schools); this.refresh();},
-    remove:function(id){var st=S(); if(!confirm('حذف المدرسة من لوحة المالك؟')) return; st.saveSchools(st.schools().filter(function(x){return x.id!==id;})); this.refresh();},
-    copy:function(text){navigator.clipboard&&navigator.clipboard.writeText(text); S().toast('تم نسخ رابط التسجيل.');},
-    export:function(){var data={schools:S().schools(),users:S().users(),exportedAt:new Date().toISOString()}; var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json;charset=utf-8'}); var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='بيانات_مالك_المنصة.json'; document.body.appendChild(a); a.click(); a.remove();},
-    refresh:function(){var st=S(); var rows=st.schools().map(function(x){return '<tr><td>'+x.name+'</td><td>'+x.code+'</td><td><span class="owner-link">'+x.registrationLink+'</span></td><td class="'+(x.status==='active'?'owner-status-active':'owner-status-off')+'">'+(x.status==='active'?'مفعلة':'معطلة')+'</td><td>'+st.users().filter(function(u){return u.schoolId===x.id;}).length+'</td><td>'+x.cloud+'</td><td><button onclick="SmartOwnerPanel.copy(\''+x.registrationLink.replace(/'/g,'')+'\')">نسخ</button> <button onclick="SmartOwnerPanel.toggle(\''+x.id+'\')">تفعيل/تعطيل</button> <button onclick="SmartOwnerPanel.remove(\''+x.id+'\')">حذف</button></td></tr>';}).join(''); by('ownerSchoolsTable').innerHTML='<table class="owner-table"><thead><tr><th>اسم المدرسة</th><th>كود المدرسة</th><th>رابط التسجيل الخاص</th><th>الحالة</th><th>عدد المستخدمين</th><th>التخزين السحابي</th><th>إجراءات</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7">لا توجد مدارس مسجلة بعد.</td></tr>')+'</tbody></table>';}
-  };
-  window.SmartOwnerAI={open:function(){by('ownerAiModal').classList.add('open');},close:function(){by('ownerAiModal').classList.remove('open');},text:function(){return val('ownerAiInput');},out:function(t){by('ownerAiOutput').textContent=t;},summarize:function(){var t=this.text();this.out(t?'ملخص إداري:\n- '+t.slice(0,240)+'\n- تم تحديد أهم النقاط لعرضها على صاحب الصلاحية.':'أدخل نصًا أولًا.');},recommend:function(){this.out('توصيات مقترحة:\n1- تحديد مسؤول تنفيذ لكل بند.\n2- إضافة موعد متابعة.\n3- حفظ النتيجة في الأرشيف ومحفظة الاجتماعات.\n4- إرسال تنبيه للمعنيين.');},polish:function(){var t=this.text();this.out(t?'صياغة رسمية مقترحة:\nبناءً على ما ورد، نأمل الاطلاع واتخاذ اللازم وفق الإجراءات المعتمدة، مع توثيق ما يتم إنجازه ومتابعة مؤشرات التنفيذ.\n\nالنص الأصلي: '+t:'أدخل نصًا أولًا.');}};
-  document.addEventListener('DOMContentLoaded',function(){try{if(new URLSearchParams(location.search).get('register')){if(typeof openRegistrationModal==='function') setTimeout(openRegistrationModal,300);}}catch(e){}});
-})();
-</script>
-<!-- OWNER_PANEL_AND_AI_PATCH_END -->
-
-
-
-
-
-<!-- OWNER_AI_BOTTOM_SAFE_PLACEMENT_START -->
-<style id="owner-ai-bottom-safe-style">
-  #owner-bottom-actions-final{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:2500;display:flex;gap:10px;align-items:center;justify-content:center;direction:rtl;font-family:'Cairo',Arial,sans-serif;pointer-events:auto}
-  #owner-bottom-actions-final button{border:0;border-radius:999px;padding:10px 18px;font-weight:900;font-size:12px;color:white;box-shadow:0 14px 35px rgba(0,0,0,.25);cursor:pointer;white-space:nowrap}
-  #owner-bottom-actions-final .owner-final-btn{background:linear-gradient(135deg,#cfae5d,#8a6b21);color:#0f172a}
-  #owner-bottom-actions-final .ai-final-btn{background:linear-gradient(135deg,#0f766e,#0891b2)}
-</style>
-<div id="owner-bottom-actions-final" aria-label="أدوات مالك المنصة وذكاء المنصة">
-  <button type="button" class="owner-final-btn" onclick="window.SmartOwnerPanel&&SmartOwnerPanel.open?SmartOwnerPanel.open():alert('لوحة مالك المنصة غير مفعلة في هذه النسخة')">👑 نسخة المالك</button>
-  <button type="button" class="ai-final-btn" onclick="window.SmartOwnerAI&&SmartOwnerAI.open?SmartOwnerAI.open():alert('ذكاء المنصة جاهز للربط السحابي')">✨ ذكاء المنصة</button>
-</div>
-<!-- OWNER_AI_BOTTOM_SAFE_PLACEMENT_END -->
-
-
-<script id="clear-stale-preview-mode-safe">
-(function(){try{localStorage.removeItem('smartSchoolUnifiedOpsV2_previewMode');}catch(e){}})();
-</script>
+<!-- SAFE_SMART_AI_SUITE_END -->
 
 </body>
 </html>

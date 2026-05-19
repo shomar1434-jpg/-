@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>سجل متابعة أعمال الطلاب</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SheetJS (XLSX) -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js"></script>
+    <!-- Mammoth (DOCX) -->
+    <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
+    <!-- PDF.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;700;900&display=swap');
+        
+        body {
+            font-family: 'Noto Sans Arabic', sans-serif;
+            background-color: #f3f4f6;
+            margin: 0;
+            padding: 0;
+        }
+
+        /* --- إعدادات الطباعة الاحترافية والتحكم في الإحاطة --- */
+        @media print {
+            @page {
+                size: A4 landscape;
+                margin: 10mm; /* مسافة موحدة أعلى وأسفل الصفحة وإدخال الإحاطة للداخل */
+            }
+            .no-print { display: none !important; }
+            html, body {
+                width: auto !important;
+                min-height: auto !important;
+                background: white !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            
+            #mainContent {
+                padding: 0 !important;
+                margin: 0 !important;
+                width: 100% !important;
+                display: block !important;
+            }
+
+            .page-container { 
+                page-break-after: always;
+                break-after: page;
+                page-break-inside: avoid;
+                break-inside: avoid;
+                box-shadow: none !important;
+                border: 2px solid black !important;
+                padding: 6mm 8mm !important;
+                margin: 0 auto !important;
+                border-radius: 14px !important;
+                height: 188mm !important;
+                width: 274mm !important;
+                max-width: 274mm !important;
+                display: flex !important;
+                flex-direction: column !important;
+                justify-content: flex-start !important;
+                box-sizing: border-box !important;
+                overflow: hidden !important;
+            }
+            .page-container:last-child {
+                page-break-after: auto !important;
+                break-after: auto !important;
+            }
+            .page-container > div {
+                height: 100% !important;
+                min-height: 0 !important;
+                display: flex !important;
+                flex-direction: column !important;
+                justify-content: flex-start !important;
+                gap: 2.5mm !important;
+            }
+            .page-body {
+                flex: 0 0 auto !important;
+                min-height: auto !important;
+                overflow: visible !important;
+            }
+            .signature-footer {
+                flex: 0 0 auto !important;
+                margin-top: 1mm !important;
+                padding-top: 1mm !important;
+                padding-bottom: 0 !important;
+            }
+            .page-date-footer {
+                flex: 0 0 auto !important;
+                margin-top: auto !important;
+                padding-top: 1mm !important;
+            }
+
+            table { 
+                border-width: 2px !important; 
+                border-color: black !important; 
+                width: 100% !important;
+                table-layout: fixed !important;
+                font-size: 9px !important;
+            }
+            thead tr:first-child { height: 28px !important; }
+            thead tr:nth-child(2) { height: 20px !important; }
+            tbody tr { height: 24px !important; }
+            th, td { padding: 1px 3px !important; }
+            input { border: none !important; background: transparent !important; }
+            select { border: none !important; appearance: none; -webkit-appearance: none; background: transparent !important; }
+            
+            .print-label-fix {
+                font-weight: 900;
+                font-size: 1.1rem;
+                display: block !important;
+            }
+            .edit-field { display: none !important; }
+        }
+
+        /* --- العرض في المتصفح --- */
+        .page-container {
+            border: 2px solid #333;
+            border-radius: 22px;
+            background-color: white;
+            box-sizing: border-box;
+            width: min(100%, 1150px);
+            min-height: 188mm;
+            margin: 40px auto;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 24px 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+            overflow: hidden;
+        }
+
+        .page-container table {
+            table-layout: fixed;
+        }
+
+        .page-container thead tr:first-child { height: 34px; }
+        .page-container thead tr:nth-child(2) { height: 26px; }
+        .page-container tbody tr { height: 28px; }
+
+        .page-body {
+            flex: 0 0 auto;
+            min-height: auto;
+            overflow: visible;
+        }
+
+        .signature-footer {
+            flex: 0 0 auto;
+            margin-top: 8px;
+            padding-bottom: 0;
+        }
+
+        .page-date-footer {
+            margin-top: auto;
+        }
+
+        input[type="number"]::-webkit-inner-spin-button,
+        input[type="number"]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        .preview-mode input, .preview-mode select {
+            pointer-events: none;
+            border-bottom: none !important;
+        }
+        
+        .header-input {
+            border-bottom: 1px dotted #ccc;
+            text-align: center;
+        }
+
+        .icon-svg {
+            display: inline-block;
+            vertical-align: middle;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .print-label-fix { display: none; }
+
+        @media print {
+            .page-container .grid.grid-cols-3 { margin-bottom: 1mm !important; }
+            .signature-footer p.text-lg { font-size: 13px !important; line-height: 1.1 !important; padding-bottom: 1px !important; }
+            .signature-footer input { padding-top: 1px !important; padding-bottom: 1px !important; }
+            .signature-footer .print-label-fix { font-size: 12px !important; line-height: 1.1 !important; }
+            .signature-footer p.text-\[11px\] { font-size: 9px !important; margin-top: 0 !important; }
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+
+    <!-- شريط التحكم العلوي -->
+    <div class="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md shadow-md p-4 no-print border-b border-gray-200">
+        <div class="max-w-7xl mx-auto flex flex-wrap gap-4 items-center justify-between">
+            <div class="flex gap-4 items-center">
+                <div class="relative w-64">
+                    <span class="absolute right-3 top-2.5 text-gray-400">
+                        <svg class="icon-svg w-4 h-4" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    </span>
+                    <input 
+                        type="text" 
+                        id="searchInput"
+                        placeholder="بحث عن اسم طالب..." 
+                        class="w-full pr-9 py-2 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                        oninput="handleSearch(this.value)"
+                    />
+                </div>
+            </div>
+            
+            <div class="flex gap-2">
+                <button onclick="toggleImportModal()" class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl shadow-sm text-sm font-bold transition-all">
+                    <svg class="icon-svg w-4 h-4" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                    <span>استيراد الأسماء</span>
+                </button>
+                <button id="previewBtn" onclick="togglePreview()" class="flex items-center gap-2 bg-gray-200 text-gray-700 hover:bg-gray-300 px-4 py-2 rounded-xl text-sm font-bold transition-all">
+                    <span id="previewIconCont">
+                        <svg class="icon-svg w-4 h-4" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                    </span>
+                    <span id="previewText">وضع المعاينة</span>
+                </button>
+                <button onclick="window.print()" class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl shadow-md text-sm font-bold transition-all">
+                    <svg class="icon-svg w-4 h-4" viewBox="0 0 24 24"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                    <span>طباعة السجل</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- حاوية الصفحات -->
+    <div id="mainContent" class="pt-28 pb-12 px-4 space-y-10 print:space-y-0 print:pt-0">
+        <!-- توليد الصفحات برمجياً -->
+    </div>
+
+    <!-- نافذة الاستيراد -->
+    <div id="importModal" class="fixed inset-0 bg-black/50 z-[60] hidden flex items-center justify-center p-4 no-print">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden text-right">
+            <div class="bg-indigo-600 p-5 text-white flex justify-between items-center">
+                <div class="flex items-center gap-2 font-bold text-lg">
+                    <svg class="icon-svg w-6 h-6" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><polyline points="9 15 12 18 15 15"></polyline></svg>
+                    <h2>استيراد الأسماء</h2>
+                </div>
+                <button onclick="toggleImportModal()" class="hover:bg-white/20 p-1 rounded-full">
+                    <svg class="icon-svg w-6 h-6" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <div class="p-8 space-y-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="border-2 border-dashed border-indigo-100 rounded-2xl p-6 flex flex-col items-center justify-center space-y-3 cursor-pointer hover:bg-indigo-50 transition-colors" onclick="document.getElementById('excelFile').click()">
+                        <svg class="icon-svg w-10 h-10 text-indigo-600" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                        <span class="font-bold text-gray-700">Excel / Word / PDF</span>
+                        <span id="importStatus" class="text-[11px] text-gray-400 text-center leading-5">يدعم: xlsx, xls, csv, docx, pdf</span>
+                        <input type="file" id="excelFile" accept=".xlsx,.xls,.csv,.docx,.pdf" class="hidden" onchange="handleFileImport(event)">
+                    </div>
+                    <div class="space-y-3 text-right">
+                        <label class="font-bold text-gray-600 block text-sm">لصق مباشر من Word / PDF</label>
+                        <textarea id="smartPasteText" class="w-full h-32 border border-gray-200 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500 resize-none" placeholder="الصق قائمة الأسماء هنا..."></textarea>
+                        <button onclick="handleSmartPaste()" class="w-full bg-indigo-600 text-white py-2 rounded-xl font-bold text-sm">تطبيق</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let students = Array.from({ length: 45 }, (_, i) => ({
+            id: i + 1, name: '', interaction: '', homework: '', tasks: '', test1: '', test2: '', notes: ''
+        }));
+
+        let headerInfo = { 
+            district: '', school: '', subject: 'الرياضيات', semester: 'الأول', year: '1446', section: '',
+            teacherName: '', principalName: ''
+        };
+        
+        let isPreview = false;
+        let searchTerm = '';
+
+        const subjects = ['اللغة العربية', 'الرياضيات', 'العلوم', 'اللغة الإنجليزية'];
+        const years = Array.from({ length: 1465 - 1446 + 1 }, (_, i) => (1446 + i).toString());
+
+        function init() { render(); }
+
+        function render() {
+            const container = document.getElementById('mainContent');
+            container.innerHTML = '';
+            
+            const filtered = students.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
+
+            for (let pageIndex = 0; pageIndex < 3; pageIndex++) {
+                const pageStudents = filtered.slice(pageIndex * 15, (pageIndex * 15) + 15);
+                while (pageStudents.length < 15) {
+                    pageStudents.push({ id: `blank-${pageIndex}-${pageStudents.length}`, name: '', interaction: '', homework: '', tasks: '', test1: '', test2: '', notes: '', isBlank: true });
+                }
+                
+                const pageEl = document.createElement('div');
+                pageEl.className = `page-container ${isPreview ? 'preview-mode' : ''}`;
+                
+                pageEl.innerHTML = `
+                    <div class="flex flex-col h-full justify-between">
+                        <!-- ترويسة الصفحة -->
+                        <div class="grid grid-cols-3 w-full items-start mb-3">
+                            <div class="text-center px-2 space-y-1 text-xs font-bold pt-2">
+                                <p class="text-sm font-black">المملكة العربية السعودية</p>
+                                <p class="text-sm">وزارة التعليم</p>
+                                <div class="flex flex-col items-center gap-1 mt-2">
+                                    <div class="flex items-center gap-1">
+                                        <span>إدارة التعليم بـ:</span>
+                                        <input type="text" value="${headerInfo.district}" oninput="updateHeader('district', this.value)" class="header-input w-24 bg-transparent outline-none">
+                                    </div>
+                                    <div class="flex items-center gap-1">
+                                        <span>مدرسة:</span>
+                                        <input type="text" value="${headerInfo.school}" oninput="updateHeader('school', this.value)" class="header-input w-24 bg-transparent outline-none">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="flex flex-col items-center justify-center">
+                                <img src="https://salogos.b-cdn.net/logos/svg/1774895141785-5zgexuf8.svg" alt="وزارة التعليم" class="w-32 h-auto mb-2">
+                                <h1 class="text-lg font-black text-gray-900 border-b-2 border-black px-4 pb-1">سجل متابعة أعمال الطلاب</h1>
+                                <div class="mt-2 text-xs font-bold flex items-center gap-1">
+                                    <span>العام الدراسي: </span>
+                                    <select onchange="updateHeader('year', this.value)" class="bg-transparent outline-none cursor-pointer">
+                                        ${years.map(y => `<option value="${y}" ${headerInfo.year === y ? 'selected' : ''}>${y} هـ</option>`).join('')}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="text-center px-2 space-y-1 text-xs font-bold pt-2">
+                                <div class="flex flex-col items-center gap-1">
+                                    <div class="flex items-center gap-1">
+                                        <span class="whitespace-nowrap">المقرر:</span>
+                                        <select onchange="updateHeader('subject', this.value)" class="bg-transparent outline-none text-center cursor-pointer font-black">
+                                            ${subjects.map(s => `<option value="${s}" ${headerInfo.subject === s ? 'selected' : ''}>${s}</option>`).join('')}
+                                        </select>
+                                    </div>
+                                    <div class="flex items-center gap-1">
+                                        <span class="whitespace-nowrap">الفصل الدراسي:</span>
+                                        <select onchange="updateHeader('semester', this.value)" class="bg-transparent outline-none text-center cursor-pointer">
+                                            <option value="الأول" ${headerInfo.semester === 'الأول' ? 'selected' : ''}>الأول</option>
+                                            <option value="الثاني" ${headerInfo.semester === 'الثاني' ? 'selected' : ''}>الثاني</option>
+                                        </select>
+                                    </div>
+                                    <div class="flex items-center gap-1">
+                                        <span class="whitespace-nowrap">الشعبة:</span>
+                                        <input type="text" value="${headerInfo.section}" oninput="updateHeader('section', this.value)" class="header-input w-12 bg-transparent text-center font-bold" placeholder="...">
+                                    </div>
+                                </div>
+                                <div class="text-[10px] text-gray-400 mt-2 font-normal italic">صفحة (${pageIndex + 1})</div>
+                            </div>
+                        </div>
+
+                        <!-- الجدول (15 طالب) -->
+                        <div class="page-body">
+                            <table class="w-full border-2 border-black border-collapse text-[10px] md:text-[11px]">
+                                <thead>
+                                    <tr class="bg-gray-100 font-bold h-12 text-center">
+                                        <th rowSpan="2" class="border border-black w-12">م</th>
+                                        <th rowSpan="2" class="border border-black w-[260px]">اسم الطالب</th>
+                                        <th rowSpan="2" class="border border-black w-32">التفاعل والمشاركة (10)</th>
+                                        <th rowSpan="2" class="border border-black w-24">الواجبات (15)</th>
+                                        <th rowSpan="2" class="border border-black w-24">مهام أدائية (15)</th>
+                                        <th colSpan="2" class="border border-black">الاختبارات (20)</th>
+                                        <th rowSpan="2" class="border border-black w-[155px] bg-gray-50">ملاحظات</th>
+                                    </tr>
+                                    <tr class="bg-gray-50 font-bold h-8 text-center">
+                                        <th class="border border-black p-1 w-20">ف1</th>
+                                        <th class="border border-black p-1 w-20">ف2</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${pageStudents.map((student, idx) => `
+                                        <tr class="h-10 group">
+                                            <td class="border border-black text-center font-bold">${(pageIndex * 15) + idx + 1}</td>
+                                            <td class="border border-black px-3 relative">
+                                                <div class="flex items-center gap-2">
+                                                    <input type="text" value="${student.name}" oninput="updateStudent('${student.id}', 'name', this.value)" class="w-full bg-transparent outline-none truncate font-bold text-gray-800" placeholder="...">
+                                                    <button onclick="clearStudent('${student.id}')" class="${student.isBlank ? 'hidden' : ''} text-red-300 hover:text-red-600 no-print opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <svg class="icon-svg w-3 h-3" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                            <td class="border border-black text-center"><input type="text" value="${student.interaction}" oninput="updateStudent('${student.id}', 'interaction', this.value)" class="w-full text-center bg-transparent outline-none"></td>
+                                            <td class="border border-black text-center"><input type="text" value="${student.homework}" oninput="updateStudent('${student.id}', 'homework', this.value)" class="w-full text-center bg-transparent outline-none"></td>
+                                            <td class="border border-black text-center"><input type="text" value="${student.tasks}" oninput="updateStudent('${student.id}', 'tasks', this.value)" class="w-full text-center bg-transparent outline-none"></td>
+                                            <td class="border border-black text-center">
+                                                <input type="text" value="${student.test1}" oninput="updateStudent('${student.id}', 'test1', this.value)" class="w-full text-center bg-transparent outline-none border-none" placeholder="ف1">
+                                            </td>
+                                            <td class="border border-black text-center">
+                                                <input type="text" value="${student.test2}" oninput="updateStudent('${student.id}', 'test2', this.value)" class="w-full text-center bg-transparent outline-none border-none" placeholder="ف2">
+                                            </td>
+                                            <td class="border border-black px-2 bg-gray-50/30">
+                                                <input type="text" value="${student.notes}" oninput="updateStudent('${student.id}', 'notes', this.value)" class="w-full bg-transparent outline-none text-right">
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- التذييل الثابت -->
+                        <div class="signature-footer grid grid-cols-2 gap-28 text-center font-bold text-sm">
+                            <div class="flex flex-col items-center gap-2">
+                                <p class="text-gray-900 border-b border-gray-200 pb-1 w-full text-lg">معلم المادة</p>
+                                <div class="edit-field w-full">
+                                    <input type="text" value="${headerInfo.teacherName}" oninput="updateHeader('teacherName', this.value)" 
+                                           class="w-full text-center bg-gray-50 rounded py-2 outline-none border-b border-dotted border-gray-400" 
+                                           placeholder="ادخل اسم المعلم">
+                                </div>
+                                <span class="print-label-fix">${headerInfo.teacherName || '................................'}</span>
+                                <p class="text-[11px] text-gray-400 font-normal mt-1">التوقيع: .......................................</p>
+                            </div>
+                            <div class="flex flex-col items-center gap-2">
+                                <p class="text-gray-900 border-b border-gray-200 pb-1 w-full text-lg">مدير المدرسة</p>
+                                <div class="edit-field w-full">
+                                    <input type="text" value="${headerInfo.principalName}" oninput="updateHeader('principalName', this.value)" 
+                                           class="w-full text-center bg-gray-50 rounded py-2 outline-none border-b border-dotted border-gray-400" 
+                                           placeholder="ادخل اسم المدير">
+                                </div>
+                                <span class="print-label-fix">${headerInfo.principalName || '................................'}</span>
+                                <p class="text-[11px] text-gray-400 font-normal mt-1">الختم والتوقيع: .................................</p>
+                            </div>
+                        </div>
+
+                        <div class="page-date-footer pt-1 border-t border-gray-100 flex justify-between text-[9px] text-gray-400 font-bold">
+                            <span>تاريخ الاستخراج: ${new Date().toLocaleDateString('ar-SA')}</span>
+                            <span>نظام المتابعة الإلكتروني - نسخة معتمدة لوزارة التعليم</span>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(pageEl);
+            }
+        }
+
+        function updateHeader(field, value) { 
+            headerInfo[field] = value; 
+            const inputs = document.querySelectorAll(`input[oninput*="${field}"]`);
+            inputs.forEach(i => i.value = value);
+            
+            if (field === 'teacherName' || field === 'principalName') {
+                 document.querySelectorAll(`.page-container`).forEach((pc) => {
+                     const labels = pc.querySelectorAll('span.print-label-fix');
+                     const targetLabel = field === 'teacherName' ? labels[0] : labels[1];
+                     if(targetLabel) targetLabel.innerText = value || '................................';
+                 });
+            }
+        }
+        
+        function updateStudent(id, field, value) { 
+            const s = students.find(x => x.id === id); 
+            if(s) s[field] = value; 
+        }
+
+        function clearStudent(id) {
+            const s = students.find(x => x.id === id);
+            if(s) { s.name = ''; render(); }
+        }
+        
+        function togglePreview() {
+            isPreview = !isPreview;
+            const btn = document.getElementById('previewBtn');
+            const iconCont = document.getElementById('previewIconCont');
+            const text = document.getElementById('previewText');
+
+            if (isPreview) {
+                btn.classList.replace('bg-gray-200', 'bg-orange-600');
+                btn.classList.replace('text-gray-700', 'text-white');
+                iconCont.innerHTML = '<svg class="icon-svg w-4 h-4" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4L18.5 2.5z"></path></svg>';
+                text.innerText = "وضع التحرير";
+            } else {
+                btn.classList.replace('bg-orange-600', 'bg-gray-200');
+                btn.classList.replace('text-white', 'text-gray-700');
+                iconCont.innerHTML = '<svg class="icon-svg w-4 h-4" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+                text.innerText = "وضع المعاينة";
+            }
+            render();
+        }
+        
+        function handleSearch(v) { 
+            searchTerm = v; 
+            render(); 
+        }
+
+        function toggleImportModal() { document.getElementById('importModal').classList.toggle('hidden'); }
+        
+        function extractNamesFromText(text) {
+            return text
+                .replace(/\r/g, '\n')
+                .split('\n')
+                .map(line => line
+                    .replace(/^[\s\d\u0660-\u0669\u06F0-\u06F9\.\-–—\)\(]+/, '')
+                    .replace(/\s+/g, ' ')
+                    .trim()
+                )
+                .filter(line => {
+                    if (line.length < 5) return false;
+                    if (/^(الاسم|اسم الطالب|م|رقم|السجل|الصف|الفصل|المادة|التاريخ)$/i.test(line)) return false;
+                    const words = line.split(' ').filter(Boolean);
+                    return words.length >= 2 && words.length <= 8;
+                })
+                .slice(0, 45);
+        }
+
+        function applyImportedNames(names) {
+            if (!names || !names.length) {
+                alert('لم يتم العثور على أسماء واضحة داخل الملف. جرّب النسخ واللصق المباشر أو تأكد أن ملف PDF نصي وليس صورة ممسوحة.');
+                return;
+            }
+            students.forEach((s) => { s.name = ''; });
+            names.forEach((name, i) => { if (i < 45) students[i].name = name; });
+            toggleImportModal();
+            render();
+            alert(`تم استيراد ${Math.min(names.length, 45)} اسم بنجاح.`);
+        }
+
+        function handleSmartPaste() {
+            const text = document.getElementById('smartPasteText').value.trim();
+            if (!text) return;
+            applyImportedNames(extractNamesFromText(text));
+        }
+
+        async function handleFileImport(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const status = document.getElementById('importStatus');
+            const ext = (file.name.split('.').pop() || '').toLowerCase();
+            if (status) status.textContent = 'جاري قراءة الملف...';
+
+            try {
+                if (['xlsx', 'xls', 'csv'].includes(ext)) {
+                    await importExcel(file);
+                } else if (ext === 'docx') {
+                    await importDocx(file);
+                } else if (ext === 'pdf') {
+                    await importPdf(file);
+                } else {
+                    alert('صيغة الملف غير مدعومة. الصيغ المدعومة: xlsx, xls, csv, docx, pdf');
+                }
+            } catch (err) {
+                console.error(err);
+                alert('تعذر استيراد الملف. تأكد من أن الملف غير تالف وأن المكتبات الخارجية متاحة عند تشغيل الصفحة.');
+            } finally {
+                if (status) status.textContent = 'يدعم: xlsx, xls, csv, docx, pdf';
+                e.target.value = '';
+            }
+        }
+
+        function importExcel(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    try {
+                        const wb = XLSX.read(evt.target.result, { type: 'binary' });
+                        const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
+                        const text = data.flat().filter(c => c !== null && c !== undefined).join('\n');
+                        applyImportedNames(extractNamesFromText(text));
+                        resolve();
+                    } catch (err) { reject(err); }
+                };
+                reader.onerror = reject;
+                reader.readAsBinaryString(file);
+            });
+        }
+
+        async function importDocx(file) {
+            if (!window.mammoth) throw new Error('Mammoth library is not loaded');
+            const buffer = await file.arrayBuffer();
+            const result = await mammoth.extractRawText({ arrayBuffer: buffer });
+            applyImportedNames(extractNamesFromText(result.value || ''));
+        }
+
+        async function importPdf(file) {
+            if (!window.pdfjsLib) throw new Error('PDF.js library is not loaded');
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+            const buffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+            let fullText = '';
+            for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+                const page = await pdf.getPage(pageNum);
+                const content = await page.getTextContent();
+                const lines = content.items.map(item => item.str).join(' ');
+                fullText += lines + '\n';
+            }
+            applyImportedNames(extractNamesFromText(fullText));
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>

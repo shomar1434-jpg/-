@@ -515,6 +515,46 @@
         </div>
     </div>
 
+
+
+    <!-- مودال إدارة المدارس المستقلة -->
+    <div id="school-management-modal" class="modal">
+        <div class="modal-content max-w-5xl text-right">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6">
+                <div>
+                    <h3 class="text-lg font-bold">🏫 إدارة المدارس المستقلة</h3>
+                    <p class="text-[11px] text-slate-500 mt-1">إنشاء المدارس، اعتماد مدير المدرسة، ونسخ روابط الدخول والتسجيل الخاصة بكل مدرسة.</p>
+                </div>
+                <div class="flex gap-2 flex-wrap">
+                    <button onclick="createSchoolFromAdminPanel()" class="bg-teal-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md">+ إنشاء/حفظ مدرسة</button>
+                    <button onclick="renderSchoolsManagement()" class="bg-slate-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md">تحديث القائمة</button>
+                    <button onclick="closeModal('school-management-modal')" class="text-slate-400 font-bold px-3">إغلاق</button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-3 bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-5">
+                <input type="text" id="admin-school-name" class="w-full p-3 border rounded-xl text-sm" placeholder="اسم المدرسة">
+                <input type="text" id="admin-manager-name" class="w-full p-3 border rounded-xl text-sm" placeholder="اسم مدير المدرسة">
+                <input type="email" id="admin-manager-email" class="w-full p-3 border rounded-xl text-sm" placeholder="بريد منصة مدرستي للمدير">
+                <input type="password" id="admin-manager-password" class="w-full p-3 border rounded-xl text-sm" placeholder="الرقم السري الأولي">
+            </div>
+
+            <div class="overflow-x-auto rounded-2xl border border-slate-200">
+                <table class="w-full text-right text-sm">
+                    <thead>
+                        <tr class="bg-slate-100">
+                            <th class="p-3 border-b">المدرسة</th>
+                            <th class="p-3 border-b">مدير المدرسة</th>
+                            <th class="p-3 text-center border-b">الحالة</th>
+                            <th class="p-3 text-center border-b">الروابط والإجراءات</th>
+                        </tr>
+                    </thead>
+                    <tbody id="schools-management-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
     <!-- مودالات النظام -->
     <div id="user-management-modal" class="modal">
         <div class="modal-content text-right">
@@ -705,6 +745,53 @@
             return isMatch;
         };
 
+
+        function normalizeUserActivationState(u){
+            if(!u || typeof u !== 'object') return u;
+            const active = (u.status === 'active' || u.isActive === true || u.active === true);
+            if(active){ u.status = 'active'; u.isActive = true; u.active = true; }
+            else { u.status = u.status || 'pending'; u.isActive = false; u.active = false; }
+            return u;
+        }
+
+        function collectLocalUsersForWorkspace(){
+            const byKey = new Map();
+            const add = (user) => {
+                if(!user || typeof user !== 'object') return;
+                const email = String(user.email || '').trim().toLowerCase();
+                if(!email) return;
+                const id = String(user.id || email);
+                const key = id + '|' + email + '|' + String(user.schoolId || '');
+                const next = normalizeUserActivationState({ ...user });
+                const prev = byKey.get(key);
+                const prevActive = prev && (prev.status === 'active' || prev.isActive === true || prev.active === true);
+                const nextActive = next.status === 'active' || next.isActive === true || next.active === true;
+                if(!prev || nextActive || !prevActive) byKey.set(key, next);
+            };
+            const read = (raw) => {
+                try {
+                    const parsed = JSON.parse(raw || 'null');
+                    if(Array.isArray(parsed)) parsed.forEach(add);
+                    else if(parsed && Array.isArray(parsed.users)) parsed.users.forEach(add);
+                } catch(e){}
+            };
+            ['smart_school_users','offline_users_backup','schoolUsers'].forEach(k => read(localStorage.getItem(k)));
+            for(let i=0;i<localStorage.length;i++){
+                const k = localStorage.key(i);
+                if(/user|school/i.test(k || '')) read(localStorage.getItem(k));
+            }
+            return Array.from(byKey.values());
+        }
+
+        function saveUnifiedUserStores(users){
+            const cleaned = (Array.isArray(users) ? users : []).map(u => normalizeUserActivationState({ ...u }));
+            localStorage.setItem('smart_school_users', JSON.stringify(cleaned));
+            localStorage.setItem('offline_users_backup', JSON.stringify(cleaned));
+            localStorage.setItem('schoolUsers', JSON.stringify(cleaned));
+            if(typeof allUsers !== 'undefined') allUsers = cleaned;
+            return cleaned;
+        }
+
         const openRegistrationModal = () => { closeModal('registration-modal'); document.getElementById('registration-modal').style.display = 'flex'; };
         const openSchoolRequestModal = () => { closeModal('school-request-modal'); document.getElementById('school-request-modal').style.display = 'flex'; };
         const openAddUserModal = () => { openEditModal('user-'+Date.now(), '', '', 'performance'); };
@@ -748,9 +835,8 @@
             const schools = JSON.parse(localStorage.getItem('smart_school_schools') || '[]');
             schools.push({ id: schoolId, schoolId, schoolName, managerEmail: email, managerName, status: 'pending', source: 'school_request', requestId, createdAt: new Date().toISOString() });
             allUsers.push(managerData);
-            localStorage.setItem('smart_school_users', JSON.stringify(allUsers));
+            saveUnifiedUserStores(allUsers);
             localStorage.setItem('smart_school_schools', JSON.stringify(schools));
-            localStorage.setItem('offline_users_backup', JSON.stringify(allUsers));
             try {
                 if (window.db && window.fs) {
                     await window.fs.setDoc(window.fs.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'users', requestId), managerData, { merge: true });
@@ -806,7 +892,7 @@
                 const exists = allUsers.some(u => String(u.email || '').toLowerCase() === emailKey && String(u.adminOwnerId || '') === String(inviteAdminId));
                 if (exists) { showToast("يوجد طلب أو حساب سابق بنفس البريد داخل هذه المدرسة"); return; }
                 allUsers.push(userData);
-                localStorage.setItem('smart_school_users', JSON.stringify(allUsers));
+                saveUnifiedUserStores(allUsers);
                 if (window.db && window.fs) {
                     await window.fs.setDoc(window.fs.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'users', requestId), userData, { merge: true });
                 }
@@ -938,6 +1024,159 @@
             });
         };
 
+
+
+        const schoolSlug = (value) => {
+            const source = String(value || 'school').trim().toLowerCase();
+            const latin = source.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+            if (latin) return latin.slice(0, 28);
+            return 'school-' + Math.random().toString(36).slice(2, 8);
+        };
+
+        const getSchoolsStore = () => {
+            try { return JSON.parse(localStorage.getItem('smart_school_schools') || '[]'); } catch(e) { return []; }
+        };
+
+        const saveSchoolsStore = (schools) => {
+            localStorage.setItem('smart_school_schools', JSON.stringify(Array.isArray(schools) ? schools : []));
+        };
+
+        const absoluteUrlFor = (file, params = {}) => {
+            const base = new URL(file, window.location.href);
+            Object.entries(params).forEach(([k,v]) => base.searchParams.set(k, v));
+            return base.href;
+        };
+
+        const buildSchoolLinks = (school) => {
+            const schoolId = school.schoolId || school.id;
+            const registrationCode = school.registrationCode || ('REG-' + String(schoolId || '').slice(-6).toUpperCase());
+            return {
+                login: absoluteUrlFor('school-login.html', { schoolId }),
+                register: absoluteUrlFor('register.html', { schoolId, register: registrationCode })
+            };
+        };
+
+        const copyText = async (text, label='الرابط') => {
+            try {
+                await navigator.clipboard.writeText(text);
+                showToast(`تم نسخ ${label}`);
+            } catch(e) {
+                prompt(`انسخ ${label}:`, text);
+            }
+        };
+
+        const openSchoolManagement = () => {
+            if (currentUser?.role !== 'leadership') return showToast('إدارة المدارس مخصصة لمدير النظام فقط');
+            document.getElementById('school-management-modal').style.display = 'flex';
+            renderSchoolsManagement();
+        };
+
+        const createSchoolFromAdminPanel = async () => {
+            const schoolName = document.getElementById('admin-school-name').value.trim();
+            const managerName = document.getElementById('admin-manager-name').value.trim();
+            const email = document.getElementById('admin-manager-email').value.trim().toLowerCase();
+            const password = document.getElementById('admin-manager-password').value.trim();
+            if (!schoolName || !managerName || !email || !password) return showToast('يرجى تعبئة اسم المدرسة واسم المدير والبريد والرقم السري');
+            let schools = getSchoolsStore();
+            let users = (typeof collectLocalUsersForWorkspace === 'function') ? collectLocalUsersForWorkspace() : JSON.parse(localStorage.getItem('smart_school_users') || '[]');
+            if (users.some(u => String(u.email || '').toLowerCase() === email && u.isDeleted !== true)) return showToast('يوجد حساب بنفس البريد');
+            const schoolId = 'school_' + schoolSlug(schoolName) + '_' + Date.now().toString(36).slice(-5);
+            const registrationCode = 'REG-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+            const managerId = 'manager_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+            const school = {
+                id: schoolId, schoolId, schoolName, schoolCode: schoolId, managerId,
+                managerEmail: email, managerName, status: 'active', registrationCode,
+                createdAt: new Date().toISOString(), createdBy: currentUser?.id || 'root'
+            };
+            const manager = (typeof ensureUserWorkspaceReady === 'function') ? ensureUserWorkspaceReady({
+                id: managerId, name: managerName, email, password, role: 'leadership', status: 'active', isActive: true,
+                accountType: 'school_manager', isPrimaryManager: true, schoolId, schoolName, registrationCode,
+                adminOwnerId: managerId, createdByAdminId: currentUser?.id || 'root', createdAt: new Date().toISOString()
+            }) : {
+                id: managerId, name: managerName, email, password, role: 'leadership', status: 'active', isActive: true,
+                accountType: 'school_manager', isPrimaryManager: true, schoolId, schoolName, registrationCode
+            };
+            schools.push(school);
+            users.push(manager);
+            saveSchoolsStore(schools);
+            (typeof saveUnifiedUserStores === 'function') ? saveUnifiedUserStores(users) : localStorage.setItem('smart_school_users', JSON.stringify(users));
+            allUsers = users;
+            ['admin-school-name','admin-manager-name','admin-manager-email','admin-manager-password'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+            renderSchoolsManagement();
+            showToast('تم إنشاء المدرسة وتفعيل مديرها محليًا');
+            try {
+                if (window.db && window.fs) {
+                    await window.fs.setDoc(window.fs.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'schools', schoolId), school, { merge: true });
+                    await window.fs.setDoc(window.fs.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'users', managerId), manager, { merge: true });
+                }
+            } catch(e) {}
+        };
+
+        const activateSchoolManager = async (schoolId) => {
+            let schools = getSchoolsStore();
+            let users = (typeof collectLocalUsersForWorkspace === 'function') ? collectLocalUsersForWorkspace() : JSON.parse(localStorage.getItem('smart_school_users') || '[]');
+            const school = schools.find(s => String(s.schoolId || s.id) === String(schoolId));
+            if (!school) return showToast('لم يتم العثور على المدرسة');
+            const email = String(school.managerEmail || '').toLowerCase();
+            let manager = users.find(u => String(u.email || '').toLowerCase() === email);
+            if (!manager) {
+                manager = { id: school.managerId || ('manager_' + Date.now()), name: school.managerName, email, password: school.password || '123456', role: 'leadership' };
+                users.push(manager);
+            }
+            Object.assign(manager, (typeof ensureUserWorkspaceReady === 'function') ? ensureUserWorkspaceReady({
+                ...manager, isActive: true, status: 'active', accountType: 'school_manager', isPrimaryManager: true,
+                schoolId: school.schoolId || school.id, schoolName: school.schoolName, registrationCode: school.registrationCode || ('REG-' + Math.random().toString(36).slice(2, 8).toUpperCase())
+            }) : {
+                ...manager, isActive: true, status: 'active', accountType: 'school_manager', isPrimaryManager: true,
+                schoolId: school.schoolId || school.id, schoolName: school.schoolName
+            });
+            school.status = 'active';
+            school.managerId = manager.id;
+            if (!school.registrationCode) school.registrationCode = manager.registrationCode || ('REG-' + Math.random().toString(36).slice(2, 8).toUpperCase());
+            saveSchoolsStore(schools);
+            (typeof saveUnifiedUserStores === 'function') ? saveUnifiedUserStores(users) : localStorage.setItem('smart_school_users', JSON.stringify(users));
+            allUsers = users;
+            renderSchoolsManagement();
+            showToast('تم تفعيل مدير المدرسة وربطه بمدرسته');
+        };
+
+        const renderSchoolsManagement = () => {
+            const body = document.getElementById('schools-management-body');
+            if (!body) return;
+            let schools = getSchoolsStore();
+            const users = (typeof collectLocalUsersForWorkspace === 'function') ? collectLocalUsersForWorkspace() : JSON.parse(localStorage.getItem('smart_school_users') || '[]');
+            const schoolRequests = users.filter(u => u && u.accountType === 'school_manager' && u.schoolId && u.isDeleted !== true);
+            schoolRequests.forEach(u => {
+                if (!schools.some(s => String(s.schoolId || s.id) === String(u.schoolId))) {
+                    schools.push({ id: u.schoolId, schoolId: u.schoolId, schoolName: u.schoolName || 'مدرسة غير مسماة', managerEmail: u.email, managerName: u.name, managerId: u.id, status: u.isActive ? 'active' : 'pending', registrationCode: u.registrationCode || ('REG-' + Math.random().toString(36).slice(2,8).toUpperCase()), source: u.source || 'users' });
+                }
+            });
+            saveSchoolsStore(schools);
+            if (!schools.length) {
+                body.innerHTML = '<tr><td colspan="4" class="p-6 text-center text-slate-400 text-xs">لا توجد مدارس مستقلة حتى الآن. أنشئ مدرسة من النموذج أعلاه أو اعتمد طلب مدرسة جديد.</td></tr>';
+                return;
+            }
+            body.innerHTML = '';
+            schools.slice().reverse().forEach(school => {
+                const schoolId = school.schoolId || school.id;
+                const links = buildSchoolLinks(school);
+                const isActive = school.status === 'active';
+                body.innerHTML += `<tr class="hover:bg-slate-50">
+                    <td class="p-3 border-b font-bold text-xs text-slate-700">${school.schoolName || 'مدرسة بدون اسم'}<div class="text-[10px] text-slate-400 mt-1">${schoolId}</div></td>
+                    <td class="p-3 border-b text-xs text-slate-600 font-bold">${school.managerName || 'بدون اسم'}<div class="text-[10px] text-slate-400 mt-1">${school.managerEmail || ''}</div></td>
+                    <td class="p-3 border-b text-center">${isActive ? '<span class="text-green-600 font-bold text-xs">مفعلة</span>' : '<span class="text-amber-600 font-bold text-xs">معلقة</span>'}</td>
+                    <td class="p-3 border-b text-center">
+                        <div class="flex flex-wrap justify-center gap-2">
+                            ${!isActive ? `<button onclick="activateSchoolManager('${safeJs(schoolId)}')" class="bg-teal-700 text-white px-3 py-1 rounded-lg text-[10px] font-bold">تفعيل المدير</button>` : ''}
+                            <button onclick="copyText('${safeJs(links.login)}','رابط دخول المدرسة')" class="bg-slate-700 text-white px-3 py-1 rounded-lg text-[10px] font-bold">نسخ دخول المدرسة</button>
+                            <button onclick="copyText('${safeJs(links.register)}','رابط تسجيل المستخدمين')" class="bg-emerald-700 text-white px-3 py-1 rounded-lg text-[10px] font-bold">نسخ رابط التسجيل</button>
+                            <a href="${links.login}" target="_blank" class="bg-blue-700 text-white px-3 py-1 rounded-lg text-[10px] font-bold">فتح البوابة</a>
+                        </div>
+                    </td>
+                </tr>`;
+            });
+        };
+
         const renderGrid = (role) => {
             const grid = document.getElementById('apps-grid');
             if (!grid) return;
@@ -951,6 +1190,13 @@
                 card.onclick = () => launchApp(appId);
                 grid.appendChild(card);
             });
+            if (role === 'leadership') {
+                const schoolCard = document.createElement('div');
+                schoolCard.className = "app-card p-8 text-center cursor-pointer shadow-lg hover:shadow-2xl transition-all hover:scale-105";
+                schoolCard.innerHTML = `<h2 class="font-bold text-xl text-slate-800">🏫 إدارة المدارس</h2><p class="text-[10px] text-teal-600 mt-2 font-bold">إنشاء المدارس وربط المديرين والروابط المستقلة</p><button class="mt-6 bg-emerald-700 text-white px-6 py-2 rounded-xl w-full font-bold shadow-md">فتح الإدارة</button>`;
+                schoolCard.onclick = openSchoolManagement;
+                grid.appendChild(schoolCard);
+            }
         };
 
         const launchApp = (appId) => {

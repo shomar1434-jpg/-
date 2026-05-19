@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>محضر اجتماع - وزارة التعليم</title>
+    <script src="https://cdn.tailwindcss.com">
+
+        function fillBySelector(selector, value) { const el = document.querySelector(selector); if(el && value !== undefined && value !== null) el.value = value; }
+        function setInputByOrder(scopeSelector, idx, value) { const list = document.querySelectorAll(scopeSelector); if(list[idx]) list[idx].value = value || ''; }
+        function loadImageToBox(input, boxId) { const f = input.files && input.files[0]; if(!f) return; const r = new FileReader(); r.onload = () => { document.getElementById(boxId).innerHTML = '<img class="signature-img" src="'+r.result+'">'; }; r.readAsDataURL(f); }
+        function loadMeetingDraft() {
+            let d = {};
+            try { d = JSON.parse(localStorage.getItem('ss_meeting_template_draft') || '{}') || {}; } catch(e) {}
+            fillBySelector('#main-date', d.date || new Date().toISOString().slice(0,10)); syncDate(document.getElementById('main-date').value);
+            const textInputs = document.querySelectorAll('#page1 input[type="text"]');
+            if(textInputs[2]) textInputs[2].value = d.educationOffice || '';
+            if(textInputs[3]) textInputs[3].value = d.schoolName || '';
+            const agenda = String(d.agenda || d.minutes || '').split(/\n+/).filter(Boolean);
+            const agendaInputs = Array.from(document.querySelectorAll('#page1 input[placeholder="1."],#page1 input[placeholder="2."],#page1 input[placeholder="3."]'));
+            agendaInputs.forEach((el,i)=>el.value = agenda[i] || '');
+            const rec = document.querySelector('#page1 textarea'); if(rec) rec.value = d.recommendations || d.minutes || '';
+            const attendance = Array.isArray(d.attendance) ? d.attendance : [];
+            const cells = document.querySelectorAll('#att-1 input, #att-2 input');
+            cells.forEach((el,i)=>{ if(attendance[i]) el.value = attendance[i].name || attendance[i]; });
+            const attendeeNames = document.querySelector('input[placeholder="الأسماء..."]'); if(attendeeNames) attendeeNames.value = attendance.map(x=>x.name||x).filter(Boolean).join('، ');
+        }
+        function collectMeetingTemplateData(){
+            const data = { savedAt:new Date().toISOString(), title:(localStorage.getItem('ss_meeting_template_title')||'محضر اجتماع'), date:document.getElementById('main-date').value, html:'' };
+            data.attendance = Array.from(document.querySelectorAll('#att-1 input, #att-2 input')).map(x=>x.value.trim()).filter(Boolean).map(name=>({name}));
+            data.agenda = Array.from(document.querySelectorAll('#page1 input[placeholder="1."],#page1 input[placeholder="2."],#page1 input[placeholder="3."]')).map(x=>x.value.trim()).filter(Boolean).join('\n');
+            const rec = document.querySelector('#page1 textarea'); data.recommendations = rec ? rec.value : '';
+            return data;
+        }
+        function cleanForPdfClone(){
+            const clone = document.documentElement.cloneNode(true);
+            clone.querySelectorAll('.no-print, script').forEach(x=>x.remove());
+            clone.querySelectorAll('input, textarea, select').forEach(el=>{
+                const span = clone.ownerDocument.createElement(el.tagName === 'TEXTAREA' ? 'div' : 'span');
+                span.textContent = el.value || '';
+                span.className = 'print-value';
+                span.style.cssText = 'display:inline-block;min-height:22px;background:#f0fdf4;border-bottom:1px dashed #cbd5e1;border-radius:6px;padding:2px 8px;white-space:pre-wrap;';
+                if(el.tagName === 'TEXTAREA') span.style.cssText += 'width:100%;min-height:120px;';
+                el.replaceWith(span);
+            });
+            return '<!DOCTYPE html>\n' + clone.outerHTML;
+        }
+        function saveMeetingTemplateAndReturn(){
+            const data = collectMeetingTemplateData();
+            data.html = cleanForPdfClone();
+            localStorage.setItem('ss_meeting_template_saved', JSON.stringify(data));
+            localStorage.setItem('ss_meeting_template_html', data.html);
+            if(window.opener){ try { window.opener.postMessage({type:'meeting-template-saved'}, '*'); } catch(e){} }
+            alert('تم حفظ نموذج محضر الاجتماع. عد الآن للاعتماد النهائي.');
+            window.close();
+        }
+        window.addEventListener('load', loadMeetingDraft);
+
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap');
+        
+        :root {
+            --moe-green: #006C35;
+            --moe-light: #f0fdf4;
+        }
+
+        * {
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        body {
+            font-family: 'Tajawal', sans-serif;
+            background-color: #f1f5f9;
+            margin: 0;
+            padding: 0;
+            font-size: 1rem; 
+        }
+
+        /* تنسيق الصفحة للطباعة والعرض */
+        .page {
+            background: white;
+            width: 210mm;
+            height: 296mm; /* أقل بملي واحد لضمان عدم تجاوز الصفحة في Safari */
+            margin: 20px auto;
+            padding: 12mm;
+            position: relative;
+            border-top: 8px solid var(--moe-green);
+            border-radius: 15px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        @page {
+            size: A4;
+            margin: 0;
+        }
+
+        @media print {
+            body { background: none; padding: 0; }
+            .page { 
+                margin: 0 !important; 
+                border-radius: 0; 
+                box-shadow: none;
+                break-after: page;
+                page-break-after: always;
+                height: 297mm;
+            }
+            .no-print { display: none !important; }
+        }
+
+        /* حقول الإدخال */
+        input[type="text"], input[type="date"], select, textarea {
+            border-bottom: 1px dashed #cbd5e1;
+            padding: 2px 8px;
+            background: var(--moe-light);
+            border-radius: 6px;
+            font-size: 1rem;
+            width: 100%;
+        }
+
+        textarea { resize: none; overflow: hidden; }
+
+        .header-section {
+            display: grid;
+            grid-template-columns: 1fr 0.8fr 1fr;
+            align-items: center;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #f1f5f9;
+            padding-bottom: 10px;
+        }
+
+        .main-title {
+            font-size: 1.8rem; 
+            font-weight: 800;
+            color: var(--moe-green);
+            margin-top: 10px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 1px solid #e2e8f0;
+        }
+
+        th { background: var(--moe-green); color: white; padding: 6px; font-size: 0.95rem; }
+        td { border: 1px solid #e2e8f0; padding: 5px; text-align: center; }
+
+        .branding-footer {
+            margin-top: auto;
+            padding-top: 10px;
+            display: flex;
+            justify-content: space-between;
+            border-top: 1px solid #f1f5f9;
+            font-size: 0.9rem;
+            color: var(--moe-green);
+            font-weight: 600;
+        }
+    .no-break{break-inside:avoid;page-break-inside:avoid}.signature-img,.stamp-img{max-height:58px;max-width:92%;object-fit:contain}@media print{input[type="file"]{display:none!important} #signature-box,#stamp-box{height:56px!important}}
+</style>
+</head>
+<body>
+
+    <!-- أدوات التحكم -->
+    <div class="no-print flex justify-center py-4 gap-4 bg-white shadow-sm sticky top-0 z-50">
+        <button onclick="saveMeetingTemplateAndReturn()" class="bg-emerald-700 text-white px-10 py-3 rounded-full hover:bg-emerald-800 shadow-lg font-bold flex items-center gap-2">حفظ والعودة للاعتماد النهائي</button>
+        <button onclick="window.print()" class="bg-slate-700 text-white px-8 py-3 rounded-full hover:bg-slate-800 shadow-lg font-bold">معاينة/حفظ PDF</button>
+    </div>
+
+    <!-- الصفحة الأولى -->
+    <div class="page" id="page1">
+        <header class="header-section text-center">
+            <div class="space-y-1">
+                <p class="font-bold text-emerald-900">المملكة العربية السعودية</p>
+                <p>وزارة التعليم</p>
+                <div class="flex items-center gap-1 mt-2">
+                    <span class="shrink-0">إدارة التعليم</span>
+                    <input type="text" class="h-7 text-center">
+                </div>
+                <div class="flex items-center gap-1">
+                    <span class="shrink-0">المدرسة</span>
+                    <input type="text" class="h-7 text-center">
+                </div>
+            </div>
+
+            <div class="flex flex-col items-center">
+                <img src="https://salogos.b-cdn.net/logos/svg/1774895141785-5zgexuf8.svg" alt="شعار الوزارة" class="w-24 h-auto">
+                <div class="main-title">محضر اجتماع</div>
+            </div>
+
+            <div class="space-y-1 text-sm">
+                <div class="flex items-center justify-end gap-2">
+                    <span>اليوم</span>
+                    <input type="text" id="auto-day-1" class="w-24 text-center font-bold text-emerald-700" readonly>
+                </div>
+                <div class="flex items-center justify-end gap-2">
+                    <span>التاريخ</span>
+                    <input type="date" id="main-date" onchange="syncDate(this.value)" class="w-32 h-7 px-1">
+                </div>
+                <div class="flex items-center justify-end gap-2">
+                    <span>المرفقات</span>
+                    <input type="text" class="w-24 h-7 text-center">
+                </div>
+            </div>
+        </header>
+
+        <main class="space-y-4">
+            <div class="text-center italic text-gray-600 text-sm">
+                بسم الله والحمد لله والصلاة والسلام على رسول الله وعلى آله و صحبه وسلم أما بعد :
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <label class="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100">
+                    <input type="checkbox" class="w-5 h-5 accent-emerald-700">
+                    <span>برئاسة : مدير/ة المدرسة</span>
+                </label>
+                <label class="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100">
+                    <input type="checkbox" class="w-5 h-5 accent-emerald-700">
+                    <span>وكيل/ة المدرسة</span>
+                </label>
+                <label class="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100">
+                    <input type="checkbox" class="w-5 h-5 accent-emerald-700">
+                    <span>رئيس/ة اللجنة</span>
+                </label>
+                <label class="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100">
+                    <input type="checkbox" class="w-5 h-5 accent-emerald-700">
+                    <span>المشرف/ة التربوي/ة</span>
+                </label>
+            </div>
+
+            <div class="bg-emerald-50/30 p-4 rounded-xl border border-emerald-100 space-y-3">
+                <div class="flex items-center justify-center gap-2 flex-wrap">
+                    <span>إنه في يوم <input type="text" id="auto-day-2" class="w-28 text-center font-bold" readonly></span>
+                    <span>تم عقد اجتماع رقم (</span>
+                    <select id="meeting-num" class="w-16 font-bold"></select>
+                    <span>) خلال الفصل</span>
+                    <label class="flex items-center gap-1"><input type="radio" name="term"> الأول</label>
+                    <label class="flex items-center gap-1"><input type="radio" name="term"> الثاني</label>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="shrink-0">بحضور:</span>
+                    <select id="attendee-role" class="w-40 font-medium">
+                        <option value="">-- الفئة --</option>
+                        <option>الوكيل/ة</option>
+                        <option>المعلم/ة</option>
+                        <option>الموجه/ة الطلابي/ة</option>
+                        <option>مشرف/ة النشاط</option>
+                        <option>أولياء الأمور</option>
+                    </select>
+                    <input type="text" placeholder="الأسماء...">
+                </div>
+            </div>
+
+            <div>
+                <p class="font-bold text-emerald-800 mb-1">جدول الأعمال:</p>
+                <div class="space-y-1">
+                    <input type="text" placeholder="1.">
+                    <input type="text" placeholder="2.">
+                    <input type="text" placeholder="3.">
+                </div>
+            </div>
+
+            <div>
+                <p class="font-bold text-emerald-800 mb-1">القرارات والتوصيات:</p>
+                <textarea rows="6" class="p-3" placeholder="اكتب النتائج هنا..."></textarea>
+            </div>
+        </main>
+
+        <footer class="branding-footer">
+            <span>منصة المدرسة الرقمية الذكية</span>
+            <span class="text-[10px] opacity-40 italic">نموذج رسمي معتمد A4</span>
+        </footer>
+    </div>
+
+    <!-- الصفحة الثانية -->
+    <div class="page" id="page2">
+        <header class="header-section text-center">
+            <div class="text-center font-bold text-emerald-900">المملكة العربية السعودية<br>وزارة التعليم</div>
+            <div class="flex flex-col items-center">
+                <img src="https://salogos.b-cdn.net/logos/svg/1774895141785-5zgexuf8.svg" class="w-20 mb-1">
+                <div class="font-bold text-emerald-800">سجل الحضور والتوثيق</div>
+            </div>
+            <div class="text-sm font-bold text-left" id="header-date-2"></div>
+        </header>
+
+        <div class="grid grid-cols-2 gap-4">
+            <table>
+                <thead><tr><th width="15%">م</th><th>الاسم</th><th width="30%">التوقيع</th></tr></thead>
+                <tbody id="att-1"></tbody>
+            </table>
+            <table>
+                <thead><tr><th width="15%">م</th><th>الاسم</th><th width="30%">التوقيع</th></tr></thead>
+                <tbody id="att-2"></tbody>
+            </table>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4 mt-4 no-break">
+            <div class="p-3 rounded-xl border border-emerald-200 bg-emerald-50 text-center">
+                <div class="font-bold text-emerald-800 mb-2">التوقيع الرقمي</div>
+                <input type="file" id="signature-file" accept="image/*" class="no-print text-xs" onchange="loadImageToBox(this, 'signature-box')">
+                <div id="signature-box" class="h-16 flex items-center justify-center text-gray-400 text-sm">سيظهر التوقيع هنا</div>
+            </div>
+            <div class="p-3 rounded-xl border border-emerald-200 bg-emerald-50 text-center">
+                <div class="font-bold text-emerald-800 mb-2">الختم الرسمي</div>
+                <input type="file" id="stamp-file" accept="image/*" class="no-print text-xs" onchange="loadImageToBox(this, 'stamp-box')">
+                <div id="stamp-box" class="h-16 flex items-center justify-center text-gray-400 text-sm">سيظهر الختم هنا</div>
+            </div>
+        </div>
+
+        <div class="mt-3 p-3 bg-amber-50 rounded-lg text-sm border border-amber-100 italic">
+            ملاحظة: يلزم توقيع الحاضرين/ات فور انتهاء الاجتماع وتوثيق المحضر رسمياً.
+        </div>
+
+        <footer class="branding-footer">
+            <span>منصة المدرسة الرقمية الذكية</span>
+            <span id="footer-date-sync"></span>
+        </footer>
+    </div>
+
+    <script>
+        const days = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+
+        function syncDate(val) {
+            if(!val) return;
+            const d = new Date(val);
+            const dayName = days[d.getDay()];
+            document.getElementById('auto-day-1').value = dayName;
+            document.getElementById('auto-day-2').value = dayName;
+            document.getElementById('header-date-2').innerText = val;
+            document.getElementById('footer-date-sync').innerText = "تاريخ التحقق: " + val;
+        }
+
+        function setup() {
+            const sel = document.getElementById('meeting-num');
+            for(let i=1; i<=20; i++) sel.innerHTML += `<option>${i}</option>`;
+
+            const t1 = document.getElementById('att-1');
+            const t2 = document.getElementById('att-2');
+            for(let i=1; i<=18; i++) {
+                t1.innerHTML += `<tr><td>${i}</td><td><input type="text" class="bg-transparent border-none"></td><td></td></tr>`;
+            }
+            for(let i=19; i<=36; i++) {
+                tableRow = `<tr><td>${i}</td><td><input type="text" class="bg-transparent border-none"></td><td></td></tr>`;
+                t2.innerHTML += tableRow;
+            }
+
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('main-date').value = today;
+            syncDate(today);
+        }
+
+        window.onload = setup;
+    
+
+        function fillBySelector(selector, value) { const el = document.querySelector(selector); if(el && value !== undefined && value !== null) el.value = value; }
+        function setInputByOrder(scopeSelector, idx, value) { const list = document.querySelectorAll(scopeSelector); if(list[idx]) list[idx].value = value || ''; }
+        function loadImageToBox(input, boxId) { const f = input.files && input.files[0]; if(!f) return; const r = new FileReader(); r.onload = () => { document.getElementById(boxId).innerHTML = '<img class="signature-img" src="'+r.result+'">'; }; r.readAsDataURL(f); }
+        function loadMeetingDraft() {
+            let d = {};
+            try { d = JSON.parse(localStorage.getItem('ss_meeting_template_draft') || '{}') || {}; } catch(e) {}
+            fillBySelector('#main-date', d.date || new Date().toISOString().slice(0,10)); syncDate(document.getElementById('main-date').value);
+            const textInputs = document.querySelectorAll('#page1 input[type="text"]');
+            if(textInputs[2]) textInputs[2].value = d.educationOffice || '';
+            if(textInputs[3]) textInputs[3].value = d.schoolName || '';
+            const agenda = String(d.agenda || d.minutes || '').split(/\n+/).filter(Boolean);
+            const agendaInputs = Array.from(document.querySelectorAll('#page1 input[placeholder="1."],#page1 input[placeholder="2."],#page1 input[placeholder="3."]'));
+            agendaInputs.forEach((el,i)=>el.value = agenda[i] || '');
+            const rec = document.querySelector('#page1 textarea'); if(rec) rec.value = d.recommendations || d.minutes || '';
+            const attendance = Array.isArray(d.attendance) ? d.attendance : [];
+            const cells = document.querySelectorAll('#att-1 input, #att-2 input');
+            cells.forEach((el,i)=>{ if(attendance[i]) el.value = attendance[i].name || attendance[i]; });
+            const attendeeNames = document.querySelector('input[placeholder="الأسماء..."]'); if(attendeeNames) attendeeNames.value = attendance.map(x=>x.name||x).filter(Boolean).join('، ');
+        }
+        function collectMeetingTemplateData(){
+            const data = { savedAt:new Date().toISOString(), title:(localStorage.getItem('ss_meeting_template_title')||'محضر اجتماع'), date:document.getElementById('main-date').value, html:'' };
+            data.attendance = Array.from(document.querySelectorAll('#att-1 input, #att-2 input')).map(x=>x.value.trim()).filter(Boolean).map(name=>({name}));
+            data.agenda = Array.from(document.querySelectorAll('#page1 input[placeholder="1."],#page1 input[placeholder="2."],#page1 input[placeholder="3."]')).map(x=>x.value.trim()).filter(Boolean).join('\n');
+            const rec = document.querySelector('#page1 textarea'); data.recommendations = rec ? rec.value : '';
+            return data;
+        }
+        function cleanForPdfClone(){
+            const clone = document.documentElement.cloneNode(true);
+            clone.querySelectorAll('.no-print, script').forEach(x=>x.remove());
+            clone.querySelectorAll('input, textarea, select').forEach(el=>{
+                const span = clone.ownerDocument.createElement(el.tagName === 'TEXTAREA' ? 'div' : 'span');
+                span.textContent = el.value || '';
+                span.className = 'print-value';
+                span.style.cssText = 'display:inline-block;min-height:22px;background:#f0fdf4;border-bottom:1px dashed #cbd5e1;border-radius:6px;padding:2px 8px;white-space:pre-wrap;';
+                if(el.tagName === 'TEXTAREA') span.style.cssText += 'width:100%;min-height:120px;';
+                el.replaceWith(span);
+            });
+            return '<!DOCTYPE html>\n' + clone.outerHTML;
+        }
+        function saveMeetingTemplateAndReturn(){
+            const data = collectMeetingTemplateData();
+            data.html = cleanForPdfClone();
+            localStorage.setItem('ss_meeting_template_saved', JSON.stringify(data));
+            localStorage.setItem('ss_meeting_template_html', data.html);
+            if(window.opener){ try { window.opener.postMessage({type:'meeting-template-saved'}, '*'); } catch(e){} }
+            alert('تم حفظ نموذج محضر الاجتماع. عد الآن للاعتماد النهائي.');
+            window.close();
+        }
+        window.addEventListener('load', loadMeetingDraft);
+
+    </script>
+</body>
+</html>

@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>منصة المدرسة الرقمية الذكية - نظام التحكم المركزي</title>
     <script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-bridge.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
     
@@ -1077,61 +1079,59 @@
             const email = document.getElementById('admin-manager-email').value.trim().toLowerCase();
             const password = document.getElementById('admin-manager-password').value.trim();
             if (!schoolName || !managerName || !email || !password) return showToast('يرجى تعبئة اسم المدرسة واسم المدير والبريد والرقم السري');
+            const registrationCode = 'REG-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+            try {
+                if (window.SmartSchoolSupabase) {
+                    const base = new URL('.', location.href).href;
+                    const result = await window.SmartSchoolSupabase.createSchoolWithManager({ schoolName, managerName, email, password, registrationCode, loginLink: base + 'school-login.html', registrationLink: base + 'register.html' });
+                    const schools = getSchoolsStore().filter(s => String(s.schoolId || s.id) !== String(result.school.schoolId));
+                    schools.push(result.school);
+                    saveSchoolsStore(schools);
+                    const users = (typeof collectLocalUsersForWorkspace === 'function') ? collectLocalUsersForWorkspace() : JSON.parse(localStorage.getItem('smart_school_users') || '[]');
+                    users.push(result.manager);
+                    (typeof saveUnifiedUserStores === 'function') ? saveUnifiedUserStores(users) : localStorage.setItem('smart_school_users', JSON.stringify(users));
+                    allUsers = users;
+                    ['admin-school-name','admin-manager-name','admin-manager-email','admin-manager-password'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+                    renderSchoolsManagement();
+                    showToast('تم إنشاء المدرسة وتفعيل مديرها على Supabase');
+                    return;
+                }
+            } catch (err) {
+                console.error('Supabase create school failed', err);
+                showToast('خطأ Supabase: ' + (err.message || JSON.stringify(err)));
+                return;
+            }
             let schools = getSchoolsStore();
             let users = (typeof collectLocalUsersForWorkspace === 'function') ? collectLocalUsersForWorkspace() : JSON.parse(localStorage.getItem('smart_school_users') || '[]');
             if (users.some(u => String(u.email || '').toLowerCase() === email && u.isDeleted !== true)) return showToast('يوجد حساب بنفس البريد');
             const schoolId = 'school_' + schoolSlug(schoolName) + '_' + Date.now().toString(36).slice(-5);
-            const registrationCode = 'REG-' + Math.random().toString(36).slice(2, 8).toUpperCase();
             const managerId = 'manager_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
-            const school = {
-                id: schoolId, schoolId, schoolName, schoolCode: schoolId, managerId,
-                managerEmail: email, managerName, status: 'active', registrationCode,
-                createdAt: new Date().toISOString(), createdBy: currentUser?.id || 'root'
-            };
-            const manager = (typeof ensureUserWorkspaceReady === 'function') ? ensureUserWorkspaceReady({
-                id: managerId, name: managerName, email, password, role: 'leadership', status: 'active', isActive: true,
-                accountType: 'school_manager', isPrimaryManager: true, schoolId, schoolName, registrationCode,
-                adminOwnerId: managerId, createdByAdminId: currentUser?.id || 'root', createdAt: new Date().toISOString()
-            }) : {
-                id: managerId, name: managerName, email, password, role: 'leadership', status: 'active', isActive: true,
-                accountType: 'school_manager', isPrimaryManager: true, schoolId, schoolName, registrationCode
-            };
-            schools.push(school);
-            users.push(manager);
+            const school = { id: schoolId, schoolId, schoolName, schoolCode: schoolId, managerId, managerEmail: email, managerName, status: 'active', registrationCode, createdAt: new Date().toISOString(), createdBy: currentUser?.id || 'root' };
+            const manager = { id: managerId, name: managerName, email, password, role: 'leadership', status: 'active', isActive: true, accountType: 'school_manager', isPrimaryManager: true, schoolId, schoolName, registrationCode };
+            schools.push(school); users.push(manager);
             saveSchoolsStore(schools);
             (typeof saveUnifiedUserStores === 'function') ? saveUnifiedUserStores(users) : localStorage.setItem('smart_school_users', JSON.stringify(users));
             allUsers = users;
             ['admin-school-name','admin-manager-name','admin-manager-email','admin-manager-password'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
             renderSchoolsManagement();
             showToast('تم إنشاء المدرسة وتفعيل مديرها محليًا');
-            try {
-                if (window.db && window.fs) {
-                    await window.fs.setDoc(window.fs.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'schools', schoolId), school, { merge: true });
-                    await window.fs.setDoc(window.fs.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'users', managerId), manager, { merge: true });
-                }
-            } catch(e) {}
         };
 
         const activateSchoolManager = async (schoolId) => {
+            try {
+                if (window.SmartSchoolSupabase) {
+                    await window.SmartSchoolSupabase.updateSchoolStatus(schoolId, 'active');
+                }
+            } catch(e) { console.warn('Supabase activate school failed', e); }
             let schools = getSchoolsStore();
             let users = (typeof collectLocalUsersForWorkspace === 'function') ? collectLocalUsersForWorkspace() : JSON.parse(localStorage.getItem('smart_school_users') || '[]');
             const school = schools.find(s => String(s.schoolId || s.id) === String(schoolId));
             if (!school) return showToast('لم يتم العثور على المدرسة');
             const email = String(school.managerEmail || '').toLowerCase();
             let manager = users.find(u => String(u.email || '').toLowerCase() === email);
-            if (!manager) {
-                manager = { id: school.managerId || ('manager_' + Date.now()), name: school.managerName, email, password: school.password || '123456', role: 'leadership' };
-                users.push(manager);
-            }
-            Object.assign(manager, (typeof ensureUserWorkspaceReady === 'function') ? ensureUserWorkspaceReady({
-                ...manager, isActive: true, status: 'active', accountType: 'school_manager', isPrimaryManager: true,
-                schoolId: school.schoolId || school.id, schoolName: school.schoolName, registrationCode: school.registrationCode || ('REG-' + Math.random().toString(36).slice(2, 8).toUpperCase())
-            }) : {
-                ...manager, isActive: true, status: 'active', accountType: 'school_manager', isPrimaryManager: true,
-                schoolId: school.schoolId || school.id, schoolName: school.schoolName
-            });
-            school.status = 'active';
-            school.managerId = manager.id;
+            if (!manager) { manager = { id: school.managerId || ('manager_' + Date.now()), name: school.managerName, email, password: school.password || '123456', role: 'leadership' }; users.push(manager); }
+            Object.assign(manager, { ...manager, isActive: true, status: 'active', accountType: 'school_manager', isPrimaryManager: true, schoolId: school.schoolId || school.id, schoolName: school.schoolName, registrationCode: school.registrationCode || ('REG-' + Math.random().toString(36).slice(2, 8).toUpperCase()) });
+            school.status = 'active'; school.managerId = manager.id;
             if (!school.registrationCode) school.registrationCode = manager.registrationCode || ('REG-' + Math.random().toString(36).slice(2, 8).toUpperCase());
             saveSchoolsStore(schools);
             (typeof saveUnifiedUserStores === 'function') ? saveUnifiedUserStores(users) : localStorage.setItem('smart_school_users', JSON.stringify(users));
@@ -1140,10 +1140,16 @@
             showToast('تم تفعيل مدير المدرسة وربطه بمدرسته');
         };
 
-        const renderSchoolsManagement = () => {
+        const renderSchoolsManagement = async () => {
             const body = document.getElementById('schools-management-body');
             if (!body) return;
             let schools = getSchoolsStore();
+            try {
+                if (window.SmartSchoolSupabase) {
+                    schools = await window.SmartSchoolSupabase.listSchools();
+                    saveSchoolsStore(schools);
+                }
+            } catch(e) { console.warn('Supabase list schools failed', e); }
             const users = (typeof collectLocalUsersForWorkspace === 'function') ? collectLocalUsersForWorkspace() : JSON.parse(localStorage.getItem('smart_school_users') || '[]');
             const schoolRequests = users.filter(u => u && u.accountType === 'school_manager' && u.schoolId && u.isDeleted !== true);
             schoolRequests.forEach(u => {

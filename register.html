@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>تسجيل مستخدم جديد - منصة المدرسة الرقمية الذكية</title>
 <script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-bridge.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root{--primary:#1e7b78;--navy:#0f172a}
@@ -49,7 +51,7 @@ body:before{content:"";position:fixed;inset:0;background:radial-gradient(circle 
   };
   const title=document.getElementById('school-title');
   title.textContent=invite.schoolName?('رابط تسجيل خاص بمدرسة: '+invite.schoolName):'رابط تسجيل مرتبط بالمدرسة';
-  document.getElementById('reg-form').addEventListener('submit',function(e){
+  document.getElementById('reg-form').addEventListener('submit',async function(e){
     e.preventDefault();
     const msg=document.getElementById('msg'); msg.textContent=''; msg.className='text-center text-xs font-bold err';
     if(!invite.admin||!invite.token){ msg.textContent='الرابط غير صالح لأنه غير مرتبط بحساب مدير/ة.'; return; }
@@ -67,16 +69,21 @@ body:before{content:"";position:fixed;inset:0;background:radial-gradient(circle 
       permissions:[],
       dateJoined:new Date().toLocaleString('ar-SA')
     };
+    try{
+      if(window.SmartSchoolSupabase){
+        const saved = await window.SmartSchoolSupabase.registerSchoolUser({ name, email, password, role, schoolId: invite.schoolId, registrationCode: invite.token });
+        account.id = saved.id; account.schoolId = saved.schoolId || account.schoolId; account.schoolName = saved.schoolName || account.schoolName;
+      }
+    }catch(err){
+      console.error('Supabase registration failed', err);
+      msg.textContent = err.message || 'تعذر إرسال الطلب إلى قاعدة البيانات';
+      return;
+    }
     const keys=['smartSchoolUnifiedOpsV2_users','smart_school_users'];
     for(const key of keys){
       const all=JSON.parse(localStorage.getItem(key)||'[]');
-      const exists=all.some(u=>String(u.email||'').toLowerCase()===email.toLowerCase() && String(u.adminOwnerId||invite.admin)===String(invite.admin));
-      if(exists){ msg.textContent='يوجد طلب أو حساب سابق بنفس البريد داخل هذه المدرسة.'; return; }
-    }
-    for(const key of keys){
-      const all=JSON.parse(localStorage.getItem(key)||'[]');
-      all.push(account);
-      localStorage.setItem(key,JSON.stringify(all));
+      const exists=all.some(u=>String(u.email||'').toLowerCase()===email.toLowerCase() && String(u.schoolId||'')===String(account.schoolId||''));
+      if(!exists){ all.push(account); localStorage.setItem(key,JSON.stringify(all)); }
     }
     document.getElementById('reg-form').classList.add('hide');
     document.getElementById('success').style.display='block';

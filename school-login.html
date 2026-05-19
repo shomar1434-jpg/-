@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>دخول المدرسة المستقلة</title>
   <script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-bridge.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
   <style>
     body{font-family:'Cairo',sans-serif;background:#0f172a;color:white;min-height:100vh;margin:0;display:flex;align-items:center;justify-content:center;padding:20px;}
@@ -72,18 +74,35 @@
     const r = normalizeRole(role);
     return r === 'leadership' ? 'مدير المدرسة' : r === 'agency' ? 'وكيل/ة المدرسة' : 'معلم/ة';
   }
-  (function init(){
-    const school = readSchools().find(s => String(s.schoolId || s.id) === String(targetSchoolId));
+  (async function init(){
+    let school = readSchools().find(s => String(s.schoolId || s.id) === String(targetSchoolId));
+    try{
+      if(!school && window.SmartSchoolSupabase){
+        const sb = window.SmartSchoolSupabase.getClient();
+        if(sb && targetSchoolId){
+          const {data} = await sb.from('schools').select('*').eq('id',targetSchoolId).maybeSingle();
+          if(data) school = window.SmartSchoolSupabase.normalizeSchool(data);
+        }
+      }
+    }catch(e){}
     if(school) document.getElementById('school-title').textContent = 'تسجيل دخول: ' + (school.schoolName || 'المدرسة');
   })();
-  function schoolLogin(){
+  async function schoolLogin(){
     const email = document.getElementById('login-email').value.trim().toLowerCase();
     const password = document.getElementById('login-password').value.trim();
     const msg = document.getElementById('login-msg');
     msg.textContent = '';
     if(!email || !password){ msg.textContent = 'يرجى إدخال البريد والرقم السري'; return; }
-    const users = readUsers();
-    const user = users.find(u => String(u.email || '').toLowerCase() === email && String(u.password || '') === password && u.isDeleted !== true);
+    let user = null;
+    try{
+      if(window.SmartSchoolSupabase){
+        user = await window.SmartSchoolSupabase.login(email, password, targetSchoolId);
+      }
+    }catch(e){ console.warn('Supabase login failed, fallback to local', e); }
+    if(!user){
+      const users = readUsers();
+      user = users.find(u => String(u.email || '').toLowerCase() === email && String(u.password || '') === password && u.isDeleted !== true);
+    }
     if(!user){ msg.textContent = 'بيانات الدخول غير صحيحة'; return; }
     const isActiveAccount = (user.status === 'active' || user.isActive === true || user.active === true);
     if(!isActiveAccount){ msg.textContent = 'الحساب غير مفعل بعد'; return; }

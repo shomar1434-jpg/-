@@ -124,7 +124,7 @@
       if(!res.ok){
         throw new Error(data.error || data.message || 'تعذر تنفيذ الطلب. تحقق من نشر Edge Function وضبط OPENAI_API_KEY.');
       }
-      setOutput(data.result || data.answer || data.output || 'لم يصل رد واضح من الخدمة.', 'ss-ai-ok');
+      setOutput(data.response || data.result || data.answer || data.output || 'لم يصل رد واضح من الخدمة.', 'ss-ai-ok');
     }catch(err){
       setOutput('تعذر الاتصال بخدمة الذكاء الاصطناعي.\n\nالسبب: '+(err && err.message ? err.message : err)+'\n\nتأكد من: نشر الدالة ASK-AI في Supabase، وإضافة Secret باسم OPENAI_API_KEY، وإيقاف Verify JWT للدالة أو إضافة آلية تفويض.', 'ss-ai-error');
     }

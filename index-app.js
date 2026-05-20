@@ -2063,3 +2063,194 @@ window.fs = {
 };
 window.ensureAuth = async function(){ return window.auth.currentUser; };
 setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0);
+
+/* ===== Teams AI Meeting Minutes Enhancement =====
+   يضيف تعبئة محضر الاجتماع من نص/حضور Microsoft Teams عبر دالة Supabase ASK-AI.
+   لا يحتوي على مفتاح OpenAI؛ المفتاح يبقى داخل Supabase Secret باسم OPENAI_API_KEY. */
+(function(){
+  const AI_ENDPOINT = window.SMART_SCHOOL_AI_ENDPOINT || 'https://mfzsgaqxvxusayoribfo.supabase.co/functions/v1/ASK-AI';
+  const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || 'sb_publishable_wrqnWejHyIhaYnMusFfDQQ_6NBvAK9N';
+  const $ = (id) => document.getElementById(id);
+  const setVal = (id, value) => { const el = $(id); if (el) el.value = value || ''; };
+  const getVal = (id) => ($(id)?.value || '').trim();
+  const toast = (msg) => { if (typeof window.showToast === 'function') window.showToast(msg); else alert(msg); };
+  const status = (msg, good=false) => { const el = $('meeting-ai-status'); if (el) { el.textContent = msg; el.className = 'text-[11px] font-bold leading-6 ' + (good ? 'text-emerald-800' : 'text-slate-600'); } };
+  const roleLabelLocal = (role) => ({leadership:'مدير النظام', agency:'وكيل المدرسة', performance:'معلم/ـة'}[role] || role || 'مشارك');
+
+  async function readTeamsFile(){
+    const f = $('teams-attendance-file')?.files?.[0];
+    if (!f) return '';
+    if (f.size > 900000) throw new Error('ملف Teams كبير جدًا. يرجى استخدام ملف TXT/CSV مختصر أو نسخ النص مباشرة.');
+    return await f.text();
+  }
+
+  function selectedPlatformParticipants(){
+    return [...document.querySelectorAll('.meeting-participant')].map(cb => ({
+      id: cb.value,
+      name: cb.dataset.name || '',
+      role: cb.dataset.role || '',
+      checked: !!cb.checked
+    })).filter(p => p.name);
+  }
+
+  function normalizeArabicName(s){
+    return String(s||'')
+      .replace(/[إأآا]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه')
+      .replace(/[ًٌٍَُِّْـ]/g,'').replace(/\s+/g,' ').trim().toLowerCase();
+  }
+
+  function applyAttendanceNames(names){
+    const wanted = (names || []).map(normalizeArabicName).filter(Boolean);
+    if (!wanted.length) return 0;
+    let count = 0;
+    document.querySelectorAll('.meeting-participant').forEach(cb => {
+      const n = normalizeArabicName(cb.dataset.name || '');
+      const matched = wanted.some(w => n.includes(w) || w.includes(n));
+      if (matched) { cb.checked = true; count++; }
+    });
+    return count;
+  }
+
+  function safeJsonFromText(text){
+    if (!text) return null;
+    let t = String(text).trim();
+    t = t.replace(/^```(?:json)?/i,'').replace(/```$/,'').trim();
+    try { return JSON.parse(t); } catch(e) {}
+    const m = t.match(/\{[\s\S]*\}/);
+    if (m) { try { return JSON.parse(m[0]); } catch(e) {} }
+    return null;
+  }
+
+  async function askAIForMeeting(payload){
+    const res = await fetch(AI_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
+      },
+      body: JSON.stringify({
+        task: 'teams_meeting_minutes',
+        message: payload.prompt,
+        data: payload
+      })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.response || data.result || data.error || 'تعذر الاتصال بدالة الذكاء.');
+    return data.response || data.result || data.answer || data.output || '';
+  }
+
+  function buildMeetingPayload(mode, teamsText){
+    const platformParticipants = selectedPlatformParticipants();
+    const selectedParticipants = platformParticipants.filter(p => p.checked);
+    const title = getVal('meeting-title') || 'محضر اجتماع';
+    const type = getVal('meeting-type') || $('meeting-type')?.value || '';
+    const date = getVal('meeting-date');
+    const time = getVal('meeting-time');
+    const current = {
+      title, type, date, time,
+      teamsUrl: getVal('meeting-teams-url'),
+      agenda: getVal('meeting-agenda'),
+      recommendations: getVal('meeting-recommendations'),
+      tasks: getVal('meeting-tasks')
+    };
+    const participantsList = platformParticipants.map(p => `${p.name} - ${roleLabelLocal(p.role)}${p.checked ? ' - محدد مسبقًا' : ''}`).join('\n');
+    return {
+      mode,
+      current,
+      platformParticipants,
+      selectedParticipants,
+      teamsText,
+      prompt: `أنت مساعد محاضر اجتماعات داخل منصة القيادة المدرسية الذكية.\nالمطلوب: تحليل نص/ملف اجتماع Microsoft Teams واستخراج الحضور الفعلي وتعبئة محضر رسمي جاهز لاعتماد المدير.\n\nأعد الناتج JSON فقط دون شرح خارج JSON وبالمفاتيح التالية:\n{\n  "title": "عنوان مناسب للاجتماع",\n  "type": "نوع الاجتماع",\n  "attendees": ["أسماء الحاضرين الفعليين فقط"],\n  "absentees": ["أسماء غير حاضرين إن أمكن"],\n  "agenda": "محاور الاجتماع كنقاط واضحة",\n  "recommendations": "التوصيات والقرارات كنقاط واضحة",\n  "tasks": "المهام الناتجة: المهمة - المسؤول - تاريخ المتابعة إن وجد",\n  "approvalNote": "صيغة مختصرة للمدير للاعتماد النهائي"\n}\n\nبيانات النموذج الحالية:\n${JSON.stringify(current, null, 2)}\n\nقائمة مستخدمي المنصة المتاحين للمطابقة:\n${participantsList || 'لا توجد قائمة مستخدمين ظاهرة'}\n\nنص/ملف Teams:\n${teamsText || 'لا يوجد نص Teams، اعتمد على بيانات النموذج الحالية إن وجدت.'}`
+    };
+  }
+
+  function applyMeetingAIResult(obj, rawText){
+    if (obj && typeof obj === 'object') {
+      if (obj.title) setVal('meeting-title', obj.title);
+      if (obj.type && $('meeting-type')) {
+        const sel = $('meeting-type');
+        const found = [...sel.options].some(o => o.value === obj.type);
+        if (found) sel.value = obj.type;
+      }
+      if (obj.agenda) setVal('meeting-agenda', obj.agenda);
+      if (obj.recommendations) setVal('meeting-recommendations', obj.recommendations);
+      if (obj.tasks) setVal('meeting-tasks', obj.tasks);
+      const matched = applyAttendanceNames(obj.attendees || []);
+      const note = obj.approvalNote ? '\n\nملاحظة الاعتماد: ' + obj.approvalNote : '';
+      const chatInput = $('meeting-chat-input');
+      if (chatInput && note.trim()) chatInput.value = note.trim();
+      localStorage.setItem('ss_last_ai_meeting_minutes', JSON.stringify({ result: obj, createdAt: Date.now() }));
+      status(`تمت تعبئة المحضر بالذكاء. تم تحديد ${matched} من الحضور المطابقين لحسابات المنصة. راجع المحضر ثم اضغط تجهيز لاعتماد المدير.`, true);
+      toast('تمت تعبئة محضر الاجتماع بالذكاء ✅');
+      return;
+    }
+    setVal('meeting-recommendations', rawText || 'تعذر استخراج JSON واضح من رد الذكاء.');
+    status('وصل رد من الذكاء لكن لم يكن بصيغة منظمة؛ تم وضعه في خانة التوصيات للمراجعة.', true);
+  }
+
+  window.generateMeetingMinutesWithAI = async function(){
+    try {
+      status('جاري قراءة ملف Teams وتحليل الاجتماع بالذكاء...');
+      const pasted = getVal('teams-transcript-input');
+      const fileText = await readTeamsFile();
+      const teamsText = [pasted, fileText].filter(Boolean).join('\n\n--- ملف Teams ---\n\n');
+      if (!teamsText && !getVal('meeting-agenda') && !getVal('meeting-recommendations')) {
+        toast('الصق نص الاجتماع أو ارفع ملف Teams أولًا.');
+        status('لم يتم إدخال نص أو ملف Teams.');
+        return;
+      }
+      const raw = await askAIForMeeting(buildMeetingPayload('full_minutes', teamsText));
+      applyMeetingAIResult(safeJsonFromText(raw), raw);
+    } catch (err) {
+      status('تعذر تنفيذ تعبئة المحضر: ' + (err?.message || err));
+      toast('تعذر تنفيذ تعبئة المحضر بالذكاء');
+    }
+  };
+
+  window.extractTeamsAttendanceOnly = async function(){
+    try {
+      status('جاري استخراج الحضور الفعلي من Teams...');
+      const pasted = getVal('teams-transcript-input');
+      const fileText = await readTeamsFile();
+      const teamsText = [pasted, fileText].filter(Boolean).join('\n');
+      if (!teamsText) return toast('الصق نص الحضور أو ارفع ملف حضور Teams أولًا.');
+      const payload = buildMeetingPayload('attendance_only', teamsText);
+      payload.prompt = payload.prompt.replace('تحليل نص/ملف اجتماع Microsoft Teams واستخراج الحضور الفعلي وتعبئة محضر رسمي جاهز لاعتماد المدير', 'استخراج أسماء الحضور الفعليين فقط من نص/ملف Teams ومطابقتهم مع مستخدمي المنصة');
+      const raw = await askAIForMeeting(payload);
+      const obj = safeJsonFromText(raw);
+      const attendees = obj?.attendees || [];
+      const matched = applyAttendanceNames(attendees);
+      status(`تم استخراج ${attendees.length} اسمًا من Teams، وتم تحديد ${matched} حسابًا مطابقًا في قائمة المشاركين.`, true);
+      toast('تم استخراج الحضور الفعلي ✅');
+    } catch (err) {
+      status('تعذر استخراج الحضور: ' + (err?.message || err));
+    }
+  };
+
+  window.markMeetingReadyForApproval = function(){
+    const title = getVal('meeting-title') || 'محضر اجتماع';
+    const attendees = [...document.querySelectorAll('.meeting-participant:checked')].map(cb => cb.dataset.name).filter(Boolean);
+    const draft = {
+      id: 'ai-approval-' + Date.now(),
+      title,
+      date: getVal('meeting-date'),
+      time: getVal('meeting-time'),
+      attendees,
+      agenda: getVal('meeting-agenda'),
+      recommendations: getVal('meeting-recommendations'),
+      tasks: getVal('meeting-tasks'),
+      teamsUrl: getVal('meeting-teams-url'),
+      status: 'بانتظار اعتماد المدير',
+      preparedBy: (window.currentUser && window.currentUser.name) || 'مستخدم المنصة',
+      createdAt: Date.now()
+    };
+    const key = 'ss_ai_meeting_minutes_pending_approval';
+    let list = [];
+    try { list = JSON.parse(localStorage.getItem(key) || '[]'); } catch(e) {}
+    list.unshift(draft);
+    localStorage.setItem(key, JSON.stringify(list.slice(0, 100)));
+    status('تم تجهيز المحضر للاعتماد النهائي. يمكن للمدير مراجعته ثم استخدام زر حفظ/طباعة/إرسال.', true);
+    toast('تم تجهيز المحضر لاعتماد المدير ✅');
+  };
+})();

@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>دخول المدرسة المستقلة</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(function(){
+  const SUPABASE_URL = 'https://cijhgvbtrvmmlcssgxht.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_3TC1p4w7U3hp2PbzhSauow_2xYLve5l';
+  let client = null;
+  function getClient(){
+    if(client) return client;
+    if(!window.supabase || !window.supabase.createClient) return null;
+    client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    return client;
+  }
+  function appRoleToDb(role){
+    if(['leadership','manager','مدير'].includes(role)) return 'manager';
+    if(['agency','agent','وكيل'].includes(role)) return 'agent';
+    if(['performance','teacher','معلم'].includes(role)) return 'teacher';
+    if(role === 'owner') return 'owner';
+    return role || 'teacher';
+  }
+  function dbRoleToApp(role){
+    if(role === 'manager' || role === 'owner') return 'leadership';
+    if(role === 'agent') return 'agency';
+    if(role === 'teacher') return 'performance';
+    return role || 'performance';
+  }
+  function normalizeUser(row, school){
+    if(!row) return null;
+    const appRole = dbRoleToApp(row.role);
+    return {
+      id: row.id,
+      name: row.full_name || row.name || '',
+      full_name: row.full_name || row.name || '',
+      email: row.email || '',
+      password: row.password || '',
+      role: appRole,
+      dbRole: row.role,
+      status: row.status || 'pending',
+      isActive: row.status === 'active',
+      active: row.status === 'active',
+      schoolId: row.school_id || row.schoolId || '',
+      schoolName: (school && (school.school_name || school.schoolName)) || row.schoolName || '',
+      accountType: row.role === 'manager' ? 'school_manager' : 'school_user',
+      isPrimaryManager: !!row.is_primary_manager,
+      is_primary_manager: !!row.is_primary_manager,
+      mustChangePassword: !!row.must_change_password,
+      createdAt: row.created_at || ''
+    };
+  }
+  function normalizeSchool(row){
+    if(!row) return null;
+    return {
+      id: row.id,
+      schoolId: row.id,
+      schoolCode: row.school_code || row.id,
+      schoolName: row.school_name || '',
+      managerName: row.manager_name || '',
+      managerEmail: row.manager_email || '',
+      status: row.status || 'pending',
+      registrationCode: row.registration_code || '',
+      registrationLink: row.registration_link || '',
+      loginLink: row.login_link || '',
+      createdAt: row.created_at || ''
+    };
+  }
+  async function listSchools(){
+    const sb = getClient(); if(!sb) throw new Error('Supabase غير جاهز');
+    const {data,error} = await sb.from('schools').select('*').order('created_at',{ascending:false});
+    if(error) throw error;
+    return (data||[]).map(normalizeSchool);
+  }
+  async function insertUserCompat(row){
+    const sb = getClient();
+    let q = await sb.from('users').insert(row).select('*').single();
+    if(q.error && /full_name/i.test(q.error.message || '')){
+      const fallback = Object.assign({}, row, { name: row.full_name });
+      delete fallback.full_name;
+      q = await sb.from('users').insert(fallback).select('*').single();
+    }
+    if(q.error) throw q.error;
+    return q.data;
+  }
+  async function updateUserCompat(row, id){
+    const sb = getClient();
+    let q = await sb.from('users').update(row).eq('id',id).select('*').single();
+    if(q.error && /full_name/i.test(q.error.message || '')){
+      const fallback = Object.assign({}, row, { name: row.full_name });
+      delete fallback.full_name;
+      q = await sb.from('users').update(fallback).eq('id',id).select('*').single();
+    }
+    if(q.error) throw q.error;
+    return q.data;
+  }
+  async function createSchoolWithManager(payload){
+    const sb = getClient(); if(!sb) throw new Error('Supabase غير جاهز');
+    const schoolCode = payload.schoolCode || ('SCH-' + Math.random().toString(36).slice(2,8).toUpperCase());
+    const registrationCode = payload.registrationCode || ('REG-' + Math.random().toString(36).slice(2,8).toUpperCase());
+    const {data:school,error:schoolErr} = await sb.from('schools').insert({
+      school_name: payload.schoolName,
+      school_code: schoolCode,
+      manager_name: payload.managerName,
+      manager_email: payload.email,
+      status: 'active',
+      registration_code: registrationCode,
+      registration_link: payload.registrationLink || null,
+      login_link: payload.loginLink || null
+    }).select('*').single();
+    if(schoolErr) throw schoolErr;
+    const user = await insertUserCompat({
+      school_id: school.id,
+      full_name: payload.managerName,
+      email: payload.email,
+      password: payload.password,
+      role: 'manager',
+      status: 'active',
+      is_primary_manager: true,
+      must_change_password: false
+    });
+    return { school: normalizeSchool(school), manager: normalizeUser(user, school) };
+  }
+  async function updateSchoolStatus(schoolId,status){
+    const sb = getClient(); if(!sb) throw new Error('Supabase غير جاهز');
+    const {error} = await sb.from('schools').update({status}).eq('id',schoolId);
+    if(error) throw error;
+    await sb.from('users').update({status}).eq('school_id',schoolId).eq('role','manager');
+    return true;
+  }
+  async function registerSchoolUser(payload){
+    const sb = getClient(); if(!sb) throw new Error('Supabase غير جاهز');
+    let schoolId = payload.schoolId || '';
+    let school = null;
+    if(schoolId){
+      const {data,error} = await sb.from('schools').select('*').eq('id',schoolId).maybeSingle();
+      if(!error && data) school = data;
+    }
+    if(!school && payload.registrationCode){
+      const {data,error} = await sb.from('schools').select('*').eq('registration_code',payload.registrationCode).maybeSingle();
+      if(!error && data){ school = data; schoolId = data.id; }
+    }
+    if(!schoolId) throw new Error('الرابط غير مرتبط بمدرسة صحيحة');
+    const {data:existing} = await sb.from('users').select('id').eq('email',payload.email).eq('school_id',schoolId).maybeSingle();
+    if(existing) throw new Error('يوجد طلب أو حساب سابق بنفس البريد داخل هذه المدرسة');
+    const user = await insertUserCompat({
+      school_id: schoolId,
+      full_name: payload.name,
+      email: payload.email,
+      password: payload.password,
+      role: appRoleToDb(payload.role),
+      status: 'pending',
+      is_primary_manager: false,
+      must_change_password: false
+    });
+    return normalizeUser(user, school);
+  }
+  async function listUsersBySchool(schoolId){
+    const sb = getClient(); if(!sb) throw new Error('Supabase غير جاهز');
+    const {data,error} = await sb.from('users').select('*').eq('school_id',schoolId).order('created_at',{ascending:false});
+    if(error) throw error;
+    return (data||[]).map(u => normalizeUser(u));
+  }
+  async function updateUserStatus(userId,status){
+    const sb = getClient(); if(!sb) throw new Error('Supabase غير جاهز');
+    const {data,error} = await sb.from('users').update({status}).eq('id',userId).select('*').single();
+    if(error) throw error;
+    return normalizeUser(data);
+  }
+  async function upsertSchoolUser(payload){
+    const sb = getClient(); if(!sb) throw new Error('Supabase غير جاهز');
+    const row = {
+      school_id: payload.schoolId,
+      full_name: payload.name || payload.full_name || '',
+      email: payload.email || '',
+      password: payload.password || '123456',
+      role: appRoleToDb(payload.role),
+      status: payload.status || 'pending',
+      is_primary_manager: !!payload.isPrimaryManager
+    };
+    const data = payload.id ? await updateUserCompat(row, payload.id) : await insertUserCompat(row);
+    return normalizeUser(data);
+  }
+  async function login(email,password,schoolId){
+    const sb = getClient(); if(!sb) throw new Error('Supabase غير جاهز');
+    let query = sb.from('users').select('*').eq('email',email).eq('password',password).neq('status','deleted');
+    if(schoolId) query = query.eq('school_id',schoolId);
+    const {data,error} = await query.maybeSingle();
+    if(error) throw error;
+    if(!data) return null;
+    let school = null;
+    if(data.school_id){
+      const sch = await sb.from('schools').select('*').eq('id',data.school_id).maybeSingle();
+      if(!sch.error) school = sch.data;
+    }
+    return normalizeUser(data, school);
+  }
+  window.SmartSchoolSupabase = { getClient, appRoleToDb, dbRoleToApp, normalizeUser, normalizeSchool, listSchools, createSchoolWithManager, updateSchoolStatus, registerSchoolUser, listUsersBySchool, updateUserStatus, upsertSchoolUser, login };
+})();
+
+</script>
+<script src="supabase-bridge.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
+  <style>
+    body{font-family:'Cairo',sans-serif;background:#0f172a;color:white;min-height:100vh;margin:0;display:flex;align-items:center;justify-content:center;padding:20px;}
+    body:before{content:"";position:fixed;inset:0;background:radial-gradient(circle at 20% 15%,rgba(20,184,166,.28),transparent 35%),linear-gradient(135deg,#0f172a,#042f2e);z-index:-1;}
+  </style>
+</head>
+<body>
+  <main class="w-full max-w-md bg-white/10 border border-white/10 backdrop-blur-xl rounded-[2rem] p-8 shadow-2xl text-center">
+    <img src="https://upload.wikimedia.org/wikipedia/ar/1/17/Saudi_Ministry_of_Education_Logo_2025.png" class="w-24 mx-auto mb-5">
+    <h1 class="text-2xl font-black mb-2">بوابة المدرسة المستقلة</h1>
+    <p id="school-title" class="text-teal-200 text-xs font-bold mb-8">تسجيل دخول مدير المدرسة ومنسوبيها</p>
+    <div class="space-y-4 text-right">
+      <input id="login-email" type="email" placeholder="بريد منصة مدرستي" class="w-full p-3 rounded-xl bg-white/10 border border-white/20 text-white text-center outline-none focus:border-teal-300">
+      <input id="login-password" type="password" placeholder="الرقم السري" class="w-full p-3 rounded-xl bg-white/10 border border-white/20 text-white text-center outline-none focus:border-teal-300">
+      <button onclick="schoolLogin()" class="w-full bg-teal-600 hover:bg-teal-500 text-white py-3 rounded-xl font-black shadow-lg">دخول</button>
+      <p id="login-msg" class="text-center text-xs text-rose-200 min-h-[1rem]"></p>
+    </div>
+  </main>
+<script>
+  const params = new URLSearchParams(location.search);
+  const targetSchoolId = params.get('schoolId') || '';
+  function readUsers(){
+    const byKey = new Map();
+    const add = (u) => {
+      if(!u || typeof u !== 'object') return;
+      const email = String(u.email || '').trim().toLowerCase();
+      if(!email) return;
+      const id = String(u.id || email);
+      const key = id + '|' + email + '|' + String(u.schoolId || '');
+      const prev = byKey.get(key);
+      // اجعل النسخة المفعلة هي الأَوْلى إذا وجدت في أي مخزن محلي
+      const prevActive = prev && (prev.status === 'active' || prev.isActive === true || prev.active === true);
+      const nextActive = (u.status === 'active' || u.isActive === true || u.active === true);
+      if(!prev || nextActive || !prevActive) byKey.set(key, u);
+    };
+    const readArray = (raw) => {
+      try {
+        const v = JSON.parse(raw || 'null');
+        if(Array.isArray(v)) v.forEach(add);
+        else if(v && Array.isArray(v.users)) v.users.forEach(add);
+      } catch(e){}
+    };
+    ['smart_school_users','offline_users_backup','schoolUsers'].forEach(k => readArray(localStorage.getItem(k)));
+    // احتياط مهم: بعض نسخ التطوير تحفظ المستخدمين في مفاتيح مرتبطة بالمدرسة
+    for(let i=0;i<localStorage.length;i++){
+      const k = localStorage.key(i);
+      if(/user|school/i.test(k || '')) readArray(localStorage.getItem(k));
+    }
+    return Array.from(byKey.values());
+  }
+  function readSchools(){
+    try { return JSON.parse(localStorage.getItem('smart_school_schools') || '[]'); } catch(e){ return []; }
+  }
+  function normalizeRole(role){
+    if(['manager','مدير','leadership'].includes(role)) return 'leadership';
+    if(['agent','وكيل','agency'].includes(role)) return 'agency';
+    if(['teacher','معلم','performance'].includes(role)) return 'performance';
+    return role || 'performance';
+  }
+  function fileForRole(role){
+    const r = normalizeRole(role);
+    return r === 'leadership' ? 'manager.html' : r === 'agency' ? 'agent.html' : 'teacher.html';
+  }
+  function roleName(role){
+    const r = normalizeRole(role);
+    return r === 'leadership' ? 'مدير المدرسة' : r === 'agency' ? 'وكيل/ة المدرسة' : 'معلم/ة';
+  }
+  (async function init(){
+    let school = readSchools().find(s => String(s.schoolId || s.id) === String(targetSchoolId));
+    try{
+      if(!school && window.SmartSchoolSupabase){
+        const sb = window.SmartSchoolSupabase.getClient();
+        if(sb && targetSchoolId){
+          const {data} = await sb.from('schools').select('*').eq('id',targetSchoolId).maybeSingle();
+          if(data) school = window.SmartSchoolSupabase.normalizeSchool(data);
+        }
+      }
+    }catch(e){}
+    if(school) document.getElementById('school-title').textContent = 'تسجيل دخول: ' + (school.schoolName || 'المدرسة');
+  })();
+  async function schoolLogin(){
+    const email = document.getElementById('login-email').value.trim().toLowerCase();
+    const password = document.getElementById('login-password').value.trim();
+    const msg = document.getElementById('login-msg');
+    msg.textContent = '';
+    if(!email || !password){ msg.textContent = 'يرجى إدخال البريد والرقم السري'; return; }
+    let user = null;
+    try{
+      if(window.SmartSchoolSupabase){
+        user = await window.SmartSchoolSupabase.login(email, password, targetSchoolId);
+      }
+    }catch(e){ console.warn('Supabase login failed, fallback to local', e); }
+    if(!user){
+      const users = readUsers();
+      user = users.find(u => String(u.email || '').toLowerCase() === email && String(u.password || '') === password && u.isDeleted !== true);
+    }
+    if(!user){ msg.textContent = 'بيانات الدخول غير صحيحة'; return; }
+    const isActiveAccount = (user.status === 'active' || user.isActive === true || user.active === true);
+    if(!isActiveAccount){ msg.textContent = 'الحساب غير مفعل بعد'; return; }
+    if(targetSchoolId && user.schoolId && String(user.schoolId) !== String(targetSchoolId)){ msg.textContent = 'هذا الحساب غير مرتبط بهذه المدرسة'; return; }
+    const role = normalizeRole(user.role);
+    // دخول حقيقي: تنظيف أي جلسة متابعة قديمة من نفس المتصفح حتى لا تظهر رسالة وضع المتابعة للمستخدم.
+    try{
+      Object.keys(sessionStorage).forEach(k => { if(/follow|monitor|readonly/i.test(k)) sessionStorage.removeItem(k); });
+      localStorage.removeItem('smartSchoolUnifiedOpsV2_follow_context');
+      localStorage.removeItem('follow_context');
+    }catch(e){}
+    localStorage.setItem('currentRole', role);
+    localStorage.setItem('currentUserName', user.name || '');
+    localStorage.setItem('currentUserEmail', user.email || '');
+    localStorage.setItem('smart_school_active_role', role);
+    localStorage.setItem('smart_school_current_session', JSON.stringify({ id:user.id, name:user.name, email:user.email, role, schoolId:user.schoolId || targetSchoolId, schoolName:user.schoolName || '', loginAt:new Date().toISOString(), independentSchool:true, loginMode:'direct' }));
+    const target = fileForRole(role);
+    const q = new URLSearchParams({ role, uid:user.id || '', email:user.email || '', schoolId:user.schoolId || targetSchoolId, schoolMode:'independent', independent:'true', loginMode:'direct', direct:'1' });
+    location.href = target + '?' + q.toString();
+  }
+</script>
+</body>
+</html>

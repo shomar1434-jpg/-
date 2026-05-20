@@ -22,3 +22,9 @@ OPENAI_API_KEY
 
 ملاحظة مهمة:
 لا ترفع مفتاح OpenAI إلى GitHub أبداً.
+
+
+تم تحديث الربط النهائي:
+SUPABASE_URL=https://mfzsgaqxvxusayoribfo.supabase.co
+SUPABASE_PUBLISHABLE_KEY=sb_publishable_wrqnWejHyIhaYnMusFfDQQ_6NBvAK9N
+AI_FUNCTION=https://mfzsgaqxvxusayoribfo.supabase.co/functions/v1/ASK-AI

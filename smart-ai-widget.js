@@ -5,6 +5,7 @@
   window.__smartSchoolAiWidgetV2 = true;
 
   const AI_ENDPOINT = window.SMART_SCHOOL_AI_ENDPOINT || 'https://mfzsgaqxvxusayoribfo.supabase.co/functions/v1/ASK-AI';
+  const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || 'sb_publishable_wrqnWejHyIhaYnMusFfDQQ_6NBvAK9N';
 
   function roleName(){
     const path = (location.pathname || '').toLowerCase();
@@ -110,7 +111,11 @@
     try{
       const res = await fetch(AI_ENDPOINT, {
         method:'POST',
-        headers:{'Content-Type':'application/json'},
+        headers:{
+          'Content-Type':'application/json',
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
+        },
         body:JSON.stringify({
           message: `المهمة: ${task}\nدور المستخدم: ${roleName()}\n\nطلب المستخدم:\n${prompt}\n\nسياق الصفحة الحالي إن وجد:\n${pageText()}`
         })

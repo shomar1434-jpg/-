@@ -1,8 +1,8 @@
 // supabase-bridge.js
 // مصدر مركزي واحد لعمليات المدارس والمستخدمين عبر Supabase.
 (function(){
-  const SUPABASE_URL = 'https://cijhgvbtrvmmlcssgxht.supabase.co';
-  const SUPABASE_KEY = 'sb_publishable_3TC1p4w7U3hp2PbzhSauow_2xYLve5l';
+  const SUPABASE_URL = 'https://mfzsgaqxvxusayoribfo.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_wrqnWejHyIhaYnMusFfDQQ_6NBvAK9N';
   let client = null;
 
   function getClient(){

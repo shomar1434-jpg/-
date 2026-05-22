@@ -35,7 +35,27 @@
       .top-ai-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
       .top-ai-card{background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:16px;box-shadow:0 12px 30px rgba(15,23,42,.08)}
       .top-ai-card h3{margin:0 0 8px;color:#0f172a;font-size:18px}.top-ai-card p{margin:0;color:#64748b;line-height:1.7;font-size:14px}
-      .top-ai-input,.top-ai-textarea,.top-ai-select{width:100%;border:1px solid #cbd5e1;border-radius:14px;padding:12px;font-family:inherit;font-size:15px;box-sizing:border-box;background:#fff}
+      .top-ai-input,.top-ai-textarea,.top-ai-select{
+        width:100%;
+        border:1px solid #cbd5e1;
+        border-radius:14px;
+        padding:12px;
+        font-family:inherit;
+        font-size:15px;
+        box-sizing:border-box;
+        background:#fff;
+        color:#0f172a !important;
+        direction:rtl !important;
+        text-align:right !important;
+        caret-color:#0f172a !important;
+        -webkit-text-fill-color:#0f172a !important;
+        opacity:1 !important
+      }
+      .top-ai-input::placeholder,
+      .top-ai-textarea::placeholder{
+        color:#94a3b8 !important;
+        opacity:1 !important
+      }
       .top-ai-textarea{min-height:120px;resize:vertical}
       .top-ai-actions{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}
       .top-ai-actions button{border:0;border-radius:14px;padding:10px 15px;background:#0f766e;color:#fff;font-weight:800;cursor:pointer;font-family:inherit}
@@ -45,6 +65,13 @@
       .top-ai-archive-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px}
       .top-ai-archive-item{background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:14px}
       .top-ai-tag{display:inline-block;padding:5px 10px;border-radius:999px;background:#ecfeff;color:#0f766e;font-size:12px;font-weight:900;margin:3px}
+      .top-ai-chat-box{background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:14px;min-height:260px;max-height:360px;overflow:auto;display:flex;flex-direction:column;gap:10px}
+      .top-ai-msg{max-width:86%;padding:10px 12px;border-radius:16px;line-height:1.8;white-space:pre-wrap}
+      .top-ai-msg.user{align-self:flex-start;background:#0f766e;color:#fff;border-bottom-left-radius:4px}
+      .top-ai-msg.ai{align-self:flex-end;background:#f1f5f9;color:#0f172a;border:1px solid #e2e8f0;border-bottom-right-radius:4px}
+      .top-ai-voice-dot{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;background:#fef3c7;color:#92400e;font-weight:900;font-size:12px}
+      .top-ai-voice-dot.listening{background:#dcfce7;color:#166534}
+
       @media(max-width:768px){#topAiCenterIcon{left:14px;bottom:14px;width:68px;height:68px;border-radius:22px}.top-ai-head h2{font-size:18px}.top-ai-tabs{gap:7px}.top-ai-tab{padding:8px 10px;font-size:13px}}
       @media print{#topAiCenterIcon,#topAiCenterModal{display:none!important}}
     `;
@@ -144,16 +171,119 @@
   }
   function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]})}
 
+
+  var chatHistory = [];
+  var voiceRecognition = null;
+
+  function addChatMessage(role, content){
+    var box=document.getElementById('chatBox');
+    if(!box) return;
+    var div=document.createElement('div');
+    div.className='top-ai-msg '+(role==='user'?'user':'ai');
+    div.textContent=content;
+    box.appendChild(div);
+    box.scrollTop=box.scrollHeight;
+  }
+
+  async function sendChatMessage(){
+    var input=document.getElementById('chatPrompt');
+    var msg=text(input && input.value);
+    if(!msg){ addChatMessage('ai','اكتب رسالتك أولًا.'); return; }
+    if(input) input.value='';
+    addChatMessage('user',msg);
+    addChatMessage('ai','⏳ جارٍ التفكير...');
+    try{
+      chatHistory.push({role:'user',content:msg});
+      var context=collectContext();
+      var prompt='هذه محادثة مع مستخدم داخل منصة قيادة مدرسية. أجب عن آخر رسالة مع مراعاة سياق الصفحة.\n\nسياق الصفحة:\n'+context+'\n\nالمحادثة:\n'+chatHistory.map(function(m){return m.role+': '+m.content}).join('\n');
+      var ans=await callAI(prompt);
+      chatHistory.push({role:'assistant',content:ans});
+      var box=document.getElementById('chatBox');
+      if(box && box.lastChild) box.lastChild.textContent=ans;
+    }catch(e){
+      var box=document.getElementById('chatBox');
+      if(box && box.lastChild) box.lastChild.textContent='تعذر الاتصال: '+e.message;
+    }
+  }
+
+  function clearChat(){
+    chatHistory=[];
+    var box=document.getElementById('chatBox');
+    if(box) box.innerHTML='<div class="top-ai-msg ai">تم مسح المحادثة. كيف يمكنني مساعدتك؟</div>';
+  }
+
+  function getSpeechRecognition(){
+    return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+  }
+
+  function startVoice(targetId){
+    var SR=getSpeechRecognition();
+    var status=document.getElementById('voiceStatus');
+    if(!SR){
+      if(status) status.textContent='المتصفح لا يدعم التعرف الصوتي';
+      var vr=document.getElementById('voiceResult');
+      if(vr) vr.textContent='المتصفح الحالي لا يدعم SpeechRecognition. جرّب Chrome أو Edge.';
+      return;
+    }
+    try{
+      if(voiceRecognition) voiceRecognition.stop();
+      voiceRecognition=new SR();
+      voiceRecognition.lang='ar-SA';
+      voiceRecognition.interimResults=true;
+      voiceRecognition.continuous=false;
+      if(status){status.textContent='جاري الاستماع...';status.classList.add('listening')}
+      voiceRecognition.onresult=function(event){
+        var transcript='';
+        for(var i=event.resultIndex;i<event.results.length;i++) transcript+=event.results[i][0].transcript;
+        var target=document.getElementById(targetId || 'voiceText');
+        if(target) target.value=transcript;
+      };
+      voiceRecognition.onerror=function(e){
+        if(status){status.textContent='حدث خطأ في الصوت';status.classList.remove('listening')}
+        var vr=document.getElementById('voiceResult');
+        if(vr) vr.textContent='خطأ التعرف الصوتي: '+(e.error||'غير معروف');
+      };
+      voiceRecognition.onend=function(){
+        if(status){status.textContent='توقف الاستماع';status.classList.remove('listening')}
+      };
+      voiceRecognition.start();
+    }catch(e){
+      if(status) status.textContent='تعذر بدء الاستماع';
+    }
+  }
+
+  function stopVoice(){
+    try{ if(voiceRecognition) voiceRecognition.stop(); }catch(e){}
+    var status=document.getElementById('voiceStatus');
+    if(status){status.textContent='تم الإيقاف';status.classList.remove('listening')}
+  }
+
+  async function runVoiceCommand(){
+    var t=text(document.getElementById('voiceText') && document.getElementById('voiceText').value);
+    if(!t){result('voiceResult','لا يوجد أمر صوتي لتنفيذه.');return}
+    var lower=t.toLowerCase();
+    if(lower.indexOf('حلل')!==-1 || lower.indexOf('تحليل')!==-1){showTab('analytics');runAIAnalytics();return}
+    if(lower.indexOf('تقرير')!==-1){showTab('report');var seed=document.getElementById('reportSeed');if(seed)seed.value=t;generateAIReport();return}
+    if(lower.indexOf('قرار')!==-1){showTab('decision');runDecision();return}
+    if(lower.indexOf('أرشيف')!==-1 || lower.indexOf('ارشيف')!==-1){showTab('archive');return}
+    if(lower.indexOf('اسأل')!==-1 || lower.indexOf('سؤال')!==-1 || lower.indexOf('شات')!==-1){showTab('chat');var cp=document.getElementById('chatPrompt');if(cp)cp.value=t;sendChatMessage();return}
+    result('voiceResult','⏳ جارٍ تنفيذ الأمر عبر ChatGPT...');
+    try{result('voiceResult',await callAI('نفذ هذا الأمر الصوتي داخل منصة قيادة مدرسية أو اشرح أفضل إجراء:\n'+t+'\n\nسياق الصفحة:\n'+collectContext()))}
+    catch(e){result('voiceResult','تعذر التنفيذ: '+e.message)}
+  }
+
   function createModal(){
     if(document.getElementById('topAiCenterModal'))return;
     var modal=document.createElement('div'); modal.id='topAiCenterModal';
-    modal.innerHTML='<div class="top-ai-panel"><div class="top-ai-head"><h2>AI CENTER • مركز الذكاء الاصطناعي</h2><button type="button" class="top-ai-close">إغلاق ✕</button></div><div class="top-ai-tabs"><button class="top-ai-tab" data-tab="analytics">📊 التحليل الذكي</button><button class="top-ai-tab" data-tab="report">🪄 مولد التقارير</button><button class="top-ai-tab" data-tab="archive">📁 الأرشيف الذكي</button><button class="top-ai-tab" data-tab="platform">✨ ذكاء المنصة</button><button class="top-ai-tab" data-tab="ask">🤖 اسألني</button><button class="top-ai-tab" data-tab="decision">🎯 محرك القرار</button><button class="top-ai-tab" data-tab="settings">⚙️ إعدادات OpenAI</button></div><div class="top-ai-body">'+
+    modal.innerHTML='<div class="top-ai-panel"><div class="top-ai-head"><h2>AI CENTER • مركز الذكاء الاصطناعي</h2><button type="button" class="top-ai-close">إغلاق ✕</button></div><div class="top-ai-tabs"><button class="top-ai-tab" data-tab="analytics">📊 التحليل الذكي</button><button class="top-ai-tab" data-tab="report">🪄 مولد التقارير</button><button class="top-ai-tab" data-tab="archive">📁 الأرشيف الذكي</button><button class="top-ai-tab" data-tab="platform">✨ ذكاء المنصة</button><button class="top-ai-tab" data-tab="ask">🤖 اسألني</button><button class="top-ai-tab" data-tab="decision">🎯 محرك القرار</button><button class="top-ai-tab" data-tab="chat">💬 ChatGPT</button><button class="top-ai-tab" data-tab="voice">🎙️ الأوامر الصوتية</button><button class="top-ai-tab" data-tab="settings">⚙️ إعدادات OpenAI</button></div><div class="top-ai-body">'+
     '<section class="top-ai-view" id="view-analytics"><div class="top-ai-grid"><div class="top-ai-card"><h3>اكتمال البيانات</h3><div class="top-ai-number" id="scoreCompletion">--</div></div><div class="top-ai-card"><h3>جودة المحتوى</h3><div class="top-ai-number" id="scoreQuality">--</div></div><div class="top-ai-card"><h3>مؤشر المخاطر</h3><div class="top-ai-number" id="scoreRisk">--</div></div></div><div class="top-ai-actions"><button type="button" id="btnLocalAnalytics">تحليل محلي</button><button type="button" class="secondary" id="btnAIAnalytics">تحليل عبر OpenAI</button><button type="button" class="secondary" id="btnSaveAnalytics">حفظ في الأرشيف</button></div><div class="top-ai-result" id="analyticsResult"></div></section>'+
     '<section class="top-ai-view" id="view-report"><div class="top-ai-grid"><div class="top-ai-card"><h3>نوع التقرير</h3><select id="reportType" class="top-ai-select"><option>تقرير مبادرة</option><option>تقرير زيارة صفية</option><option>تقرير متابعة</option><option>تقرير خطة تحسين</option><option>محضر اجتماع</option></select></div><div class="top-ai-card"><h3>المجال</h3><select id="reportDomain" class="top-ai-select"><option>القيادة المدرسية</option><option>التعليم والتعلم</option><option>نواتج التعلم</option><option>البيئة المدرسية</option></select></div></div><textarea id="reportSeed" class="top-ai-textarea" placeholder="اكتب فكرة التقرير..."></textarea><div class="top-ai-actions"><button type="button" id="btnLocalReport">توليد محلي</button><button type="button" class="secondary" id="btnAIReport">توليد عبر OpenAI</button><button type="button" class="secondary" id="btnSaveReport">حفظ في الأرشيف</button></div><div class="top-ai-result" id="reportResult"></div></section>'+
     '<section class="top-ai-view" id="view-archive"><input id="archiveSearch" class="top-ai-input" placeholder="بحث في الأرشيف الذكي..."><div class="top-ai-actions"><button type="button" id="btnSavePage">أرشفة الصفحة الحالية</button><button type="button" class="secondary" id="btnClearArchive">مسح الأرشيف</button></div><div class="top-ai-archive-list" id="archiveList"></div></section>'+
     '<section class="top-ai-view" id="view-platform"><div class="top-ai-actions"><button type="button" id="btnPlatformAI">اقتراح تحسينات</button><button type="button" class="secondary" id="btnSavePlatform">حفظ في الأرشيف</button></div><div class="top-ai-result" id="platformResult">اضغط اقتراح تحسينات.</div></section>'+
     '<section class="top-ai-view" id="view-ask"><textarea id="askPrompt" class="top-ai-textarea" placeholder="اكتب سؤالك هنا..."></textarea><div class="top-ai-actions"><button type="button" id="btnAskAI">إرسال السؤال</button></div><div class="top-ai-result" id="askResult"></div></section>'+
-    '<section class="top-ai-view" id="view-decision"><div class="top-ai-actions"><button type="button" id="btnDecisionAI">تحليل القرار</button><button type="button" class="secondary" id="btnSaveDecision">حفظ في الأرشيف</button></div><div class="top-ai-result" id="decisionResult">اضغط تحليل القرار.</div></section>'+'<section class="top-ai-view" id="view-settings"><div class="top-ai-card"><h3>حالة الربط</h3><p id="openaiStatus">غير معروف</p></div><div class="top-ai-grid"><div class="top-ai-card"><h3>مفتاح OpenAI API</h3><input id="openaiKeyInput" class="top-ai-input" type="password" placeholder="sk-..."></div><div class="top-ai-card"><h3>الموديل</h3><select id="openaiModelInput" class="top-ai-select"><option value="gpt-4o-mini">gpt-4o-mini</option><option value="gpt-4.1-mini">gpt-4.1-mini</option><option value="gpt-4o">gpt-4o</option></select></div></div><div class="top-ai-actions"><button type="button" id="btnSaveOpenAISettings">حفظ الإعدادات</button><button type="button" class="secondary" id="btnTestOpenAI">اختبار الاتصال</button></div><div class="top-ai-result" id="settingsResult">احفظ المفتاح محليًا في هذا المتصفح لاستخدام أدوات AI CENTER.</div></section>'+
+    '<section class="top-ai-view" id="view-decision"><div class="top-ai-actions"><button type="button" id="btnDecisionAI">تحليل القرار</button><button type="button" class="secondary" id="btnSaveDecision">حفظ في الأرشيف</button></div><div class="top-ai-result" id="decisionResult">اضغط تحليل القرار.</div></section>'+'<section class="top-ai-view" id="view-chat"><div class="top-ai-chat-box" id="chatBox"><div class="top-ai-msg ai">مرحبًا، أنا مساعد ChatGPT داخل AI CENTER. اكتب طلبك أو استخدم الصوت.</div></div><textarea id="chatPrompt" class="top-ai-textarea" placeholder="اكتب رسالتك هنا..."></textarea><div class="top-ai-actions"><button type="button" id="btnChatSend">إرسال</button><button type="button" class="secondary" id="btnChatVoice">إملاء صوتي</button><button type="button" class="secondary" id="btnChatClear">مسح المحادثة</button></div></section>'+
+    '<section class="top-ai-view" id="view-voice"><div class="top-ai-card"><h3>🎙️ الأوامر الصوتية</h3><p>اضغط بدء الاستماع، ثم قل مثلًا: حلل الصفحة، اكتب تقرير مبادرة، افتح مولد التقارير، اقترح قرارًا.</p><span class="top-ai-voice-dot" id="voiceStatus">غير نشط</span></div><div class="top-ai-actions"><button type="button" id="btnVoiceStart">بدء الاستماع</button><button type="button" class="secondary" id="btnVoiceStop">إيقاف</button><button type="button" class="secondary" id="btnVoiceRun">تنفيذ النص</button></div><textarea id="voiceText" class="top-ai-textarea" placeholder="سيظهر النص الصوتي هنا..."></textarea><div class="top-ai-result" id="voiceResult">جاهز لاستقبال الأوامر الصوتية.</div></section>'+
+    '<section class="top-ai-view" id="view-settings"><div class="top-ai-card"><h3>حالة الربط</h3><p id="openaiStatus">غير معروف</p></div><div class="top-ai-grid"><div class="top-ai-card"><h3>مفتاح OpenAI API</h3><input id="openaiKeyInput" class="top-ai-input" type="password" placeholder="sk-..."></div><div class="top-ai-card"><h3>الموديل</h3><select id="openaiModelInput" class="top-ai-select"><option value="gpt-4o-mini">gpt-4o-mini</option><option value="gpt-4.1-mini">gpt-4.1-mini</option><option value="gpt-4o">gpt-4o</option></select></div></div><div class="top-ai-actions"><button type="button" id="btnSaveOpenAISettings">حفظ الإعدادات</button><button type="button" class="secondary" id="btnTestOpenAI">اختبار الاتصال</button></div><div class="top-ai-result" id="settingsResult">احفظ المفتاح محليًا في هذا المتصفح لاستخدام أدوات AI CENTER.</div></section>'+
     '</div></div>';
     document.body.appendChild(modal);
     modal.querySelector('.top-ai-close').onclick=closeModal;
@@ -187,16 +317,34 @@
         if(window.OpenAIEngine) window.OpenAIEngine.setModel(model);
         document.getElementById('openaiKeyInput').value='';
         refreshOpenAIStatus();
+    document.getElementById('btnChatSend').onclick=sendChatMessage;
+    document.getElementById('btnChatClear').onclick=clearChat;
+    document.getElementById('btnChatVoice').onclick=function(){startVoice('chatPrompt')};
+    document.getElementById('btnVoiceStart').onclick=function(){startVoice('voiceText')};
+    document.getElementById('btnVoiceStop').onclick=stopVoice;
+    document.getElementById('btnVoiceRun').onclick=runVoiceCommand;
         result('settingsResult','تم حفظ إعدادات OpenAI محليًا بنجاح.');
       }catch(e){result('settingsResult','تعذر الحفظ: '+e.message)}
     };
     document.getElementById('btnTestOpenAI').onclick=async function(){
       refreshOpenAIStatus();
+    document.getElementById('btnChatSend').onclick=sendChatMessage;
+    document.getElementById('btnChatClear').onclick=clearChat;
+    document.getElementById('btnChatVoice').onclick=function(){startVoice('chatPrompt')};
+    document.getElementById('btnVoiceStart').onclick=function(){startVoice('voiceText')};
+    document.getElementById('btnVoiceStop').onclick=stopVoice;
+    document.getElementById('btnVoiceRun').onclick=runVoiceCommand;
       result('settingsResult','⏳ جارٍ اختبار الاتصال...');
       try{result('settingsResult',await callAI('اختبار اتصال مختصر. أجب بجملة واحدة: تم الاتصال بنجاح.'))}
       catch(e){result('settingsResult','فشل اختبار الاتصال: '+e.message)}
     };
     refreshOpenAIStatus();
+    document.getElementById('btnChatSend').onclick=sendChatMessage;
+    document.getElementById('btnChatClear').onclick=clearChat;
+    document.getElementById('btnChatVoice').onclick=function(){startVoice('chatPrompt')};
+    document.getElementById('btnVoiceStart').onclick=function(){startVoice('voiceText')};
+    document.getElementById('btnVoiceStop').onclick=stopVoice;
+    document.getElementById('btnVoiceRun').onclick=runVoiceCommand;
   }
   function createIcon(){
     if(document.getElementById('topAiCenterIcon'))return;

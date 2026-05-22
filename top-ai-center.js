@@ -60,14 +60,15 @@
     return fields.concat(labels).join('\n');
   }
   async function callAI(prompt){
-    if(typeof window.callOpenAI==='function')return await window.callOpenAI(prompt);
-    if(typeof window.askOpenAI==='function')return await window.askOpenAI(prompt);
-    if(typeof window.aiRequest==='function')return await window.aiRequest(prompt);
-    var key=localStorage.getItem('OPENAI_API_KEY')||localStorage.getItem('openai_api_key')||window.OPENAI_API_KEY||window.openaiApiKey;
-    if(!key)throw new Error('لم يتم العثور على مفتاح OpenAI أو دالة الاتصال في هذه الصفحة.');
-    var res=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},body:JSON.stringify({model:localStorage.getItem('OPENAI_MODEL')||'gpt-4o-mini',messages:[{role:'system',content:'أنت مساعد قيادة مدرسية ذكي. أجب بالعربية وبصياغة إدارية منظمة ومختصرة.'},{role:'user',content:prompt}],temperature:.3})});
-    var json=await res.json(); if(!res.ok)throw new Error((json.error&&json.error.message)||'فشل الاتصال بـ OpenAI');
-    return (json.choices&&json.choices[0]&&json.choices[0].message&&json.choices[0].message.content)||'';
+    if(window.OpenAIEngine && typeof window.OpenAIEngine.call === 'function'){
+      return await window.OpenAIEngine.call(
+        'أنت مساعد قيادة مدرسية ذكي. أجب بالعربية وبصياغة إدارية منظمة ومختصرة.',
+        prompt,
+        {temperature:.3}
+      );
+    }
+    if(typeof window.callOpenAI==='function') return await window.callOpenAI(prompt);
+    throw new Error('لم يتم العثور على OpenAI Engine في هذه الصفحة.');
   }
   function result(id,msg){var el=document.getElementById(id); if(el)el.textContent=msg}
   function getArchive(){try{return JSON.parse(localStorage.getItem('top_ai_center_archive_v1')||'[]')}catch(e){return[]}}
@@ -146,13 +147,13 @@
   function createModal(){
     if(document.getElementById('topAiCenterModal'))return;
     var modal=document.createElement('div'); modal.id='topAiCenterModal';
-    modal.innerHTML='<div class="top-ai-panel"><div class="top-ai-head"><h2>AI CENTER • مركز الذكاء الاصطناعي</h2><button type="button" class="top-ai-close">إغلاق ✕</button></div><div class="top-ai-tabs"><button class="top-ai-tab" data-tab="analytics">📊 التحليل الذكي</button><button class="top-ai-tab" data-tab="report">🪄 مولد التقارير</button><button class="top-ai-tab" data-tab="archive">📁 الأرشيف الذكي</button><button class="top-ai-tab" data-tab="platform">✨ ذكاء المنصة</button><button class="top-ai-tab" data-tab="ask">🤖 اسألني</button><button class="top-ai-tab" data-tab="decision">🎯 محرك القرار</button></div><div class="top-ai-body">'+
+    modal.innerHTML='<div class="top-ai-panel"><div class="top-ai-head"><h2>AI CENTER • مركز الذكاء الاصطناعي</h2><button type="button" class="top-ai-close">إغلاق ✕</button></div><div class="top-ai-tabs"><button class="top-ai-tab" data-tab="analytics">📊 التحليل الذكي</button><button class="top-ai-tab" data-tab="report">🪄 مولد التقارير</button><button class="top-ai-tab" data-tab="archive">📁 الأرشيف الذكي</button><button class="top-ai-tab" data-tab="platform">✨ ذكاء المنصة</button><button class="top-ai-tab" data-tab="ask">🤖 اسألني</button><button class="top-ai-tab" data-tab="decision">🎯 محرك القرار</button><button class="top-ai-tab" data-tab="settings">⚙️ إعدادات OpenAI</button></div><div class="top-ai-body">'+
     '<section class="top-ai-view" id="view-analytics"><div class="top-ai-grid"><div class="top-ai-card"><h3>اكتمال البيانات</h3><div class="top-ai-number" id="scoreCompletion">--</div></div><div class="top-ai-card"><h3>جودة المحتوى</h3><div class="top-ai-number" id="scoreQuality">--</div></div><div class="top-ai-card"><h3>مؤشر المخاطر</h3><div class="top-ai-number" id="scoreRisk">--</div></div></div><div class="top-ai-actions"><button type="button" id="btnLocalAnalytics">تحليل محلي</button><button type="button" class="secondary" id="btnAIAnalytics">تحليل عبر OpenAI</button><button type="button" class="secondary" id="btnSaveAnalytics">حفظ في الأرشيف</button></div><div class="top-ai-result" id="analyticsResult"></div></section>'+
     '<section class="top-ai-view" id="view-report"><div class="top-ai-grid"><div class="top-ai-card"><h3>نوع التقرير</h3><select id="reportType" class="top-ai-select"><option>تقرير مبادرة</option><option>تقرير زيارة صفية</option><option>تقرير متابعة</option><option>تقرير خطة تحسين</option><option>محضر اجتماع</option></select></div><div class="top-ai-card"><h3>المجال</h3><select id="reportDomain" class="top-ai-select"><option>القيادة المدرسية</option><option>التعليم والتعلم</option><option>نواتج التعلم</option><option>البيئة المدرسية</option></select></div></div><textarea id="reportSeed" class="top-ai-textarea" placeholder="اكتب فكرة التقرير..."></textarea><div class="top-ai-actions"><button type="button" id="btnLocalReport">توليد محلي</button><button type="button" class="secondary" id="btnAIReport">توليد عبر OpenAI</button><button type="button" class="secondary" id="btnSaveReport">حفظ في الأرشيف</button></div><div class="top-ai-result" id="reportResult"></div></section>'+
     '<section class="top-ai-view" id="view-archive"><input id="archiveSearch" class="top-ai-input" placeholder="بحث في الأرشيف الذكي..."><div class="top-ai-actions"><button type="button" id="btnSavePage">أرشفة الصفحة الحالية</button><button type="button" class="secondary" id="btnClearArchive">مسح الأرشيف</button></div><div class="top-ai-archive-list" id="archiveList"></div></section>'+
     '<section class="top-ai-view" id="view-platform"><div class="top-ai-actions"><button type="button" id="btnPlatformAI">اقتراح تحسينات</button><button type="button" class="secondary" id="btnSavePlatform">حفظ في الأرشيف</button></div><div class="top-ai-result" id="platformResult">اضغط اقتراح تحسينات.</div></section>'+
     '<section class="top-ai-view" id="view-ask"><textarea id="askPrompt" class="top-ai-textarea" placeholder="اكتب سؤالك هنا..."></textarea><div class="top-ai-actions"><button type="button" id="btnAskAI">إرسال السؤال</button></div><div class="top-ai-result" id="askResult"></div></section>'+
-    '<section class="top-ai-view" id="view-decision"><div class="top-ai-actions"><button type="button" id="btnDecisionAI">تحليل القرار</button><button type="button" class="secondary" id="btnSaveDecision">حفظ في الأرشيف</button></div><div class="top-ai-result" id="decisionResult">اضغط تحليل القرار.</div></section>'+
+    '<section class="top-ai-view" id="view-decision"><div class="top-ai-actions"><button type="button" id="btnDecisionAI">تحليل القرار</button><button type="button" class="secondary" id="btnSaveDecision">حفظ في الأرشيف</button></div><div class="top-ai-result" id="decisionResult">اضغط تحليل القرار.</div></section>'+'<section class="top-ai-view" id="view-settings"><div class="top-ai-card"><h3>حالة الربط</h3><p id="openaiStatus">غير معروف</p></div><div class="top-ai-grid"><div class="top-ai-card"><h3>مفتاح OpenAI API</h3><input id="openaiKeyInput" class="top-ai-input" type="password" placeholder="sk-..."></div><div class="top-ai-card"><h3>الموديل</h3><select id="openaiModelInput" class="top-ai-select"><option value="gpt-4o-mini">gpt-4o-mini</option><option value="gpt-4.1-mini">gpt-4.1-mini</option><option value="gpt-4o">gpt-4o</option></select></div></div><div class="top-ai-actions"><button type="button" id="btnSaveOpenAISettings">حفظ الإعدادات</button><button type="button" class="secondary" id="btnTestOpenAI">اختبار الاتصال</button></div><div class="top-ai-result" id="settingsResult">احفظ المفتاح محليًا في هذا المتصفح لاستخدام أدوات AI CENTER.</div></section>'+
     '</div></div>';
     document.body.appendChild(modal);
     modal.querySelector('.top-ai-close').onclick=closeModal;
@@ -172,6 +173,30 @@
     document.getElementById('btnAskAI').onclick=runAsk;
     document.getElementById('btnDecisionAI').onclick=runDecision;
     document.getElementById('btnSaveDecision').onclick=function(){saveToArchive('قرار',document.getElementById('decisionResult').textContent)};
+    function refreshOpenAIStatus(){
+      var st=document.getElementById('openaiStatus');
+      var model=document.getElementById('openaiModelInput');
+      if(model && window.OpenAIEngine && window.OpenAIEngine.getModel) model.value=window.OpenAIEngine.getModel();
+      if(st) st.textContent=(window.OpenAIEngine && window.OpenAIEngine.isConfigured && window.OpenAIEngine.isConfigured())?'OpenAI متصل ومحفوظ محليًا':'لم يتم حفظ مفتاح OpenAI بعد';
+    }
+    document.getElementById('btnSaveOpenAISettings').onclick=function(){
+      try{
+        var key=document.getElementById('openaiKeyInput').value;
+        var model=document.getElementById('openaiModelInput').value;
+        if(window.OpenAIEngine && key) window.OpenAIEngine.setApiKey(key);
+        if(window.OpenAIEngine) window.OpenAIEngine.setModel(model);
+        document.getElementById('openaiKeyInput').value='';
+        refreshOpenAIStatus();
+        result('settingsResult','تم حفظ إعدادات OpenAI محليًا بنجاح.');
+      }catch(e){result('settingsResult','تعذر الحفظ: '+e.message)}
+    };
+    document.getElementById('btnTestOpenAI').onclick=async function(){
+      refreshOpenAIStatus();
+      result('settingsResult','⏳ جارٍ اختبار الاتصال...');
+      try{result('settingsResult',await callAI('اختبار اتصال مختصر. أجب بجملة واحدة: تم الاتصال بنجاح.'))}
+      catch(e){result('settingsResult','فشل اختبار الاتصال: '+e.message)}
+    };
+    refreshOpenAIStatus();
   }
   function createIcon(){
     if(document.getElementById('topAiCenterIcon'))return;

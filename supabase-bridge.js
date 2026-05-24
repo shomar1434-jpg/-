@@ -2,7 +2,7 @@
 // مصدر مركزي واحد لعمليات المدارس والمستخدمين عبر Supabase.
 (function(){
   const SUPABASE_URL = localStorage.getItem('smartSchoolSupabaseUrl') || 'https://cijhgvbtrvmmlcssgxht.supabase.co';
-  const SUPABASE_KEY = localStorage.getItem('smartSchoolSupabaseAnonKey') || 'sb_publishable_wrqnWejHyIhaYnMusFfDQQ_6NBvAK9N';
+  const SUPABASE_KEY = localStorage.getItem('smartSchoolSupabaseAnonKey') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
   let client = null;
 
 

@@ -1,9 +1,22 @@
 // supabase-bridge.js
 // مصدر مركزي واحد لعمليات المدارس والمستخدمين عبر Supabase.
 (function(){
-  const SUPABASE_URL = 'https://mfzsgaqxvxusayoribfo.supabase.co';
-  const SUPABASE_KEY = 'sb_publishable_wrqnWejHyIhaYnMusFfDQQ_6NBvAK9N';
+  const SUPABASE_URL = localStorage.getItem('smartSchoolSupabaseUrl') || 'https://cijhgvbtrvmmlcssgxht.supabase.co';
+  const SUPABASE_KEY = localStorage.getItem('smartSchoolSupabaseAnonKey') || 'sb_publishable_wrqnWejHyIhaYnMusFfDQQ_6NBvAK9N';
   let client = null;
+
+
+  function explainSupabaseError(error){
+    if(!error) return error;
+    const msg = String(error.message || error.details || error.hint || error || '');
+    if(/schema cache|Could not find the table/i.test(msg)){
+      error.message = 'تعذر الوصول إلى جدول schools في مشروع Supabase الحالي. تم ضبط رابط المشروع داخل المنصة، فإن استمرت الرسالة فتأكد من أن anon public key يخص نفس المشروع: ' + SUPABASE_URL;
+    }
+    if(/Invalid API key|JWT|apikey|signature/i.test(msg)){
+      error.message = 'مفتاح Supabase لا يطابق رابط المشروع الحالي. انسخ anon public key من Project Settings > API وضعه في إعدادات المنصة أو localStorage باسم smartSchoolSupabaseAnonKey.';
+    }
+    return error;
+  }
 
   function getClient(){
     if(client) return client;
@@ -80,7 +93,7 @@
     const sb = getClient();
     if(!sb) throw new Error('Supabase غير جاهز');
     const {data,error} = await sb.from('schools').select('*').order('created_at',{ascending:false});
-    if(error) throw error;
+    if(error) throw explainSupabaseError(error);
     return (data || []).map(normalizeSchool);
   }
 
@@ -93,7 +106,7 @@
       delete fallback.full_name;
       q = await sb.from('users').insert(fallback).select('*').single();
     }
-    if(q.error) throw q.error;
+    if(q.error) throw explainSupabaseError(q.error);
     return q.data;
   }
 
@@ -119,7 +132,7 @@
       login_link: loginLink
     }).select('*').single();
 
-    if(schoolErr) throw schoolErr;
+    if(schoolErr) throw explainSupabaseError(schoolErr);
 
     const manager = await insertUser({
       school_id: school.id,
@@ -140,7 +153,7 @@
     const sb = getClient();
     if(!sb) throw new Error('Supabase غير جاهز');
     const {error} = await sb.from('schools').update({status}).eq('id',schoolId);
-    if(error) throw error;
+    if(error) throw explainSupabaseError(error);
     await sb.from('users').update({
       status,
       active: status === 'active'
@@ -191,7 +204,7 @@
     const sb = getClient();
     if(!sb) throw new Error('Supabase غير جاهز');
     const {data,error} = await sb.from('users').select('*').eq('school_id',schoolId).order('created_at',{ascending:false});
-    if(error) throw error;
+    if(error) throw explainSupabaseError(error);
     return (data || []).map(u => normalizeUser(u));
   }
 
@@ -202,7 +215,7 @@
       status,
       active: status === 'active'
     }).eq('id',userId).select('*').single();
-    if(error) throw error;
+    if(error) throw explainSupabaseError(error);
     return normalizeUser(data);
   }
 
@@ -210,7 +223,7 @@
     const sb = getClient();
     if(!sb) throw new Error('Supabase غير جاهز');
     const {data:user,error} = await sb.from('users').select('*').eq('email',email).eq('password',password).maybeSingle();
-    if(error) throw error;
+    if(error) throw explainSupabaseError(error);
     if(!user) throw new Error('بيانات الدخول غير صحيحة');
     if(user.status !== 'active') throw new Error('الحساب غير مفعل بعد');
 
@@ -236,7 +249,7 @@
     const sb = getClient();
     if(!sb) throw new Error('Supabase غير جاهز');
     const {error} = await sb.from('schools').delete().eq('id',schoolId);
-    if(error) throw error;
+    if(error) throw explainSupabaseError(error);
     return true;
   }
 
@@ -244,7 +257,7 @@
     const sb = getClient();
     if(!sb) throw new Error('Supabase غير جاهز');
     const {error} = await sb.from('users').delete().eq('id',userId);
-    if(error) throw error;
+    if(error) throw explainSupabaseError(error);
     return true;
   }
 

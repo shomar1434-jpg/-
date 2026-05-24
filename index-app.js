@@ -2068,7 +2068,7 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
    يضيف تعبئة محضر الاجتماع من نص/حضور Microsoft Teams عبر دالة Supabase ASK-AI.
    لا يحتوي على مفتاح OpenAI؛ المفتاح يبقى داخل Supabase Secret باسم OPENAI_API_KEY. */
 (function(){
-  const AI_ENDPOINT = window.SMART_SCHOOL_AI_ENDPOINT || 'https://mfzsgaqxvxusayoribfo.supabase.co/functions/v1/ASK-AI';
+  const AI_ENDPOINT = window.SMART_SCHOOL_AI_ENDPOINT || 'https://cijhgvbtrvmmlcssgxht.supabase.co/functions/v1/ASK-AI';
   const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || 'sb_publishable_wrqnWejHyIhaYnMusFfDQQ_6NBvAK9N';
   const $ = (id) => document.getElementById(id);
   const setVal = (id, value) => { const el = $(id); if (el) el.value = value || ''; };

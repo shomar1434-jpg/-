@@ -44,6 +44,25 @@
     return role || 'performance';
   }
 
+
+  function persistIndependentSchoolLogin(school){
+    try{
+      if(!school) return;
+      const schoolCode = school.school_code || school.schoolCode || school.id || '';
+      const loginLink = school.login_link || school.loginLink || (schoolCode ? ('school-login.html?school=' + encodeURIComponent(schoolCode)) : 'school-login.html');
+      localStorage.setItem('active_school_login_url', loginLink);
+      sessionStorage.setItem('active_school_login_url', loginLink);
+      if(schoolCode){
+        localStorage.setItem('active_school_code', schoolCode);
+        sessionStorage.setItem('active_school_code', schoolCode);
+      }
+      if(school.id){
+        localStorage.setItem('active_school_id', school.id);
+        sessionStorage.setItem('active_school_id', school.id);
+      }
+    }catch(e){}
+  }
+
   function normalizeSchool(row){
     if(!row) return null;
     return {
@@ -241,6 +260,7 @@
       localStorage.setItem('currentSchoolUser', JSON.stringify(normalized));
       localStorage.setItem('currentUser', JSON.stringify(normalized));
       localStorage.setItem('smartSchool.currentSchool', JSON.stringify(normalizeSchool(school)));
+      persistIndependentSchoolLogin(school);
     }catch(e){}
     return normalized;
   }

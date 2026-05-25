@@ -81,17 +81,91 @@
   var iconSvg='<svg viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="topAiGradFinal" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#22d3ee"/><stop offset="52%" stop-color="#60a5fa"/><stop offset="100%" stop-color="#a855f7"/></linearGradient></defs><path d="M24 8c-7 0-12 5-12 12 0 1.8.4 3.4 1.1 4.9C8.6 27.3 6 31.9 6 37c0 7 4.8 12.8 11.3 14.4.8 5.9 5.8 10.6 12 10.6 3.4 0 6.5-1.4 8.7-3.8 2.2 2.4 5.3 3.8 8.7 3.8 6.2 0 11.2-4.7 12-10.6C65.2 49.8 70 44 70 37c0-5.1-2.6-9.7-7.1-12.1.7-1.5 1.1-3.1 1.1-4.9 0-7-5-12-12-12-3.7 0-7.1 1.7-9.3 4.3C41.1 9.7 38.5 8 35.5 8s-5.6 1.7-7.2 4.3C27.1 9.7 26.5 8 24 8Z" transform="scale(.88) translate(0 1)" fill="none" stroke="url(#topAiGradFinal)" stroke-width="4" stroke-linejoin="round"/><path d="M32 14v36M22 22h-5M23 32h-8M22 42h-5M42 22h5M41 32h8M42 42h5" stroke="url(#topAiGradFinal)" stroke-width="3.8" stroke-linecap="round"/></svg>';
 
   function text(v){return String(v||'').replace(/\s+/g,' ').trim()}
+
+  function readStorage(keys){
+    for(var i=0;i<keys.length;i++){
+      try{var v=localStorage.getItem(keys[i])||sessionStorage.getItem(keys[i]); if(v) return v;}catch(e){}
+    }
+    return '';
+  }
+  function readQuery(name){
+    try{return new URLSearchParams(location.search).get(name)||'';}catch(e){return ''}
+  }
+  function roleLabel(role){
+    var map={leadership:'مدير المدرسة',manager:'مدير المدرسة',agency:'الوكيل',agent:'الوكيل',performance:'المعلم',teacher:'المعلم',student_advisor:'الموجه الطلابي',advisor:'الموجه الطلابي',supervisor:'المشرف الزائر'};
+    return map[String(role||'').toLowerCase()]||role||'غير محدد';
+  }
+  function detectSection(){
+    var path=(location.pathname.split('/').pop()||'').toLowerCase();
+    var title=text(document.title||'');
+    var h=text((document.querySelector('h1,h2,.section-title,.page-title')||{}).innerText||'');
+    if(path.indexOf('teacher')!==-1 || /معلم|المعلم/.test(title+h)) return 'قسم المعلم';
+    if(path.indexOf('manager')!==-1 || /مدير|المدير/.test(title+h)) return 'قسم المدير';
+    if(path.indexOf('agent')!==-1 || path.indexOf('wakil')!==-1 || /وكيل|الوكيل/.test(title+h)) return 'قسم الوكيل';
+    if(path.indexOf('student_advisor')!==-1 || /موجه|مرشد|التوجيه/.test(title+h)) return 'قسم الموجه الطلابي';
+    if(path.indexOf('supervisor')!==-1 || /زيارة إشرافية|مشرف/.test(title+h)) return 'رابط الزيارة الإشرافية';
+    return title||h||'القسم الحالي';
+  }
+  function getScopedArchiveSummary(meta){
+    var out=[];
+    var keys=[];
+    try{for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i)||''; if(/archive|archives|reports|records|meeting|minutes|smart|digital|أرشيف|سجلات/i.test(k)) keys.push(k)}}catch(e){}
+    var roleWords=[meta.section, meta.roleLabel, meta.targetRoleLabel].join(' ');
+    keys.slice(0,80).forEach(function(k){
+      try{
+        var raw=localStorage.getItem(k)||'';
+        if(!raw) return;
+        var include=false;
+        if(/top_ai_center_archive|teacher|performance|agent|agency|manager|leadership|student|advisor|meeting|records|reports|archive|digital|smart/i.test(k)) include=true;
+        if(meta.section.indexOf('المعلم')!==-1 && /teacher|performance|معلم/.test(k)) include=true;
+        if(meta.section.indexOf('الوكيل')!==-1 && /agent|agency|wakil|وكيل/.test(k)) include=true;
+        if(meta.section.indexOf('المدير')!==-1 && /manager|leadership|meeting|مدير/.test(k)) include=true;
+        if(meta.section.indexOf('الموجه')!==-1 && /advisor|student|مرشد|موجه/.test(k)) include=true;
+        if(!include) return;
+        var parsed; try{parsed=JSON.parse(raw)}catch(e){parsed=raw}
+        if(Array.isArray(parsed)){
+          out.push(k+': عدد العناصر '+parsed.length+(parsed.length?'. عينة: '+text(JSON.stringify(parsed.slice(0,3))).slice(0,700):''));
+        }else if(parsed && typeof parsed==='object'){
+          var vals=Object.keys(parsed).slice(0,12).map(function(x){return x+': '+text(JSON.stringify(parsed[x])).slice(0,120)}).join(' | ');
+          out.push(k+': '+vals);
+        }else{
+          out.push(k+': '+text(String(parsed)).slice(0,500));
+        }
+      }catch(e){}
+    });
+    return out.slice(0,28).join('\n');
+  }
+  function getAIContextMeta(){
+    var qs=new URLSearchParams(location.search||'');
+    var role=readQuery('role')||readQuery('viewerRole')||readQuery('viewer')||readStorage(['currentRole','smart_school_active_role','user_role','role']);
+    var targetRole=readQuery('targetRole')||readStorage(['targetRole','currentTargetRole']);
+    var schoolId=readQuery('schoolId')||readQuery('school_id')||readStorage(['current_school_id','school_id','active_school_id']);
+    var schoolName=readQuery('schoolName')||readQuery('school_name')||readStorage(['current_school_name','school_name','persist_school']);
+    var userName=readStorage(['currentUserName','current_user_name','userName','teacherName','managerName'])||readQuery('name');
+    var userEmail=readStorage(['currentUserEmail','current_user_email','userEmail'])||readQuery('email');
+    var targetUser=readQuery('targetUser')||readQuery('followUserId')||readQuery('userId')||readQuery('uid')||readStorage(['targetUser','followUserId','current_target_user']);
+    var mode=(readQuery('readonly')==='1'||readQuery('follow')==='1'||readQuery('mode')||'').toString();
+    var independent=(readQuery('independent')==='true'||readQuery('schoolMode')==='independent'||!!schoolId||!!schoolName);
+    return {section:detectSection(), role:role||'', roleLabel:roleLabel(role), targetRole:targetRole||'', targetRoleLabel:roleLabel(targetRole), schoolId:schoolId||'', schoolName:schoolName||'', userName:userName||'', userEmail:userEmail||'', targetUser:targetUser||'', mode:mode||'عادي', independent:independent};
+  }
+  function systemInstruction(){
+    var m=getAIContextMeta();
+    return 'أنت مساعد ذكي سياقي داخل منصة مدرسية. أجب بالعربية وبصياغة إدارية مختصرة. التزم التزامًا صارمًا بسياق القسم الحالي فقط ولا تقدم إجابات عامة أو تخص أقسامًا أخرى إلا إذا طلب المستخدم صراحة المقارنة أو كانت صلاحياته وسياق السؤال يسمحان بذلك. إذا كانت البيانات غير كافية فاذكر أن الحكم مبني على البيانات الظاهرة/المحفوظة في هذا القسم فقط. لا تقترح إنشاء أزرار أو تعديلات برمجية داخل الصفحة. السياق الثابت: المدرسة='+(m.schoolName||'غير محددة')+'، معرف المدرسة='+(m.schoolId||'غير محدد')+'، المستخدم/الدور='+(m.roleLabel||'غير محدد')+'، القسم الحالي='+(m.section||'غير محدد')+'، المستخدم المستهدف='+(m.targetUser||'غير محدد')+'، وضع الدخول='+(m.mode||'عادي')+'.';
+  }
   function collectContext(){
+    var meta=getAIContextMeta();
     var fields=Array.from(document.querySelectorAll('input,textarea,select')).filter(function(el){return !el.closest('#topAiCenterModal')}).map(function(el){return (el.placeholder||el.name||el.id||'حقل')+': '+(el.value||'')}).filter(Boolean).slice(0,90);
-    var labels=Array.from(document.querySelectorAll('h1,h2,h3,h4,p,label,button')).filter(function(el){return !el.closest('#topAiCenterModal')&&el.offsetParent!==null}).map(function(el){return text(el.innerText)}).filter(Boolean).slice(0,130);
-    return fields.concat(labels).join('\n');
+    var labels=Array.from(document.querySelectorAll('h1,h2,h3,h4,p,label,button,th,td')).filter(function(el){return !el.closest('#topAiCenterModal')&&el.offsetParent!==null}).map(function(el){return text(el.innerText)}).filter(Boolean).slice(0,170);
+    var archive=getScopedArchiveSummary(meta);
+    var head='[سياق الذكاء الحالي]\nالمدرسة: '+(meta.schoolName||'غير محددة')+'\nمعرف المدرسة: '+(meta.schoolId||'غير محدد')+'\nدور المستخدم: '+(meta.roleLabel||'غير محدد')+'\nالقسم المفتوح: '+(meta.section||'غير محدد')+'\nالدور/المستخدم المستهدف: '+(meta.targetRoleLabel||meta.targetUser||'غير محدد')+'\nوضع الدخول: '+(meta.mode||'عادي')+'\nمدرسة مستقلة: '+(meta.independent?'نعم':'غير مؤكد');
+    return [head,'[حقول الصفحة]',fields.join('\n'),'[عناصر الصفحة الظاهرة]',labels.join('\n'),archive?'[ملخص الأرشيف المرتبط بالسياق]\n'+archive:''].filter(Boolean).join('\n\n');
   }
   async function callAI(prompt){
     if(window.OpenAIEngine && typeof window.OpenAIEngine.call === 'function'){
       return await window.OpenAIEngine.call(
-        'أنت مساعد قيادة مدرسية ذكي. أجب بالعربية وبصياغة إدارية منظمة ومختصرة.',
+        systemInstruction(),
         prompt,
-        {temperature:.3}
+        {temperature:.25}
       );
     }
     if(typeof window.callOpenAI==='function') return await window.callOpenAI(prompt);
@@ -115,7 +189,7 @@
     if(tab==='archive') renderArchive();
     if(tab==='analytics') runLocalAnalytics();
   }
-  function openModal(){document.getElementById('topAiCenterModal').classList.add('open'); showTab('analytics')}
+  function openModal(){var m=getAIContextMeta();var b=document.getElementById('topAiContextBadge');if(b)b.textContent='السياق: '+(m.section||'القسم الحالي')+' • '+(m.roleLabel||'مستخدم');document.getElementById('topAiCenterModal').classList.add('open'); showTab('analytics')}
   function closeModal(){document.getElementById('topAiCenterModal').classList.remove('open')}
 
   function runLocalAnalytics(){
@@ -126,7 +200,7 @@
   }
   async function runAIAnalytics(){
     var s=localScores(); result('analyticsResult','⏳ جارٍ التحليل عبر OpenAI...');
-    try{result('analyticsResult',await callAI('حلل هذه الصفحة المدرسية وقدم نقاط القوة والنواقص والمخاطر والتوصيات التنفيذية:\n\n'+s.context))}
+    try{result('analyticsResult',await callAI('حلل هذه الصفحة ضمن سياق القسم الحالي فقط، وقدم نقاط القوة والنواقص والمخاطر والتوصيات التنفيذية دون الخروج إلى أقسام أخرى:\n\n'+s.context))}
     catch(e){result('analyticsResult','تعذر الاتصال: '+e.message+'\n\nتم الإبقاء على التحليل المحلي.'); runLocalAnalytics()}
   }
   function generateLocalReport(){
@@ -136,23 +210,23 @@
   }
   async function generateAIReport(){
     result('reportResult','⏳ جارٍ توليد التقرير عبر OpenAI...');
-    try{result('reportResult',await callAI('اكتب تقريرًا إداريًا رسميًا لمنصة مدرسية. النوع: '+document.getElementById('reportType').value+'. المجال: '+document.getElementById('reportDomain').value+'. الفكرة: '+(document.getElementById('reportSeed').value||'اقترح صياغة مناسبة')+'. اجعل التقرير منظمًا بعناوين: المقدمة، الأهداف، الإجراءات، الشواهد، الأثر، مؤشرات النجاح، التوصيات.'))}
+    try{result('reportResult',await callAI('اكتب تقريرًا إداريًا رسميًا بناءً على سياق القسم الحالي فقط داخل منصة مدرسية. النوع: '+document.getElementById('reportType').value+'. المجال: '+document.getElementById('reportDomain').value+'. الفكرة: '+(document.getElementById('reportSeed').value||'اقترح صياغة مناسبة')+'. اجعل التقرير منظمًا بعناوين: المقدمة، الأهداف، الإجراءات، الشواهد، الأثر، مؤشرات النجاح، التوصيات.'))}
     catch(e){result('reportResult','تعذر الاتصال: '+e.message+'\n\nنسخة محلية:\n\n'+generateLocalReport())}
   }
   async function runAsk(){
     var q=text(document.getElementById('askPrompt').value); if(!q){result('askResult','اكتب سؤالك أولًا.');return}
     result('askResult','⏳ جارٍ الإجابة...');
-    try{result('askResult',await callAI('أجب عن السؤال التالي في سياق منصة قيادة مدرسية:\n'+q+'\n\nسياق الصفحة:\n'+collectContext()))}
+    try{result('askResult',await callAI('أجب عن السؤال التالي اعتمادًا على سياق القسم الحالي فقط، ولا تجب إجابة عامة إلا إذا طلب المستخدم ذلك صراحة.\nالسؤال:\n'+q+'\n\nسياق القسم والبيانات المتاحة:\n'+collectContext()))}
     catch(e){result('askResult','تعذر الاتصال: '+e.message)}
   }
   async function runDecision(){
     result('decisionResult','⏳ جارٍ تحليل القرار...');
-    try{result('decisionResult',await callAI('حلل سياق الصفحة واقترح قرارًا إداريًا مناسبًا مع: القرار، السبب، درجة الأولوية، الإجراء التالي.\n\n'+collectContext()))}
+    try{result('decisionResult',await callAI('حلل سياق القسم الحالي فقط واقترح قرارًا إداريًا مناسبًا مع: القرار، السبب، درجة الأولوية، الإجراء التالي. لا تستخدم بيانات أقسام أخرى.\n\n'+collectContext()))}
     catch(e){var s=localScores(); result('decisionResult','قرار محلي مقترح:\n'+(s.risk>50?'يحتاج تدخل ومتابعة عاجلة':'يحتاج متابعة دورية')+'\n\nالسبب: مؤشر المخاطر '+s.risk+'%.\nالإجراء التالي: استكمال البيانات والشواهد ثم حفظها في الأرشيف.')}
   }
   async function runPlatformAI(){
     result('platformResult','⏳ جارٍ توليد اقتراحات المنصة...');
-    try{result('platformResult',await callAI('اقترح تحسينات ذكية ومباشرة لهذه الصفحة في منصة مدرسية:\n\n'+collectContext()))}
+    try{result('platformResult',await callAI('اقترح تحسينات ذكية ومباشرة لهذا القسم فقط في المنصة المدرسية، دون تعميم على بقية الأقسام ودون اقتراح أزرار ذكاء إضافية:\n\n'+collectContext()))}
     catch(e){result('platformResult','اقتراحات محلية:\n1. تحسين اكتمال البيانات.\n2. توحيد مسميات الحقول.\n3. إضافة شواهد ومؤشرات.\n4. حفظ الناتج في الأرشيف الذكي.')}
   }
   function saveToArchive(kind,content){
@@ -195,7 +269,7 @@
     try{
       chatHistory.push({role:'user',content:msg});
       var context=collectContext();
-      var prompt='هذه محادثة مع مستخدم داخل منصة قيادة مدرسية. أجب عن آخر رسالة مع مراعاة سياق الصفحة.\n\nسياق الصفحة:\n'+context+'\n\nالمحادثة:\n'+chatHistory.map(function(m){return m.role+': '+m.content}).join('\n');
+      var prompt='هذه محادثة مع مستخدم داخل منصة قيادة مدرسية. أجب عن آخر رسالة اعتمادًا على سياق القسم الحالي فقط. لا تخلط بين الأقسام أو المستخدمين أو المدارس. إذا سأل عن التقارير أو المجالات الأقل تنفيذًا فاستخرج الإجابة من بيانات وسجلات هذا القسم والمستخدم الحالي فقط.\n\nسياق القسم والبيانات المتاحة:\n'+context+'\n\nالمحادثة:\n'+chatHistory.map(function(m){return m.role+': '+m.content}).join('\n');
       var ans=await callAI(prompt);
       chatHistory.push({role:'assistant',content:ans});
       var box=document.getElementById('chatBox');
@@ -275,7 +349,7 @@
   function createModal(){
     if(document.getElementById('topAiCenterModal'))return;
     var modal=document.createElement('div'); modal.id='topAiCenterModal';
-    modal.innerHTML='<div class="top-ai-panel"><div class="top-ai-head"><h2>AI CENTER • مركز الذكاء الاصطناعي</h2><button type="button" class="top-ai-close">إغلاق ✕</button></div><div class="top-ai-tabs"><button class="top-ai-tab" data-tab="analytics">📊 التحليل الذكي</button><button class="top-ai-tab" data-tab="report">🪄 مولد التقارير</button><button class="top-ai-tab" data-tab="archive">📁 الأرشيف الذكي</button><button class="top-ai-tab" data-tab="platform">✨ ذكاء المنصة</button><button class="top-ai-tab" data-tab="ask">🤖 اسألني</button><button class="top-ai-tab" data-tab="decision">🎯 محرك القرار</button><button class="top-ai-tab" data-tab="chat">💬 ChatGPT</button><button class="top-ai-tab" data-tab="voice">🎙️ الأوامر الصوتية</button><button class="top-ai-tab" data-tab="settings">⚙️ إعدادات OpenAI</button></div><div class="top-ai-body">'+
+    modal.innerHTML='<div class="top-ai-panel"><div class="top-ai-head"><h2>AI CENTER • مركز الذكاء الاصطناعي</h2><div id="topAiContextBadge" style="font-size:12px;font-weight:900;opacity:.9"></div><button type="button" class="top-ai-close">إغلاق ✕</button></div><div class="top-ai-tabs"><button class="top-ai-tab" data-tab="analytics">📊 التحليل الذكي</button><button class="top-ai-tab" data-tab="report">🪄 مولد التقارير</button><button class="top-ai-tab" data-tab="archive">📁 الأرشيف الذكي</button><button class="top-ai-tab" data-tab="platform">✨ ذكاء المنصة</button><button class="top-ai-tab" data-tab="ask">🤖 اسألني</button><button class="top-ai-tab" data-tab="decision">🎯 محرك القرار</button><button class="top-ai-tab" data-tab="chat">💬 ChatGPT</button><button class="top-ai-tab" data-tab="voice">🎙️ الأوامر الصوتية</button><button class="top-ai-tab" data-tab="settings">⚙️ إعدادات OpenAI</button></div><div class="top-ai-body">'+
     '<section class="top-ai-view" id="view-analytics"><div class="top-ai-grid"><div class="top-ai-card"><h3>اكتمال البيانات</h3><div class="top-ai-number" id="scoreCompletion">--</div></div><div class="top-ai-card"><h3>جودة المحتوى</h3><div class="top-ai-number" id="scoreQuality">--</div></div><div class="top-ai-card"><h3>مؤشر المخاطر</h3><div class="top-ai-number" id="scoreRisk">--</div></div></div><div class="top-ai-actions"><button type="button" id="btnLocalAnalytics">تحليل محلي</button><button type="button" class="secondary" id="btnAIAnalytics">تحليل عبر OpenAI</button><button type="button" class="secondary" id="btnSaveAnalytics">حفظ في الأرشيف</button></div><div class="top-ai-result" id="analyticsResult"></div></section>'+
     '<section class="top-ai-view" id="view-report"><div class="top-ai-grid"><div class="top-ai-card"><h3>نوع التقرير</h3><select id="reportType" class="top-ai-select"><option>تقرير مبادرة</option><option>تقرير زيارة صفية</option><option>تقرير متابعة</option><option>تقرير خطة تحسين</option><option>محضر اجتماع</option></select></div><div class="top-ai-card"><h3>المجال</h3><select id="reportDomain" class="top-ai-select"><option>القيادة المدرسية</option><option>التعليم والتعلم</option><option>نواتج التعلم</option><option>البيئة المدرسية</option></select></div></div><textarea id="reportSeed" class="top-ai-textarea" placeholder="اكتب فكرة التقرير..."></textarea><div class="top-ai-actions"><button type="button" id="btnLocalReport">توليد محلي</button><button type="button" class="secondary" id="btnAIReport">توليد عبر OpenAI</button><button type="button" class="secondary" id="btnSaveReport">حفظ في الأرشيف</button></div><div class="top-ai-result" id="reportResult"></div></section>'+
     '<section class="top-ai-view" id="view-archive"><input id="archiveSearch" class="top-ai-input" placeholder="بحث في الأرشيف الذكي..."><div class="top-ai-actions"><button type="button" id="btnSavePage">أرشفة الصفحة الحالية</button><button type="button" class="secondary" id="btnClearArchive">مسح الأرشيف</button></div><div class="top-ai-archive-list" id="archiveList"></div></section>'+

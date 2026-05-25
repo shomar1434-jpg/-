@@ -1,6 +1,21 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
+<!-- SAFE_PATCH: bypass activation without touching archived data -->
+<style id="safe-activation-bypass-style">
+#activation-overlay{display:none!important;visibility:hidden!important;pointer-events:none!important;}
+.safe-hidden-deactivate{display:none!important;}
+</style>
+<script id="safe-activation-bypass-head">
+(function(){try{
+  localStorage.setItem('school_active','true');
+  localStorage.setItem('app_activated','true');
+  localStorage.setItem('activation_status','active');
+  sessionStorage.setItem('school_active','true');
+  sessionStorage.setItem('app_activated','true');
+}catch(e){}})();
+</script>
+
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>دخول المدرسة المستقلة</title>
@@ -788,5 +803,51 @@ document.addEventListener("click", function(e){
 })();
 </script>
 
+
+
+
+
+<script id="SMART_SCHOOL_LOGIN_PERSIST">
+(function(){
+  try{
+    const q = new URLSearchParams(location.search || '');
+    const schoolCode = q.get('school') || q.get('schoolCode') || q.get('school_code') || q.get('school_id') || '';
+    const loginUrl = 'school-login.html' + location.search;
+
+    sessionStorage.setItem('independent_school_mode', '1');
+    sessionStorage.setItem('active_school_login_url', loginUrl);
+    localStorage.setItem('active_school_login_url', loginUrl);
+
+    if(schoolCode){
+      sessionStorage.setItem('active_school_code', schoolCode);
+      localStorage.setItem('active_school_code', schoolCode);
+    }
+  }catch(e){}
+})();
+</script>
+
+
+<script id="safe-activation-bypass-tail">
+(function(){
+  if(window.__SAFE_ACTIVATION_BYPASS_TAIL__) return;
+  window.__SAFE_ACTIVATION_BYPASS_TAIL__ = true;
+  function activateFlags(){try{localStorage.setItem('school_active','true');localStorage.setItem('app_activated','true');localStorage.setItem('activation_status','active');sessionStorage.setItem('school_active','true');sessionStorage.setItem('app_activated','true');}catch(e){}}
+  function hideActivationAndShowWelcome(){
+    activateFlags();
+    var activation=document.getElementById('activation-overlay');
+    if(activation){activation.style.display='none';activation.style.visibility='hidden';activation.setAttribute('aria-hidden','true');}
+    var gate=document.getElementById('welcome-gate'), dash=document.getElementById('welcome-dashboard'), app=document.getElementById('main-report-app');
+    if(gate && (!app || app.style.display==='none')) gate.style.display='flex';
+    else if(dash && (!app || app.style.display==='none')) dash.style.display='block';
+  }
+  function protectDeactivation(){
+    ['deactivateSystem','deactivateApp','resetActivation','clearActivation'].forEach(function(fn){try{window[fn]=function(){console.warn('تم تعطيل إلغاء التنشيط لحماية الأرشفة المحفوظة.');return false;};}catch(e){}});
+    try{document.querySelectorAll('button,a,[role="button"],div[onclick],span[onclick]').forEach(function(el){var text=(el.textContent||'').replace(/\s+/g,' ').trim();var act=(el.getAttribute('onclick')||'');if(/إلغاء\s*تنشيط|الغاء\s*تنشيط|تعطيل\s*النظام|مسح\s*كافة\s*البيانات/.test(text)||/deactivate|resetActivation|clearActivation/.test(act)){el.classList.add('safe-hidden-deactivate');el.style.display='none';el.removeAttribute('onclick');}});}catch(e){}
+  }
+  function boot(){hideActivationAndShowWelcome();protectDeactivation();setTimeout(protectDeactivation,300);setTimeout(hideActivationAndShowWelcome,500);}
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot); else boot();
+  window.addEventListener('load',boot);
+})();
+</script>
 </body>
 </html>

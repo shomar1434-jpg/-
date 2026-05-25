@@ -1,13 +1,37 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl" data-design="البيروقراطية الرقمية الهادئة">
 <head>
+<!-- SAFE_PATCH: bypass activation without touching archived data -->
+<style id="safe-activation-bypass-style">
+#activation-overlay{display:none!important;visibility:hidden!important;pointer-events:none!important;}
+.safe-hidden-deactivate{display:none!important;}
+</style>
+<script id="safe-activation-bypass-head">
+(function(){try{
+  localStorage.setItem('school_active','true');
+  localStorage.setItem('app_activated','true');
+  localStorage.setItem('activation_status','active');
+  sessionStorage.setItem('school_active','true');
+  sessionStorage.setItem('app_activated','true');
+}catch(e){}})();
+</script>
+
 
 <script id="follow-session-engine-fixed">
 (function(){
   var qs = new URLSearchParams(location.search || '');
   var mode = (qs.get('mode') || '').toLowerCase();
-  var followEmailRaw = qs.get('followEmail') || qs.get('email') || qs.get('targetEmail') || '';
-  var isFollow = !!followEmailRaw || qs.get('follow') === '1' || qs.get('readonly') === '1' || mode.indexOf('supervisor') >= 0;
+  var explicitFollow = qs.get('follow') === '1' || qs.get('followMode') === '1' || mode.indexOf('follow') >= 0 || mode.indexOf('supervisor') >= 0 || mode.indexOf('monitor') >= 0;
+  var followEmailRaw = qs.get('followEmail') || qs.get('targetEmail') || (explicitFollow ? (qs.get('email') || '') : '');
+  var isFollow = explicitFollow || qs.get('readonly') === '1';
+
+  try {
+    var currentUser = JSON.parse(localStorage.getItem('currentSchoolUser') || localStorage.getItem('currentUser') || 'null') || {};
+    var currentRole = String(currentUser.role || currentUser.dbRole || '').toLowerCase();
+    var isTeacherSelfLogin = /teacher|performance|معلم/.test(currentRole) && !explicitFollow && qs.get('readonly') !== '1';
+    if (isTeacherSelfLogin) isFollow = false;
+  } catch(e) {}
+
   if (!isFollow) return;
 
   function rawGet(k){ try { return Storage.prototype.getItem.call(localStorage, k); } catch(e){ return null; } }
@@ -1825,6 +1849,24 @@
 })();
 </script>
 
+
+<script src="school-exit-scope.js" defer></script>
+
+<script src="section-records-repository.js" defer></script>
+
+<style id="safe-remove-close-center-support-real">
+/* إخفاء زر إغلاق التطبيق فقط دون المساس بأزرار إغلاق النوافذ */
+button[onclick="openExitModal()"],button[onclick="exitApp()"],button[onclick="closeApp()"]{display:none!important}
+/* توسيط بطاقات الدعم الفني السفلية */
+.ss-support-center-row{display:flex!important;flex-wrap:wrap!important;justify-content:center!important;align-items:center!important;gap:1rem!important}
+.ss-support-center-card{width:100%!important;max-width:28rem!important;justify-content:center!important}
+</style>
+
+<style id="ss-code-flash-guard">
+/* حماية من ظهور أي نص برمجي عارض أثناء تحميل الواجهة */
+body{overflow-x:hidden}
+.safe-hidden-deactivate{display:none!important}
+</style>
 </head>
 <body data-ss-role="teacher" class="global-app-bg">
     <script src="./openai-engine.js" defer data-openai-engine="true"></script>
@@ -1904,7 +1946,6 @@
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                         إعدادات مخصصة
                     </button>
-                    <button onclick="exitApp()" class="bg-white text-slate-600 px-4 py-2 rounded-xl text-xs font-bold border border-slate-200 shadow-sm transition-all active:scale-95">إغلاق التطبيق</button>
                 </div>
             </header>
 
@@ -1985,8 +2026,8 @@
                     </div>
                 </div>
 
-                <div class="w-full grid grid-cols-1 md:grid-cols-2 gap-4 mb-10">
-                    <a href="https://wa.me/966551760114" target="_blank" class="bg-white/90 p-5 rounded-[30px] border border-white flex items-center gap-4 hover:border-green-500 transition-all shadow-sm group">
+                <div class="w-full ss-support-center-row grid grid-cols-1 md:grid-cols-2 gap-4 mb-10">
+                    <a href="https://wa.me/966551760114" target="_blank" class="ss-support-center-card bg-white/90 p-5 rounded-[30px] border border-white flex items-center justify-center gap-4 hover:border-green-500 transition-all shadow-sm group">
                         <div class="w-12 h-12 bg-green-500 text-white rounded-2xl flex items-center justify-center shadow-lg group-hover:rotate-12 transition-transform">
                             <svg class="w-7 h-7" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
                         </div>
@@ -1995,7 +2036,7 @@
                             <p class="text-sm font-bold text-slate-700">تواصل عبر واتساب</p>
                         </div>
                     </a>
-                    <a href="mailto:shomar1434@gmail.com" class="bg-white/90 p-5 rounded-[30px] border border-white flex items-center gap-4 hover:border-teal-500 transition-all shadow-sm group">
+                    <a href="mailto:shomar1434@gmail.com" class="ss-support-center-card bg-white/90 p-5 rounded-[30px] border border-white flex items-center justify-center gap-4 hover:border-teal-500 transition-all shadow-sm group">
                         <div class="w-12 h-12 bg-teal-600 text-white rounded-2xl flex items-center justify-center shadow-lg group-hover:-rotate-12 transition-transform">
                             <svg class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2v10a2 2 0 002 2z" /></svg>
                         </div>
@@ -3427,9 +3468,16 @@ body {
   body { margin: 0; padding: 0; }
 }
 </style>
+
+<style id="ss-code-flash-guard">
+/* حماية من ظهور أي نص برمجي عارض أثناء تحميل الواجهة */
+body{overflow-x:hidden}
+.safe-hidden-deactivate{display:none!important}
+</style>
 </head>
 <body>
 <div id="portfolio-root">${portfolioHTML}</div>
+
 </body>
 </html>`);
             printWindow.document.close();
@@ -4263,6 +4311,7 @@ body {
                 '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
                 '<title>' + title.replace(/[<>&"]/g, '') + '</title>' +
                 '<style>' + safeStyles + '</style>' +
+                '<style id="ss-code-flash-guard">body{overflow-x:hidden}.safe-hidden-deactivate{display:none!important}</style>' +
                 '</head><body dir="rtl"><main>' + content + '</main></body></html>';
 
             const blob = new Blob([standalone], { type: 'text/html;charset=utf-8' });
@@ -4673,224 +4722,32 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
 </script>
 
 
-<style id="SECTION_RECORDS_REPOSITORY_STYLE">
-@media screen{
-  .section-repo-card{
-    background:rgba(255,255,255,.92);
-    border:1px solid #dbeafe;
-    border-radius:34px;
-    box-shadow:0 18px 45px rgba(15,23,42,.10);
-    padding:28px;
-    min-height:150px;
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    justify-content:center;
-    gap:12px;
-    cursor:pointer;
-    transition:.18s ease;
-    text-align:center;
-    font-family:Cairo,Tajawal,Arial,sans-serif;
-  }
-  .section-repo-card:hover{transform:translateY(-4px);border-color:#0f766e}
-  .section-repo-icon{
-    width:58px;height:58px;border-radius:18px;background:#0f766e;color:white;
-    display:flex;align-items:center;justify-content:center;font-size:26px;
-    box-shadow:0 10px 22px rgba(15,118,110,.22);
-  }
-  #sectionRecordsRepositoryView{
-    display:none;position:fixed;inset:0;z-index:2147481800;background:linear-gradient(135deg,#f0fdfa,#f8fafc);
-    overflow:auto;padding:22px;font-family:Cairo,Tajawal,Arial,sans-serif;
-  }
-  .repo-header{
-    max-width:1180px;margin:0 auto 18px;background:rgba(255,255,255,.94);border:1px solid #dbeafe;
-    border-radius:28px;padding:18px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
-    box-shadow:0 12px 30px rgba(15,23,42,.08)
-  }
-  .repo-btn{border:0;border-radius:14px;padding:10px 15px;font-weight:900;cursor:pointer;font-size:12px}
-  .repo-primary{background:#0f766e;color:white}.repo-soft{background:#f1f5f9;color:#334155}.repo-danger{background:#fee2e2;color:#dc2626}.repo-blue{background:#2563eb;color:white}.repo-purple{background:#7c3aed;color:white}
-  .repo-grid{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
-  .repo-item{background:white;border:1px solid #e2e8f0;border-radius:22px;padding:15px;box-shadow:0 8px 22px rgba(15,23,42,.06)}
-  .repo-preview{display:none;max-width:1180px;margin:0 auto;background:white;border:1px solid #e2e8f0;border-radius:24px;overflow:hidden;box-shadow:0 12px 28px rgba(15,23,42,.08)}
-  .repo-preview-bar{padding:12px;background:#0f172a;color:white;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
-  .repo-preview-body{height:calc(100vh - 190px);min-height:420px;background:white;overflow:auto}
-  .repo-editor{width:100%;height:100%;padding:18px;outline:none;overflow:auto}
-  .repo-table{width:100%;border-collapse:collapse;font-size:13px}.repo-table td{border:1px solid #cbd5e1;padding:7px;min-width:90px}
-}
-@media print{#sectionRecordsRepositoryView{display:none!important}}
-</style>
-<div id="sectionRecordsRepositoryView" dir="rtl">
-  <div class="repo-header">
-    <div>
-      <h2 id="repoTitle" style="margin:0;color:#0f766e;font-weight:900;font-size:24px">🗂️ مستودع السجلات</h2>
-      <p style="margin:6px 0 0;color:#64748b;font-size:12px;font-weight:700">مستودع ملفات متنوع يدعم PDF و Word و Excel و PowerPoint داخل القسم.</p>
-    </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="repo-btn repo-primary" onclick="document.getElementById('sectionRepoUploadInput').click()">+ إضافة ملف</button>
-      <button class="repo-btn repo-soft" onclick="renderSectionRepoList()">تحديث</button>
-      <button class="repo-btn repo-soft" onclick="closeSectionRecordsRepository()">إغلاق</button>
-    </div>
-  </div>
-  <input type="file" id="sectionRepoUploadInput" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/msword,application/vnd.ms-excel,application/vnd.ms-powerpoint" style="display:none" onchange="handleSectionRepoUpload(event)">
-  <div id="sectionRepoList" class="repo-grid"></div>
-  <div id="sectionRepoPreview" class="repo-preview">
-    <div class="repo-preview-bar">
-      <b id="sectionRepoPreviewTitle">معاينة</b>
-      <div style="display:flex;gap:7px;flex-wrap:wrap">
-        <button id="sectionRepoSaveBtn" class="repo-btn repo-blue" style="display:none" onclick="saveSectionRepoEdits()">حفظ التعديل</button>
-        <button class="repo-btn repo-purple" onclick="downloadCurrentSectionRepo()">تحميل</button>
-        <button class="repo-btn repo-soft" onclick="closeSectionRepoPreview()">رجوع</button>
-      </div>
-    </div>
-    <div id="sectionRepoPreviewBody" class="repo-preview-body"></div>
-  </div>
-</div>
-<script id="SECTION_RECORDS_REPOSITORY_ENGINE">
+
+<script id="safe-activation-bypass-tail">
 (function(){
-  if(window.__SECTION_RECORDS_REPOSITORY_ENGINE__) return;
-  window.__SECTION_RECORDS_REPOSITORY_ENGINE__=true;
-
-  const role = (function(){
-    const p=(location.pathname||'').toLowerCase();
-    if(p.indexOf('agent')!==-1) return 'agent';
-    if(p.indexOf('teacher')!==-1) return 'teacher';
-    if(p.indexOf('student_advisor')!==-1) return 'student_advisor';
-    return 'section';
-  })();
-  const roleLabel = role==='agent'?'الوكيل':role==='teacher'?'المعلم':'الموجه الطلابي';
-  const DB_NAME = 'section_records_repository_' + role;
-  const STORE = 'files';
-  let currentId = null;
-  let currentKind = '';
-  let currentUrl = '';
-
-  function ensureLibs(){
-    if(!document.querySelector('script[src*="mammoth.browser.min.js"]')){
-      const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js';document.head.appendChild(s);
-    }
-    if(!document.querySelector('script[src*="xlsx.full.min.js"]')){
-      const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';document.head.appendChild(s);
-    }
+  if(window.__SAFE_ACTIVATION_BYPASS_TAIL__) return;
+  window.__SAFE_ACTIVATION_BYPASS_TAIL__ = true;
+  function activateFlags(){try{localStorage.setItem('school_active','true');localStorage.setItem('app_activated','true');localStorage.setItem('activation_status','active');sessionStorage.setItem('school_active','true');sessionStorage.setItem('app_activated','true');}catch(e){}}
+  function hideActivationAndShowWelcome(){
+    activateFlags();
+    var activation=document.getElementById('activation-overlay');
+    if(activation){activation.style.display='none';activation.style.visibility='hidden';activation.setAttribute('aria-hidden','true');}
+    var gate=document.getElementById('welcome-gate'), dash=document.getElementById('welcome-dashboard'), app=document.getElementById('main-report-app');
+    if(gate && (!app || app.style.display==='none')) gate.style.display='flex';
+    else if(dash && (!app || app.style.display==='none')) dash.style.display='block';
   }
-  ensureLibs();
-
-  function esc(v){return String(v||'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
-  function ext(name){return String(name||'').split('.').pop().toLowerCase();}
-  function kind(file){const e=ext(file.name); const t=file.type||''; if(e==='pdf'||t==='application/pdf')return'pdf'; if(['doc','docx'].includes(e)||/word|msword/.test(t))return'word'; if(['xls','xlsx'].includes(e)||/excel|sheet/.test(t))return'excel'; if(['ppt','pptx'].includes(e)||/powerpoint|presentation/.test(t))return'pptx'; return'file';}
-  function icon(k){return {pdf:'📕 PDF',word:'📝 Word',excel:'📊 Excel',pptx:'📽️ PPTX',file:'📎 ملف'}[k]||'📎 ملف'}
-  function fmt(n){if(!n)return'0 KB'; if(n<1024*1024)return Math.round(n/1024)+' KB'; return (n/1024/1024).toFixed(1)+' MB';}
-  function openDB(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB_NAME,1); r.onupgradeneeded=e=>{const db=e.target.result;if(!db.objectStoreNames.contains(STORE))db.createObjectStore(STORE,{keyPath:'id',autoIncrement:true});}; r.onsuccess=()=>resolve(r.result); r.onerror=()=>reject('تعذر فتح مستودع السجلات');});}
-  async function all(){const db=await openDB();return new Promise((resolve,reject)=>{const tx=db.transaction(STORE,'readonly');const req=tx.objectStore(STORE).getAll();req.onsuccess=()=>resolve(req.result||[]);req.onerror=()=>reject('تعذر تحميل الملفات')})}
-  async function get(id){const db=await openDB();return new Promise((resolve,reject)=>{const tx=db.transaction(STORE,'readonly');const req=tx.objectStore(STORE).get(Number(id));req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject('تعذر فتح الملف')})}
-  async function put(item){const db=await openDB();return new Promise((resolve,reject)=>{const tx=db.transaction(STORE,'readwrite');const req=tx.objectStore(STORE).put(item);req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject('تعذر حفظ الملف')})}
-  async function del(id){const db=await openDB();return new Promise((resolve,reject)=>{const tx=db.transaction(STORE,'readwrite');const req=tx.objectStore(STORE).delete(Number(id));req.onsuccess=()=>resolve();req.onerror=()=>reject('تعذر حذف الملف')})}
-
-  function injectCard(){
-    if(document.getElementById('sectionRecordsRepositoryCard')) return;
-    const card = document.createElement('div');
-    card.id='sectionRecordsRepositoryCard';
-    card.className='section-repo-card';
-    card.innerHTML='<div class="section-repo-icon">🗂️</div><h3 style="margin:0;color:#334155;font-size:20px;font-weight:900">مستودع السجلات</h3><p style="margin:0;color:#64748b;font-size:12px;font-weight:700">تحميل ومعاينة الملفات المتنوعة</p>';
-    card.onclick=openSectionRecordsRepository;
-
-    const candidates=[
-      document.querySelector('#welcome-dashboard .grid'),
-      document.querySelector('#welcome-dashboard [class*="grid"]'),
-      document.querySelector('.grid'),
-      document.getElementById('welcome-dashboard')
-    ].filter(Boolean);
-    const target=candidates[0] || document.body;
-    target.appendChild(card);
+  function protectDeactivation(){
+    ['deactivateSystem','deactivateApp','resetActivation','clearActivation'].forEach(function(fn){try{window[fn]=function(){console.warn('تم تعطيل إلغاء التنشيط لحماية الأرشفة المحفوظة.');return false;};}catch(e){}});
+    try{document.querySelectorAll('button,a,[role="button"],div[onclick],span[onclick]').forEach(function(el){var text=(el.textContent||'').replace(/\s+/g,' ').trim();var act=(el.getAttribute('onclick')||'');if(/إلغاء\s*تنشيط|الغاء\s*تنشيط|تعطيل\s*النظام|مسح\s*كافة\s*البيانات/.test(text)||/deactivate|resetActivation|clearActivation/.test(act)){el.classList.add('safe-hidden-deactivate');el.style.display='none';el.removeAttribute('onclick');}});}catch(e){}
   }
-
-  window.openSectionRecordsRepository=function(){
-    document.getElementById('repoTitle').textContent='🗂️ مستودع السجلات — قسم ' + roleLabel;
-    document.getElementById('sectionRecordsRepositoryView').style.display='block';
-    renderSectionRepoList();
-  }
-  window.closeSectionRecordsRepository=function(){document.getElementById('sectionRecordsRepositoryView').style.display='none';closeSectionRepoPreview();}
-  window.renderSectionRepoList=async function(){
-    const list=document.getElementById('sectionRepoList');
-    const preview=document.getElementById('sectionRepoPreview');
-    list.style.display='grid'; preview.style.display='none';
-    list.innerHTML='<div style="color:#64748b;font-weight:900">جاري تحميل الملفات...</div>';
-    const rows=(await all()).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
-    if(!rows.length){list.innerHTML='<div style="grid-column:1/-1;background:white;border:1px dashed #cbd5e1;border-radius:24px;padding:34px;text-align:center;color:#94a3b8;font-weight:900">لا توجد ملفات محفوظة بعد.</div>';return;}
-    list.innerHTML=rows.map(r=>{
-      const k=r.kind||kind(r);
-      const canEdit=k==='word'||k==='excel';
-      return `<div class="repo-item">
-        <div style="font-weight:900;color:#334155;font-size:14px">${icon(k)} — ${esc(r.name)}</div>
-        <div style="color:#94a3b8;font-size:10px;margin:6px 0 12px;font-weight:700">${new Date(r.createdAt).toLocaleString('ar-SA')} — ${fmt(r.size)}</div>
-        <div style="display:flex;gap:7px;flex-wrap:wrap">
-          <button class="repo-btn repo-primary" onclick="previewSectionRepo(${r.id})">معاينة</button>
-          ${canEdit?`<button class="repo-btn repo-blue" onclick="previewSectionRepo(${r.id})">تعديل</button>`:''}
-          <button class="repo-btn repo-purple" onclick="downloadSectionRepo(${r.id})">تحميل</button>
-          <button class="repo-btn repo-danger" onclick="deleteSectionRepo(${r.id})">حذف</button>
-        </div>
-      </div>`;
-    }).join('');
-  }
-  window.handleSectionRepoUpload=async function(e){
-    const file=e.target.files[0]; if(!file)return;
-    const allowed=['pdf','doc','docx','xls','xlsx','ppt','pptx'];
-    if(!allowed.includes(ext(file.name))){alert('نوع الملف غير مدعوم'); e.target.value=''; return;}
-    await put({name:file.name,type:file.type||'',kind:kind(file),size:file.size,file:file,createdAt:new Date().toISOString(),role:role});
-    e.target.value='';
-    renderSectionRepoList();
-  }
-  async function showWord(r,body,saveBtn){
-    body.innerHTML='<div class="repo-editor" id="repoWordEditor" contenteditable="true">جاري فتح ملف Word...</div>';
-    const ed=document.getElementById('repoWordEditor');
-    saveBtn.style.display='inline-block';
-    if(r.editedHtml){ed.innerHTML=r.editedHtml;return;}
-    if(window.mammoth && ext(r.name)==='docx'){
-      const result=await mammoth.convertToHtml({arrayBuffer:await r.file.arrayBuffer()});
-      ed.innerHTML=result.value||'<p></p>';
-    }else{
-      ed.innerHTML='<div style="color:#64748b;border:1px dashed #cbd5e1;border-radius:18px;padding:18px">التحرير المباشر مدعوم لملفات DOCX. يمكن تحميل ملفات DOC وفتحها خارجيًا.</div>';
-    }
-  }
-  async function showExcel(r,body,saveBtn){
-    saveBtn.style.display='inline-block';
-    if(!window.XLSX){body.innerHTML='<div style="padding:28px;color:#64748b">جاري تحميل محرر Excel، أعد المحاولة بعد لحظات.</div>';return;}
-    const wb = r.editedWorkbookBase64 ? XLSX.read(r.editedWorkbookBase64,{type:'base64'}) : XLSX.read(await r.file.arrayBuffer(),{type:'array'});
-    const sheet=wb.SheetNames[0];
-    const rows=XLSX.utils.sheet_to_json(wb.Sheets[sheet],{header:1,defval:''});
-    const tableRows=rows.length?rows:[['']];
-    body.innerHTML='<div style="padding:14px;color:#64748b;font-weight:900;font-size:12px">الورقة: '+esc(sheet)+'</div><table id="repoExcelTable" class="repo-table">'+tableRows.map(row=>'<tr>'+row.map(c=>'<td contenteditable="true">'+esc(c)+'</td>').join('')+'</tr>').join('')+'</table>';
-  }
-  window.previewSectionRepo=async function(id){
-    const r=await get(id); if(!r)return;
-    currentId=id; currentKind=r.kind||kind(r);
-    const list=document.getElementById('sectionRepoList'), preview=document.getElementById('sectionRepoPreview'), body=document.getElementById('sectionRepoPreviewBody'), title=document.getElementById('sectionRepoPreviewTitle'), saveBtn=document.getElementById('sectionRepoSaveBtn');
-    list.style.display='none'; preview.style.display='block'; title.textContent=r.name; saveBtn.style.display='none'; body.innerHTML='';
-    if(currentUrl){URL.revokeObjectURL(currentUrl);currentUrl='';}
-    if(currentKind==='pdf'){currentUrl=URL.createObjectURL(r.file); body.innerHTML='<iframe style="width:100%;height:100%;border:0" src="'+currentUrl+'"></iframe>';return;}
-    if(currentKind==='word'){await showWord(r,body,saveBtn);return;}
-    if(currentKind==='excel'){await showExcel(r,body,saveBtn);return;}
-    body.innerHTML='<div style="padding:35px;text-align:center;color:#64748b;font-weight:900"><div style="font-size:50px;margin-bottom:12px">'+icon(currentKind)+'</div><h3>'+esc(r.name)+'</h3><p>تم حفظ الملف داخل المستودع ويمكن تحميله. معاينة PowerPoint المباشرة محدودة داخل المتصفح.</p><button class="repo-btn repo-purple" onclick="downloadCurrentSectionRepo()">تحميل الملف</button></div>';
-  }
-  window.closeSectionRepoPreview=function(){document.getElementById('sectionRepoPreview').style.display='none';document.getElementById('sectionRepoList').style.display='grid'; if(currentUrl){URL.revokeObjectURL(currentUrl);currentUrl='';}}
-  window.saveSectionRepoEdits=async function(){
-    const r=await get(currentId); if(!r)return;
-    if(currentKind==='word'){
-      const ed=document.getElementById('repoWordEditor'); r.editedHtml=ed.innerHTML; const html='<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>'+ed.innerHTML+'</body></html>'; r.file=new Blob([html],{type:'application/msword'}); r.name=r.name.replace(/\.(docx|doc)$/i,'')+'_معدل.doc'; r.size=r.file.size; r.type='application/msword';
-    }
-    if(currentKind==='excel'){
-      const rows=Array.from(document.querySelectorAll('#repoExcelTable tr')).map(tr=>Array.from(tr.querySelectorAll('td')).map(td=>td.innerText));
-      const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),'Sheet1'); const arr=XLSX.write(wb,{bookType:'xlsx',type:'array'}); r.file=new Blob([arr],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}); r.editedWorkbookBase64=XLSX.write(wb,{bookType:'xlsx',type:'base64'}); r.name=r.name.replace(/\.(xlsx|xls)$/i,'')+'_معدل.xlsx'; r.size=r.file.size; r.type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-    }
-    r.updatedAt=new Date().toISOString(); await put(r); alert('تم حفظ التعديل'); renderSectionRepoList();
-  }
-  window.downloadSectionRepo=async function(id){const r=await get(id); if(!r)return; const url=URL.createObjectURL(r.file); const a=document.createElement('a'); a.href=url; a.download=r.name||'file'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),1000)}
-  window.downloadCurrentSectionRepo=function(){if(currentId)downloadSectionRepo(currentId)}
-  window.deleteSectionRepo=async function(id){if(confirm('هل تريد حذف الملف؟')){await del(id);renderSectionRepoList();}}
-
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', injectCard); else injectCard();
-  setTimeout(injectCard,700); setTimeout(injectCard,1800);
+  function boot(){hideActivationAndShowWelcome();protectDeactivation();setTimeout(protectDeactivation,300);setTimeout(hideActivationAndShowWelcome,500);}
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot); else boot();
+  window.addEventListener('load',boot);
 })();
 </script>
 
+
+<script src="performance-file-engine.js"></script>
+<script src="section-dashboard-safe-fix.js"></script>
 </body>
 </html>

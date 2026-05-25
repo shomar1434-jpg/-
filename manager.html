@@ -1,6 +1,21 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
+<!-- SAFE_PATCH: bypass activation without touching archived data -->
+<style id="safe-activation-bypass-style">
+#activation-overlay{display:none!important;visibility:hidden!important;pointer-events:none!important;}
+.safe-hidden-deactivate{display:none!important;}
+</style>
+<script id="safe-activation-bypass-head">
+(function(){try{
+  localStorage.setItem('school_active','true');
+  localStorage.setItem('app_activated','true');
+  localStorage.setItem('activation_status','active');
+  sessionStorage.setItem('school_active','true');
+  sessionStorage.setItem('app_activated','true');
+}catch(e){}})();
+</script>
+
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -909,6 +924,21 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <!-- /MANAGER_OFFICE_RECORDS_LIBS -->
 
+<script src="school-exit-scope.js" defer></script>
+
+<style id="safe-remove-close-center-support-real">
+/* إخفاء زر إغلاق التطبيق فقط دون المساس بأزرار إغلاق النوافذ */
+button[onclick="openExitModal()"],button[onclick="exitApp()"],button[onclick="closeApp()"]{display:none!important}
+/* توسيط بطاقات الدعم الفني السفلية */
+.ss-support-center-row{display:flex!important;flex-wrap:wrap!important;justify-content:center!important;align-items:center!important;gap:1rem!important}
+.ss-support-center-card{width:100%!important;max-width:28rem!important;justify-content:center!important}
+</style>
+
+<style id="ss-code-flash-guard">
+/* حماية من ظهور أي نص برمجي عارض أثناء تحميل الواجهة */
+body{overflow-x:hidden}
+.safe-hidden-deactivate{display:none!important}
+</style>
 </head>
 <body data-ss-role="manager" class="global-app-bg">
     <script src="./openai-engine.js" defer data-openai-engine="true"></script>
@@ -958,7 +988,6 @@
                 </div>
                 <div class="flex gap-2">
                     <button onclick="openAppSettings()" class="bg-teal-50 text-teal-700 px-4 py-2 rounded-xl text-xs font-bold border border-teal-100">إعدادات مخصصة</button>
-                    <button onclick="openExitModal()" class="bg-white text-slate-600 px-4 py-2 rounded-xl text-xs font-bold border border-slate-200">إغلاق التطبيق</button>
                 </div>
             </header>
             <main class="max-w-4xl mx-auto p-8 flex flex-col items-center">
@@ -987,12 +1016,12 @@
 
                 <div class="w-full mt-12 bg-white/60 backdrop-blur rounded-[40px] p-8 border border-white shadow-xl">
                     <h4 class="text-center font-bold text-slate-800 mb-6 border-b border-white pb-4">الإدارة الفنية والتواصل</h4>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div onclick="window.open('https://wa.me/966551760114')" class="bg-teal-600/10 text-teal-700 p-4 rounded-3xl border border-teal-200 flex items-center justify-center gap-3 cursor-pointer hover:bg-teal-600/20 transition-all">
+                    <div class="ss-support-center-row grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div onclick="window.open('https://wa.me/966551760114')" class="ss-support-center-card bg-teal-600/10 text-teal-700 p-4 rounded-3xl border border-teal-200 flex items-center justify-center gap-3 cursor-pointer hover:bg-teal-600/20 transition-all">
                             <span class="font-bold">تواصل مع الدعم الفني</span>
                             <span class="text-xl">💬</span>
                         </div>
-                        <div onclick="deactivateSystem()" class="bg-red-50 text-red-600 p-4 rounded-3xl border border-red-100 flex items-center justify-center gap-3 cursor-pointer hover:bg-red-100 transition-all">
+                        <div onclick="deactivateSystem()" class="ss-support-center-card bg-red-50 text-red-600 p-4 rounded-3xl border border-red-100 flex items-center justify-center gap-3 cursor-pointer hover:bg-red-100 transition-all">
                             <span class="font-bold">إلغاء تنشيط النظام</span>
                             <span class="text-xl">⚠️</span>
                         </div>
@@ -1087,17 +1116,17 @@
                 <div class="manager-records-card">
                     <div class="bg-slate-50 p-5 border-b flex justify-between items-center gap-3 flex-wrap">
                         <div>
-                            <h3 class="font-bold text-slate-800 text-base">مستودع سجلات المدير</h3>
-                            <p class="text-[11px] text-slate-500 mt-1">يحفظ ملفات PDF و Word و Excel و PowerPoint محليًا، مع قابلية الربط السحابي عبر Supabase لاحقًا.</p>
+                            <h3 class="font-bold text-slate-800 text-base">مكتبة قسم المدير</h3>
+                            <p class="text-[11px] text-slate-500 mt-1">يحفظ ملفات PDF و Word و Excel و PowerPoint والصور داخل مجلدات مرنة، مع قابلية الربط السحابي لاحقًا.</p>
                         </div>
                         <span id="manager-cloud-status" class="text-[10px] font-bold bg-amber-50 text-amber-600 border border-amber-100 px-3 py-2 rounded-xl">الحفظ السحابي غير مفعّل</span>
                     </div>
 
                     <div id="manager-files-list-view" style="padding: 20px; display: block;">
-                        <input type="file" id="manager-upload-hidden" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/msword,application/vnd.ms-excel,application/vnd.ms-powerpoint" style="display: none;" onchange="handleManagerFileUpload(event)">
+                        <input type="file" id="manager-upload-hidden" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.gif,.webp,.bmp,.svg,.tif,.tiff,.heic,.heif,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/msword,application/vnd.ms-excel,application/vnd.ms-powerpoint,image/*" style="display: none;" onchange="handleManagerFileUpload(event)">
                         <div id="manager-records-list" style="display: grid; gap: 10px;"></div>
                         <button onclick="document.getElementById('manager-upload-hidden').click()" style="margin-top: 15px; width:100%; padding: 14px; border: 2px dashed #1e7b78; background: #f0fdfa; color: #1e7b78; cursor: pointer; border-radius: 18px; font-weight:bold;">
-                            + إضافة ملف جديد للمستودع
+                            + إضافة ملفات إلى هذا المجلد
                         </button>
                     </div>
 
@@ -2931,7 +2960,7 @@
     if(!email){alert('لا يمكن الدخول للمتابعة لأن هذا الحساب لا يحتوي على بريد منصة مدرستي.');return;}
     try{sessionStorage.setItem(NS+'_last_follow_target',JSON.stringify(selected));}catch(e){}
     var file = role==='agent' ? 'agent.html' : (role==='student_advisor' ? 'student_advisor.html' : 'teacher.html');
-    var params = '?follow=1&readonly=1&mode=supervisor_readonly&viewer='+encodeURIComponent(ROLE||'manager')+'&viewerRole='+encodeURIComponent(ROLE||'manager')+'&targetRole='+encodeURIComponent(role)+'&followEmail='+encodeURIComponent(email)+'&targetEmail='+encodeURIComponent(email)+'&targetUser='+encodeURIComponent(userId)+'&followUserId='+encodeURIComponent(userId)+'&userId='+encodeURIComponent(userId)+'&uid='+encodeURIComponent(userId)+'&blockNewReport=true&archiveReadOnly=true';
+    var __qp=new URLSearchParams(location.search||''); var __sid=__qp.get('schoolId')||__qp.get('school_id')||''; var params = '?follow=1&readonly=1&mode=supervisor_readonly&viewer='+encodeURIComponent(ROLE||'manager')+'&viewerRole='+encodeURIComponent(ROLE||'manager')+'&returnRole='+encodeURIComponent(ROLE||'manager')+'&targetRole='+encodeURIComponent(role)+'&followEmail='+encodeURIComponent(email)+'&targetEmail='+encodeURIComponent(email)+'&targetUser='+encodeURIComponent(userId)+'&followUserId='+encodeURIComponent(userId)+'&userId='+encodeURIComponent(userId)+'&uid='+encodeURIComponent(userId)+'&schoolId='+encodeURIComponent(__sid)+'&schoolMode=independent&independent=true&loginMode=direct&direct=1&blockNewReport=true&archiveReadOnly=true';
     window.location.href = file + params;
   }
   window.ssOpenFollow = ssOpenFollow;
@@ -2941,7 +2970,17 @@
   window.ssFinalDeleteUser=function(id){var a=users(); var u=a.find(function(x){return x.id===id}); if(!u)return; if(u.isOwner||u.isPrimaryManager||u.role==='owner'||u.role==='manager'||u.id==='manager'||u.id==='owner'){alert('لا يمكن حذف حساب المالك أو المدير الرئيسي.');return;} if(!confirm('هل تريد حذف حساب '+(u.name||'هذا المستخدم')+'؟\nسيتم إخفاؤه من حسابات المستخدمين وتعطيل دخوله دون حذف بياناته المرتبطة.'))return; a=a.map(function(x){if(x.id===id){x.status='deleted'; x.deletedAt=new Date().toISOString(); x.active=false;} return x}); saveUsers(a); showActivation();}
   window.ssFinalEditUser=function(id){var u=users().find(function(x){return x.id===id}); if(!u)return; panel('تعديل المستخدم','<div class="ss-field"><label>الاسم</label><input id="eName" value="'+esc(u.name)+'"></div><div class="ss-field"><label>الدور</label><select id="eRole"><option value="agent">وكيل</option><option value="student_advisor">موجه طلابي</option><option value="teacher">معلم</option></select></div><div class="ss-field"><label>الحالة</label><select id="eStatus"><option value="pending">بانتظار التفعيل</option><option value="active">مفعل</option></select></div><div class="ss-field"><label>الصلاحيات</label><input id="ePerm" value="'+esc((u.permissions||[]).join(', '))+'"></div><button class="ss-action" id="saveEdit">حفظ التعديل</button>'); document.getElementById('eRole').value=u.role; document.getElementById('eStatus').value=u.status; document.getElementById('saveEdit').onclick=function(){var a=users().map(function(x){if(x.id===id){x.name=val('eName');x.role=val('eRole');x.status=val('eStatus');x.permissions=val('ePerm').split(',').map(function(p){return p.trim()}).filter(Boolean)}return x});saveUsers(a);showActivation();}}
   function val(id){var e=document.getElementById(id); return e?e.value:''}
-  function showRegLink(){var token=localStorage.getItem(NS+'_reg_token')||('REG-'+Math.random().toString(36).slice(2,8).toUpperCase()); localStorage.setItem(NS+'_reg_token',token); var basePath=location.href.split('?')[0].replace(/[^\/]*$/,''); var link=basePath+'register.html?register='+encodeURIComponent(token)+'&token='+encodeURIComponent(token)+'&admin='+encodeURIComponent(NS)+'&source=manager_link'; panel('إرسال رابط التسجيل','<div class="ss-card"><b>رابط التسجيل الخاص بحساب المدير</b><div class="ss-muted">المستخدم الذي يسجل من هذا الرابط يظهر في حساب هذا المدير فقط، وبعد التفعيل يدخل إلى قسمه المخصص.</div><input id="regLink" value="'+esc(link)+'" readonly></div><div class="ss-actions"><button class="ss-action" id="copyReg">نسخ الرابط</button></div>'); document.getElementById('copyReg').onclick=function(){navigator.clipboard&&navigator.clipboard.writeText(val('regLink')); alert('تم نسخ الرابط')};}
+  function showRegLink(){
+    var token=localStorage.getItem(NS+'_reg_token')||('REG-'+Math.random().toString(36).slice(2,8).toUpperCase());
+    localStorage.setItem(NS+'_reg_token',token);
+    var basePath=location.href.split('?')[0].replace(/[^\/]*$/,'');
+    var sid=localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||localStorage.getItem('smart_school_id')||localStorage.getItem('manager_school_id')||new URLSearchParams(location.search).get('schoolId')||new URLSearchParams(location.search).get('school_id')||('school_'+location.hostname.replace(/\W/g,'_'));
+    var sname=localStorage.getItem('school_name')||localStorage.getItem('persist_school')||localStorage.getItem('setting_school')||localStorage.getItem('smart_school_name')||new URLSearchParams(location.search).get('schoolName')||new URLSearchParams(location.search).get('school_name')||'المدرسة';
+    var link=basePath+'register.html?register='+encodeURIComponent(token)+'&token='+encodeURIComponent(token)+'&admin='+encodeURIComponent(NS)+'&schoolId='+encodeURIComponent(sid)+'&school_id='+encodeURIComponent(sid)+'&schoolName='+encodeURIComponent(sname)+'&school_name='+encodeURIComponent(sname)+'&source=manager_school_registration';
+    panel('إرسال رابط التسجيل','<div class="ss-card"><b>رابط تسجيل المستخدمين داخل المدرسة المستقلة</b><div class="ss-muted">يفتح هذا الرابط واجهة تسجيل المستخدمين المرتبطة بهذه المدرسة، وتظهر الطلبات لدى المدير/ة بحالة معلّق حتى يتم التفعيل.</div><input id="regLink" value="'+esc(link)+'" readonly></div><div class="ss-actions"><button class="ss-action blue" id="openReg">فتح واجهة تسجيل المستخدمين</button><button class="ss-action" id="copyReg">نسخ الرابط</button></div>');
+    document.getElementById('copyReg').onclick=function(){navigator.clipboard&&navigator.clipboard.writeText(val('regLink')); alert('تم نسخ رابط التسجيل')};
+    document.getElementById('openReg').onclick=function(){window.open(val('regLink'),'_blank','noopener')};
+  }
   function recipientsHtml(mode){var us=users().filter(function(u){if(ROLE==='manager'){ if(mode==='agents') return u.role==='agent'; if(mode==='teachers') return u.role==='teacher'; return u.role==='agent'||u.role==='teacher'||u.role==='student_advisor'; } return u.role==='teacher';}); return '<div class="ss-att-list">'+us.map(function(u){return '<label><input type="checkbox" class="recUser" value="'+u.role+':'+u.id+'" checked> '+esc(u.name)+' <small class="ss-muted">('+(u.role==='agent'?'وكيل':(u.role==='student_advisor'?'موجه طلابي':'معلم'))+')</small></label>'}).join('')+'</div>'}
   function showAlert(){var targetOptions=ROLE==='manager'?'<option value="all">الكل</option><option value="agents">الوكلاء</option><option value="teachers">المعلمون</option><option value="custom">اختيار محدد</option>':'<option value="all">كل المعلمين</option><option value="custom">اختيار من المعلمين</option>'; panel('إرسال التنبيهات','<div class="ss-field"><label>المستلمون</label><select id="alertTarget">'+targetOptions+'</select></div><div id="recipientsBox" style="display:none">'+recipientsHtml('all')+'</div><div class="ss-field"><label>نص التنبيه - 300 حرف فقط</label><textarea id="alertMsg" maxlength="300" placeholder="اكتب التنبيه هنا"></textarea><div class="ss-counter"><span id="alertCount">0</span>/300</div></div><div class="ss-grid"><div class="ss-field"><label>رابط اختياري</label><input id="alertLink" placeholder="https://..."></div><div class="ss-field"><label>صور أو ملفات</label><input id="alertFiles" type="file" multiple></div></div><button class="ss-action" id="sendAlert">إرسال التنبيه</button>'); var msg=document.getElementById('alertMsg'), cnt=document.getElementById('alertCount'), target=document.getElementById('alertTarget'), box=document.getElementById('recipientsBox'); msg.oninput=function(){cnt.textContent=msg.value.length}; target.onchange=function(){box.style.display=target.value==='custom'?'block':'none'; box.innerHTML=recipientsHtml(target.value)}; document.getElementById('sendAlert').onclick=function(){sendAlert(target.value,msg.value,val('alertLink'),Array.from(document.getElementById('alertFiles').files||[]).map(function(f){return f.name}))};}
   function sendAlert(target,msg,link,files){if(!msg.trim()){alert('اكتب نص التنبيه');return} var source=ROLE==='manager'?'manager':'agent', color=source==='manager'?'red':'blue', title=source==='manager'?'تنبيه من المدير':'تنبيه من الوكيل'; var roles=[]; if(ROLE==='manager'){ if(target==='agents')roles=['agent']; else if(target==='teachers')roles=['teacher']; else if(target==='custom'){roles=Array.from(document.querySelectorAll('.recUser:checked')).map(function(x){return x.value.split(':')[0]})} else roles=['agent','teacher']; } else {roles=['teacher'];}
@@ -3748,7 +3787,7 @@ document.addEventListener("click", function(e){
 
     if(managerCurrentRecordKind === 'word'){
       record.editedHtml = editor.innerHTML;
-      const htmlDoc = '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>' + editor.innerHTML + '</body></html>';
+      const htmlDoc = '<!DOCTYPE html><html><head><meta charset="UTF-8"><style id="ss-code-flash-guard">body{overflow-x:hidden}.safe-hidden-deactivate{display:none!important}</style></head><body>' + editor.innerHTML + '</body></html>';
       record.file = new Blob([htmlDoc], {type:'application/msword'});
       if(!/\.doc$/i.test(record.name)) record.name = record.name.replace(/\.(docx|doc)$/i,'') + '_معدل.doc';
       record.size = record.file.size;
@@ -3813,7 +3852,7 @@ document.addEventListener("click", function(e){
     }
     if(editor && editor.style.display !== 'none'){
       const w = window.open('', '_blank');
-      w.document.write('<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>طباعة</title><style>body{font-family:Cairo,Tajawal,Arial;padding:20px}</style></head><body>' + editor.innerHTML + '</body></html>');
+      w.document.write('<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>طباعة</title><style>body{font-family:Cairo,Tajawal,Arial;padding:20px}</style><style id="ss-code-flash-guard">body{overflow-x:hidden}.safe-hidden-deactivate{display:none!important}</style></head><body>' + editor.innerHTML + '</body></html>');
       w.document.close();
       setTimeout(() => w.print(), 400);
       return;
@@ -3874,6 +3913,148 @@ document.addEventListener("click", function(e){
  window.regenerateSupervisorVisitToken=function(){localStorage.setItem(tokenKey(),'sv_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8));document.getElementById('supervisorVisitGeneratedLink').value=link();alert('تم تجديد رمز الزيارة')}
 })();
 </script>
+<script id="safe-activation-bypass-tail">
+(function(){
+  if(window.__SAFE_ACTIVATION_BYPASS_TAIL__) return;
+  window.__SAFE_ACTIVATION_BYPASS_TAIL__ = true;
+  function activateFlags(){try{localStorage.setItem('school_active','true');localStorage.setItem('app_activated','true');localStorage.setItem('activation_status','active');sessionStorage.setItem('school_active','true');sessionStorage.setItem('app_activated','true');}catch(e){}}
+  function hideActivationAndShowWelcome(){
+    activateFlags();
+    var activation=document.getElementById('activation-overlay');
+    if(activation){activation.style.display='none';activation.style.visibility='hidden';activation.setAttribute('aria-hidden','true');}
+    var gate=document.getElementById('welcome-gate'), dash=document.getElementById('welcome-dashboard'), app=document.getElementById('main-report-app');
+    if(gate && (!app || app.style.display==='none')) gate.style.display='flex';
+    else if(dash && (!app || app.style.display==='none')) dash.style.display='block';
+  }
+  function protectDeactivation(){
+    ['deactivateSystem','deactivateApp','resetActivation','clearActivation'].forEach(function(fn){try{window[fn]=function(){console.warn('تم تعطيل إلغاء التنشيط لحماية الأرشفة المحفوظة.');return false;};}catch(e){}});
+    try{document.querySelectorAll('button,a,[role="button"],div[onclick],span[onclick]').forEach(function(el){var text=(el.textContent||'').replace(/\s+/g,' ').trim();var act=(el.getAttribute('onclick')||'');if(/إلغاء\s*تنشيط|الغاء\s*تنشيط|تعطيل\s*النظام|مسح\s*كافة\s*البيانات/.test(text)||/deactivate|resetActivation|clearActivation/.test(act)){el.classList.add('safe-hidden-deactivate');el.style.display='none';el.removeAttribute('onclick');}});}catch(e){}
+  }
+  function boot(){hideActivationAndShowWelcome();protectDeactivation();setTimeout(protectDeactivation,300);setTimeout(hideActivationAndShowWelcome,500);}
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot); else boot();
+  window.addEventListener('load',boot);
+})();
+</script>
 
+<script id="MANAGER_SECTION_LIBRARY_FOLDERS_IMAGES_PATCH">
+(function(){
+  if(window.__MANAGER_SECTION_LIBRARY_FOLDERS_IMAGES_PATCH__) return;
+  window.__MANAGER_SECTION_LIBRARY_FOLDERS_IMAGES_PATCH__ = true;
+  const FOLDERS_KEY = 'ManagerRecordsLocalDB_manager_library_folders_v1';
+  let activeFolder = localStorage.getItem(FOLDERS_KEY + '_active') || 'عام';
+  let currentImageUrl = '';
+  let currentImageId = null;
+  const oldOpen = window.openManagerRecordsView;
+  const oldPreview = window.previewManagerLocalPDF;
+  const oldDownloadCurrent = window.downloadManagerCurrentRecord;
+
+  function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+  function ext(name){return String(name||'').split('.').pop().toLowerCase();}
+  function kind(file){const e=ext(file.name); const t=file.type||''; if(e==='pdf'||t==='application/pdf')return'pdf'; if(['doc','docx'].includes(e)||/word|msword/.test(t))return'word'; if(['xls','xlsx'].includes(e)||/excel|sheet/.test(t))return'excel'; if(['ppt','pptx'].includes(e)||/powerpoint|presentation/.test(t))return'pptx'; if(['jpg','jpeg','png','gif','webp','bmp','svg','tif','tiff','heic','heif'].includes(e)||/^image\//.test(t))return'image'; return'file';}
+  function icon(k){return({pdf:'📕 PDF',word:'📝 Word',excel:'📊 Excel',pptx:'📽️ PPTX',image:'🖼️ صورة',file:'📎 ملف'})[k]||'📎 ملف';}
+  function fmt(n){if(!n)return'0 KB'; if(n<1048576)return Math.round(n/1024)+' KB'; return (n/1048576).toFixed(1)+' MB';}
+  function folders(){try{const arr=JSON.parse(localStorage.getItem(FOLDERS_KEY)||'[]'); return Array.from(new Set(['عام',...arr.filter(Boolean)]));}catch(e){return['عام'];}}
+  function saveFolders(arr){localStorage.setItem(FOLDERS_KEY, JSON.stringify(Array.from(new Set(['عام',...arr.filter(Boolean)]))));}
+
+  function ensureUI(){
+    const title = document.querySelector('#manager-records-view h2'); if(title) title.innerHTML='📚 مكتبة قسم المدير';
+    const h3 = document.querySelector('#manager-records-view h3'); if(h3 && /مكتبة|مستودع|سجلات/.test(h3.textContent||'')) h3.textContent='مكتبة قسم المدير';
+    const input=document.getElementById('manager-upload-hidden');
+    if(input){input.setAttribute('multiple','multiple');input.setAttribute('accept','.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.gif,.webp,.bmp,.svg,.tif,.tiff,.heic,.heif,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/msword,application/vnd.ms-excel,application/vnd.ms-powerpoint,image/*');}
+    const listView=document.getElementById('manager-files-list-view'); if(!listView) return;
+    if(!document.getElementById('managerLibraryFolderTools')){
+      const tools=document.createElement('div'); tools.id='managerLibraryFolderTools'; tools.style.cssText='display:grid;grid-template-columns:240px 1fr;gap:14px;margin-bottom:16px;';
+      tools.innerHTML='<aside style="border:1px solid #e2e8f0;border-radius:20px;overflow:hidden;background:#fff"><div style="padding:13px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-weight:900;color:#334155">مجلدات المكتبة</div><div id="managerLibraryFolders" style="display:grid;gap:8px;padding:10px"></div><button onclick="window.createManagerLibraryFolderSafe()" style="margin:10px;width:calc(100% - 20px);padding:11px;border:0;border-radius:14px;background:#2563eb;color:white;font-weight:900;cursor:pointer">+ مجلد جديد</button></aside><section style="border:1px solid #e2e8f0;border-radius:20px;background:#f8fafc;padding:14px;color:#64748b;font-size:12px;font-weight:800">اختر مجلدًا ثم أضف ملفات PDF أو Word أو Excel أو PowerPoint أو الصور. الملفات القديمة تظهر تلقائيًا داخل مجلد عام.</section>';
+      listView.insertBefore(tools, listView.firstChild);
+      if(window.innerWidth<900) tools.style.gridTemplateColumns='1fr';
+    }
+    renderFolders();
+  }
+  function renderFolders(){const wrap=document.getElementById('managerLibraryFolders'); if(!wrap)return; wrap.innerHTML=folders().map(f=>'<button onclick="window.selectManagerLibraryFolderSafe(\''+String(f).replace(/'/g,'\\\'')+'\')" style="width:100%;border:1px solid '+(f===activeFolder?'#0f766e':'#e2e8f0')+';background:'+(f===activeFolder?'#ecfdf5':'#fff')+';color:'+(f===activeFolder?'#0f766e':'#334155')+';border-radius:14px;padding:12px;text-align:right;font-weight:900;cursor:pointer">📁 '+esc(f)+'</button>').join('');}
+
+  window.selectManagerLibraryFolderSafe=function(name){activeFolder=name||'عام';localStorage.setItem(FOLDERS_KEY+'_active',activeFolder); window.renderManagerRecordsList();};
+  window.createManagerLibraryFolderSafe=function(){const name=prompt('اكتب اسم المجلد الجديد:'); if(!name||!name.trim())return; const arr=folders(); arr.push(name.trim()); saveFolders(arr); window.selectManagerLibraryFolderSafe(name.trim());};
+
+  window.openManagerRecordsView=function(){ if(typeof oldOpen==='function') oldOpen(); ensureUI(); window.renderManagerRecordsList(); };
+
+  window.renderManagerRecordsList=async function(){
+    ensureUI();
+    const list=document.getElementById('manager-records-list'); if(!list) return;
+    list.innerHTML='<div class="text-center text-slate-400 p-4 text-xs font-bold">جاري تحميل الملفات...</div>';
+    try{
+      const records=await getAllManagerLocalRecords();
+      const rows=records.filter(r=>(r.folder||'عام')===activeFolder).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+      if(!rows.length){list.innerHTML='<div style="padding:18px;background:#fff8e1;border:1px solid #ffe08a;border-radius:18px;color:#777;text-align:center;font-size:12px;font-weight:bold;">لا توجد ملفات داخل مجلد '+esc(activeFolder)+'.</div>';return;}
+      list.innerHTML=rows.map(record=>{const k=record.kind||kind(record); return '<div class="manager-record-item"><div style="flex:1;min-width:200px;"><div style="color:#334155;font-weight:bold;font-size:13px;">'+icon(k)+' — '+esc(record.name)+'</div><div style="color:#94a3b8;font-size:10px;margin-top:4px;">'+new Date(record.createdAt).toLocaleString('ar-SA')+' - '+fmt(record.size)+' - مجلد: '+esc(record.folder||'عام')+'</div></div><button onclick="editManagerRecordSafe('+record.id+')" class="manager-record-btn" style="background:#2563eb;color:white;">تعديل</button><button onclick="previewManagerLocalPDF('+record.id+')" class="manager-record-btn" style="background:#0ea5e9;color:white;">معاينة</button><button onclick="printManagerRecordSafe('+record.id+')" class="manager-record-btn" style="background:#7c3aed;color:white;">طباعة</button><button onclick="removeManagerRecord('+record.id+')" class="manager-record-btn" style="background:#ef4444;color:white;">حذف</button></div>';}).join('');
+    }catch(error){list.innerHTML='<div style="padding:15px;color:#dc2626;text-align:center;font-size:12px;">'+esc(error)+'</div>';}
+  };
+
+  window.handleManagerFileUpload=async function(event){
+    const files=Array.from(event.target.files||[]); if(!files.length) return;
+    const allowed=['pdf','doc','docx','xls','xlsx','ppt','pptx','jpg','jpeg','png','gif','webp','bmp','svg','tif','tiff','heic','heif']; let ok=0,bad=0;
+    try{
+      const db=await openManagerRecordsDB();
+      for(const file of files){
+        if(!allowed.includes(ext(file.name))&&!/^image\//.test(file.type||'')){bad++;continue;}
+        await new Promise((resolve,reject)=>{const tx=db.transaction(MANAGER_STORE_NAME,'readwrite'); const store=tx.objectStore(MANAGER_STORE_NAME); const record={name:file.name,type:file.type||'',kind:kind(file),size:file.size,file:file,folder:activeFolder||'عام',createdAt:new Date().toISOString(),cloudStatus:MANAGER_CLOUD_SYNC_ENABLED?'pending':'local'}; const req=store.add(record); req.onsuccess=()=>resolve(req.result); req.onerror=()=>reject('تعذر حفظ الملف محليًا');}); ok++;
+      }
+      await window.renderManagerRecordsList(); if(ok) showToast('تم حفظ الملفات داخل مكتبة القسم ✅'); if(bad) showToast('تم تجاهل بعض الملفات لأن صيغتها غير مدعومة');
+    }catch(e){showToast(String(e));}
+    event.target.value='';
+  };
+
+  window.previewManagerLocalPDF=async function(id){
+    const record=await getManagerLocalRecord(id); if(!record){showToast('تعذر العثور على الملف');return;}
+    const k=record.kind||kind(record);
+    if(k!=='image'){ if(typeof oldPreview==='function') return oldPreview(id); return; }
+    const listView=document.getElementById('manager-files-list-view'); const previewArea=document.getElementById('manager-pdf-preview-area'); const frame=document.getElementById('manager-pdf-frame');
+    if(listView) listView.style.display='none'; if(previewArea) previewArea.style.display='block';
+    const holder=frame?frame.parentElement:null; if(frame) frame.style.display='none';
+    let imgBox=document.getElementById('manager-image-preview-box');
+    if(!imgBox&&holder){imgBox=document.createElement('div');imgBox.id='manager-image-preview-box';imgBox.style.cssText='width:100%;height:100%;overflow:auto;background:white;text-align:center;padding:18px;';holder.appendChild(imgBox);} 
+    if(currentImageUrl) URL.revokeObjectURL(currentImageUrl); currentImageUrl=URL.createObjectURL(record.file); currentImageId=id;
+    if(imgBox){imgBox.style.display='block'; imgBox.innerHTML='<img src="'+currentImageUrl+'" alt="'+esc(record.name)+'" style="max-width:100%;max-height:68vh;border-radius:16px;box-shadow:0 12px 28px rgba(15,23,42,.14)"><div style="margin-top:10px;color:#64748b;font-weight:900">'+esc(record.name)+'</div>';}
+  };
+
+  window.downloadManagerCurrentRecord=function(){ if(currentImageId) return window.downloadManagerRecord(currentImageId); if(typeof oldDownloadCurrent==='function') return oldDownloadCurrent(); };
+
+  async function putManagerLocalRecordSafe(record){
+    const db=await openManagerRecordsDB();
+    return new Promise((resolve,reject)=>{const tx=db.transaction(MANAGER_STORE_NAME,'readwrite'); const store=tx.objectStore(MANAGER_STORE_NAME); const req=store.put(record); req.onsuccess=()=>resolve(req.result); req.onerror=()=>reject('تعذر تحديث الملف');});
+  }
+  window.editManagerRecordSafe=async function(id){
+    const record=await getManagerLocalRecord(id); if(!record){showToast('تعذر العثور على الملف');return;}
+    const k=record.kind||kind(record);
+    if(['word','excel'].includes(k)){ return previewManagerLocalPDF(id); }
+    const newName=prompt('تعديل اسم الملف:', record.name||'');
+    if(newName&&newName.trim()&&newName.trim()!==record.name){record.name=newName.trim(); record.updatedAt=new Date().toISOString(); await putManagerLocalRecordSafe(record); await window.renderManagerRecordsList();}
+    if(confirm('هل تريد استبدال محتوى هذا الملف بملف آخر؟')){
+      const inp=document.createElement('input'); inp.type='file'; inp.style.display='none'; inp.accept='.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.gif,.webp,.bmp,.svg,.tif,.tiff,.heic,.heif,application/pdf,application/msword,application/vnd.ms-excel,application/vnd.ms-powerpoint,image/*';
+      inp.onchange=async function(){const file=inp.files&&inp.files[0]; inp.remove(); if(!file)return; record.name=file.name; record.type=file.type||''; record.kind=kind(file); record.size=file.size; record.file=file; record.updatedAt=new Date().toISOString(); record.folder=record.folder||activeFolder||'عام'; await putManagerLocalRecordSafe(record); await window.renderManagerRecordsList(); showToast('تم تحديث الملف');};
+      document.body.appendChild(inp); inp.click();
+    }
+  };
+  window.printManagerRecordSafe=async function(id){
+    const record=await getManagerLocalRecord(id); if(!record){showToast('تعذر العثور على الملف');return;} const k=record.kind||kind(record); const w=window.open('','_blank'); if(!w){showToast('يرجى السماح بالنوافذ المنبثقة للطباعة');return;}
+    const title=esc(record.name); let html='';
+    try{
+      if(k==='pdf'||k==='image'){const url=URL.createObjectURL(record.file); html=k==='pdf'?'<iframe src="'+url+'" style="width:100%;height:100vh;border:0"></iframe>':'<img src="'+url+'" style="max-width:100%;height:auto;display:block;margin:auto">';}
+      else if(k==='word'&&record.editedHtml){html='<div style="padding:20px">'+record.editedHtml+'</div>';}
+      else if(k==='excel'&&window.XLSX){const wb=record.editedWorkbookBase64?XLSX.read(record.editedWorkbookBase64,{type:'base64'}):XLSX.read(await record.file.arrayBuffer(),{type:'array'}); const sh=wb.SheetNames[0]; const rows=XLSX.utils.sheet_to_json(wb.Sheets[sh],{header:1,defval:''}); html='<table style="width:100%;border-collapse:collapse">'+rows.map(row=>'<tr>'+row.map(c=>'<td style="border:1px solid #333;padding:6px">'+esc(c)+'</td>').join('')+'</tr>').join('')+'</table>';}
+      else {html='<div style="font-family:Arial;text-align:center;padding:50px"><h2>'+title+'</h2><p>هذا النوع محفوظ داخل المكتبة، وقد لا يدعم المتصفح طباعته مباشرة. استخدم المعاينة أو افتحه من الجهاز للطباعة.</p></div>';}
+    }catch(e){html='<div style="font-family:Arial;text-align:center;padding:50px"><h2>'+title+'</h2><p>تعذرت المعاينة الطباعية لهذا الملف.</p></div>';}
+    w.document.open(); w.document.write('<!doctype html><html dir="rtl"><head><meta charset="utf-8"><title>'+title+'</title><style>@page{size:A4;margin:10mm}body{font-family:Arial,Tahoma,sans-serif}</style><style id="ss-code-flash-guard">body{overflow-x:hidden}.safe-hidden-deactivate{display:none!important}</style></head><body>'+html+'<script>setTimeout(function(){window.focus();window.print()},600)<\/script></body></html>'); w.document.close();
+  };
+
+
+  const oldClose=window.closeManagerPreview;
+  window.closeManagerPreview=function(){ currentImageId=null; if(currentImageUrl){URL.revokeObjectURL(currentImageUrl); currentImageUrl='';} const imgBox=document.getElementById('manager-image-preview-box'); if(imgBox){imgBox.style.display='none';imgBox.innerHTML='';} if(typeof oldClose==='function') oldClose(); };
+
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', ensureUI); else ensureUI();
+})();
+</script>
+
+
+<script src="performance-file-engine.js"></script>
 </body>
 </html>

@@ -1,6 +1,21 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
+<!-- SAFE_PATCH: bypass activation without touching archived data -->
+<style id="safe-activation-bypass-style">
+#activation-overlay{display:none!important;visibility:hidden!important;pointer-events:none!important;}
+.safe-hidden-deactivate{display:none!important;}
+</style>
+<script id="safe-activation-bypass-head">
+(function(){try{
+  localStorage.setItem('school_active','true');
+  localStorage.setItem('app_activated','true');
+  localStorage.setItem('activation_status','active');
+  sessionStorage.setItem('school_active','true');
+  sessionStorage.setItem('app_activated','true');
+}catch(e){}})();
+</script>
+
 
 <script id="account-linked-follow-context">
 (function(){
@@ -1060,6 +1075,23 @@
 })();
 </script>
 
+<script src="school-exit-scope.js" defer></script>
+
+<script src="section-records-repository.js" defer></script>
+
+<style id="safe-remove-close-center-support-real">
+/* إخفاء زر إغلاق التطبيق فقط دون المساس بأزرار إغلاق النوافذ */
+button[onclick="openExitModal()"],button[onclick="exitApp()"],button[onclick="closeApp()"]{display:none!important}
+/* توسيط بطاقات الدعم الفني السفلية */
+.ss-support-center-row{display:flex!important;flex-wrap:wrap!important;justify-content:center!important;align-items:center!important;gap:1rem!important}
+.ss-support-center-card{width:100%!important;max-width:28rem!important;justify-content:center!important}
+</style>
+
+<style id="ss-code-flash-guard">
+/* حماية من ظهور أي نص برمجي عارض أثناء تحميل الواجهة */
+body{overflow-x:hidden}
+.safe-hidden-deactivate{display:none!important}
+</style>
 </head>
 <body data-ss-role="agent" class="global-app-bg">
     <script src="./openai-engine.js" defer data-openai-engine="true"></script>
@@ -1117,7 +1149,6 @@
                 </div>
                 <div class="flex gap-2">
                     <button onclick="openAppSettings()" class="bg-teal-50 text-teal-700 px-4 py-2 rounded-xl text-xs font-bold border border-teal-100 flex items-center gap-2">⚙️ إعدادات مخصصة</button>
-                    <button onclick="openExitModal()" class="bg-white text-slate-600 px-4 py-2 rounded-xl text-xs font-bold border border-slate-200 flex items-center gap-2">🚪 إغلاق التطبيق</button>
                 </div>
             </header>
             <main class="max-w-4xl mx-auto p-8 flex flex-col items-center relative z-10">
@@ -1149,12 +1180,12 @@
                 </div>
 <div class="w-full mt-12 bg-white/60 backdrop-blur rounded-[40px] p-8 border border-white shadow-xl">
                     <h4 class="text-center font-bold text-slate-800 mb-6 border-b border-white pb-4 flex items-center justify-center gap-2">🛠️ الإدارة الفنية والتواصل</h4>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div onclick="window.open('https://wa.me/966551760114')" class="bg-teal-600/10 text-teal-700 p-4 rounded-3xl border border-teal-200 flex items-center justify-center gap-3 cursor-pointer hover:bg-teal-600/20 transition-all">
+                    <div class="ss-support-center-row grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div onclick="window.open('https://wa.me/966551760114')" class="ss-support-center-card bg-teal-600/10 text-teal-700 p-4 rounded-3xl border border-teal-200 flex items-center justify-center gap-3 cursor-pointer hover:bg-teal-600/20 transition-all">
                             <span class="font-bold">تواصل مع الدعم الفني</span>
                             <span class="text-xl">💬</span>
                         </div>
-                        <div onclick="deactivateSystem()" class="bg-red-50 text-red-600 p-4 rounded-3xl border border-red-100 flex items-center justify-center gap-3 cursor-pointer hover:bg-red-100 transition-all">
+                        <div onclick="deactivateSystem()" class="ss-support-center-card bg-red-50 text-red-600 p-4 rounded-3xl border border-red-100 flex items-center justify-center gap-3 cursor-pointer hover:bg-red-100 transition-all">
                             <span class="font-bold">إلغاء تنشيط النظام</span>
                             <span class="text-xl">⚠️</span>
                         </div>
@@ -3024,7 +3055,7 @@ function openWakilRecordsNewTab() {
     if(!email){alert('لا يمكن الدخول للمتابعة لأن هذا الحساب لا يحتوي على بريد منصة مدرستي.');return;}
     try{sessionStorage.setItem(NS+'_last_follow_target',JSON.stringify(selected));}catch(e){}
     var file = role==='agent' ? 'agent.html' : 'teacher.html';
-    var params = '?follow=1&readonly=1&mode=supervisor_readonly&viewer='+encodeURIComponent(ROLE||'manager')+'&viewerRole='+encodeURIComponent(ROLE||'manager')+'&targetRole='+encodeURIComponent(role)+'&followEmail='+encodeURIComponent(email)+'&targetEmail='+encodeURIComponent(email)+'&targetUser='+encodeURIComponent(userId)+'&followUserId='+encodeURIComponent(userId)+'&userId='+encodeURIComponent(userId)+'&uid='+encodeURIComponent(userId)+'&blockNewReport=true&archiveReadOnly=true';
+    var __qp=new URLSearchParams(location.search||''); var __sid=__qp.get('schoolId')||__qp.get('school_id')||''; var params = '?follow=1&readonly=1&mode=supervisor_readonly&viewer='+encodeURIComponent(ROLE||'manager')+'&viewerRole='+encodeURIComponent(ROLE||'manager')+'&returnRole='+encodeURIComponent(ROLE||'manager')+'&targetRole='+encodeURIComponent(role)+'&followEmail='+encodeURIComponent(email)+'&targetEmail='+encodeURIComponent(email)+'&targetUser='+encodeURIComponent(userId)+'&followUserId='+encodeURIComponent(userId)+'&userId='+encodeURIComponent(userId)+'&uid='+encodeURIComponent(userId)+'&schoolId='+encodeURIComponent(__sid)+'&schoolMode=independent&independent=true&loginMode=direct&direct=1&blockNewReport=true&archiveReadOnly=true';
     window.location.href = file + params;
   }
   window.ssOpenFollow = ssOpenFollow;
@@ -5243,10 +5274,26 @@ bWw+
     if(!r) return '';
     let doc = r.printableHTML || r.htmlContent || r.content || ('<div dir="rtl" style="font-family:Tajawal,Arial;padding:24px;white-space:pre-wrap">' + esc(r.summary || '') + '</div>');
     if(doc.indexOf('<!DOCTYPE html') === -1){
-      doc = '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>' + esc(r.title || 'سجل') + '</title><style>@page{size:A4;margin:8mm}body{font-family:Tajawal,Arial;background:white}</style></head><body>' + doc + '</body></html>';
+      doc = '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>' + esc(r.title || 'سجل') + '</title><style>@page{size:A4;margin:8mm}body{font-family:Tajawal,Arial;background:white}</style>
+<style id="ss-code-flash-guard">
+/* حماية من ظهور أي نص برمجي عارض أثناء تحميل الواجهة */
+body{overflow-x:hidden}
+.safe-hidden-deactivate{display:none!important}
+</style>
+</head><body>' + doc + '\n
+
+
+
+</body></html>';
     }
     if(autoPrint && doc.indexOf('window.print') === -1){
-      doc = doc.replace('</body>', '<script>window.onload=function(){setTimeout(function(){window.print()},500)}<\/script></body>');
+      doc = doc.replace('\n
+
+
+</body>', '<script>window.onload=function(){setTimeout(function(){window.print()},500)}<\/script>\n
+
+
+</body>');
     }
     return doc;
   }
@@ -5352,226 +5399,29 @@ bWw+
 
 })();
 </script>
-
-
-
-<style id="SECTION_RECORDS_REPOSITORY_STYLE">
-@media screen{
-  .section-repo-card{
-    background:rgba(255,255,255,.92);
-    border:1px solid #dbeafe;
-    border-radius:34px;
-    box-shadow:0 18px 45px rgba(15,23,42,.10);
-    padding:28px;
-    min-height:150px;
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    justify-content:center;
-    gap:12px;
-    cursor:pointer;
-    transition:.18s ease;
-    text-align:center;
-    font-family:Cairo,Tajawal,Arial,sans-serif;
-  }
-  .section-repo-card:hover{transform:translateY(-4px);border-color:#0f766e}
-  .section-repo-icon{
-    width:58px;height:58px;border-radius:18px;background:#0f766e;color:white;
-    display:flex;align-items:center;justify-content:center;font-size:26px;
-    box-shadow:0 10px 22px rgba(15,118,110,.22);
-  }
-  #sectionRecordsRepositoryView{
-    display:none;position:fixed;inset:0;z-index:2147481800;background:linear-gradient(135deg,#f0fdfa,#f8fafc);
-    overflow:auto;padding:22px;font-family:Cairo,Tajawal,Arial,sans-serif;
-  }
-  .repo-header{
-    max-width:1180px;margin:0 auto 18px;background:rgba(255,255,255,.94);border:1px solid #dbeafe;
-    border-radius:28px;padding:18px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
-    box-shadow:0 12px 30px rgba(15,23,42,.08)
-  }
-  .repo-btn{border:0;border-radius:14px;padding:10px 15px;font-weight:900;cursor:pointer;font-size:12px}
-  .repo-primary{background:#0f766e;color:white}.repo-soft{background:#f1f5f9;color:#334155}.repo-danger{background:#fee2e2;color:#dc2626}.repo-blue{background:#2563eb;color:white}.repo-purple{background:#7c3aed;color:white}
-  .repo-grid{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
-  .repo-item{background:white;border:1px solid #e2e8f0;border-radius:22px;padding:15px;box-shadow:0 8px 22px rgba(15,23,42,.06)}
-  .repo-preview{display:none;max-width:1180px;margin:0 auto;background:white;border:1px solid #e2e8f0;border-radius:24px;overflow:hidden;box-shadow:0 12px 28px rgba(15,23,42,.08)}
-  .repo-preview-bar{padding:12px;background:#0f172a;color:white;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
-  .repo-preview-body{height:calc(100vh - 190px);min-height:420px;background:white;overflow:auto}
-  .repo-editor{width:100%;height:100%;padding:18px;outline:none;overflow:auto}
-  .repo-table{width:100%;border-collapse:collapse;font-size:13px}.repo-table td{border:1px solid #cbd5e1;padding:7px;min-width:90px}
-}
-@media print{#sectionRecordsRepositoryView{display:none!important}}
-</style>
-<div id="sectionRecordsRepositoryView" dir="rtl">
-  <div class="repo-header">
-    <div>
-      <h2 id="repoTitle" style="margin:0;color:#0f766e;font-weight:900;font-size:24px">🗂️ مستودع السجلات</h2>
-      <p style="margin:6px 0 0;color:#64748b;font-size:12px;font-weight:700">مستودع ملفات متنوع يدعم PDF و Word و Excel و PowerPoint داخل القسم.</p>
-    </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="repo-btn repo-primary" onclick="document.getElementById('sectionRepoUploadInput').click()">+ إضافة ملف</button>
-      <button class="repo-btn repo-soft" onclick="renderSectionRepoList()">تحديث</button>
-      <button class="repo-btn repo-soft" onclick="closeSectionRecordsRepository()">إغلاق</button>
-    </div>
-  </div>
-  <input type="file" id="sectionRepoUploadInput" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/msword,application/vnd.ms-excel,application/vnd.ms-powerpoint" style="display:none" onchange="handleSectionRepoUpload(event)">
-  <div id="sectionRepoList" class="repo-grid"></div>
-  <div id="sectionRepoPreview" class="repo-preview">
-    <div class="repo-preview-bar">
-      <b id="sectionRepoPreviewTitle">معاينة</b>
-      <div style="display:flex;gap:7px;flex-wrap:wrap">
-        <button id="sectionRepoSaveBtn" class="repo-btn repo-blue" style="display:none" onclick="saveSectionRepoEdits()">حفظ التعديل</button>
-        <button class="repo-btn repo-purple" onclick="downloadCurrentSectionRepo()">تحميل</button>
-        <button class="repo-btn repo-soft" onclick="closeSectionRepoPreview()">رجوع</button>
-      </div>
-    </div>
-    <div id="sectionRepoPreviewBody" class="repo-preview-body"></div>
-  </div>
-</div>
-<script id="SECTION_RECORDS_REPOSITORY_ENGINE">
+<script id="safe-activation-bypass-tail">
 (function(){
-  if(window.__SECTION_RECORDS_REPOSITORY_ENGINE__) return;
-  window.__SECTION_RECORDS_REPOSITORY_ENGINE__=true;
-
-  const role = (function(){
-    const p=(location.pathname||'').toLowerCase();
-    if(p.indexOf('agent')!==-1) return 'agent';
-    if(p.indexOf('teacher')!==-1) return 'teacher';
-    if(p.indexOf('student_advisor')!==-1) return 'student_advisor';
-    return 'section';
-  })();
-  const roleLabel = role==='agent'?'الوكيل':role==='teacher'?'المعلم':'الموجه الطلابي';
-  const DB_NAME = 'section_records_repository_' + role;
-  const STORE = 'files';
-  let currentId = null;
-  let currentKind = '';
-  let currentUrl = '';
-
-  function ensureLibs(){
-    if(!document.querySelector('script[src*="mammoth.browser.min.js"]')){
-      const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js';document.head.appendChild(s);
-    }
-    if(!document.querySelector('script[src*="xlsx.full.min.js"]')){
-      const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';document.head.appendChild(s);
-    }
+  if(window.__SAFE_ACTIVATION_BYPASS_TAIL__) return;
+  window.__SAFE_ACTIVATION_BYPASS_TAIL__ = true;
+  function activateFlags(){try{localStorage.setItem('school_active','true');localStorage.setItem('app_activated','true');localStorage.setItem('activation_status','active');sessionStorage.setItem('school_active','true');sessionStorage.setItem('app_activated','true');}catch(e){}}
+  function hideActivationAndShowWelcome(){
+    activateFlags();
+    var activation=document.getElementById('activation-overlay');
+    if(activation){activation.style.display='none';activation.style.visibility='hidden';activation.setAttribute('aria-hidden','true');}
+    var gate=document.getElementById('welcome-gate'), dash=document.getElementById('welcome-dashboard'), app=document.getElementById('main-report-app');
+    if(gate && (!app || app.style.display==='none')) gate.style.display='flex';
+    else if(dash && (!app || app.style.display==='none')) dash.style.display='block';
   }
-  ensureLibs();
-
-  function esc(v){return String(v||'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
-  function ext(name){return String(name||'').split('.').pop().toLowerCase();}
-  function kind(file){const e=ext(file.name); const t=file.type||''; if(e==='pdf'||t==='application/pdf')return'pdf'; if(['doc','docx'].includes(e)||/word|msword/.test(t))return'word'; if(['xls','xlsx'].includes(e)||/excel|sheet/.test(t))return'excel'; if(['ppt','pptx'].includes(e)||/powerpoint|presentation/.test(t))return'pptx'; return'file';}
-  function icon(k){return {pdf:'📕 PDF',word:'📝 Word',excel:'📊 Excel',pptx:'📽️ PPTX',file:'📎 ملف'}[k]||'📎 ملف'}
-  function fmt(n){if(!n)return'0 KB'; if(n<1024*1024)return Math.round(n/1024)+' KB'; return (n/1024/1024).toFixed(1)+' MB';}
-  function openDB(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB_NAME,1); r.onupgradeneeded=e=>{const db=e.target.result;if(!db.objectStoreNames.contains(STORE))db.createObjectStore(STORE,{keyPath:'id',autoIncrement:true});}; r.onsuccess=()=>resolve(r.result); r.onerror=()=>reject('تعذر فتح مستودع السجلات');});}
-  async function all(){const db=await openDB();return new Promise((resolve,reject)=>{const tx=db.transaction(STORE,'readonly');const req=tx.objectStore(STORE).getAll();req.onsuccess=()=>resolve(req.result||[]);req.onerror=()=>reject('تعذر تحميل الملفات')})}
-  async function get(id){const db=await openDB();return new Promise((resolve,reject)=>{const tx=db.transaction(STORE,'readonly');const req=tx.objectStore(STORE).get(Number(id));req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject('تعذر فتح الملف')})}
-  async function put(item){const db=await openDB();return new Promise((resolve,reject)=>{const tx=db.transaction(STORE,'readwrite');const req=tx.objectStore(STORE).put(item);req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject('تعذر حفظ الملف')})}
-  async function del(id){const db=await openDB();return new Promise((resolve,reject)=>{const tx=db.transaction(STORE,'readwrite');const req=tx.objectStore(STORE).delete(Number(id));req.onsuccess=()=>resolve();req.onerror=()=>reject('تعذر حذف الملف')})}
-
-  function injectCard(){
-    if(document.getElementById('sectionRecordsRepositoryCard')) return;
-    const card = document.createElement('div');
-    card.id='sectionRecordsRepositoryCard';
-    card.className='section-repo-card';
-    card.innerHTML='<div class="section-repo-icon">🗂️</div><h3 style="margin:0;color:#334155;font-size:20px;font-weight:900">مستودع السجلات</h3><p style="margin:0;color:#64748b;font-size:12px;font-weight:700">تحميل ومعاينة الملفات المتنوعة</p>';
-    card.onclick=openSectionRecordsRepository;
-
-    const candidates=[
-      document.querySelector('#welcome-dashboard .grid'),
-      document.querySelector('#welcome-dashboard [class*="grid"]'),
-      document.querySelector('.grid'),
-      document.getElementById('welcome-dashboard')
-    ].filter(Boolean);
-    const target=candidates[0] || document.body;
-    target.appendChild(card);
+  function protectDeactivation(){
+    ['deactivateSystem','deactivateApp','resetActivation','clearActivation'].forEach(function(fn){try{window[fn]=function(){console.warn('تم تعطيل إلغاء التنشيط لحماية الأرشفة المحفوظة.');return false;};}catch(e){}});
+    try{document.querySelectorAll('button,a,[role="button"],div[onclick],span[onclick]').forEach(function(el){var text=(el.textContent||'').replace(/\s+/g,' ').trim();var act=(el.getAttribute('onclick')||'');if(/إلغاء\s*تنشيط|الغاء\s*تنشيط|تعطيل\s*النظام|مسح\s*كافة\s*البيانات/.test(text)||/deactivate|resetActivation|clearActivation/.test(act)){el.classList.add('safe-hidden-deactivate');el.style.display='none';el.removeAttribute('onclick');}});}catch(e){}
   }
-
-  window.openSectionRecordsRepository=function(){
-    document.getElementById('repoTitle').textContent='🗂️ مستودع السجلات — قسم ' + roleLabel;
-    document.getElementById('sectionRecordsRepositoryView').style.display='block';
-    renderSectionRepoList();
-  }
-  window.closeSectionRecordsRepository=function(){document.getElementById('sectionRecordsRepositoryView').style.display='none';closeSectionRepoPreview();}
-  window.renderSectionRepoList=async function(){
-    const list=document.getElementById('sectionRepoList');
-    const preview=document.getElementById('sectionRepoPreview');
-    list.style.display='grid'; preview.style.display='none';
-    list.innerHTML='<div style="color:#64748b;font-weight:900">جاري تحميل الملفات...</div>';
-    const rows=(await all()).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
-    if(!rows.length){list.innerHTML='<div style="grid-column:1/-1;background:white;border:1px dashed #cbd5e1;border-radius:24px;padding:34px;text-align:center;color:#94a3b8;font-weight:900">لا توجد ملفات محفوظة بعد.</div>';return;}
-    list.innerHTML=rows.map(r=>{
-      const k=r.kind||kind(r);
-      const canEdit=k==='word'||k==='excel';
-      return `<div class="repo-item">
-        <div style="font-weight:900;color:#334155;font-size:14px">${icon(k)} — ${esc(r.name)}</div>
-        <div style="color:#94a3b8;font-size:10px;margin:6px 0 12px;font-weight:700">${new Date(r.createdAt).toLocaleString('ar-SA')} — ${fmt(r.size)}</div>
-        <div style="display:flex;gap:7px;flex-wrap:wrap">
-          <button class="repo-btn repo-primary" onclick="previewSectionRepo(${r.id})">معاينة</button>
-          ${canEdit?`<button class="repo-btn repo-blue" onclick="previewSectionRepo(${r.id})">تعديل</button>`:''}
-          <button class="repo-btn repo-purple" onclick="downloadSectionRepo(${r.id})">تحميل</button>
-          <button class="repo-btn repo-danger" onclick="deleteSectionRepo(${r.id})">حذف</button>
-        </div>
-      </div>`;
-    }).join('');
-  }
-  window.handleSectionRepoUpload=async function(e){
-    const file=e.target.files[0]; if(!file)return;
-    const allowed=['pdf','doc','docx','xls','xlsx','ppt','pptx'];
-    if(!allowed.includes(ext(file.name))){alert('نوع الملف غير مدعوم'); e.target.value=''; return;}
-    await put({name:file.name,type:file.type||'',kind:kind(file),size:file.size,file:file,createdAt:new Date().toISOString(),role:role});
-    e.target.value='';
-    renderSectionRepoList();
-  }
-  async function showWord(r,body,saveBtn){
-    body.innerHTML='<div class="repo-editor" id="repoWordEditor" contenteditable="true">جاري فتح ملف Word...</div>';
-    const ed=document.getElementById('repoWordEditor');
-    saveBtn.style.display='inline-block';
-    if(r.editedHtml){ed.innerHTML=r.editedHtml;return;}
-    if(window.mammoth && ext(r.name)==='docx'){
-      const result=await mammoth.convertToHtml({arrayBuffer:await r.file.arrayBuffer()});
-      ed.innerHTML=result.value||'<p></p>';
-    }else{
-      ed.innerHTML='<div style="color:#64748b;border:1px dashed #cbd5e1;border-radius:18px;padding:18px">التحرير المباشر مدعوم لملفات DOCX. يمكن تحميل ملفات DOC وفتحها خارجيًا.</div>';
-    }
-  }
-  async function showExcel(r,body,saveBtn){
-    saveBtn.style.display='inline-block';
-    if(!window.XLSX){body.innerHTML='<div style="padding:28px;color:#64748b">جاري تحميل محرر Excel، أعد المحاولة بعد لحظات.</div>';return;}
-    const wb = r.editedWorkbookBase64 ? XLSX.read(r.editedWorkbookBase64,{type:'base64'}) : XLSX.read(await r.file.arrayBuffer(),{type:'array'});
-    const sheet=wb.SheetNames[0];
-    const rows=XLSX.utils.sheet_to_json(wb.Sheets[sheet],{header:1,defval:''});
-    const tableRows=rows.length?rows:[['']];
-    body.innerHTML='<div style="padding:14px;color:#64748b;font-weight:900;font-size:12px">الورقة: '+esc(sheet)+'</div><table id="repoExcelTable" class="repo-table">'+tableRows.map(row=>'<tr>'+row.map(c=>'<td contenteditable="true">'+esc(c)+'</td>').join('')+'</tr>').join('')+'</table>';
-  }
-  window.previewSectionRepo=async function(id){
-    const r=await get(id); if(!r)return;
-    currentId=id; currentKind=r.kind||kind(r);
-    const list=document.getElementById('sectionRepoList'), preview=document.getElementById('sectionRepoPreview'), body=document.getElementById('sectionRepoPreviewBody'), title=document.getElementById('sectionRepoPreviewTitle'), saveBtn=document.getElementById('sectionRepoSaveBtn');
-    list.style.display='none'; preview.style.display='block'; title.textContent=r.name; saveBtn.style.display='none'; body.innerHTML='';
-    if(currentUrl){URL.revokeObjectURL(currentUrl);currentUrl='';}
-    if(currentKind==='pdf'){currentUrl=URL.createObjectURL(r.file); body.innerHTML='<iframe style="width:100%;height:100%;border:0" src="'+currentUrl+'"></iframe>';return;}
-    if(currentKind==='word'){await showWord(r,body,saveBtn);return;}
-    if(currentKind==='excel'){await showExcel(r,body,saveBtn);return;}
-    body.innerHTML='<div style="padding:35px;text-align:center;color:#64748b;font-weight:900"><div style="font-size:50px;margin-bottom:12px">'+icon(currentKind)+'</div><h3>'+esc(r.name)+'</h3><p>تم حفظ الملف داخل المستودع ويمكن تحميله. معاينة PowerPoint المباشرة محدودة داخل المتصفح.</p><button class="repo-btn repo-purple" onclick="downloadCurrentSectionRepo()">تحميل الملف</button></div>';
-  }
-  window.closeSectionRepoPreview=function(){document.getElementById('sectionRepoPreview').style.display='none';document.getElementById('sectionRepoList').style.display='grid'; if(currentUrl){URL.revokeObjectURL(currentUrl);currentUrl='';}}
-  window.saveSectionRepoEdits=async function(){
-    const r=await get(currentId); if(!r)return;
-    if(currentKind==='word'){
-      const ed=document.getElementById('repoWordEditor'); r.editedHtml=ed.innerHTML; const html='<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>'+ed.innerHTML+'</body></html>'; r.file=new Blob([html],{type:'application/msword'}); r.name=r.name.replace(/\.(docx|doc)$/i,'')+'_معدل.doc'; r.size=r.file.size; r.type='application/msword';
-    }
-    if(currentKind==='excel'){
-      const rows=Array.from(document.querySelectorAll('#repoExcelTable tr')).map(tr=>Array.from(tr.querySelectorAll('td')).map(td=>td.innerText));
-      const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),'Sheet1'); const arr=XLSX.write(wb,{bookType:'xlsx',type:'array'}); r.file=new Blob([arr],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}); r.editedWorkbookBase64=XLSX.write(wb,{bookType:'xlsx',type:'base64'}); r.name=r.name.replace(/\.(xlsx|xls)$/i,'')+'_معدل.xlsx'; r.size=r.file.size; r.type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-    }
-    r.updatedAt=new Date().toISOString(); await put(r); alert('تم حفظ التعديل'); renderSectionRepoList();
-  }
-  window.downloadSectionRepo=async function(id){const r=await get(id); if(!r)return; const url=URL.createObjectURL(r.file); const a=document.createElement('a'); a.href=url; a.download=r.name||'file'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),1000)}
-  window.downloadCurrentSectionRepo=function(){if(currentId)downloadSectionRepo(currentId)}
-  window.deleteSectionRepo=async function(id){if(confirm('هل تريد حذف الملف؟')){await del(id);renderSectionRepoList();}}
-
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', injectCard); else injectCard();
-  setTimeout(injectCard,700); setTimeout(injectCard,1800);
+  function boot(){hideActivationAndShowWelcome();protectDeactivation();setTimeout(protectDeactivation,300);setTimeout(hideActivationAndShowWelcome,500);}
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot); else boot();
+  window.addEventListener('load',boot);
 })();
 </script>
 
+
+<script src="performance-file-engine.js"></script>
 </body></html>

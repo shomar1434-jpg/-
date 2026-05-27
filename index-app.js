@@ -673,7 +673,7 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
                 document.getElementById('monitored-user-name').innerText = target.name || name || 'مستخدم';
                 document.getElementById('backBtn').classList.add('visible');
                 const targetRole = target.role || role;
-                const files = { 'agency': 'agent.html', 'agent': 'agent.html', 'performance': 'teacher.html', 'teacher': 'teacher.html', 'student_advisor': 'student_advisor.html', 'advisor': 'student_advisor.html', 'activity_leader': 'activity_leader.html', 'activity': 'activity_leader.html' };
+                const files = { 'agency': 'agent.html', 'agent': 'agent.html', 'performance': 'teacher.html', 'teacher': 'teacher.html', 'student_advisor': 'student_advisor.html', 'advisor': 'student_advisor.html', 'activity_leader': 'activity_leader.html', 'activity': 'activity_leader.html', 'activity-leader': 'activity_leader.html', 'leader': 'activity_leader.html' };
                 const iframe = v.querySelector('iframe');
                 const file = files[targetRole] || (String(targetRole).includes('agent') ? 'agent.html' : 'teacher.html');
                 const followEmail = normalizeAccountEmail(target.email || target.schoolEmail);

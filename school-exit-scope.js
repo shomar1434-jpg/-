@@ -25,6 +25,7 @@
     if(role==='manager' || role==='leadership') return 'manager.html';
     if(role==='agent' || role==='agency') return 'agent.html';
     if(role==='student_advisor' || role==='advisor') return 'student_advisor.html';
+    if(role==='activity_leader' || role==='activity' || role==='activity-leader' || role==='leader') return 'activity_leader.html';
     return 'teacher.html';
   }
 

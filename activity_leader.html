@@ -8,7 +8,7 @@
 
 
 /* ACTIVITY_LEADER_BACKGROUND_INTEGRATION_SAFE_PATCH
-   خلفية واقعية خاصة بقسم رائد/ة النشاط فقط، مع الحفاظ على ألوان المنصة وهوية الأقسام الأخرى. */
+   خلفية واقعية خاصة بقسم مسؤول/ة النشاط فقط، مع الحفاظ على ألوان المنصة وهوية الأقسام الأخرى. */
 body[data-ss-role="activity-leader"].global-app-bg{
     background-image:
       linear-gradient(135deg, rgba(3, 46, 46, .78), rgba(15, 118, 110, .52), rgba(255,255,255,.18)),
@@ -49,9 +49,25 @@ body[data-ss-role="activity-leader"] #main-report-app{
 (function(){
   var qs = new URLSearchParams(location.search || '');
   var mode = (qs.get('mode') || '').toLowerCase();
-  var followEmailRaw = qs.get('followEmail') || qs.get('email') || qs.get('targetEmail') || '';
-  var isFollow = !!followEmailRaw || qs.get('follow') === '1' || qs.get('readonly') === '1' || mode.indexOf('supervisor') >= 0;
-  if (!isFollow) return;
+  var loginMode = (qs.get('loginMode') || '').toLowerCase();
+  var roleParam = (qs.get('role') || '').toLowerCase();
+
+  // تصحيح مهم:
+  // رابط الدخول الحقيقي يمرر email في الاستعلام، وهذا لا يعني وضع متابعة.
+  // وضع المتابعة يظهر فقط عند وجود علامة متابعة صريحة من المدير/الوكيل/المشرف.
+  var explicitFollow = qs.get('follow') === '1' || qs.get('readonly') === '1' || mode.indexOf('supervisor') >= 0 || mode.indexOf('follow') >= 0 || mode.indexOf('monitor') >= 0;
+  var directLogin = qs.get('direct') === '1' || loginMode === 'direct' || roleParam === 'activity_leader' || roleParam === 'activity-leader';
+  var isFollow = explicitFollow && !directLogin;
+  if (!isFollow) {
+    try {
+      sessionStorage.removeItem('smartSchoolUnifiedOpsV2_follow_context');
+      localStorage.removeItem('smartSchoolUnifiedOpsV2_follow_context');
+      localStorage.removeItem('follow_context');
+    } catch(e) {}
+    return;
+  }
+
+  var followEmailRaw = qs.get('followEmail') || qs.get('targetEmail') || '';
 
   function rawGet(k){ try { return Storage.prototype.getItem.call(localStorage, k); } catch(e){ return null; } }
   function rawSet(k,v){ try { return Storage.prototype.setItem.call(localStorage, k, v); } catch(e){} }
@@ -76,9 +92,9 @@ body[data-ss-role="activity-leader"] #main-report-app{
   }) || {};
   if (!followEmail && profile.email) followEmail = norm(profile.email);
 
-  var accountName = profile.name || profile.fullName || profile.username || qs.get('followName') || 'حساب رائد/ة النشاط';
+  var accountName = profile.name || profile.fullName || profile.username || qs.get('followName') || 'حساب مسؤول/ة النشاط';
   var accountRole = (profile.role || qs.get('targetRole') || qs.get('role') || 'teacher').toLowerCase();
-  var roleLabel = accountRole.indexOf('agent') >= 0 || accountRole.indexOf('وكيل') >= 0 ? 'وكيل' : 'معلم';
+  var roleLabel = accountRole.indexOf('agent') >= 0 || accountRole.indexOf('وكيل') >= 0 ? 'وكيل' : (accountRole.indexOf('activity') >= 0 || accountRole.indexOf('نشاط') >= 0 ? 'مسؤول/ة النشاط' : 'معلم');
   var accountKey = safeKey(followEmail || accountName || 'teacher');
   var prefix = 'follow_account_' + accountKey + '_';
   var sharedPrefix = 'account_' + accountKey + '_';
@@ -177,10 +193,10 @@ body[data-ss-role="activity-leader"] #main-report-app{
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="format-detection" content="telephone=no">
     
-    <title id="app-title">رائد/ة النشاط | تقارير الأداء</title>
+    <title id="app-title">مسؤول/ة النشاط | تقارير الأداء</title>
     
     <meta name="theme-color" content="#0f766e">
-    <meta name="description" content="صفحة احترافية لإدارة تقارير وسجلات رائد/ة النشاط وأرشفتها وتصديرها.">
+    <meta name="description" content="صفحة احترافية لإدارة تقارير وسجلات مسؤول/ة النشاط وأرشفتها وتصديرها.">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -925,7 +941,7 @@ body[data-ss-role="activity-leader"] #main-report-app{
 
         /*
          * تحسينات النسخة المطوّرة: البيروقراطية الرقمية الهادئة.
-         * الهدف: رفع وضوح لوحة تقارير رائد/ة النشاط، تحسين قابلية الاستخدام على الجوال،
+         * الهدف: رفع وضوح لوحة تقارير مسؤول/ة النشاط، تحسين قابلية الاستخدام على الجوال،
          * إضافة مؤشرات أداء ومسودة تلقائية، والحفاظ على مظهر رسمي مناسب للقطاع التعليمي.
          */
         :root {
@@ -1738,7 +1754,7 @@ body{overflow-x:hidden}
 </style>
 <style id="activity-leader-final-bg-clean">
 /* ACTIVITY_LEADER_OLD_BACKGROUND_REMOVED_FINAL
-   حذف الخلفية القديمة نهائياً من صفحة رائد/ة النشاط واعتماد الخلفية الجديدة فقط. */
+   حذف الخلفية القديمة نهائياً من صفحة مسؤول/ة النشاط واعتماد الخلفية الجديدة فقط. */
 body[data-ss-role="activity-leader"],
 body[data-ss-role="activity-leader"].global-app-bg,
 body[data-ss-role="activity-leader"] .global-app-bg{
@@ -1778,7 +1794,7 @@ body[data-ss-role="activity-leader"] [aria-label*="تحليل البيانات"]
     <!-- واجهة التنشيط المحدثة بأزرار النسخ واللصق -->
     <div id="activation-overlay" class="global-app-bg no-print">
         <div class="bg-white/95 backdrop-blur p-10 rounded-[45px] shadow-2xl w-full max-w-md text-center border border-white/20">
-            <h2 class="text-2xl font-bold mb-4 text-slate-800">تنشيط قسم رائد/ة النشاط</h2>
+            <h2 class="text-2xl font-bold mb-4 text-slate-800">تنشيط قسم مسؤول/ة النشاط</h2>
             <div class="mb-6">
                 <p class="text-[10px] text-slate-400 font-bold mb-2 text-right px-2">كود تعريف الجهاز (كود المستخدم)</p>
                 <div class="flex items-center gap-2">
@@ -1816,7 +1832,7 @@ body[data-ss-role="activity-leader"] [aria-label*="تحليل البيانات"]
                 </div>
             </div>
             <div class="text-center px-6 max-w-lg glass-panel p-8 rounded-[40px] mb-8">
-                <h1 class="text-3xl font-bold text-slate-800 mb-4 leading-tight">رائد/ة النشاط</h1>
+                <h1 class="text-3xl font-bold text-slate-800 mb-4 leading-tight">مسؤول/ة النشاط</h1>
                 <p class="text-slate-600 text-sm font-bold leading-relaxed mb-6">قسمك المتكامل لتوثيق الإنجازات التعليمية والمهنية بدقة واحترافية عالية.</p>
                 <div class="quality-ribbon" aria-label="مزايا النسخة المطورة">
                     <span>حفظ مسودة تلقائي</span>
@@ -1835,7 +1851,7 @@ body[data-ss-role="activity-leader"] [aria-label*="تحليل البيانات"]
             <header class="bg-white/80 backdrop-blur-md border-b p-5 flex justify-between items-center px-8 shadow-sm sticky top-0 z-[1001]">
                 <div class="flex items-center gap-4">
                     <img src="https://upload.wikimedia.org/wikipedia/ar/1/17/Saudi_Ministry_of_Education_Logo_2025.png" class="h-12 object-contain" alt="Logo">
-                    <h1 class="font-bold text-slate-800 text-sm">رائد/ة النشاط</h1>
+                    <h1 class="font-bold text-slate-800 text-sm">مسؤول/ة النشاط</h1>
                 </div>
                 <!-- تعديل الهيدر لإضافة زر الإعدادات المخصصة -->
                 <div class="flex gap-2">
@@ -2130,7 +2146,7 @@ body[data-ss-role="activity-leader"] [aria-label*="تحليل البيانات"]
                             <table>
                                 <tr class="h-12">
                                     <td id="target-label" class="bg-header w-[15%] text-xs">الفئة المستهدفة</td>
-                                    <td id="target-cell" class="p-0 w-[35%]"><select id="targetSelect" class="w-full h-full text-center text-[11px] font-bold" onchange="updateReportProgress()"><option value="الطلاب">الطلاب</option><option value="الطالبات">الطالبات</option><option value="المجتمع المدرسي">المجتمع المدرسي</option><option value="يخص رائد/ة النشاط">يخص رائد/ة النشاط</option><option value="أولياء الأمور">أولياء الأمور</option></select></td>
+                                    <td id="target-cell" class="p-0 w-[35%]"><select id="targetSelect" class="w-full h-full text-center text-[11px] font-bold" onchange="updateReportProgress()"><option value="الطلاب">الطلاب</option><option value="الطالبات">الطالبات</option><option value="المجتمع المدرسي">المجتمع المدرسي</option><option value="يخص مسؤول/ة النشاط">يخص مسؤول/ة النشاط</option><option value="أولياء الأمور">أولياء الأمور</option></select></td>
                                     <td id="beneficiaries-label" class="bg-header w-[15%] text-xs">عدد المستفيدين</td>
                                     <td id="beneficiaries-cell" class="p-0 w-[35%]">
 <div class="beneficiaries-counter-wrapper" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
@@ -2262,11 +2278,11 @@ font-size:16px;font-weight:700;text-align:center;background:#fff;color:#0f172a;"
                         </section>
 
                         <section id="visit-recommendations-section" class="mt-4" style="display:none">
-                            <h3 class="font-bold text-sm mb-3 text-[var(--primary)] text-center">توصيات رائد/ة النشاط الزائر</h3>
+                            <h3 class="font-bold text-sm mb-3 text-[var(--primary)] text-center">توصيات مسؤول/ة النشاط الزائر</h3>
                             <div class="rounded-table-container shadow-sm">
                                 <table>
                                     <tr class="h-10">
-                                        <td class="bg-header py-2 text-xs">التوصيات من رائد/ة النشاط الزائر</td>
+                                        <td class="bg-header py-2 text-xs">التوصيات من مسؤول/ة النشاط الزائر</td>
                                     </tr>
                                     <tr>
                                         <td id="visitRecommendations" class="editable-cell text-right font-bold p-3 h-24 text-xs" contenteditable="true" oninput="updateReportProgress()" style="vertical-align: top; direction: rtl; line-height: 1.9;"></td>
@@ -2575,7 +2591,7 @@ font-size:16px;font-weight:700;text-align:center;background:#fff;color:#0f172a;"
                         "التنسيق المستمر مع الموجه الطلابي لدراسة الحالات السلوكية ومشاركة الأفكار التربوية.",
                         "تقديم ورش عمل للزملاء المعلمين لنقل الخبرات والممارسات المتميزة في ريادة النشاط.",
                         "المشاركة في اللجان المدرسية المختلفة (كاللجنة التوجيهية، لجنة التميز) بفاعلية.",
-                        "تنظيم اجتماعات دورية مع رواد الفصول وجماعات النشاط لمتابعة سير البرامج.",
+                        "تنظيم اجتماعات دورية مع مسؤولو/مسؤولات الفصول وجماعات النشاط لمتابعة سير البرامج.",
                         "تبادل الزيارات المهنية مع رواد النشاط في المدارس المجاورة للاطلاع على تجاربهم.",
                         "التعاون مع إدارة المدرسة في معالجة التحديات والصعوبات التي تواجه العمل التربوي.",
                         "الإسهام في تطوير خطط زملائه المعلمين من خلال تقديم الاستشارات المهنية.",
@@ -3452,7 +3468,7 @@ body{overflow-x:hidden}
 </head><body dir="rtl"><div id="portfolio-root">${portfolioHTML}</div><script>window.onload = function() { setTimeout(() => { window.print(); }, 1200); };<\/script>
 
 
-<!-- ACTIVITY_LEADER_GOALS_UPDATED_2026_05_26: المجالات والأهداف الوظيفية/الأدائية والتفصيلية لرائد/ة النشاط محدثة من ملف المستخدم. -->
+<!-- ACTIVITY_LEADER_GOALS_UPDATED_2026_05_26: المجالات والأهداف الوظيفية/الأدائية والتفصيلية لمسؤول/ة النشاط محدثة من ملف المستخدم. -->
 </body></html>`);
             printWindow.document.close();
             setTimeout(() => { loader.classList.add('hidden'); showToast("تم تجهيز مسودة ملف الإنجاز المهني كملف واحد ✅"); }, 1800);
@@ -3483,7 +3499,7 @@ body{overflow-x:hidden}
                 <header class="portfolio-cover-header">
                     <div>المملكة العربية السعودية<br>وزارة التعليم<br>إدارة التعليم بمنطقة / ${identity.region}</div>
                     <img src="https://upload.wikimedia.org/wikipedia/ar/1/17/Saudi_Ministry_of_Education_Logo_2025.png" alt="وزارة التعليم" style="width:78px;height:78px;object-fit:contain;">
-                    <div>رائد/ة النشاط<br>ترويسة التقارير<br>تاريخ الإعداد / ${today}</div>
+                    <div>مسؤول/ة النشاط<br>ترويسة التقارير<br>تاريخ الإعداد / ${today}</div>
                 </header>
                 <main class="portfolio-cover-body">
                     <img src="https://upload.wikimedia.org/wikipedia/ar/1/17/Saudi_Ministry_of_Education_Logo_2025.png" alt="شعار وزارة التعليم">
@@ -3494,7 +3510,7 @@ body{overflow-x:hidden}
                     </div>
                 </main>
                 <footer class="portfolio-cover-footer">
-                    <div>اسم رائد/ة النشاط: ${identity.teacher}</div>
+                    <div>اسم مسؤول/ة النشاط: ${identity.teacher}</div>
                     <div>اسم المدرسة: ${identity.school}</div>
                 </footer>
             </section>`;
@@ -3585,7 +3601,7 @@ body{overflow-x:hidden}
         const VISIT_SUBJECTS = ['قرآن', 'دين', 'لغة عربية', 'رياضيات', 'علوم', 'اجتماعيات', 'لغة إنجليزية', 'مهارات رقمية', 'مهارات حياتية', 'أخرى'];
         const PLC_SUBJECTS = ['قرآن', 'دين', 'لغة عربية', 'رياضيات', 'علوم', 'اجتماعيات', 'لغة إنجليزية', 'مهارات رقمية', 'مهارات حياتية', 'أخرى'];
         const PLC_DEVELOPMENT_CONTAINERS = ['التدريب المصغر', 'تدريب الأقران', 'البحث الإجرائي', 'الورش التربوية', 'اللقاءات و الاجتماعات', 'حلقات النقاش'];
-        const PLC_EXECUTION_PLACES = ['غرفة رائد/ة النشاطين', 'غرفة المصادر', 'قاعة اجتماعات المدرسة'];
+        const PLC_EXECUTION_PLACES = ['غرفة مسؤول/ة النشاطين', 'غرفة المصادر', 'قاعة اجتماعات المدرسة'];
         function buildPlcSpecializationControl() {
             return `<div class="space-y-1">
                 <select id="plcSpecializationSelect" class="plc-inline-select" onchange="handlePlcSpecializationChange(); updateReportProgress();">
@@ -3681,7 +3697,7 @@ body{overflow-x:hidden}
             if (sectionTitle) sectionTitle.innerText = isPlcReport ? 'ثالثاً : نتائج الجلسة' : ((isInitiative || isModelLesson || isVisitExchange) ? 'ثالثاً : الوصف و آلية التنفيذ' : 'ثالثاً : وصف البرنامج و آلية التنفيذ');
             if (descHeader) descHeader.innerText = isInitiative ? 'وصف المبادرة و آلية التنفيذ' : (isModelLesson ? 'وصف آلية التنفيذ' : (isPlcReport ? 'مخرجات الجلسة' : 'وصف البرنامج وآلية التنفيذ'));
             if (timeHeader) timeHeader.innerText = (isInitiative || isModelLesson) ? 'المخرجات المتوقعة' : 'وقت التنفيذ';
-            if (executorHeader) executorHeader.innerText = isVisitExchange ? 'رائد/ة النشاط المزار' : (isPlcReport ? 'المشاركون' : 'المنفذ/ة');
+            if (executorHeader) executorHeader.innerText = isVisitExchange ? 'مسؤول/ة النشاط المزار' : (isPlcReport ? 'المشاركون' : 'المنفذ/ة');
 
             setCellWidthClass(descHeader, (isInitiative || isModelLesson) ? 'w-1/2' : 'w-2/4');
             setCellWidthClass(timeHeader, (isInitiative || isModelLesson) ? 'w-1/2' : 'w-1/4');
@@ -3898,7 +3914,7 @@ body{overflow-x:hidden}
                         "التنسيق المستمر مع الموجه الطلابي لدراسة الحالات السلوكية ومشاركة الأفكار التربوية.",
                         "تقديم ورش عمل للزملاء المعلمين لنقل الخبرات والممارسات المتميزة في ريادة النشاط.",
                         "المشاركة في اللجان المدرسية المختلفة (كاللجنة التوجيهية، لجنة التميز) بفاعلية.",
-                        "تنظيم اجتماعات دورية مع رواد الفصول وجماعات النشاط لمتابعة سير البرامج."
+                        "تنظيم اجتماعات دورية مع مسؤولو/مسؤولات الفصول وجماعات النشاط لمتابعة سير البرامج."
             ],
             "مجال_03": [
                         "توظيف وسائل التواصل الرسمية (كالرسائل النصية والمنصات) لإطلاع أولياء الأمور على خطة النشاط.",
@@ -4362,7 +4378,7 @@ body{overflow-x:hidden}
         function exportCurrentReportHtml() {
             const content = document.getElementById('report-content-container')?.innerHTML;
             if (!content || content.trim().length < 20) return showToast('لا يوجد تقرير جاهز للتصدير ⚠️');
-            const title = (document.getElementById('field_prog_name')?.innerText || 'تقرير_رائد/ة النشاط').trim().replace(/[\\/:*?"<>|\s]+/g, '_');
+            const title = (document.getElementById('field_prog_name')?.innerText || 'تقرير_مسؤول/ة النشاط').trim().replace(/[\\/:*?"<>|\s]+/g, '_');
             const standalone = `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${title}</title>${document.head.innerHTML}<style>body{background:#fff!important}.no-print,nav,.progress-top-bar,#draft-status{display:none!important}.page-container{margin:0 auto!important;box-shadow:none!important}</style>
 <style id="ss-code-flash-guard">
 /* حماية من ظهور أي نص برمجي عارض أثناء تحميل الواجهة */
@@ -4372,13 +4388,13 @@ body{overflow-x:hidden}
 </head><body dir="rtl"><main>${content}</main>
 
 
-<!-- ACTIVITY_LEADER_GOALS_UPDATED_2026_05_26: المجالات والأهداف الوظيفية/الأدائية والتفصيلية لرائد/ة النشاط محدثة من ملف المستخدم. -->
+<!-- ACTIVITY_LEADER_GOALS_UPDATED_2026_05_26: المجالات والأهداف الوظيفية/الأدائية والتفصيلية لمسؤول/ة النشاط محدثة من ملف المستخدم. -->
 </body></html>`;
             const blob = new Blob([standalone], { type: 'text/html;charset=utf-8' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `${title || 'تقرير_رائد/ة النشاط'}_${Date.now()}.html`;
+            a.download = `${title || 'تقرير_مسؤول/ة النشاط'}_${Date.now()}.html`;
             document.body.appendChild(a);
             a.click();
             a.remove();
@@ -4453,13 +4469,13 @@ body{overflow-x:hidden}
 <script id="ss-final-actions-script">
 (function(){
   if(window.__ssFinalActionsReady) return; window.__ssFinalActionsReady=true;
-  var ROLE='teacher', NS='smartSchoolUnifiedOpsV2', APP='رائد/ة النشاط';
+  var ROLE='activity_leader', NS='smartSchoolUnifiedOpsV2', APP='مسؤول/ة النشاط';
   function read(k,d){try{return JSON.parse(localStorage.getItem(k)||JSON.stringify(d||[]))}catch(e){return d||[]}}
   function write(k,v){localStorage.setItem(k,JSON.stringify(v));window.dispatchEvent(new Event('ssDataChanged'));}
   function uid(p){return (p||'id')+'_'+Date.now()+'_'+Math.random().toString(36).slice(2,7)}
   function esc(s){return String(s||'').replace(/[&<>"']/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]})}
   function fmt(d){try{return new Date(d||Date.now()).toLocaleString('ar-SA')}catch(e){return''}}
-  function users(){var u=read(NS+'_users',[]); if(!u.length){u=[{id:'agent_1',name:'الوكيل',role:'agent',status:'active',permissions:['meetings','alerts']},{id:'teacher_1',name:'رائد/ة النشاط',role:'teacher',status:'active',permissions:['receive']}]; write(NS+'_users',u)} return u}
+  function users(){var u=read(NS+'_users',[]); if(!u.length){u=[{id:'agent_1',name:'الوكيل',role:'agent',status:'active',permissions:['meetings','alerts']},{id:'activity_leader_1',name:'مسؤول/ة النشاط',role:'activity_leader',status:'active',permissions:['receive']}]; write(NS+'_users',u)} return u}
   function saveUsers(u){write(NS+'_users',u)}
   function notifs(role){return read(NS+'_notifications_'+role,[])}
   function saveNotif(role,n){var a=notifs(role); a.unshift(Object.assign({id:uid('notif'),createdAt:new Date().toISOString(),read:false},n)); write(NS+'_notifications_'+role,a)}
@@ -4471,7 +4487,7 @@ body{overflow-x:hidden}
   function renderBar(){var b=document.getElementById('ssFinalBar'), html='';
     html+=btn('ssBack','🏠','العودة للقائمة','gray');
     if(ROLE==='manager'){
-      html+=btn('ssTeachers','👨‍🏫','الدخول على رائد/ة النشاطين','');
+      html+=btn('ssTeachers','👨‍🏫','الدخول على مسؤول/ة النشاطين','');
       html+=btn('ssAgents','👥','الدخول على الوكلاء','');
       html+=btn('ssActivate','✅','تنشيط المستخدمين وإدارة الصلاحيات','gold');
       html+=btn('ssRegLink','🔗','إرسال رابط التسجيل','blue');
@@ -4481,7 +4497,7 @@ body{overflow-x:hidden}
       html+=btn('ssCloud','☁️','الرفع السحابي','blue');
       html+=btn('ssExit','⏻','الخروج','danger');
     } else if(ROLE==='agent'){
-      html+=btn('ssTeachers','👨‍🏫','رائد/ة النشاطون','');
+      html+=btn('ssTeachers','👨‍🏫','مسؤول/ة النشاطون','');
       html+=btn('ssAlert','📣','إرسال التنبيهات للمعلمين','');
       html+=btn('ssMeetingRoom','🎥','قاعة الاجتماعات','');
       html+=btn('ssMeetWallet','📁','محفظة الاجتماعات','');
@@ -4489,7 +4505,7 @@ body{overflow-x:hidden}
       html+=btn('ssInbox','🔔','تلقي التنبيهات','');
       html+=btn('ssExit','⏻','الخروج','danger');
     } else {
-      html+=btn('ssTeacherRecords','📚','سجلات رائد/ة النشاط','gold');
+      html+=btn('ssTeacherRecords','📚','سجلات مسؤول/ة النشاط','gold');
       html+=btn('ssAdvisorRecordsArchive','🗃️','أرشيف السجلات','');
       html+=btn('ssMeetWallet','📁','محفظة الاجتماعات','');
       html+=btn('ssInbox','🔔','تلقي التنبيهات','');
@@ -4498,15 +4514,105 @@ body{overflow-x:hidden}
     }
     b.innerHTML=html;
   }
-  function attach(){var q=function(id){return document.getElementById(id)}; q('ssBack')&&q('ssBack').addEventListener('click',function(){location.href='index.html'}); q('ssExit')&&q('ssExit').addEventListener('click',function(){location.href='index.html'}); q('ssTeachers')&&q('ssTeachers').addEventListener('click',function(){showUsers('teacher')}); q('ssAgents')&&q('ssAgents').addEventListener('click',function(){showUsers('agent')}); q('ssActivate')&&q('ssActivate').addEventListener('click',showActivation); q('ssRegLink')&&q('ssRegLink').addEventListener('click',showRegLink); q('ssAlert')&&q('ssAlert').addEventListener('click',showAlert); q('ssInbox')&&q('ssInbox').addEventListener('click',showInbox); q('ssMeetWallet')&&q('ssMeetWallet').addEventListener('click',showWallet); q('ssMeetingRoom')&&q('ssMeetingRoom').addEventListener('click',showMeetingRoom); q('ssCloud')&&q('ssCloud').addEventListener('click',showCloud); q('ssTeacherRecords')&&q('ssTeacherRecords').addEventListener('click',function(e){e.preventDefault(); panel('سجلات رائد/ة النشاط','<div class="ss-empty">سيتم تنفيذ سجلات رائد/ة النشاط لاحقاً.</div>');}); q('ssAdvisorRecordsArchive')&&q('ssAdvisorRecordsArchive').addEventListener('click',function(e){e.preventDefault(); panel('أرشيف السجلات','<div class="ss-empty">سيتم تنفيذ الأرشيف المرتبط بسجلات رائد/ة النشاط لاحقاً.</div>');}); }
-  function showUsers(role){var list=users().filter(function(u){return u.role===role}); panel(role==='teacher'?'رائد/ة النشاطون':'الوكلاء', list.length?list.map(function(u){return '<div class="ss-card"><b>'+esc(u.name)+'</b><div class="ss-muted">'+esc(u.email||'')+' — '+(u.status==='active'?'مفعل':'بانتظار التفعيل')+'</div></div>'}).join(''):'<div class="ss-empty">لا توجد حسابات مسجلة.</div>')}
+  function attach(){
+    var q=function(id){return document.getElementById(id)};
+    q('ssBack')&&q('ssBack').addEventListener('click',function(ev){
+      if(ev){ev.preventDefault(); ev.stopPropagation();}
+      if(window.smartIndependentSchoolBackToUsersLogin && window.smartIndependentSchoolBackToUsersLogin()) return false;
+      location.href='index.html';
+      return false;
+    }, true);
+    q('ssExit')&&q('ssExit').addEventListener('click',function(ev){
+      if(ev){ev.preventDefault(); ev.stopPropagation();}
+      if(window.smartIndependentSchoolFinalClose && window.smartIndependentSchoolFinalClose()) return false;
+      try{ localStorage.removeItem('currentRole'); sessionStorage.clear(); }catch(e){}
+      location.href='index.html';
+      return false;
+    }, true);
+    q('ssTeachers')&&q('ssTeachers').addEventListener('click',function(){showUsers('activity_leader')});
+    q('ssAgents')&&q('ssAgents').addEventListener('click',function(){showUsers('agent')});
+    q('ssActivate')&&q('ssActivate').addEventListener('click',showActivation);
+    q('ssRegLink')&&q('ssRegLink').addEventListener('click',showRegLink);
+    q('ssAlert')&&q('ssAlert').addEventListener('click',showAlert);
+    q('ssInbox')&&q('ssInbox').addEventListener('click',showInbox);
+    q('ssMeetWallet')&&q('ssMeetWallet').addEventListener('click',showWallet);
+    q('ssMeetingRoom')&&q('ssMeetingRoom').addEventListener('click',showMeetingRoom);
+    q('ssCloud')&&q('ssCloud').addEventListener('click',showCloud);
+    q('ssTeacherRecords')&&q('ssTeacherRecords').addEventListener('click',function(e){e.preventDefault(); showActivityLeaderRecordsFile();});
+    q('ssAdvisorRecordsArchive')&&q('ssAdvisorRecordsArchive').addEventListener('click',function(e){e.preventDefault(); showActivityLeaderRecordsArchive();});
+  }
+  function showUsers(role){var list=users().filter(function(u){return u.role===role}); panel((role==='activity_leader'?'مسؤولو/مسؤولات النشاط':(role==='teacher'?'المعلمون':'الوكلاء')), list.length?list.map(function(u){return '<div class="ss-card"><b>'+esc(u.name)+'</b><div class="ss-muted">'+esc(u.email||'')+' — '+(u.status==='active'?'مفعل':'بانتظار التفعيل')+'</div></div>'}).join(''):'<div class="ss-empty">لا توجد حسابات مسجلة.</div>')}
+
+  function showActivityLeaderRecordsFile(){
+    var url='activity_leader_records.html';
+    var w=null;
+    try{w=window.open(url,'activityLeaderRecordsWindow','noopener=yes,noreferrer=yes,width=1420,height=920,scrollbars=yes,resizable=yes');}catch(e){w=null;}
+    if(w){try{w.focus();}catch(e){}; return;}
+    panel('سجلات مسؤول/ة النشاط',
+      '<div class="ss-muted" style="margin-bottom:12px;font-weight:800">تم فتح ملف السجلات بحجم موسّع. إذا منع المتصفح النافذة المنفصلة فسيظهر هنا بكامل المساحة المتاحة.</div>'+ 
+      '<div style="height:92vh;width:96vw;max-width:1600px;border:1px solid #d1fae5;border-radius:18px;overflow:hidden;background:white">'+
+      '<iframe src="activity_leader_records.html" title="سجلات مسؤول/ة النشاط" style="width:100%;height:100%;border:0;background:white"></iframe>'+ 
+      '</div>'
+    );
+  }
+
+  var ACTIVITY_RECORDS_FOLDERS = [
+    {id:"basic", name:"البيانات الأولية لمسؤول/ة النشاط"},
+    {id:"training", name:"الدورات التدريبية لمسؤول/ة النشاط"},
+    {id:"goals", name:"أهداف النشاط الطلابي"},
+    {id:"tasks", name:"مهام مسؤول/ة النشاط"},
+    {id:"assignment", name:"قرار تكليف مسؤول/ة النشاط"},
+    {id:"council", name:"مجلس النشاط الطلابي"},
+    {id:"classleaders", name:"مسؤولو/مسؤولات الفصول"},
+    {id:"fields", name:"مجالات النشاط الطلابي"},
+    {id:"annualPlan", name:"الخطة العامة للنشاط"},
+    {id:"weeklyPlan", name:"خطة النشاط الأسبوعية"},
+    {id:"supervisors", name:"المشرفون/المشرفات على المجالات"},
+    {id:"attendance", name:"سجل حضور الطلاب لمجالات النشاط"},
+    {id:"permission", name:"موافقة ولي الأمر على مشاركة الطالب/ـة"},
+    {id:"circulars", name:"سجل متابعة التعاميم الواردة"},
+    {id:"talented", name:"الطلاب والطالبات المميزون في النشاط"},
+    {id:"external", name:"المشاركون والمشاركات على مستوى الإدارة"},
+    {id:"implemented", name:"استمارة حصر البرامج المنفذة"},
+    {id:"clubs", name:"أعضاء الأندية الطلابية"},
+    {id:"events", name:"الأيام والمناسبات"},
+    {id:"followup", name:"التوجيهات والمتابعة"}
+  ];
+  function activityRecordsArchiveRead(){try{return JSON.parse(localStorage.getItem('activity_leader_records_archive_v2')||'[]')}catch(e){return []}}
+  function activityRecordsArchiveWrite(items){localStorage.setItem('activity_leader_records_archive_v2',JSON.stringify(items||[]))}
+  function showActivityLeaderRecordsArchive(){
+    var items=activityRecordsArchiveRead(), counts={};
+    items.forEach(function(x){counts[x.folderId]=(counts[x.folderId]||0)+1});
+    panel('أرشيف سجلات مسؤول/ة النشاط',
+      '<div class="ss-muted" style="margin-bottom:12px;font-weight:800">تم إنشاء مجلد لكل سجل، وعند تكرار حفظ السجل تُضاف نسخة جديدة بعداد رقمي دون حذف السابق.</div>'+ 
+      '<div class="ss-grid">'+ACTIVITY_RECORDS_FOLDERS.map(function(f){return '<button class="ss-card" style="text-align:right;cursor:pointer" onclick="openActivityRecordArchiveFolder(\''+f.id+'\')"><b>📂 '+esc(f.name)+'</b><div class="ss-muted">عدد النسخ المحفوظة: '+(counts[f.id]||0)+'</div></button>';}).join('')+'</div>'
+    );
+  }
+  window.openActivityRecordArchiveFolder=function(folderId){
+    var folder=ACTIVITY_RECORDS_FOLDERS.find(function(f){return f.id===folderId})||{id:folderId,name:'سجل'};
+    var rows=activityRecordsArchiveRead().filter(function(x){return x.folderId===folderId});
+    panel('أرشيف: '+folder.name,
+      '<div class="ss-actions" style="margin-bottom:12px"><button class="ss-action secondary" onclick="showActivityLeaderRecordsArchive()">رجوع للمجلدات</button></div>'+ 
+      (rows.length?rows.map(function(r){return '<div class="ss-card"><b>'+esc(r.displayName||r.title||folder.name)+'</b><div class="ss-muted">'+esc(r.createdAt||'')+'</div><div class="ss-actions"><button class="ss-action blue" onclick="previewActivityArchivedRecord('+Number(r.id)+')">عرض</button><button class="ss-action secondary" onclick="printActivityArchivedRecord('+Number(r.id)+')">طباعة</button><button class="ss-action danger" onclick="deleteActivityArchivedRecord('+Number(r.id)+',\''+folderId+'\')">حذف</button></div></div>';}).join(''):'<div class="ss-empty">لا توجد نسخ محفوظة في هذا المجلد بعد.</div>')
+    );
+  };
+  function activityArchivedDoc(r,autoPrint){
+    var doc=r.htmlContent||'<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>'+esc(r.title||'سجل')+'</title></head><body><pre>'+esc(JSON.stringify(r.values||{},null,2))+'</pre></body></html>';
+    if(autoPrint && doc.indexOf('window.print')===-1){doc=doc.replace('</body>','<script>window.onload=function(){setTimeout(function(){window.print()},400)}<\\/script></body>')}
+    return doc;
+  }
+  window.previewActivityArchivedRecord=function(id){var r=activityRecordsArchiveRead().find(function(x){return Number(x.id)===Number(id)}); if(!r)return; var w=window.open('','_blank'); w.document.open(); w.document.write(activityArchivedDoc(r,false)); w.document.close();};
+  window.printActivityArchivedRecord=function(id){var r=activityRecordsArchiveRead().find(function(x){return Number(x.id)===Number(id)}); if(!r)return; var w=window.open('','_blank'); w.document.open(); w.document.write(activityArchivedDoc(r,true)); w.document.close();};
+  window.deleteActivityArchivedRecord=function(id,folderId){if(!confirm('هل تريد حذف هذه النسخة؟'))return; activityRecordsArchiveWrite(activityRecordsArchiveRead().filter(function(x){return Number(x.id)!==Number(id)})); openActivityRecordArchiveFolder(folderId);};
+  window.addEventListener('message',function(event){var data=event.data||{}; if(data.type==='ACTIVITY_LEADER_RECORD_SAVED'){ /* الحفظ تم عبر localStorage نفسه */ }});
+
   function showTeacherRecords(){
     var records=[
       {title:'كشف متابعة غياب الطلاب', file:'teacher_records_attendance.html', desc:'سجل متابعة الغياب مع الاستيراد والطباعة والحفظ كـ PDF.'},
       {title:'سجل متابعة المشاركة و التفاعل الصفي', file:'teacher_records_participation.html', desc:'سجل المشاركة والتفاعل الصفي مع كامل أدوات التحرير والطباعة.'},
       {title:'سجل متابعة أعمال الطلاب', file:'teacher_records_student_work.html', desc:'سجل أعمال الطلاب والدرجات والملاحظات مع الاستيراد والطباعة.'}
     ];
-    panel('سجلات رائد/ة النشاط',
+    panel('سجلات مسؤول/ة النشاط',
       '<div class="ss-muted" style="margin-bottom:12px;font-weight:800">اختر السجل لفتحه كما هو بكامل خصائصه المعدة بصيغة HTML.</div>'+
       records.map(function(r){return '<button class="ss-card" style="width:100%;text-align:right;cursor:pointer" onclick="window.open(\''+r.file+'\',\'_blank\')"><b>'+esc(r.title)+'</b><div class="ss-muted">'+esc(r.desc)+'</div></button>';}).join('')
     );
@@ -4522,14 +4628,14 @@ body{overflow-x:hidden}
     );
   }
 
-  function showActivation(){var u=users(); panel('تنشيط المستخدمين وإدارة الصلاحيات','<div class="ss-grid"><div class="ss-field"><label>الاسم</label><input id="uName" placeholder="اسم المستخدم"></div><div class="ss-field"><label>البريد</label><input id="uEmail" placeholder="بريد منصة مدرستي"></div><div class="ss-field"><label>الدور</label><select id="uRole"><option value="agent">وكيل</option><option value="teacher">معلم</option><option value="activity_leader">رائد/ة النشاط</option></select></div><div class="ss-field"><label>الحالة</label><select id="uStatus"><option value="pending">بانتظار التفعيل</option><option value="active">مفعل</option></select></div></div><div class="ss-field"><label>الصلاحيات</label><input id="uPerm" placeholder="مثال: alerts, meetings, archive-view"></div><div class="ss-actions"><button class="ss-action" id="addUser">إضافة/حفظ مستخدم</button></div><hr style="margin:14px 0;border:0;border-top:1px solid #e5e7eb"><div id="userList">'+renderUserList(u)+'</div>'); document.getElementById('addUser').onclick=function(){var nu={id:uid('user'),name:val('uName'),email:val('uEmail'),role:val('uRole'),status:val('uStatus'),permissions:val('uPerm').split(',').map(function(x){return x.trim()}).filter(Boolean)}; var arr=users(); arr.unshift(nu); saveUsers(arr); showActivation();}}
-  function renderUserList(arr){return arr.map(function(u){return '<div class="ss-card"><b>'+esc(u.name||'مستخدم')+'</b><div class="ss-muted">'+esc(u.email||'')+' — '+(u.role==='agent'?'وكيل':(u.role==='activity_leader'?'رائد/ة النشاط':'معلم'))+' — '+(u.status==='active'?'مفعل':'بانتظار التفعيل')+'</div><div class="ss-actions"><button class="ss-action blue" onclick="ssFinalActivate(\''+u.id+'\')">تفعيل</button><button class="ss-action secondary" onclick="ssFinalEditUser(\''+u.id+'\')">تعديل</button></div></div>'}).join('')||'<div class="ss-empty">لا توجد حسابات.</div>'}
+  function showActivation(){var u=users(); panel('تنشيط المستخدمين وإدارة الصلاحيات','<div class="ss-grid"><div class="ss-field"><label>الاسم</label><input id="uName" placeholder="اسم المستخدم"></div><div class="ss-field"><label>البريد</label><input id="uEmail" placeholder="بريد منصة مدرستي"></div><div class="ss-field"><label>الدور</label><select id="uRole"><option value="agent">وكيل</option><option value="teacher">معلم</option><option value="activity_leader">مسؤول/ة النشاط</option></select></div><div class="ss-field"><label>الحالة</label><select id="uStatus"><option value="pending">بانتظار التفعيل</option><option value="active">مفعل</option></select></div></div><div class="ss-field"><label>الصلاحيات</label><input id="uPerm" placeholder="مثال: alerts, meetings, archive-view"></div><div class="ss-actions"><button class="ss-action" id="addUser">إضافة/حفظ مستخدم</button></div><hr style="margin:14px 0;border:0;border-top:1px solid #e5e7eb"><div id="userList">'+renderUserList(u)+'</div>'); document.getElementById('addUser').onclick=function(){var nu={id:uid('user'),name:val('uName'),email:val('uEmail'),role:val('uRole'),status:val('uStatus'),permissions:val('uPerm').split(',').map(function(x){return x.trim()}).filter(Boolean)}; var arr=users(); arr.unshift(nu); saveUsers(arr); showActivation();}}
+  function renderUserList(arr){return arr.map(function(u){return '<div class="ss-card"><b>'+esc(u.name||'مستخدم')+'</b><div class="ss-muted">'+esc(u.email||'')+' — '+(u.role==='agent'?'وكيل':(u.role==='activity_leader'?'مسؤول/ة النشاط':'معلم'))+' — '+(u.status==='active'?'مفعل':'بانتظار التفعيل')+'</div><div class="ss-actions"><button class="ss-action blue" onclick="ssFinalActivate(\''+u.id+'\')">تفعيل</button><button class="ss-action secondary" onclick="ssFinalEditUser(\''+u.id+'\')">تعديل</button></div></div>'}).join('')||'<div class="ss-empty">لا توجد حسابات.</div>'}
   window.ssFinalActivate=function(id){var a=users().map(function(u){if(u.id===id)u.status='active';return u});saveUsers(a);showActivation();}
-  window.ssFinalEditUser=function(id){var u=users().find(function(x){return x.id===id}); if(!u)return; panel('تعديل المستخدم','<div class="ss-field"><label>الاسم</label><input id="eName" value="'+esc(u.name)+'"></div><div class="ss-field"><label>الدور</label><select id="eRole"><option value="agent">وكيل</option><option value="teacher">معلم</option><option value="activity_leader">رائد/ة النشاط</option></select></div><div class="ss-field"><label>الحالة</label><select id="eStatus"><option value="pending">بانتظار التفعيل</option><option value="active">مفعل</option></select></div><div class="ss-field"><label>الصلاحيات</label><input id="ePerm" value="'+esc((u.permissions||[]).join(', '))+'"></div><button class="ss-action" id="saveEdit">حفظ التعديل</button>'); document.getElementById('eRole').value=u.role; document.getElementById('eStatus').value=u.status; document.getElementById('saveEdit').onclick=function(){var a=users().map(function(x){if(x.id===id){x.name=val('eName');x.role=val('eRole');x.status=val('eStatus');x.permissions=val('ePerm').split(',').map(function(p){return p.trim()}).filter(Boolean)}return x});saveUsers(a);showActivation();}}
+  window.ssFinalEditUser=function(id){var u=users().find(function(x){return x.id===id}); if(!u)return; panel('تعديل المستخدم','<div class="ss-field"><label>الاسم</label><input id="eName" value="'+esc(u.name)+'"></div><div class="ss-field"><label>الدور</label><select id="eRole"><option value="agent">وكيل</option><option value="teacher">معلم</option><option value="activity_leader">مسؤول/ة النشاط</option></select></div><div class="ss-field"><label>الحالة</label><select id="eStatus"><option value="pending">بانتظار التفعيل</option><option value="active">مفعل</option></select></div><div class="ss-field"><label>الصلاحيات</label><input id="ePerm" value="'+esc((u.permissions||[]).join(', '))+'"></div><button class="ss-action" id="saveEdit">حفظ التعديل</button>'); document.getElementById('eRole').value=u.role; document.getElementById('eStatus').value=u.status; document.getElementById('saveEdit').onclick=function(){var a=users().map(function(x){if(x.id===id){x.name=val('eName');x.role=val('eRole');x.status=val('eStatus');x.permissions=val('ePerm').split(',').map(function(p){return p.trim()}).filter(Boolean)}return x});saveUsers(a);showActivation();}}
   function val(id){var e=document.getElementById(id); return e?e.value:''}
   function showRegLink(){var token=localStorage.getItem(NS+'_reg_token')||('REG-'+Math.random().toString(36).slice(2,8).toUpperCase()); localStorage.setItem(NS+'_reg_token',token); var link=location.href.replace(/[^\/]*$/,'index.html')+'?register='+encodeURIComponent(token); panel('إرسال رابط التسجيل','<div class="ss-card"><b>رابط التسجيل الخاص بحساب المدير</b><div class="ss-muted">المستخدم الذي يسجل من هذا الرابط يظهر في حساب هذا المدير فقط، وبعد التفعيل يدخل إلى قسمه المخصص.</div><input id="regLink" value="'+esc(link)+'" readonly></div><div class="ss-actions"><button class="ss-action" id="copyReg">نسخ الرابط</button></div>'); document.getElementById('copyReg').onclick=function(){navigator.clipboard&&navigator.clipboard.writeText(val('regLink')); alert('تم نسخ الرابط')};}
-  function recipientsHtml(mode){var us=users().filter(function(u){if(ROLE==='manager'){ if(mode==='agents') return u.role==='agent'; if(mode==='teachers') return u.role==='teacher'; return u.role==='agent'||u.role==='teacher'; } return u.role==='teacher';}); return '<div class="ss-att-list">'+us.map(function(u){return '<label><input type="checkbox" class="recUser" value="'+u.role+':'+u.id+'" checked> '+esc(u.name)+' <small class="ss-muted">('+(u.role==='agent'?'وكيل':(u.role==='activity_leader'?'رائد/ة النشاط':'معلم'))+')</small></label>'}).join('')+'</div>'}
-  function showAlert(){var targetOptions=ROLE==='manager'?'<option value="all">الكل</option><option value="agents">الوكلاء</option><option value="teachers">رائد/ة النشاطون</option><option value="custom">اختيار محدد</option>':'<option value="all">كل رائد/ة النشاطين</option><option value="custom">اختيار من رائد/ة النشاطين</option>'; panel('إرسال التنبيهات','<div class="ss-field"><label>المستلمون</label><select id="alertTarget">'+targetOptions+'</select></div><div id="recipientsBox" style="display:none">'+recipientsHtml('all')+'</div><div class="ss-field"><label>نص التنبيه - 300 حرف فقط</label><textarea id="alertMsg" maxlength="300" placeholder="اكتب التنبيه هنا"></textarea><div class="ss-counter"><span id="alertCount">0</span>/300</div></div><div class="ss-grid"><div class="ss-field"><label>رابط اختياري</label><input id="alertLink" placeholder="https://..."></div><div class="ss-field"><label>صور أو ملفات</label><input id="alertFiles" type="file" multiple></div></div><button class="ss-action" id="sendAlert">إرسال التنبيه</button>'); var msg=document.getElementById('alertMsg'), cnt=document.getElementById('alertCount'), target=document.getElementById('alertTarget'), box=document.getElementById('recipientsBox'); msg.oninput=function(){cnt.textContent=msg.value.length}; target.onchange=function(){box.style.display=target.value==='custom'?'block':'none'; box.innerHTML=recipientsHtml(target.value)}; document.getElementById('sendAlert').onclick=function(){sendAlert(target.value,msg.value,val('alertLink'),document.getElementById('alertFiles').files||[])};}
+  function recipientsHtml(mode){var us=users().filter(function(u){if(ROLE==='manager'){ if(mode==='agents') return u.role==='agent'; if(mode==='teachers') return u.role==='teacher'; return u.role==='agent'||u.role==='teacher'; } return u.role==='teacher';}); return '<div class="ss-att-list">'+us.map(function(u){return '<label><input type="checkbox" class="recUser" value="'+u.role+':'+u.id+'" checked> '+esc(u.name)+' <small class="ss-muted">('+(u.role==='agent'?'وكيل':(u.role==='activity_leader'?'مسؤول/ة النشاط':'معلم'))+')</small></label>'}).join('')+'</div>'}
+  function showAlert(){var targetOptions=ROLE==='manager'?'<option value="all">الكل</option><option value="agents">الوكلاء</option><option value="teachers">مسؤول/ة النشاطون</option><option value="custom">اختيار محدد</option>':'<option value="all">كل مسؤول/ة النشاطين</option><option value="custom">اختيار من مسؤول/ة النشاطين</option>'; panel('إرسال التنبيهات','<div class="ss-field"><label>المستلمون</label><select id="alertTarget">'+targetOptions+'</select></div><div id="recipientsBox" style="display:none">'+recipientsHtml('all')+'</div><div class="ss-field"><label>نص التنبيه - 300 حرف فقط</label><textarea id="alertMsg" maxlength="300" placeholder="اكتب التنبيه هنا"></textarea><div class="ss-counter"><span id="alertCount">0</span>/300</div></div><div class="ss-grid"><div class="ss-field"><label>رابط اختياري</label><input id="alertLink" placeholder="https://..."></div><div class="ss-field"><label>صور أو ملفات</label><input id="alertFiles" type="file" multiple></div></div><button class="ss-action" id="sendAlert">إرسال التنبيه</button>'); var msg=document.getElementById('alertMsg'), cnt=document.getElementById('alertCount'), target=document.getElementById('alertTarget'), box=document.getElementById('recipientsBox'); msg.oninput=function(){cnt.textContent=msg.value.length}; target.onchange=function(){box.style.display=target.value==='custom'?'block':'none'; box.innerHTML=recipientsHtml(target.value)}; document.getElementById('sendAlert').onclick=function(){sendAlert(target.value,msg.value,val('alertLink'),document.getElementById('alertFiles').files||[])};}
   function readAlertFiles(files){
     files=Array.from(files||[]);
     return Promise.all(files.map(function(f){return new Promise(function(resolve){
@@ -4729,7 +4835,7 @@ body{overflow-x:hidden}
     var del=document.getElementById('walletDeleteBtn'); if(del)del.onclick=deleteWalletMeeting;
   }
 
-  function showMeetingRoom(){var canManager=ROLE==='manager'; var rec=canManager?'<option value="all">إرسال الرابط للجميع</option><option value="agents">الوكلاء فقط</option><option value="teachers">رائد/ة النشاطين فقط</option>':'<option value="teachers">رائد/ة النشاطين فقط</option>'; panel('قاعة الاجتماعات','<div class="ss-card meeting"><b>تنظيم اجتماع عبر Microsoft Teams</b><div class="ss-muted">'+(canManager?'للمدير صلاحية إرسال رابط الاجتماع للجميع أو لفئة محددة.':'للوكيل صلاحية إرسال رابط الاجتماع للمعلمين فقط.')+'</div></div><div class="ss-grid"><div class="ss-field"><label>عنوان الاجتماع</label><input id="meetTitle" placeholder="عنوان الاجتماع"></div><div class="ss-field"><label>رابط Teams</label><input id="teamsLink" placeholder="ضع رابط اجتماع Teams"></div><div class="ss-field"><label>المستلمون</label><select id="meetTarget">'+rec+'</select></div><div class="ss-field"><label>رفع قائمة الحضور</label><input id="attFile" type="file"><button type="button" class="ss-action" id="fillMinutesTemplateBtn" style="margin-top:6px">تعبئة محضر الاجتماع</button></div></div><div class="ston class="ss-action gold" id="approveMinutes">الاعتماد النهائي للمحضر</button></div>'); var setupTeamsBtn=document.getElementById('setupTeamsMeeting'); if(setupTeamsBtn){setupTeamsBtn.onclick=function(){window.open('https://teams.microsoft.com/v2/','_blank','noopener,noreferrer');};} document.getElementById('sendMeetLink').onclick=function(){sendMeetingLink()}; document.getElementById('approveMinutes').onclick=function(){showFinalApproval()}; var fillBtn=document.getElementById('fillMinutesTemplateBtn'); if(fillBtn){fillBtn.onclick=function(){openMeetingMinutesTemplate()};}}
+  function showMeetingRoom(){var canManager=ROLE==='manager'; var rec=canManager?'<option value="all">إرسال الرابط للجميع</option><option value="agents">الوكلاء فقط</option><option value="teachers">مسؤول/ة النشاطين فقط</option>':'<option value="teachers">مسؤول/ة النشاطين فقط</option>'; panel('قاعة الاجتماعات','<div class="ss-card meeting"><b>تنظيم اجتماع عبر Microsoft Teams</b><div class="ss-muted">'+(canManager?'للمدير صلاحية إرسال رابط الاجتماع للجميع أو لفئة محددة.':'للوكيل صلاحية إرسال رابط الاجتماع للمعلمين فقط.')+'</div></div><div class="ss-grid"><div class="ss-field"><label>عنوان الاجتماع</label><input id="meetTitle" placeholder="عنوان الاجتماع"></div><div class="ss-field"><label>رابط Teams</label><input id="teamsLink" placeholder="ضع رابط اجتماع Teams"></div><div class="ss-field"><label>المستلمون</label><select id="meetTarget">'+rec+'</select></div><div class="ss-field"><label>رفع قائمة الحضور</label><input id="attFile" type="file"><button type="button" class="ss-action" id="fillMinutesTemplateBtn" style="margin-top:6px">تعبئة محضر الاجتماع</button></div></div><div class="ston class="ss-action gold" id="approveMinutes">الاعتماد النهائي للمحضر</button></div>'); var setupTeamsBtn=document.getElementById('setupTeamsMeeting'); if(setupTeamsBtn){setupTeamsBtn.onclick=function(){window.open('https://teams.microsoft.com/v2/','_blank','noopener,noreferrer');};} document.getElementById('sendMeetLink').onclick=function(){sendMeetingLink()}; document.getElementById('approveMinutes').onclick=function(){showFinalApproval()}; var fillBtn=document.getElementById('fillMinutesTemplateBtn'); if(fillBtn){fillBtn.onclick=function(){openMeetingMinutesTemplate()};}}
   function meetingRoles(target){if(ROLE==='agent')return ['teacher']; if(target==='agents')return ['agent']; if(target==='teachers')return ['teacher']; return ['agent','teacher'];}
   function sendMeetingLink(){
     var t=(val('meetTitle')||'').trim()||'اجتماع جديد';
@@ -4742,7 +4848,7 @@ body{overflow-x:hidden}
     updateBadges();
   }
 function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', link=val('teamsLink'), min=val('minutesTxt'), att=document.getElementById('attFile'); var attName=att&&att.files&&att.files[0]?att.files[0].name:''; panel('الاعتماد النهائي لمحضر الاجتماع','<div class="ss-grid"><div class="ss-field"><label>اسم المدير/المعتمد</label><input id="apName" placeholder="اسم المدير أو الوكيل"></div><div class="ss-field"><label>الختم الرقمي</label><input id="apStamp" type="file" accept="image/*"></div><div class="ss-field"><label>التوقيع الرقمي</label><input id="apSign" type="file" accept="image/*"></div></div><div class="ss-card"><b>'+esc(t)+'</b><div class="ss-muted">قائمة الحضور: '+esc(attName||'لم ترفع')+'</div><div style="white-space:pre-wrap">'+esc(min||'لا يوجد نص للمحضر')+'</div></div><button class="ss-action" id="sendMinutes">اعتماد وإرسال محضر الاجتماع للحضور</button>'); document.getElementById('sendMinutes').onclick=function(){var roles=ROLE==='manager'?['manager'].concat(meetingRoles(localStorage.getItem('tmp')||'all')):['agent','teacher']; var target=ROLE==='manager'?['manager','agent','teacher']:['agent','teacher']; target=[...new Set(target)]; target.forEach(function(r){saveMinutes(r,{title:t,minutes:min,teamsLink:link,sender:ROLE,approvedBy:val('apName'),attendanceFile:attName,template:'نموذج محضر اجتماع - وزارة التعليم',pdfHtml:(localStorage.getItem('ss_meeting_template_html')||''),officialHtml:(localStorage.getItem('ss_meeting_template_html')||''),attendance:meetingAttendanceList()});}); alert('تم اعتماد المحضر وإرساله وحفظه في محافظ الاجتماعات.'); close(); updateBadges();}}
-  function showCloud(){panel('الرفع السحابي','<div class="ss-card"><b>رائد/ة النشاط</b><div class="ss-muted">تجهيز ملف/مجلد سحابي يحمل اسم رائد/ة النشاط، وداخله نسخة مطابقة للأقسام مع استثناء تقرير جديد وداشبورد المتابعة.</div></div><div class="ss-field"><label>اختر السحابة</label><select id="cloudProvider"><option>حفظ داخل المنصة</option><option>OneDrive</option><option>Google Drive</option><option>تخطي الآن</option></select></div><div class="ss-actions"><button class="ss-action blue" id="cloudOpenOneDrive">فتح OneDrive وربط الحساب</button><button class="ss-action blue" id="cloudUpload">رفع ملف</button><button class="ss-action" id="cloudPackage">إنشاء النسخة المطابقة</button><button class="ss-action secondary" id="cloudMap">تنزيل الخريطة</button></div><input id="cloudFile" type="file" style="display:none">'); document.getElementById('cloudOpenOneDrive').onclick=function(){window.open('https://onedrive.live.com/login','_blank','noopener')}; document.getElementById('cloudUpload').onclick=function(){document.getElementById('cloudFile').click()}; document.getElementById('cloudFile').onchange=function(e){alert('تم تجهيز الملف للرفع إلى '+val('cloudProvider')+' داخل مجلد '+APP)}; document.getElementById('cloudPackage').onclick=function(){var data={root:APP,excluded:['تقرير جديد','داشبورد المتابعة'],folders:['الأرشيف الذكي','محفظة الاجتماعات','التنبيهات','المرفقات'],role:ROLE,createdAt:new Date().toISOString()}; download('cloud-package.json',JSON.stringify(data,null,2));}; document.getElementById('cloudMap').onclick=function(){download('cloud-map.json',JSON.stringify({root:APP,excluded:['تقرير جديد','داشبورد المتابعة']},null,2));};}
+  function showCloud(){panel('الرفع السحابي','<div class="ss-card"><b>مسؤول/ة النشاط</b><div class="ss-muted">تجهيز ملف/مجلد سحابي يحمل اسم مسؤول/ة النشاط، وداخله نسخة مطابقة للأقسام مع استثناء تقرير جديد وداشبورد المتابعة.</div></div><div class="ss-field"><label>اختر السحابة</label><select id="cloudProvider"><option>حفظ داخل المنصة</option><option>OneDrive</option><option>Google Drive</option><option>تخطي الآن</option></select></div><div class="ss-actions"><button class="ss-action blue" id="cloudOpenOneDrive">فتح OneDrive وربط الحساب</button><button class="ss-action blue" id="cloudUpload">رفع ملف</button><button class="ss-action" id="cloudPackage">إنشاء النسخة المطابقة</button><button class="ss-action secondary" id="cloudMap">تنزيل الخريطة</button></div><input id="cloudFile" type="file" style="display:none">'); document.getElementById('cloudOpenOneDrive').onclick=function(){window.open('https://onedrive.live.com/login','_blank','noopener')}; document.getElementById('cloudUpload').onclick=function(){document.getElementById('cloudFile').click()}; document.getElementById('cloudFile').onchange=function(e){alert('تم تجهيز الملف للرفع إلى '+val('cloudProvider')+' داخل مجلد '+APP)}; document.getElementById('cloudPackage').onclick=function(){var data={root:APP,excluded:['تقرير جديد','داشبورد المتابعة'],folders:['الأرشيف الذكي','محفظة الاجتماعات','التنبيهات','المرفقات'],role:ROLE,createdAt:new Date().toISOString()}; download('cloud-package.json',JSON.stringify(data,null,2));}; document.getElementById('cloudMap').onclick=function(){download('cloud-map.json',JSON.stringify({root:APP,excluded:['تقرير جديد','داشبورد المتابعة']},null,2));};}
   function download(name,text){var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:'application/json'}));a.download=name;a.click();setTimeout(function(){URL.revokeObjectURL(a.href)},1000)}
   function updateBadges(){var b=document.getElementById('ssInboxBadge'), d=document.getElementById('ssInboxMeetingDot'); if(b){var n=notifs(ROLE).filter(function(x){return !x.read}).length;b.textContent=n;b.style.display=n?'flex':'none'} if(d){var m=notifs(ROLE).some(function(x){return x.type==='meeting'&&!x.read});d.style.display=m?'block':'none'} var mb=document.getElementById('ssMeetWalletBadge'); if(mb){var c=minutes(ROLE).length;mb.textContent=c;mb.style.display=c?'flex':'none'}}
   function boot(){renderBar();attach();document.getElementById('ssFinalClose').onclick=close;document.getElementById('ssFinalBackdrop').onclick=function(e){if(e.target.id==='ssFinalBackdrop')close()}; window.addEventListener('ssDataChanged',updateBadges); updateBadges();}
@@ -4811,13 +4917,13 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
 (function(){
   var SMART_TOOL_REGISTRY = {
 
-    "سجلات رائد/ة النشاط": {
+    "سجلات مسؤول/ة النشاط": {
       src: "student_advisor_records.html",
-      title: "سجلات رائد/ة النشاط"
+      title: "سجلات مسؤول/ة النشاط"
     },
     "سجلات الموجه": {
       src: "student_advisor_records.html",
-      title: "سجلات رائد/ة النشاط"
+      title: "سجلات مسؤول/ة النشاط"
     },
 "تحليل البيانات": {
       src: "student_followup_analysis_updated.html",
@@ -4971,55 +5077,80 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
 </script>
 
 
-<script id="STUDENT_ADVISOR_EXIT_FIX">
+<script id="ACTIVITY_LEADER_INDEPENDENT_EXIT_FIX">
 (function(){
-  function goToIndependentSchoolLogin(){
+  if(window.__ACTIVITY_LEADER_INDEPENDENT_EXIT_FIX__) return;
+  window.__ACTIVITY_LEADER_INDEPENDENT_EXIT_FIX__ = true;
+
+  function isIndependentSchoolContext(){
     try{
-      var qs = new URLSearchParams(location.search || '');
-      var keep = new URLSearchParams();
-
-      ['schoolId','schoolName','admin','owner','token','register','source'].forEach(function(k){
-        var v = qs.get(k);
-        if(v) keep.set(k, v);
-      });
-
-      var target = 'index.html';
-      var q = keep.toString();
-      if(q) target += '?' + q;
-      window.location.href = target;
-    }catch(e){
-      window.location.href = 'index.html';
-    }
+      var q = new URLSearchParams(location.search || '');
+      var schoolId = String(q.get('schoolId') || q.get('school') || q.get('schoolCode') || '').trim();
+      var independent = String(q.get('independent') || '').toLowerCase() === 'true';
+      var schoolMode = String(q.get('schoolMode') || '').toLowerCase() === 'independent';
+      var direct = String(q.get('direct') || '').toLowerCase() === '1' || String(q.get('loginMode') || '').toLowerCase() === 'direct';
+      var raw = localStorage.getItem('smart_school_current_session') || sessionStorage.getItem('smart_school_current_session') || '';
+      var s = raw ? JSON.parse(raw) : null;
+      var sessionIndependent = !!(s && (s.independentSchool === true || s.loginMode === 'direct') && (s.schoolId || schoolId));
+      return !!schoolId && independent && schoolMode && (direct || sessionIndependent);
+    }catch(e){ return false; }
   }
 
-  window.studentAdvisorExitToSchoolLogin = goToIndependentSchoolLogin;
+  function backToIndependentSchoolLogin(){
+    if(isIndependentSchoolContext() && typeof window.smartIndependentSchoolBackToUsersLogin === 'function'){
+      if(window.smartIndependentSchoolBackToUsersLogin()) return true;
+    }
+    location.href = 'index.html';
+    return true;
+  }
+
+  function finalIndependentExit(){
+    if(isIndependentSchoolContext() && typeof window.smartIndependentSchoolFinalClose === 'function'){
+      if(window.smartIndependentSchoolFinalClose()) return true;
+    }
+    try{
+      ['currentRole','currentUserName','currentUserEmail','smart_school_active_role','smart_school_current_session','independent_school_mode'].forEach(function(k){
+        localStorage.removeItem(k); sessionStorage.removeItem(k);
+      });
+    }catch(e){}
+    location.href = 'index.html';
+    return true;
+  }
+
+  window.activityLeaderBackToIndependentSchoolLogin = backToIndependentSchoolLogin;
+  window.activityLeaderFinalIndependentExit = finalIndependentExit;
 
   function textOf(el){
-    return (el.innerText || el.textContent || el.title || el.getAttribute('aria-label') || '').trim();
+    return String((el && (el.innerText || el.textContent || el.title || el.getAttribute('aria-label') || el.id || '')) || '').trim();
   }
 
   function bindExitButtons(){
-    var nodes = Array.prototype.slice.call(document.querySelectorAll('button,a,[role="button"],.top-icon,.nav-icon'));
+    var nodes = Array.prototype.slice.call(document.querySelectorAll('#ssBack,#ssExit,button,a,[role="button"],.top-icon,.nav-icon'));
     nodes.forEach(function(el){
-      if(el.dataset.studentAdvisorExitBound === '1') return;
+      if(el.dataset.activityLeaderExitBound === '1') return;
+      var id = el.id || '';
       var t = textOf(el);
-      if(t.indexOf('العودة للقائمة') !== -1 || t.indexOf('خروج') !== -1 || t.indexOf('الخروج') !== -1){
-        el.dataset.studentAdvisorExitBound = '1';
-        if(el.tagName && el.tagName.toLowerCase() === 'a') el.removeAttribute('href');
-        el.addEventListener('click', function(ev){
-          ev.preventDefault();
-          ev.stopPropagation();
-          goToIndependentSchoolLogin();
-          return false;
-        }, true);
-      }
+      var isBack = id === 'ssBack' || t.indexOf('العودة للقائمة') !== -1 || t.indexOf('عودة للقائمة') !== -1;
+      var isExit = id === 'ssExit' || t.indexOf('الخروج') !== -1 || t.indexOf('خروج') !== -1;
+      if(!isBack && !isExit) return;
+      el.dataset.activityLeaderExitBound = '1';
+      if(el.tagName && el.tagName.toLowerCase() === 'a') el.removeAttribute('href');
+      el.addEventListener('click', function(ev){
+        ev.preventDefault();
+        ev.stopPropagation();
+        if(ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+        if(isBack) backToIndependentSchoolLogin();
+        else finalIndependentExit();
+        return false;
+      }, true);
     });
   }
 
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindExitButtons);
   else bindExitButtons();
-  setTimeout(bindExitButtons, 700);
-  setTimeout(bindExitButtons, 1800);
+  setTimeout(bindExitButtons, 400);
+  setTimeout(bindExitButtons, 1200);
+  setTimeout(bindExitButtons, 2500);
 })();
 </script>
 
@@ -5227,7 +5358,7 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
   <div class="ara-header">
     <div>
       <h2 style="margin:0;color:#0f766e;font-weight:900;font-size:20px;">🗃️ أرشيف السجلات</h2>
-      <p style="margin:6px 0 0;color:#64748b;font-weight:700;font-size:11px;">أرشيف خاص بقسم رائد/ة النشاط، ومجلداته مطابقة لتسميات نماذج سجلات الموجه.</p>
+      <p style="margin:6px 0 0;color:#64748b;font-weight:700;font-size:11px;">أرشيف خاص بقسم مسؤول/ة النشاط، ومجلداته مطابقة لتسميات نماذج سجلات مسؤول/ة النشاط.</p>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
       <button class="ara-btn ara-soft" onclick="renderAdvisorRecordsArchiveFolders()">رجوع للمجلدات</button>
@@ -5242,7 +5373,7 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
 <div id="advisor-smart-send-modal" dir="rtl" style="display:none;position:fixed;inset:0;z-index:2147482200;background:rgba(15,23,42,.62);align-items:center;justify-content:center;padding:18px;">
   <div style="width:min(520px,94vw);background:white;border-radius:28px;border:1px solid #a7f3d0;box-shadow:0 24px 70px rgba(15,23,42,.28);padding:24px;font-family:Cairo,Tajawal,Arial,sans-serif;">
     <h3 style="margin:0 0 16px;color:#0f766e;font-weight:900;font-size:20px;">إرسال إلى الأرشيف الذكي</h3>
-    <p style="margin:0 0 14px;color:#64748b;font-size:12px;font-weight:700;">اختر مجلد الأرشيف الذكي الخاص برائد/ة النشاط حسب المجالات لوضع نسخة المعاينة.</p>
+    <p style="margin:0 0 14px;color:#64748b;font-size:12px;font-weight:700;">اختر مجلد الأرشيف الذكي الخاص بمسؤول/ة النشاط حسب المجالات لوضع نسخة المعاينة.</p>
     <select id="advisor-smart-folder-select" style="width:100%;padding:13px 14px;border:2px solid #99f6e4;border-radius:18px;font-weight:900;outline:none;background:white;color:#0f172a;"></select>
     <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px;">
       <button onclick="closeAdvisorSmartSendModal()" style="border:0;border-radius:14px;padding:10px 18px;font-weight:900;background:#f1f5f9;color:#334155;cursor:pointer;">إلغاء</button>
@@ -5271,13 +5402,13 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
     var doc = r.htmlContent && r.htmlContent.indexOf('<!DOCTYPE html') !== -1
       ? r.htmlContent
       : '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>'+esc(r.title||'سجل')+'</title><style>@page{size:A4;margin:8mm}body{font-family:Tajawal,Arial,sans-serif;background:white}</style><style id="ss-code-flash-guard">body{overflow-x:hidden}.safe-hidden-deactivate{display:none!important}</style></head><body>'+ (r.htmlContent||'<pre>'+esc(r.summary||'')+'</pre>') + '
-<!-- ACTIVITY_LEADER_GOALS_UPDATED_2026_05_26: المجالات والأهداف الوظيفية/الأدائية والتفصيلية لرائد/ة النشاط محدثة من ملف المستخدم. -->
+<!-- ACTIVITY_LEADER_GOALS_UPDATED_2026_05_26: المجالات والأهداف الوظيفية/الأدائية والتفصيلية لمسؤول/ة النشاط محدثة من ملف المستخدم. -->
 </body></html>';
     if(autoPrint && doc.indexOf('window.print')===-1){
       doc = doc.replace('
-<!-- ACTIVITY_LEADER_GOALS_UPDATED_2026_05_26: المجالات والأهداف الوظيفية/الأدائية والتفصيلية لرائد/ة النشاط محدثة من ملف المستخدم. -->
+<!-- ACTIVITY_LEADER_GOALS_UPDATED_2026_05_26: المجالات والأهداف الوظيفية/الأدائية والتفصيلية لمسؤول/ة النشاط محدثة من ملف المستخدم. -->
 </body>','<script>window.onload=function(){setTimeout(function(){window.print()},500)}<\/script>
-<!-- ACTIVITY_LEADER_GOALS_UPDATED_2026_05_26: المجالات والأهداف الوظيفية/الأدائية والتفصيلية لرائد/ة النشاط محدثة من ملف المستخدم. -->
+<!-- ACTIVITY_LEADER_GOALS_UPDATED_2026_05_26: المجالات والأهداف الوظيفية/الأدائية والتفصيلية لمسؤول/ة النشاط محدثة من ملف المستخدم. -->
 </body>');
     }
     return doc;
@@ -5512,11 +5643,11 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
 <script src="performance-file-engine.js"></script>
 <script src="section-dashboard-safe-fix.js"></script>
 
-<!-- ACTIVITY_LEADER_GOALS_UPDATED_2026_05_26: المجالات والأهداف الوظيفية/الأدائية والتفصيلية لرائد/ة النشاط محدثة من ملف المستخدم. -->
+<!-- ACTIVITY_LEADER_GOALS_UPDATED_2026_05_26: المجالات والأهداف الوظيفية/الأدائية والتفصيلية لمسؤول/ة النشاط محدثة من ملف المستخدم. -->
 
 <script id="activity-leader-report-print-conflict-fix">
 (function(){
-  // طباعة مباشرة للصفحات الظاهرة حالياً في تقرير رائد النشاط بدون نسخ مخزنة أو نافذة خارجية.
+  // طباعة مباشرة للصفحات الظاهرة حالياً في تقرير مسؤول/ة النشاط بدون نسخ مخزنة أو نافذة خارجية.
   // الهدف: طباعة التقرير المفتوح فعلياً داخل #report-content-container أياً كان نوع التقرير الإضافي.
   function removeOldPrintArtifacts(){
     document.querySelectorAll('#activity-print-root,#activity-leader-same-page-print-style,#activity-leader-direct-current-print-style').forEach(function(el){el.remove();});

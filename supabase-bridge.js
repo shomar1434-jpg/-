@@ -131,6 +131,32 @@
     return q.data;
   }
 
+
+  async function resolveSchool(identifier){
+    const sb = getClient();
+    if(!sb) throw new Error('Supabase غير جاهز');
+    const value = String(identifier || '').trim();
+    if(!value) return null;
+    const fields = ['id','school_code','registration_code'];
+    for(const f of fields){
+      const {data,error} = await sb.from('schools').select('*').eq(f,value).maybeSingle();
+      if(error) throw explainSupabaseError(error);
+      if(data) return normalizeSchool(data);
+    }
+    return null;
+  }
+
+  function buildSchoolLinks(school){
+    const basePath = location.href.split('/').slice(0,-1).join('/');
+    const id = school.id || school.schoolId || '';
+    const code = school.school_code || school.schoolCode || id;
+    const reg = school.registration_code || school.registrationCode || '';
+    const name = school.school_name || school.schoolName || '';
+    const registrationLink = `${basePath}/register.html?schoolId=${encodeURIComponent(id)}&school=${encodeURIComponent(code)}&reg=${encodeURIComponent(reg)}&token=${encodeURIComponent(reg)}&schoolName=${encodeURIComponent(name)}&source=supabase_school_registration`;
+    const loginLink = `${basePath}/school-login.html?schoolId=${encodeURIComponent(id)}&school=${encodeURIComponent(code)}&schoolName=${encodeURIComponent(name)}&source=supabase_school_login`;
+    return {registrationLink, loginLink};
+  }
+
   async function createSchoolWithManager(payload){
     const sb = getClient();
     if(!sb) throw new Error('Supabase غير جاهز');
@@ -154,6 +180,12 @@
     }).select('*').single();
 
     if(schoolErr) throw explainSupabaseError(schoolErr);
+
+    try{
+      const links = buildSchoolLinks(school);
+      const updated = await sb.from('schools').update({registration_link:links.registrationLink, login_link:links.loginLink}).eq('id',school.id).select('*').single();
+      if(updated && updated.data){ school.registration_link = updated.data.registration_link; school.login_link = updated.data.login_link; }
+    }catch(e){ console.warn('تعذر تحديث روابط المدرسة بعد إنشاء المعرف', e); }
 
     const manager = await insertUser({
       school_id: school.id,
@@ -274,12 +306,18 @@
     return normalizeUser(data);
   }
 
-  async function loginSchoolUser(email,password){
+  async function loginSchoolUser(email,password,targetSchoolId){
     const sb = getClient();
     if(!sb) throw new Error('Supabase غير جاهز');
-    const {data:user,error} = await sb.from('users').select('*').eq('email',email).eq('password',password).maybeSingle();
-    if(error) throw explainSupabaseError(error);
-    if(!user) throw new Error('بيانات الدخول غير صحيحة');
+    const wantedSchool = String(targetSchoolId || '').trim();
+    let q = await sb.from('users').select('*').eq('email',email).eq('password',password);
+    if(q.error) throw explainSupabaseError(q.error);
+    let rows = q.data || [];
+    if(wantedSchool){
+      rows = rows.filter(u => String(u.school_id || '') === wantedSchool);
+    }
+    const user = rows[0] || null;
+    if(!user) throw new Error(wantedSchool ? 'بيانات الدخول غير صحيحة أو الحساب غير مرتبط بهذه المدرسة' : 'بيانات الدخول غير صحيحة');
     if(user.status !== 'active') throw new Error('الحساب غير مفعل بعد');
 
     let school = null;
@@ -291,11 +329,22 @@
 
     const normalized = normalizeUser(user, school);
     try{
+      const normalizedSchool = normalizeSchool(school);
       localStorage.removeItem('smartSchoolUnifiedOpsV2_follow_context');
       sessionStorage.removeItem('smartSchoolUnifiedOpsV2_follow_context');
       localStorage.setItem('currentSchoolUser', JSON.stringify(normalized));
       localStorage.setItem('currentUser', JSON.stringify(normalized));
-      localStorage.setItem('smartSchool.currentSchool', JSON.stringify(normalizeSchool(school)));
+      localStorage.setItem('smartSchool.currentSchool', JSON.stringify(normalizedSchool));
+      if(normalized.schoolId){
+        localStorage.setItem('current_school_id', normalized.schoolId);
+        localStorage.setItem('school_id', normalized.schoolId);
+        localStorage.setItem('smart_school_id', normalized.schoolId);
+      }
+      if(normalized.schoolName){
+        localStorage.setItem('current_school_name', normalized.schoolName);
+        localStorage.setItem('school_name', normalized.schoolName);
+        localStorage.setItem('persist_school', normalized.schoolName);
+      }
       persistIndependentSchoolLogin(school);
     }catch(e){}
     return normalized;
@@ -323,6 +372,8 @@
     dbRoleToApp,
     normalizeSchool,
     normalizeUser,
+    resolveSchool,
+    buildSchoolLinks,
     listSchools,
     createSchoolWithManager,
     updateSchoolStatus,

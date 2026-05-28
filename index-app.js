@@ -33,6 +33,19 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
         let currentUser = null;
         let isManagerVerifiedInSession = false;
 
+        const saveUnifiedUserStores = (users) => {
+            try {
+                const safeUsers = Array.isArray(users) ? users : [];
+                localStorage.setItem('offline_users_backup', JSON.stringify(safeUsers));
+                localStorage.setItem('smartSchoolUnifiedOpsV2_users', JSON.stringify(safeUsers));
+                localStorage.setItem('smart_school_users', JSON.stringify(safeUsers));
+                window.dispatchEvent(new Event('ssDataChanged'));
+            } catch (e) {
+                console.warn('تعذر حفظ مخازن المستخدمين الموحدة', e);
+            }
+        };
+
+
         const showToast = (msg) => {
             const container = document.getElementById('toast-container');
             const t = document.createElement('div');

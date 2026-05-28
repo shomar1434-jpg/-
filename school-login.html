@@ -115,31 +115,62 @@
   }
   async function createSchoolWithManager(payload){
     const sb = getClient(); if(!sb) throw new Error('Supabase غير جاهز');
+    const email = String(payload.email || payload.managerEmail || '').trim().toLowerCase();
     const schoolCode = payload.schoolCode || ('SCH-' + Math.random().toString(36).slice(2,8).toUpperCase());
     const registrationCode = payload.registrationCode || ('REG-' + Math.random().toString(36).slice(2,8).toUpperCase());
+
+    let existingManager = null;
+    try{
+      const ex = await sb.from('users').select('*').eq('email',email).eq('role','manager').limit(1).maybeSingle();
+      existingManager = ex.data || null;
+    }catch(e){}
+
     const {data:school,error:schoolErr} = await sb.from('schools').insert({
       school_name: payload.schoolName,
       school_code: schoolCode,
       manager_name: payload.managerName,
-      manager_email: payload.email,
+      manager_email: email,
       status: 'active',
       registration_code: registrationCode,
       registration_link: payload.registrationLink || null,
       login_link: payload.loginLink || null
     }).select('*').single();
     if(schoolErr) throw schoolErr;
-    const user = await insertUserCompat({
-      school_id: school.id,
-      full_name: payload.managerName,
-      email: payload.email,
-      password: payload.password,
-      role: 'manager',
-      status: 'active',
-      is_primary_manager: true,
-      must_change_password: false
-    });
-    return { school: normalizeSchool(school), manager: normalizeUser(user, school) };
+
+    let user = existingManager;
+    if(!user){
+      try{
+        user = await insertUserCompat({
+          school_id: school.id,
+          full_name: payload.managerName,
+          email: email,
+          password: payload.password,
+          role: 'manager',
+          status: 'active',
+          is_primary_manager: true,
+          must_change_password: false
+        });
+      }catch(e){
+        const ex = await sb.from('users').select('*').eq('email',email).eq('role','manager').limit(1).maybeSingle();
+        if(!ex.data) throw e;
+        user = ex.data;
+      }
+    }
+
+    try{
+      await sb.from('school_members').insert({
+        school_id: school.id,
+        user_id: user.id || null,
+        email: email,
+        role: 'manager',
+        status: 'active',
+        is_primary_manager: true
+      });
+    }catch(e){ console.warn('school_members غير متاح، سيتم الاعتماد على manager_email', e); }
+
+    return { school: normalizeSchool(school), manager: normalizeUser(Object.assign({}, user, {school_id:school.id, is_primary_manager:true}), school) };
   }
+
   async function updateSchoolStatus(schoolId,status){
     const sb = getClient(); if(!sb) throw new Error('Supabase غير جاهز');
     const {error} = await sb.from('schools').update({status}).eq('id',schoolId);
@@ -202,17 +233,45 @@
   }
   async function login(email,password,schoolId){
     const sb = getClient(); if(!sb) throw new Error('Supabase غير جاهز');
+    email = String(email || '').trim().toLowerCase();
+    const wantedSchool = String(schoolId || '').trim();
+
     let query = sb.from('users').select('*').eq('email',email).eq('password',password).neq('status','deleted');
-    if(schoolId) query = query.eq('school_id',schoolId);
-    const {data,error} = await query.maybeSingle();
+    const {data,error} = await query;
     if(error) throw error;
-    if(!data) return null;
-    let school = null;
-    if(data.school_id){
-      const sch = await sb.from('schools').select('*').eq('id',data.school_id).maybeSingle();
+    let rows = data || [];
+
+    if(wantedSchool){
+      let scoped = rows.filter(u => String(u.school_id || '') === wantedSchool);
+      if(!scoped.length){
+        const managerCandidate = rows.find(u => String(u.role||'') === 'manager');
+        if(managerCandidate){
+          let allowed = false, schoolByEmail = null;
+          try{
+            const ms = await sb.from('school_members').select('*').eq('school_id',wantedSchool).or(`email.eq.${email},user_id.eq.${managerCandidate.id}`).maybeSingle();
+            if(ms && ms.data) allowed = true;
+          }catch(e){}
+          try{
+            const schByEmail = await sb.from('schools').select('*').eq('id',wantedSchool).eq('manager_email',email).maybeSingle();
+            if(schByEmail && schByEmail.data){ allowed = true; schoolByEmail = schByEmail.data; }
+          }catch(e){}
+          if(allowed) scoped = [Object.assign({}, managerCandidate, {school_id:wantedSchool, __schoolOverride:schoolByEmail})];
+        }
+      }
+      rows = scoped;
+    }
+
+    const row = rows[0] || null;
+    if(!row) return null;
+    let school = row.__schoolOverride || null;
+    if(row.school_id && !school){
+      const sch = await sb.from('schools').select('*').eq('id',row.school_id).maybeSingle();
       if(!sch.error) school = sch.data;
     }
-    return normalizeUser(data, school);
+    const normalized = normalizeUser(row, school);
+    normalized.schoolId = (school && school.id) || row.school_id || wantedSchool || normalized.schoolId;
+    normalized.schoolName = (school && (school.school_name || school.schoolName)) || normalized.schoolName || '';
+    return normalized;
   }
   window.SmartSchoolSupabase = { getClient, appRoleToDb, dbRoleToApp, normalizeUser, normalizeSchool, listSchools, createSchoolWithManager, updateSchoolStatus, registerSchoolUser, listUsersBySchool, updateUserStatus, upsertSchoolUser, login };
 })();

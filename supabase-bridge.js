@@ -157,21 +157,61 @@
     return {registrationLink, loginLink};
   }
 
+
+  async function createSchoolMemberSafe(payload){
+    const sb = getClient();
+    if(!sb) return null;
+    try{
+      const row = {
+        school_id: payload.school_id || payload.schoolId,
+        user_id: payload.user_id || payload.userId || null,
+        email: payload.email || '',
+        role: payload.role || 'manager',
+        status: payload.status || 'active',
+        is_primary_manager: !!payload.is_primary_manager
+      };
+      const q = await sb.from('school_members').insert(row).select('*').maybeSingle();
+      if(q.error){
+        console.warn('school_members غير متاح أو لم يتم إنشاؤه بعد، سيتم الاعتماد مؤقتًا على manager_email داخل schools:', q.error.message || q.error);
+        return null;
+      }
+      return q.data || null;
+    }catch(e){
+      console.warn('تعذر إنشاء ربط school_members، سيتم الاعتماد مؤقتًا على manager_email داخل schools:', e.message || e);
+      return null;
+    }
+  }
+
+  async function findManagerByEmail(email){
+    const sb = getClient();
+    if(!sb || !email) return null;
+    try{
+      const q = await sb.from('users').select('*').eq('email', email).eq('role','manager').limit(1).maybeSingle();
+      if(q.error) return null;
+      return q.data || null;
+    }catch(e){ return null; }
+  }
+
+
   async function createSchoolWithManager(payload){
     const sb = getClient();
     if(!sb) throw new Error('Supabase غير جاهز');
 
+    const email = String(payload.email || payload.managerEmail || '').trim().toLowerCase();
+    const managerName = payload.managerName || payload.manager_name || '';
     const schoolCode = payload.schoolCode || makeCode('SCH');
     const registrationCode = payload.registrationCode || makeCode('REG');
     const basePath = location.href.split('/').slice(0,-1).join('/');
     const registrationLink = payload.registrationLink || `${basePath}/register.html?school=${encodeURIComponent(schoolCode)}&reg=${encodeURIComponent(registrationCode)}`;
     const loginLink = payload.loginLink || `${basePath}/school-login.html?school=${encodeURIComponent(schoolCode)}`;
 
+    const existingManager = await findManagerByEmail(email);
+
     const {data:school,error:schoolErr} = await sb.from('schools').insert({
       school_name: payload.schoolName || payload.school_name || '',
       school_code: schoolCode,
-      manager_name: payload.managerName || payload.manager_name || '',
-      manager_email: payload.email || payload.managerEmail || '',
+      manager_name: managerName,
+      manager_email: email,
       status: payload.status || 'active',
       active: true,
       registration_code: registrationCode,
@@ -187,19 +227,47 @@
       if(updated && updated.data){ school.registration_link = updated.data.registration_link; school.login_link = updated.data.login_link; }
     }catch(e){ console.warn('تعذر تحديث روابط المدرسة بعد إنشاء المعرف', e); }
 
-    const manager = await insertUser({
+    let manager = existingManager;
+    if(!manager){
+      try{
+        manager = await insertUser({
+          school_id: school.id,
+          full_name: managerName,
+          email: email,
+          password: payload.password || '',
+          role: 'manager',
+          status: payload.status || 'active',
+          active: true,
+          is_primary_manager: true,
+          must_change_password: false
+        });
+      }catch(e){
+        // في حال وجود قيد UNIQUE على البريد، نعيد استخدام حساب المدير الموجود
+        manager = await findManagerByEmail(email);
+        if(!manager) throw e;
+      }
+    }
+
+    await createSchoolMemberSafe({
       school_id: school.id,
-      full_name: payload.managerName || payload.manager_name || '',
-      email: payload.email || payload.managerEmail || '',
-      password: payload.password || '',
+      user_id: manager && manager.id,
+      email: email,
       role: 'manager',
       status: payload.status || 'active',
-      active: true,
-      is_primary_manager: true,
-      must_change_password: false
+      is_primary_manager: true
     });
 
-    return {school: normalizeSchool(school), manager: normalizeUser(manager, school)};
+    const normalizedManager = normalizeUser(Object.assign({}, manager, {
+      school_id: school.id,
+      schoolName: school.school_name || payload.schoolName || '',
+      is_primary_manager: true,
+      status: payload.status || (manager && manager.status) || 'active'
+    }), school);
+
+    normalizedManager.schoolIds = Array.from(new Set([].concat(manager && manager.schoolIds || [], [school.id]).filter(Boolean)));
+    normalizedManager.managedSchools = [{id:school.id, schoolId:school.id, schoolName:school.school_name || '', schoolCode:school.school_code || ''}];
+
+    return {school: normalizeSchool(school), manager: normalizedManager};
   }
 
   async function updateSchoolStatus(schoolId,status){
@@ -309,25 +377,51 @@
   async function loginSchoolUser(email,password,targetSchoolId){
     const sb = getClient();
     if(!sb) throw new Error('Supabase غير جاهز');
+    email = String(email || '').trim().toLowerCase();
     const wantedSchool = String(targetSchoolId || '').trim();
-    let q = await sb.from('users').select('*').eq('email',email).eq('password',password);
+
+    let q = await sb.from('users').select('*').eq('email',email).eq('password',password).neq('status','deleted');
     if(q.error) throw explainSupabaseError(q.error);
     let rows = q.data || [];
+
     if(wantedSchool){
-      rows = rows.filter(u => String(u.school_id || '') === wantedSchool);
+      let scoped = rows.filter(u => String(u.school_id || '') === wantedSchool);
+      if(!scoped.length){
+        const managerCandidate = rows.find(u => String(u.role||'') === 'manager');
+        if(managerCandidate){
+          let allowed = false;
+          let schoolByEmail = null;
+          try{
+            const ms = await sb.from('school_members').select('*').eq('school_id',wantedSchool).or(`email.eq.${email},user_id.eq.${managerCandidate.id}`).maybeSingle();
+            if(ms && ms.data) allowed = true;
+          }catch(e){}
+          try{
+            const schByEmail = await sb.from('schools').select('*').eq('id',wantedSchool).eq('manager_email',email).maybeSingle();
+            if(schByEmail && schByEmail.data){ allowed = true; schoolByEmail = schByEmail.data; }
+          }catch(e){}
+          if(allowed){
+            scoped = [Object.assign({}, managerCandidate, {school_id:wantedSchool, role:'manager', is_primary_manager:true, __schoolOverride:schoolByEmail})];
+          }
+        }
+      }
+      rows = scoped;
     }
+
     const user = rows[0] || null;
     if(!user) throw new Error(wantedSchool ? 'بيانات الدخول غير صحيحة أو الحساب غير مرتبط بهذه المدرسة' : 'بيانات الدخول غير صحيحة');
-    if(user.status !== 'active') throw new Error('الحساب غير مفعل بعد');
+    if(user.status && user.status !== 'active') throw new Error('الحساب غير مفعل بعد');
 
-    let school = null;
-    if(user.school_id){
-      const {data} = await sb.from('schools').select('*').eq('id',user.school_id).maybeSingle();
-      school = data;
-      if(school && school.status !== 'active') throw new Error('المدرسة غير مفعلة');
+    let school = user.__schoolOverride || null;
+    if(user.school_id && !school){
+      const sch = await sb.from('schools').select('*').eq('id',user.school_id).maybeSingle();
+      if(!sch.error) school = sch.data;
+      if(school && school.status && school.status !== 'active') throw new Error('المدرسة غير مفعلة');
     }
 
     const normalized = normalizeUser(user, school);
+    normalized.schoolId = (school && school.id) || user.school_id || wantedSchool || normalized.schoolId;
+    normalized.schoolName = (school && (school.school_name || school.schoolName)) || normalized.schoolName || '';
+
     try{
       const normalizedSchool = normalizeSchool(school);
       localStorage.removeItem('smartSchoolUnifiedOpsV2_follow_context');

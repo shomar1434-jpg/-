@@ -56,8 +56,8 @@ body[data-ss-role="activity-leader"] #main-report-app{
   // رابط الدخول الحقيقي يمرر email في الاستعلام، وهذا لا يعني وضع متابعة.
   // وضع المتابعة يظهر فقط عند وجود علامة متابعة صريحة من المدير/الوكيل/المشرف.
   var explicitFollow = qs.get('follow') === '1' || qs.get('readonly') === '1' || mode.indexOf('supervisor') >= 0 || mode.indexOf('follow') >= 0 || mode.indexOf('monitor') >= 0;
-  var directLogin = qs.get('direct') === '1' || loginMode === 'direct' || roleParam === 'activity_leader' || roleParam === 'activity-leader';
-  var isFollow = explicitFollow && !directLogin;
+  var directLogin = !explicitFollow && (qs.get('direct') === '1' || loginMode === 'direct' || roleParam === 'activity_leader' || roleParam === 'activity-leader');
+  var isFollow = explicitFollow || (!directLogin && (qs.get('monitoring') === 'true'));
   if (!isFollow) {
     try {
       sessionStorage.removeItem('smartSchoolUnifiedOpsV2_follow_context');
@@ -93,7 +93,7 @@ body[data-ss-role="activity-leader"] #main-report-app{
   if (!followEmail && profile.email) followEmail = norm(profile.email);
 
   var accountName = profile.name || profile.fullName || profile.username || qs.get('followName') || 'حساب مسؤول/ة النشاط';
-  var accountRole = (profile.role || qs.get('targetRole') || qs.get('role') || 'teacher').toLowerCase();
+  var accountRole = (qs.get('targetRole') || profile.role || qs.get('role') || 'activity_leader').toLowerCase();
   var roleLabel = accountRole.indexOf('agent') >= 0 || accountRole.indexOf('وكيل') >= 0 ? 'وكيل' : (accountRole.indexOf('activity') >= 0 || accountRole.indexOf('نشاط') >= 0 ? 'مسؤول/ة النشاط' : 'معلم');
   var accountKey = safeKey(followEmail || accountName || 'teacher');
   var prefix = 'follow_account_' + accountKey + '_';
@@ -171,9 +171,17 @@ body[data-ss-role="activity-leader"] #main-report-app{
     box.style.cssText = 'position:fixed;top:64px;left:16px;z-index:2147483000;background:#1d4ed8;color:#fff;padding:10px 15px;border-radius:16px;font-family:Cairo,Arial,sans-serif;font-weight:900;box-shadow:0 8px 22px rgba(0,0,0,.25);font-size:12px;line-height:1.7;max-width:330px;text-align:right';
     box.innerHTML = 'وضع المتابعة — ' + esc(roleLabel) + ': ' + esc(accountName) + (followEmail ? '<br><span style="font-weight:700;opacity:.9">' + esc(followEmail) + '</span>' : '') + '<br><span style="font-weight:700;opacity:.9">صلاحية قراءة فقط: الأرشيف والمعاينة والبحث</span>';
     document.body.appendChild(box);
-    setTimeout(function(){
-      try { box.style.transition = 'opacity .35s ease, transform .35s ease'; box.style.opacity = '0'; box.style.transform = 'translateY(-8px)'; setTimeout(function(){ box.remove(); }, 450); } catch(e){}
-    }, 10000);
+    if(!box.dataset.activityBannerHideApplied){
+      box.dataset.activityBannerHideApplied='1';
+      setTimeout(function(){
+        try{
+          box.style.transition='opacity .35s ease, transform .35s ease';
+          box.style.opacity='0';
+          box.style.transform='translateY(-8px)';
+          setTimeout(function(){ if(box && box.parentNode) box.parentNode.removeChild(box); },450);
+        }catch(e){}
+      },10000);
+    }
   }
 
   document.addEventListener('DOMContentLoaded', function(){
@@ -5739,5 +5747,6 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
   window.preparePrint=window.activityLeaderPrintReportOnly;
 })();
 </script>
+<script src="improvement_plan_follow.js" defer></script>
 </body>
 </html>

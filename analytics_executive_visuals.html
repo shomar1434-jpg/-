@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>المخططات التنفيذية ومؤشر الأداء الذكي</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#eef5f3;color:#0f172a;font-family:Cairo,Tahoma,Arial,sans-serif}
+.hero{background:linear-gradient(135deg,#052e2b,#0f766e);color:white;padding:24px;border-radius:0 0 34px 34px;box-shadow:0 18px 45px rgba(15,118,110,.28)}
+.hero h1{margin:0;font-size:25px;font-weight:900}.hero p{margin:8px 0 0;color:#d1fae5;font-weight:700}
+.wrap{max-width:1240px;margin:22px auto;padding:0 16px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:15px}
+.card{background:rgba(255,255,255,.96);border:1px solid #dbe7e2;border-radius:26px;padding:18px;box-shadow:0 12px 30px rgba(15,23,42,.07)}
+.kpi{font-size:42px;font-weight:900;color:#0f766e;line-height:1}.label{font-size:12px;color:#64748b;font-weight:900;margin-top:6px}
+.badge{display:inline-block;padding:7px 12px;border-radius:999px;background:#ecfdf5;color:#047857;font-weight:900;font-size:12px}
+.btn{display:inline-block;margin-top:12px;text-decoration:none;background:#0f766e;color:white;border-radius:14px;padding:10px 14px;font-weight:900}
+.chart-title{font-weight:900;color:#0f172a;margin:0 0 4px}.chart-desc{font-size:12px;color:#64748b;font-weight:700;margin:0 0 12px}
+svg{width:100%;height:auto;display:block}.axis{stroke:#cbd5e1;stroke-width:1}.gridline{stroke:#e2e8f0;stroke-width:1}.bar{fill:#0f766e}.bar2{fill:#2563eb}.line{fill:none;stroke:#0f766e;stroke-width:4;stroke-linecap:round;stroke-linejoin:round}.dot{fill:#0f766e}.pie1{fill:#0f766e}.pie2{fill:#2563eb}.pie3{fill:#f59e0b}
+.table{width:100%;border-collapse:collapse}td,th{padding:10px;border-bottom:1px solid #e2e8f0;text-align:right}th{color:#065f46;background:#ecfdf5}
+.alert{border-right:7px solid #f59e0b}.danger{border-right-color:#dc2626}.good{border-right-color:#16a34a}
+</style>
+</head>
+<body>
+<div class="hero"><h1>المخططات التنفيذية ومؤشر الأداء الذكي</h1><p>طبقة تحليل بصري احترافية مرتبطة بالمدرسة النشطة وتنبيهات المدير الذكية.</p><a class="btn" href="manager.html">العودة لقسم المدير</a></div>
+<div class="wrap" id="app"></div>
+<script src="weekly_analytics_engine.js"></script>
+<script>
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function polar(cx,cy,r,angle){var a=(angle-90)*Math.PI/180;return [cx+r*Math.cos(a),cy+r*Math.sin(a)];}
+function arc(cx,cy,r,start,end){var s=polar(cx,cy,r,end), e=polar(cx,cy,r,start), large=end-start<=180?0:1;return 'M '+s[0]+' '+s[1]+' A '+r+' '+r+' 0 '+large+' 0 '+e[0]+' '+e[1];}
+function lineChart(data){
+ if(!data.length) return '<div class="card">لا توجد بيانات أسابيع كافية بعد.</div>';
+ var w=720,h=260,p=38,max=100, step=(w-p*2)/Math.max(1,data.length-1);
+ var pts=data.map((d,i)=>[p+i*step,h-p-(d.score/max)*(h-p*2)]);
+ var path=pts.map((pt,i)=>(i?'L':'M')+pt[0]+','+pt[1]).join(' ');
+ return `<svg viewBox="0 0 ${w} ${h}"><line class="axis" x1="${p}" y1="${h-p}" x2="${w-p}" y2="${h-p}"/>${[25,50,75,100].map(v=>`<line class="gridline" x1="${p}" x2="${w-p}" y1="${h-p-(v/max)*(h-p*2)}" y2="${h-p-(v/max)*(h-p*2)}"/>`).join('')}<path class="line" d="${path}"/>${pts.map((pt,i)=>`<circle class="dot" cx="${pt[0]}" cy="${pt[1]}" r="5"><title>${esc(data[i].label)}: ${data[i].score}%</title></circle>`).join('')}</svg>`;
+}
+function barChart(data){
+ if(!data.length) return '<div class="card">لا توجد بيانات أقسام كافية بعد.</div>';
+ var w=720,h=Math.max(250,data.length*52),p=130,max=100;
+ return `<svg viewBox="0 0 ${w} ${h}">${data.map((d,i)=>{var y=30+i*48,bw=(d.score/max)*(w-p-60);return `<text x="${w-10}" y="${y+16}" text-anchor="end" font-size="13" font-weight="900" fill="#334155">${esc(d.label)}</text><rect x="30" y="${y}" width="${w-p}" height="24" rx="12" fill="#e2e8f0"/><rect class="bar" x="30" y="${y}" width="${bw}" height="24" rx="12"/><text x="${Math.max(70,30+bw-8)}" y="${y+17}" text-anchor="end" font-size="12" font-weight="900" fill="white">${d.score}%</text>`}).join('')}</svg>`;
+}
+function pieChart(data){
+ var total=data.reduce((a,b)=>a+(b.value||0),0)||1, cx=130,cy=130,r=90,start=0;
+ var paths=data.map((d,i)=>{var end=start+(d.value/total)*360, path=arc(cx,cy,r,start,end), out=`<path class="pie${i+1}" d="${path}" stroke-width="42" stroke-linecap="butt" fill="none"><title>${esc(d.label)}: ${d.value}</title></path>`;start=end;return out;}).join('');
+ return `<svg viewBox="0 0 520 260">${paths}<circle cx="${cx}" cy="${cy}" r="48" fill="white"/><text x="${cx}" y="${cy+5}" text-anchor="middle" font-size="20" font-weight="900" fill="#0f766e">${total}</text>${data.map((d,i)=>`<rect x="280" y="${75+i*34}" width="16" height="16" rx="4" class="pie${i+1}"/><text x="305" y="${88+i*34}" font-size="13" font-weight="900" fill="#334155">${esc(d.label)} — ${d.value}</text>`).join('')}</svg>`;
+}
+const D=WeeklyAnalyticsEngine.executiveChartData(), P=D.performance;
+const alerts=WeeklyAnalyticsEngine.generateManagerSmartAlerts();
+document.getElementById('app').innerHTML=`
+<div class="grid">
+ <div class="card"><div class="label">المدرسة النشطة</div><h2>${esc(P.school.name)}</h2><span class="badge">${esc(P.grade)}</span></div>
+ <div class="card"><div class="label">مؤشر الأداء الذكي SSPI</div><div class="kpi">${P.sspi}%</div><div class="badge">الاتجاه: ${P.trend}</div></div>
+ <div class="card"><div class="label">نشاط العاملين</div><div class="kpi">${P.activeRate}%</div></div>
+ <div class="card"><div class="label">توازن الأقسام</div><div class="kpi">${P.balanceScore}%</div></div>
+</div>
+<div class="grid" style="grid-template-columns:1.4fr 1fr;margin-top:16px">
+ <div class="card"><h3 class="chart-title">اتجاه الأداء الأسبوعي</h3><p class="chart-desc">تغير مؤشر النشاط عبر الأسابيع.</p>${lineChart(D.weeks)}</div>
+ <div class="card"><h3 class="chart-title">توزيع الأعمال المنجزة</h3><p class="chart-desc">السجلات والتنبيهات وخطط التحسين.</p>${pieChart(D.mix)}</div>
+</div>
+<div class="card" style="margin-top:16px"><h3 class="chart-title">مقارنة الأقسام</h3><p class="chart-desc">مؤشر أداء كل قسم داخل المدرسة النشطة.</p>${barChart(D.sections)}</div>
+<div class="card" style="margin-top:16px"><h3 class="chart-title">تنبيهات المدير الذكية</h3><p class="chart-desc">تم توليدها وحفظها داخل تنبيهات المدير لهذا الأسبوع عند الحاجة.</p>
+${alerts.length?alerts.map(a=>`<div class="card ${a.color==='red'?'danger':'alert'}" style="margin:8px 0"><b>${esc(a.title)}</b><br><span>${esc(a.message)}</span></div>`).join(''):'<div class="card good">لا توجد تنبيهات حرجة جديدة لهذا الأسبوع.</div>'}
+</div>`;
+</script>
+</body></html>

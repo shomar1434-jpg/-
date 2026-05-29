@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>سجلات مسؤول/ة النشاط</title>
+<title>سجلات مدير المدرسة</title>
 <style>
 
 :root{
@@ -693,31 +693,31 @@ td textarea,
 <div class="app">
   <aside class="sidebar">
     <div class="brand">
-      <h1>سجلات مسؤول/ة النشاط</h1>
-      <p>واجهة رقمية للتعبئة والأرشفة والطباعة وإعادة المسح، قابلة للتجربة محليًا والدمج لاحقًا داخل المنصة.</p>
+      <h1>سجلات مدير المدرسة</h1>
+      <p>واجهة رقمية لسجلات مدير المدرسة للتعبئة والأرشفة والطباعة وإعادة المسح، مطابقة في التنسيقات وآلية الحفظ والطباعة للقالب المرجعي.</p>
     </div>
     <input id="search" class="search" placeholder="بحث عن سجل..." oninput="renderNav()" />
 
     <div class="settingsBox">
       <div class="settingsHead"><span>إعدادات التذييل والختم</span><span>✦</span></div>
       <div class="settingsBody">
-        <label>اسم مسؤول/ة النشاط</label>
-        <input type="text" id="footerLeaderName" placeholder="اكتب اسم مسؤول/ة النشاط" oninput="updateFooterSettings()" />
-
-        <label>توقيع مسؤول/ة النشاط</label>
-        <div class="filePick">اختيار توقيع مسؤول/ة النشاط PNG / JPEG
-          <input type="file" id="footerLeaderSignFile" accept="image/png,image/jpeg" onchange="loadFooterImage(this,'leaderSign')" />
-        </div>
-        <button type="button" class="clearDigitalBtn" onclick="clearFooterImage('leaderSign')">حذف توقيع مسؤول/ة النشاط</button>
-
         <label>اسم مدير المدرسة</label>
-        <input type="text" id="footerManagerName" placeholder="اكتب اسم المدير" oninput="updateFooterSettings()" />
+        <input type="text" id="footerLeaderName" placeholder="اكتب اسم مدير المدرسة" oninput="updateFooterSettings()" />
 
         <label>توقيع مدير المدرسة</label>
-        <div class="filePick">اختيار توقيع المدير PNG / JPEG
+        <div class="filePick">اختيار توقيع مدير المدرسة PNG / JPEG
+          <input type="file" id="footerLeaderSignFile" accept="image/png,image/jpeg" onchange="loadFooterImage(this,'leaderSign')" />
+        </div>
+        <button type="button" class="clearDigitalBtn" onclick="clearFooterImage('leaderSign')">حذف توقيع مدير المدرسة</button>
+
+        <label>اسم المشرف المساند</label>
+        <input type="text" id="footerManagerName" placeholder="اكتب اسم المشرف المساند" oninput="updateFooterSettings()" />
+
+        <label>توقيع المشرف المساند</label>
+        <div class="filePick">اختيار توقيع المشرف المساند PNG / JPEG
           <input type="file" id="footerManagerSignFile" accept="image/png,image/jpeg" onchange="loadFooterImage(this,'managerSign')" />
         </div>
-        <button type="button" class="clearDigitalBtn" onclick="clearFooterImage('managerSign')">حذف توقيع مدير المدرسة</button>
+        <button type="button" class="clearDigitalBtn" onclick="clearFooterImage('managerSign')">حذف توقيع المشرف المساند</button>
 
         <label>ختم المدرسة</label>
         <div class="filePick">اختيار ختم المدرسة PNG / JPEG
@@ -736,8 +736,8 @@ td textarea,
   <main class="main">
     <div class="toolbar">
       <div class="titleBox">
-        <h2 id="pageTitle">سجلات مسؤول/ة النشاط</h2>
-        <p id="pageDesc">اختر السجل من القائمة الجانبية لفتحه والتعبئة عليه.</p>
+        <h2 id="pageTitle">سجلات مدير المدرسة</h2>
+        <p id="pageDesc">اختر سجل المدير من القائمة الجانبية لفتحه والتعبئة عليه.</p>
       </div>
       <div class="actions">
         <button class="btn" onclick="saveArchive()">حفظ في الأرشيف</button>
@@ -759,26 +759,42 @@ td textarea,
 
 <script>
 const records = [
-  {id:"basic",title:"البيانات الأولية لمسؤول/ة النشاط",desc:"بيانات المدرسة ومسؤول/ة النشاط ومعلومات العام الدراسي.",type:"basic"},
-  {id:"training",title:"الدورات التدريبية لمسؤول/ة النشاط",desc:"توثيق البرامج التدريبية والنمو المهني.",type:"tableTraining"},
-  {id:"goals",title:"أهداف النشاط الطلابي",desc:"تحديد أهداف النشاط ومؤشرات التحقق.",type:"goals"},
-  {id:"tasks",title:"مهام مسؤول/ة النشاط",desc:"توثيق مهام ومسؤوليات مسؤول/ة النشاط.",type:"tasks"},
-  {id:"assignment",title:"قرار تكليف مسؤول/ة النشاط",desc:"نموذج قرار تكليف داخلي قابل للطباعة.",type:"assignment"},
-  {id:"council",title:"مجلس النشاط الطلابي",desc:"تشكيل مجلس النشاط ومحاضر اجتماعاته.",type:"council"},
-  {id:"classleaders",title:"مسؤولو/مسؤولات الفصول",desc:"بيان مسؤولو/مسؤولات الفصول وأدوارهم في النشاط.",type:"classleaders"},
-  {id:"fields",title:"مجالات النشاط الطلابي",desc:"تحديد المجالات والأندية والمشرفين.",type:"fields"},
-  {id:"annualPlan",title:"الخطة العامة للنشاط",desc:"خطة سنوية عامة للبرامج والمبادرات.",type:"annualPlan"},
-  {id:"weeklyPlan",title:"خطة النشاط الأسبوعية",desc:"تنظيم برامج النشاط خلال الأسبوع.",type:"weeklyPlan"},
-  {id:"supervisors",title:"المشرفون على المجالات",desc:"توزيع المشرفين على مجالات النشاط.",type:"supervisors"},
-  {id:"attendance",title:"سجل حضور الطلاب لمجالات النشاط",desc:"متابعة حضور الطلاب في مجالات وأندية النشاط.",type:"attendance"},
-  {id:"permission",title:"موافقة ولي الأمر على مشاركة الطالب",desc:"نموذج موافقة ولي الأمر للبرامج والزيارات.",type:"permission"},
-  {id:"circulars",title:"سجل متابعة التعاميم الواردة",desc:"متابعة التعاميم والخطابات والإجراءات.",type:"circulars"},
-  {id:"talented",title:"الطلاب المميزون في النشاط",desc:"حصر الطلاب المميزين داخل المدرسة.",type:"talented"},
-  {id:"external",title:"المشاركون على مستوى الإدارة",desc:"توثيق المشاركات والإنجازات الخارجية.",type:"external"},
-  {id:"implemented",title:"استمارة حصر البرامج المنفذة",desc:"حصر البرامج المنفذة وقياس أثرها.",type:"implemented"},
-  {id:"clubs",title:"أعضاء الأندية الطلابية",desc:"بيان بأسماء أعضاء الأندية الطلابية.",type:"clubs"},
-  {id:"events",title:"الأيام والمناسبات",desc:"خطة تفعيل الأيام والمناسبات الوطنية والعالمية.",type:"events"},
-  {id:"followup",title:"التوجيهات والمتابعة",desc:"توثيق زيارات المتابعة والتوجيهات والتحسين.",type:"followup"}
+  {id:"schoolProfile",category:"leadership",categoryTitle:"القيادة المدرسية",title:"البيانات الأساسية والحوكمة المدرسية",desc:"تعريف المدرسة والهيكل القيادي والصلاحيات والمسؤوليات.",type:"schoolProfile"},
+  {id:"orgStructure",category:"leadership",categoryTitle:"القيادة المدرسية",title:"سجل الهيكل التنظيمي وتوزيع المسؤوليات",desc:"توزيع الأدوار وفق التشكيلات واللجان ومهام العاملين.",type:"orgStructure"},
+  {id:"operationalPlan",category:"leadership",categoryTitle:"القيادة المدرسية",title:"سجل الخطة التشغيلية ومؤشرات التنفيذ",desc:"الأهداف والبرامج والمبادرات ومتابعة نسب الإنجاز.",type:"operationalPlan"},
+  {id:"committees",category:"leadership",categoryTitle:"القيادة المدرسية",title:"سجل اللجان والمجالس المدرسية",desc:"تشكيل اللجان والمجالس ومحاضر الاجتماعات والتوصيات.",type:"committees"},
+  {id:"meetings",category:"leadership",categoryTitle:"القيادة المدرسية",title:"سجل الاجتماعات القيادية والمدرسية",desc:"محاضر الاجتماعات والتوصيات والمسؤوليات ومتابعة التنفيذ.",type:"meetings"},
+  {id:"powers",category:"leadership",categoryTitle:"القيادة المدرسية",title:"سجل متابعة الصلاحيات والقرارات المدرسية",desc:"توثيق الصلاحيات والقرارات والإجراءات والمستندات.",type:"powers"},
+  {id:"correspondence",category:"leadership",categoryTitle:"القيادة المدرسية",title:"سجل الوارد والصادر والتعاميم",desc:"إدارة المخاطبات والتعاميم وتوثيق إجراءات الإغلاق.",type:"correspondence"},
+  {id:"supportSupervisor",category:"leadership",categoryTitle:"القيادة المدرسية",title:"سجل زيارات المشرف المساند",desc:"توثيق الزيارات والتوصيات وخطة المعالجة.",type:"supportSupervisor"},
+  {id:"internalAudit",category:"leadership",categoryTitle:"القيادة المدرسية",title:"سجل التدقيق الداخلي والامتثال",desc:"متابعة الالتزام بالإجراءات والضوابط ومعالجة الفجوات.",type:"internalAudit"},
+  {id:"riskGovernance",category:"leadership",categoryTitle:"القيادة المدرسية",title:"سجل المخاطر والحوكمة المدرسية",desc:"رصد المخاطر التعليمية والإدارية وخطط الاستجابة.",type:"riskGovernance"},
+  {id:"partnerships",category:"leadership",categoryTitle:"القيادة المدرسية",title:"سجل الشراكات والمجتمع المدرسي",desc:"توثيق الشراكات والبرامج المجتمعية وأثرها.",type:"partnerships"},
+  {id:"classVisits",category:"teaching",categoryTitle:"التعليم والتعلم",title:"سجل الزيارات الصفية ودعم التدريس",desc:"متابعة الممارسات الصفية والتغذية الراجعة للمعلمين.",type:"classVisits"},
+  {id:"teacherPerformance",category:"teaching",categoryTitle:"التعليم والتعلم",title:"سجل الأداء الوظيفي والنمو المهني",desc:"متابعة أداء المعلمين وخطط التطوير المهني.",type:"teacherPerformance"},
+  {id:"curriculum",category:"teaching",categoryTitle:"التعليم والتعلم",title:"سجل تنفيذ الخطط الدراسية والمناهج",desc:"متابعة الالتزام بالخطة الدراسية وتغطية المنهج.",type:"curriculum"},
+  {id:"lessonPlanning",category:"teaching",categoryTitle:"التعليم والتعلم",title:"سجل التخطيط للدروس وتحسين الممارسات",desc:"متابعة التخطيط والتحضير والتنوع في استراتيجيات التدريس.",type:"lessonPlanning"},
+  {id:"plc",category:"teaching",categoryTitle:"التعليم والتعلم",title:"سجل المجتمعات المهنية والتعلم التعاوني",desc:"توثيق الاجتماعات المهنية وتبادل الخبرات وأثرها.",type:"plc"},
+  {id:"remedialEnrichment",category:"teaching",categoryTitle:"التعليم والتعلم",title:"سجل الخطط العلاجية والإثرائية",desc:"متابعة برامج الدعم والتحسين والإثراء حسب الفئات المستهدفة.",type:"remedialEnrichment"},
+  {id:"learningResources",category:"teaching",categoryTitle:"التعليم والتعلم",title:"سجل مصادر التعلم والتقنيات التعليمية",desc:"متابعة توظيف المصادر والمنصات والأدوات التعليمية.",type:"learningResources"},
+  {id:"specialGifted",category:"teaching",categoryTitle:"التعليم والتعلم",title:"سجل رعاية الموهوبين وذوي الاحتياجات التعليمية",desc:"متابعة برامج الدعم والرعاية التعليمية المتخصصة.",type:"specialGifted"},
+  {id:"safety",category:"environment",categoryTitle:"البيئة المدرسية",title:"سجل الأمن والسلامة والطوارئ",desc:"خطة السلامة والتجارب والبلاغات والمعالجات.",type:"safety"},
+  {id:"discipline",category:"environment",categoryTitle:"البيئة المدرسية",title:"سجل الانضباط المدرسي والسلوك",desc:"متابعة الحضور والانضباط والسلوك المدرسي والإجراءات.",type:"discipline"},
+  {id:"studentCases",category:"environment",categoryTitle:"البيئة المدرسية",title:"سجل الحالات الطلابية والدعم المساند",desc:"توثيق الحالات والإحالات والإجراءات بالتنسيق مع المختصين.",type:"studentCases"},
+  {id:"health",category:"environment",categoryTitle:"البيئة المدرسية",title:"سجل الصحة المدرسية والبيئة الآمنة",desc:"متابعة الإجراءات الصحية والتوعية والبلاغات.",type:"health"},
+  {id:"maintenance",category:"environment",categoryTitle:"البيئة المدرسية",title:"سجل الصيانة والمرافق والتجهيزات",desc:"متابعة البلاغات والصيانة وجودة البيئة المدرسية.",type:"maintenance"},
+  {id:"custody",category:"environment",categoryTitle:"البيئة المدرسية",title:"سجل العهد والجرد والمستودعات",desc:"توثيق العهد والاستلام والتسليم والجرد السنوي.",type:"custody"},
+  {id:"transport",category:"environment",categoryTitle:"البيئة المدرسية",title:"سجل النقل المدرسي والحركة اليومية",desc:"متابعة النقل والسلامة والحضور والانصراف.",type:"transport"},
+  {id:"activities",category:"environment",categoryTitle:"البيئة المدرسية",title:"سجل الأنشطة والبرامج المدرسية",desc:"متابعة البرامج والفعاليات والأثر والشواهد.",type:"activities"},
+  {id:"digital",category:"environment",categoryTitle:"البيئة المدرسية",title:"سجل التحول الرقمي والخدمات الإلكترونية",desc:"متابعة المنصات والأنظمة والدعم التقني.",type:"digital"},
+  {id:"achievement",category:"outcomes",categoryTitle:"نواتج التعلم",title:"سجل التحصيل الدراسي وتحليل النتائج",desc:"تحليل النتائج حسب المواد والصفوف والفجوات.",type:"achievement"},
+  {id:"kpis",category:"outcomes",categoryTitle:"نواتج التعلم",title:"سجل مؤشرات الأداء المدرسي",desc:"متابعة المستهدف والمنجز والتفسير وإجراء التحسين.",type:"kpis"},
+  {id:"nationalTests",category:"outcomes",categoryTitle:"نواتج التعلم",title:"سجل الاختبارات الوطنية والمركزية",desc:"متابعة نتائج الاختبارات الوطنية والمقارنات وخطط التحسين.",type:"nationalTests"},
+  {id:"skills",category:"outcomes",categoryTitle:"نواتج التعلم",title:"سجل المهارات الأساسية والفجوات التعليمية",desc:"تحديد الفاقد والفجوات وخطط المعالجة.",type:"skills"},
+  {id:"improvementPlan",category:"outcomes",categoryTitle:"نواتج التعلم",title:"سجل خطط التحسين وقياس الأثر",desc:"إجراءات التحسين ومؤشرات النجاح ونسبة الأثر.",type:"improvementPlan"},
+  {id:"attendanceImpact",category:"outcomes",categoryTitle:"نواتج التعلم",title:"سجل أثر الانضباط على نواتج التعلم",desc:"ربط الغياب والتأخر بمستوى التحصيل والتدخلات.",type:"attendanceImpact"},
+  {id:"excellence",category:"outcomes",categoryTitle:"نواتج التعلم",title:"سجل التميز والتكريم والإنجازات",desc:"توثيق إنجازات الطلاب والمعلمين والمدرسة.",type:"excellence"},
+  {id:"closingReports",category:"outcomes",categoryTitle:"نواتج التعلم",title:"سجل التقارير الختامية ورفع التوصيات",desc:"توثيق النتائج النهائية والتوصيات للعام القادم.",type:"closingReports"}
 ];
 
 let current = records[0];
@@ -787,12 +803,22 @@ function renderNav(){
   const q = document.getElementById('search').value.trim();
   const nav = document.getElementById('nav');
   nav.innerHTML = "";
-  records.filter(r=>!q || r.title.includes(q) || r.desc.includes(q)).forEach(r=>{
-    const b=document.createElement('button');
-    b.textContent=r.title;
-    b.className=r.id===current.id?"active":"";
-    b.onclick=()=>{current=r;renderAll();};
-    nav.appendChild(b);
+  const filtered = records.filter(r=>!q || r.title.includes(q) || r.desc.includes(q) || r.categoryTitle.includes(q));
+  const groups = ["القيادة المدرسية","التعليم والتعلم","البيئة المدرسية","نواتج التعلم"];
+  groups.forEach(group=>{
+    const items = filtered.filter(r=>r.categoryTitle===group);
+    if(!items.length) return;
+    const h=document.createElement('div');
+    h.className='categoryTitle';
+    h.textContent=group;
+    nav.appendChild(h);
+    items.forEach(r=>{
+      const b=document.createElement('button');
+      b.textContent=r.title;
+      b.className=r.id===current.id?"active":"";
+      b.onclick=()=>{current=r;renderAll();};
+      nav.appendChild(b);
+    });
   });
 }
 function headerHtml(){
@@ -885,32 +911,67 @@ function rows(cols,n=5,prefix="r"){
 function formByType(t){
  const area = (k,p="")=>`<textarea data-k="${k}" placeholder="${p}"></textarea>`;
  const input = (k,p="")=>`<input data-k="${k}" placeholder="${p}" />`;
- switch(t){
-  case "basic": return `<div class="section"><h4>بيانات عامة</h4><div class="grid3">
-    <div class="field"><label>رقم الجوال</label>${input("mobile")}</div><div class="field"><label>البريد الإلكتروني</label>${input("email")}</div><div class="field"><label>عدد الطلاب</label>${input("students")}</div>
-    <div class="field"><label>عدد الأندية/المجالات</label>${input("clubsCount")}</div><div class="field"><label>عدد المشرفين</label>${input("supCount")}</div><div class="field"><label>ملاحظات</label>${input("notes")}</div>
-    </div></div>`;
-  case "training": return `<div class="section"><h4>الدورات والبرامج التدريبية</h4>${rows(["م","اسم الدورة","الجهة المنفذة","التاريخ","عدد الساعات","الأثر"],6,"tr")}</div>`;
-  case "goals": return `<div class="section"><h4>الأهداف ومؤشرات التحقق</h4>${rows(["م","الهدف","الإجراء المقترح","مؤشر التحقق","الشاهد"],8,"go")}</div>`;
-  case "tasks": return `<div class="section"><h4>المهام والمسؤوليات</h4>${rows(["م","المهمة","آلية التنفيذ","المدة","حالة التنفيذ","ملاحظات"],8,"ta")}</div>`;
-  case "assignment": return `<div class="section"><h4>نص قرار التكليف</h4>${area("assignmentText","بناءً على الصلاحيات، يكلف الأستاذ/ة ... بريادة النشاط الطلابي للعام الدراسي ...")}</div><div class="grid2"><div class="field"><label>اسم المدير/ة</label>${input("manager")}</div><div class="field"><label>التوقيع</label>${input("sign")}</div></div>`;
-  case "council": return `<div class="section"><h4>أعضاء مجلس النشاط الطلابي</h4>${rows(["م","الاسم","الصفة","المهمة","التوقيع"],8,"co")}</div><div class="section"><h4>محضر اجتماع</h4>${area("minutes","ملخص الاجتماع والتوصيات...")}</div>`;
-  case "classleaders": return `<div class="section"><h4>بيان مسؤولو/مسؤولات الفصول</h4>${rows(["م","الفصل","مسؤول/ة الفصل","مجال النشاط","رقم التواصل","ملاحظات"],10,"cl")}</div>`;
-  case "fields": return `<div class="section"><h4>مجالات النشاط والأندية</h4>${rows(["م","المجال/النادي","المشرف","الفئة المستهدفة","المكان","ملاحظات"],10,"fi")}</div>`;
-  case "annualPlan": return `<div class="section"><h4>الخطة العامة للنشاط</h4>${rows(["م","البرنامج","المجال","الفترة الزمنية","المسؤول","مؤشر الإنجاز","الشواهد"],10,"an")}</div>`;
-  case "weeklyPlan": return `<div class="section"><h4>خطة النشاط الأسبوعية</h4>${rows(["اليوم","البرنامج","المجال","المستهدفون","المسؤول","المكان","ملاحظات"],5,"we")}</div>`;
-  case "supervisors": return `<div class="section"><h4>المشرفون على المجالات</h4>${rows(["م","اسم المشرف","المجال","المهام","عدد الطلاب","التوقيع"],8,"su")}</div>`;
-  case "attendance": return `<div class="section"><h4>حضور الطلاب</h4>${rows(["م","اسم الطالب","الصف","المجال/النادي","الأسبوع","الحضور","ملاحظات"],12,"at")}</div>`;
-  case "permission": return `<div class="section"><h4>موافقة ولي الأمر</h4><div class="grid2"><div class="field"><label>اسم الطالب</label>${input("student")}</div><div class="field"><label>الصف</label>${input("grade")}</div><div class="field"><label>اسم البرنامج</label>${input("program")}</div><div class="field"><label>مكان التنفيذ</label>${input("place")}</div></div>${area("permissionText","أوافق أنا ولي أمر الطالب المذكور على مشاركته في البرنامج وفق ضوابط المدرسة.")}<div class="grid2"><div class="field"><label>اسم ولي الأمر</label>${input("parent")}</div><div class="field"><label>التوقيع</label>${input("parentSign")}</div></div></div>`;
-  case "circulars": return `<div class="section"><h4>متابعة التعاميم الواردة</h4>${rows(["م","رقم التعميم","تاريخه","موضوعه","الإجراء المتخذ","حالة الإنجاز"],10,"ci")}</div>`;
-  case "talented": return `<div class="section"><h4>الطلاب المميزون في النشاط</h4>${rows(["م","اسم الطالب","الصف","مجال التميز","نوع المشاركة","الإجراء التحفيزي"],10,"tl")}</div>`;
-  case "external": return `<div class="section"><h4>المشاركات على مستوى الإدارة</h4>${rows(["م","اسم الطالب/الفريق","البرنامج/المسابقة","المستوى","النتيجة","الشواهد"],10,"ex")}</div>`;
-  case "implemented": return `<div class="section"><h4>حصر البرامج المنفذة</h4>${rows(["م","اسم البرنامج","تاريخ التنفيذ","عدد المستفيدين","المنفذون","الأثر","الشواهد"],10,"im")}</div>`;
-  case "clubs": return `<div class="section"><h4>أعضاء الأندية الطلابية</h4>${rows(["م","اسم الطالب","الصف","النادي","الدور داخل النادي","ملاحظات"],12,"cb")}</div>`;
-  case "events": return `<div class="section"><h4>الأيام والمناسبات</h4>${rows(["م","المناسبة","تاريخها","آلية التفعيل","المسؤول","الشواهد"],10,"ev")}</div>`;
-  case "followup": return `<div class="section"><h4>التوجيهات والمتابعة</h4>${rows(["م","تاريخ المتابعة","نوع المتابعة","التوجيهات","الإجراء التصحيحي","حالة الإغلاق"],8,"fo")}</div>`;
-  default: return `<div class="section"><h4>محتوى السجل</h4>${area("content")}</div>`;
+ const select = (k,opts)=>`<select data-k="${k}"><option value="">اختر</option>${opts.map(o=>`<option>${o}</option>`).join("")}</select>`;
+ const categoryIntro = {
+   "القيادة المدرسية":"يعنى هذا المجال بالحوكمة، التخطيط، إدارة الموارد، الصلاحيات، المجالس، الشراكات، والمتابعة القيادية المباشرة.",
+   "التعليم والتعلم":"يعنى هذا المجال بجودة التدريس، دعم المعلمين، متابعة تنفيذ المنهج، المجتمعات المهنية، والخطط العلاجية والإثرائية.",
+   "البيئة المدرسية":"يعنى هذا المجال بسلامة وجاهزية البيئة المدرسية، الانضباط، الخدمات المساندة، العهد، المرافق، والصحة المدرسية.",
+   "نواتج التعلم":"يعنى هذا المجال بتحليل التحصيل، مؤشرات الأداء، الاختبارات، الفجوات التعليمية، خطط التحسين، وقياس الأثر."
+ };
+ const templates = {
+   schoolProfile:{fields:["اسم قائد المدرسة","رقم الجوال","البريد الإلكتروني","المرحلة","نوع المدرسة","عدد الطلاب/الطالبات","عدد المعلمين/المعلمات","عدد الإداريين/الإداريات","ملاحظات عامة"], cols:["م","البند","البيان","المسؤول","الشاهد"]},
+   orgStructure:{cols:["م","الوحدة/الدور","المكلف","المهام الرئيسة","الارتباط الإداري","الشاهد"]},
+   operationalPlan:{cols:["م","المجال","الهدف","البرنامج/المبادرة","مؤشر الأداء","المسؤول","نسبة الإنجاز","الشواهد"]},
+   committees:{cols:["م","اللجنة/المجلس","الرئيس","الأعضاء","المهام","مواعيد الاجتماع","التوصيات"]},
+   meetings:{extra:"minutes", cols:["م","الموضوع","التوصية","المسؤول","تاريخ التنفيذ","حالة التنفيذ"]},
+   powers:{cols:["م","الصلاحية/القرار","الإجراء المنفذ","رقم المستند","التاريخ","الأثر","الشاهد"]},
+   correspondence:{cols:["م","نوع المعاملة","رقمها","تاريخها","الموضوع","الإجراء المتخذ","حالة الإغلاق"]},
+   supportSupervisor:{cols:["م","اسم المشرف المساند","تاريخ الزيارة","مجال الزيارة","التوصيات","الإجراء المتفق عليه","حالة التنفيذ"]},
+   internalAudit:{cols:["م","مجال التدقيق","المعيار","الملاحظة","الإجراء التصحيحي","المسؤول","تاريخ الإغلاق"]},
+   riskGovernance:{cols:["م","الخطر/الفجوة","درجة الخطورة","الأثر المحتمل","خطة الاستجابة","المسؤول","حالة المعالجة"]},
+   partnerships:{cols:["م","الشريك","نوع الشراكة","البرنامج","الفئة المستفيدة","الأثر","الشواهد"]},
+   classVisits:{cols:["م","اسم المعلم/ة","المادة","الصف","نوع الزيارة","أبرز نقاط القوة","فرص التحسين"]},
+   teacherPerformance:{cols:["م","اسم المعلم/ة","مجال الأداء","الشاهد","مستوى الإنجاز","التغذية الراجعة","إجراء التحسين"]},
+   curriculum:{cols:["م","المادة/الصف","نسبة تنفيذ المنهج","الموضوعات المتأخرة","سبب التأخر","الإجراء","المتابعة"]},
+   lessonPlanning:{cols:["م","المعلم/ة","عنصر التخطيط","درجة التحقق","ملحوظة الدعم","الإجراء","الشاهد"]},
+   plc:{cols:["م","المجتمع المهني","الموضوع","المشاركون","التوصيات","الأثر على التدريس","الشاهد"]},
+   remedialEnrichment:{cols:["م","الفئة المستهدفة","نوع الخطة","الإجراء","فترة التنفيذ","نسبة التحسن","الشواهد"]},
+   learningResources:{cols:["م","المصدر/الأداة","المستفيدون","طريقة التوظيف","تاريخ الاستخدام","الأثر","ملاحظات"]},
+   specialGifted:{cols:["م","الفئة","الطالب/ة أو المجموعة","البرنامج/الخدمة","المسؤول","الأثر","الشاهد"]},
+   safety:{cols:["م","البند/البلاغ","الموقع","تاريخ الرصد","الإجراء التصحيحي","المسؤول","حالة الإغلاق"]},
+   discipline:{cols:["م","الحالة","الفصل/الصف","نوع الملاحظة","الإجراء المتخذ","المسؤول","حالة المتابعة"]},
+   studentCases:{cols:["م","رمز/اسم الحالة","الصف","نوع الحالة","الإجراء المتخذ","الجهة المساندة","حالة المتابعة"]},
+   health:{cols:["م","الموضوع الصحي","الفئة المستهدفة","الإجراء/البرنامج","تاريخ التنفيذ","الجهة المساندة","الشاهد"]},
+   maintenance:{cols:["م","نوع البلاغ","الموقع","تاريخ البلاغ","الإجراء","الجهة المنفذة","حالة الإغلاق"]},
+   custody:{cols:["م","العهدة/الصنف","رقمها","المستلم","تاريخ الاستلام","الحالة","التوقيع"]},
+   transport:{cols:["م","خط النقل/المجموعة","المسؤول","الملاحظة","الإجراء","التاريخ","حالة الإغلاق"]},
+   activities:{cols:["م","البرنامج/النشاط","المجال","المستهدفون","تاريخ التنفيذ","الأثر","الشواهد"]},
+   digital:{cols:["م","النظام/المنصة","الفئة المستفيدة","نوع الدعم","المشكلة/المطلب","الإجراء","حالة الإغلاق"]},
+   achievement:{cols:["م","المادة/الصف","متوسط الأداء","نسبة الإتقان","الفجوة","الإجراء العلاجي","المسؤول"]},
+   kpis:{cols:["م","المؤشر","المستهدف","المنجز","نسبة الإنجاز","التفسير","إجراء التحسين"]},
+   nationalTests:{cols:["م","نوع الاختبار","الصف/الفئة","النتيجة","المقارنة","الفجوة","خطة التحسين"]},
+   skills:{cols:["م","المهارة الأساسية","الفئة المستهدفة","مستوى التحقق","الفجوة","الإجراء","الأثر"]},
+   improvementPlan:{cols:["م","مجال التحسين","الفجوة","الإجراء","المسؤول","المدة","مؤشر النجاح"]},
+   attendanceImpact:{cols:["م","الفئة/الصف","مؤشر الانضباط","أثره على التحصيل","التدخل","المسؤول","نتيجة المتابعة"]},
+   excellence:{cols:["م","اسم المنجز/المكرم","الفئة","مجال التميز","نوع التكريم","التاريخ","الشاهد"]},
+   closingReports:{extra:"closing", cols:["م","المجال","أبرز المنجزات","التحديات","نسبة الإنجاز","التوصية للعام القادم","الشواهد"]}
+ };
+ const tpl = templates[t] || {cols:["م","البند","الإجراء","المسؤول","حالة التنفيذ","الشاهد"]};
+ let html = `<div class="section"><h4>تصنيف السجل: ${current.categoryTitle}</h4><div class="small">${categoryIntro[current.categoryTitle] || ""}</div></div>`;
+ if(tpl.fields){
+   html += `<div class="section"><h4>بيانات أساسية</h4><div class="grid3">` + tpl.fields.map((f,i)=>`<div class="field"><label>${f}</label>${input("field_"+i)}</div>`).join("") + `</div></div>`;
  }
+ if(tpl.extra === "minutes"){
+   html += `<div class="section"><h4>بيانات الاجتماع</h4><div class="grid3"><div class="field"><label>نوع الاجتماع</label>${input("meetingType")}</div><div class="field"><label>مكان الاجتماع</label>${input("meetingPlace")}</div><div class="field"><label>عدد الحضور</label>${input("attCount")}</div></div>${rows(tpl.cols,8,t)}</div>`;
+   html += `<div class="section"><h4>ملخص الاجتماع والتوصيات العامة</h4>${area("minutesSummary","اكتب ملخص الاجتماع والتوصيات العامة...")}</div>`;
+   return html;
+ }
+ if(tpl.extra === "closing"){
+   html += `<div class="section"><h4>ملخص ختامي</h4>${area("closingSummary","اكتب ملخصًا ختاميًا مختصرًا للنتائج العامة والتوصيات...")}</div>`;
+ }
+ html += `<div class="section"><h4>${current.title}</h4>${rows(tpl.cols,10,t)}</div>`;
+ html += `<div class="section"><h4>ملحوظات قائد المدرسة وخطة المتابعة</h4>${area("leaderNotes","اكتب ملحوظات المتابعة أو الإجراءات التالية...")}</div>`;
+ return html;
 }
 
 function footerHtml(){
@@ -919,9 +980,9 @@ function footerHtml(){
   <div class="footerTitle">التوقيعات وختم المدرسة</div>
   <div class="footerGrid">
     <div class="footerBox">
-      <h4>اعتماد مدير المدرسة</h4>
-      <div class="nameLine">الاسم: <input data-k="footerManagerNameInDoc" value="${s.managerName||''}" /></div>
-      <div class="signArea">${s.managerSign ? `<img src="${s.managerSign}" alt="توقيع المدير">` : 'توقيع المدير'}</div>
+      <h4>مدير المدرسة</h4>
+      <div class="nameLine">الاسم: <input data-k="footerLeaderNameInDoc" value="${s.leaderName||''}" /></div>
+      <div class="signArea">${s.leaderSign ? `<img src="${s.leaderSign}" alt="توقيع مدير المدرسة">` : 'توقيع مدير المدرسة'}</div>
     </div>
     <div class="footerBox">
       <h4>ختم المدرسة</h4>
@@ -929,21 +990,21 @@ function footerHtml(){
       <div class="small">يتم احتواء صورة الختم داخل المربع تلقائيًا</div>
     </div>
     <div class="footerBox">
-      <h4>إعداد مسؤول/ة النشاط</h4>
-      <div class="nameLine">الاسم: <input data-k="footerLeaderNameInDoc" value="${s.leaderName||''}" /></div>
-      <div class="signArea">${s.leaderSign ? `<img src="${s.leaderSign}" alt="توقيع مسؤول/ة النشاط">` : 'توقيع مسؤول/ة النشاط'}</div>
+      <h4>المشرف المساند</h4>
+      <div class="nameLine">الاسم: <input data-k="footerManagerNameInDoc" value="${s.managerName||''}" /></div>
+      <div class="signArea">${s.managerSign ? `<img src="${s.managerSign}" alt="توقيع المشرف المساند">` : 'توقيع المشرف المساند'}</div>
     </div>
   </div>
  </div>`;
 }
 function getFooterSettings(){
- return JSON.parse(localStorage.getItem("activityLeaderFooterSettings") || "{}");
+ return JSON.parse(localStorage.getItem("managerRecordsFooterSettings") || "{}");
 }
 function updateFooterSettings(){
  const s = getFooterSettings();
  s.leaderName = document.getElementById('footerLeaderName')?.value || "";
  s.managerName = document.getElementById('footerManagerName')?.value || "";
- localStorage.setItem("activityLeaderFooterSettings", JSON.stringify(s));
+ localStorage.setItem("managerRecordsFooterSettings", JSON.stringify(s));
  syncHeaderFooter();
 }
 function loadFooterPanel(){
@@ -959,18 +1020,18 @@ function loadFooterImage(input, keyName){
  reader.onload = () => {
    const s = getFooterSettings();
    s[keyName] = reader.result;
-   localStorage.setItem("activityLeaderFooterSettings", JSON.stringify(s));
+   localStorage.setItem("managerRecordsFooterSettings", JSON.stringify(s));
    renderAll();
  };
  reader.readAsDataURL(file);
 }
 
 function clearFooterImage(keyName){
- const labels={leaderSign:'توقيع مسؤول/ة النشاط',managerSign:'توقيع مدير المدرسة',schoolStamp:'ختم المدرسة'};
+ const labels={leaderSign:'توقيع مدير المدرسة',managerSign:'توقيع المشرف المساند',schoolStamp:'ختم المدرسة'};
  if(!confirm('هل تريد حذف '+(labels[keyName]||'هذا الإدخال')+' من جميع السجلات؟')) return;
  const s=getFooterSettings();
  delete s[keyName];
- localStorage.setItem("activityLeaderFooterSettings",JSON.stringify(s));
+ localStorage.setItem("managerRecordsFooterSettings",JSON.stringify(s));
  const fileMap={leaderSign:'footerLeaderSignFile',managerSign:'footerManagerSignFile',schoolStamp:'footerStampFile'};
  const inp=document.getElementById(fileMap[keyName]); if(inp) inp.value='';
  renderAll();
@@ -979,7 +1040,7 @@ function clearAllFooterDigitalEntries(){
  if(!confirm('سيتم حذف جميع التوقيعات الرقمية والختم من كل السجلات، هل تريد المتابعة؟')) return;
  const s=getFooterSettings();
  delete s.leaderSign; delete s.managerSign; delete s.schoolStamp;
- localStorage.setItem("activityLeaderFooterSettings",JSON.stringify(s));
+ localStorage.setItem("managerRecordsFooterSettings",JSON.stringify(s));
  ['footerLeaderSignFile','footerManagerSignFile','footerStampFile'].forEach(id=>{const el=document.getElementById(id); if(el) el.value='';});
  renderAll();
 }
@@ -999,7 +1060,7 @@ function renderAll(){
  renderNav(); loadDraft(); loadFooterPanel(); syncHeaderFooter();
  document.querySelectorAll('[data-k]').forEach(el=>el.addEventListener('input',autoDraft));
 }
-function key(){return "activityLeaderRecord_"+current.id}
+function key(){return "managerSchoolRecord_"+current.id}
 function collect(){
  const data={recordId:current.id,title:current.title,savedAt:new Date().toLocaleString('ar-SA'),values:{}};
  document.querySelectorAll('[data-k]').forEach(el=>data.values[el.dataset.k]=el.value);
@@ -1018,8 +1079,8 @@ function saveArchive(){
  localStorage.setItem(key()+"_archive",JSON.stringify(list));
  localStorage.removeItem(key()+"_draft");
 
- // حفظ موحد داخل أرشيف سجلات مسؤول/ة النشاط في المنصة
- const archiveKey="activity_leader_records_archive_v2";
+ // حفظ موحد داخل أرشيف سجلات مدير المدرسة في المنصة
+ const archiveKey="school_manager_records_archive_v1";
  let platformArchive=[];
  try{platformArchive=JSON.parse(localStorage.getItem(archiveKey)||"[]");}catch(e){platformArchive=[];}
  const folderId=current.id;
@@ -1040,10 +1101,10 @@ function saveArchive(){
  localStorage.setItem(archiveKey,JSON.stringify(platformArchive));
 
  if(window.parent && window.parent!==window){
-   try{window.parent.postMessage({type:'ACTIVITY_LEADER_RECORD_SAVED',payload:platformArchive[platformArchive.length-1]},'*');}catch(e){}
+   try{window.parent.postMessage({type:'MANAGER_RECORD_SAVED',payload:platformArchive[platformArchive.length-1]},'*');}catch(e){}
  }
  renderArchive();
- alert("تم حفظ السجل في الأرشيف داخل مجلده الخاص، ولن يتم حذف النسخ السابقة.");
+ alert("تم حفظ سجل المدير في الأرشيف داخل مجلده الخاص، ولن يتم حذف النسخ السابقة.");
 }
 function toggleArchive(){document.getElementById('archivePanel').classList.toggle('show');renderArchive()}
 function renderArchive(){
@@ -1149,8 +1210,5 @@ document.addEventListener("blur", function(e){
 }, true);
 </script>
 
-<script src="active_school_scope.js" defer></script>
-
-<script src="manual_docking_workspace.js" defer></script>
 </body>
 </html>

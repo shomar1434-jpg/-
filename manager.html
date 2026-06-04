@@ -1125,7 +1125,7 @@ body{overflow-x:hidden}
             <img src="https://upload.wikimedia.org/wikipedia/ar/1/17/Saudi_Ministry_of_Education_Logo_2025.png" class="w-32 h-32 object-contain">
         </div>
         <div class="text-center px-6 max-w-lg bg-white/80 p-8 rounded-[40px] shadow-xl">
-            <h1 class="text-3xl font-bold text-slate-800 mb-4">نظام القيادة المدرسية الذكي<br><span style="font-size:.7em">قسم المدير</span></h1>
+            <h1 class="text-3xl font-bold text-slate-800 mb-4">نظام القيادة المدرسية الذكي</h1>
             <p class="text-slate-600 text-sm font-bold mb-6">منصتك المتكاملة لتوثيق الإنجازات التعليمية والقيادية.</p>
             <button onclick="enterApp()" class="w-full bg-teal-600 text-white px-16 py-5 rounded-[25px] font-bold text-lg shadow-2xl hover:bg-teal-700">دخول للنظام</button>
         </div>
@@ -1152,6 +1152,10 @@ body{overflow-x:hidden}
                     <div onclick="openManagerRecordsView()" class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-emerald-400 cursor-pointer transition-all flex flex-col items-center gap-4 group">
                         <div class="w-14 h-14 bg-emerald-600 text-white rounded-2xl flex items-center justify-center shadow-lg text-2xl">📚</div>
                         <h3 class="font-bold text-lg text-slate-700">سجلات المدير</h3>
+                    </div>
+                    <div onclick="openManagerRecordsArchiveView()" class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-emerald-400 cursor-pointer transition-all flex flex-col items-center gap-4 group">
+                        <div class="w-14 h-14 bg-emerald-700 text-white rounded-2xl flex items-center justify-center shadow-lg text-2xl">🗃️</div>
+                        <h3 class="font-bold text-lg text-slate-700">أرشيف السجلات</h3>
                     </div>
                     <div onclick="openManagerLibraryView()" class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-emerald-400 cursor-pointer transition-all flex flex-col items-center gap-4 group">
                         <div class="w-14 h-14 bg-emerald-600 text-white rounded-2xl flex items-center justify-center shadow-lg text-2xl">🗂️</div>
@@ -1258,6 +1262,25 @@ body{overflow-x:hidden}
     </div>
 
 
+
+
+    <!-- واجهة أرشيف سجلات المدير -->
+    <div id="manager-records-archive-view" class="global-app-bg no-print internal-watermark" style="display:none;">
+        <div class="content-overlay">
+            <header class="p-4 border-b flex justify-between items-center px-8 bg-white/80 backdrop-blur-md sticky top-0 z-[1001]">
+                <div class="flex items-center gap-4">
+                    <button onclick="closeManagerRecordsArchiveView()" class="p-2 text-slate-400 hover:bg-slate-100 rounded-full" title="العودة">
+                        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                    </button>
+                    <h2 class="font-bold text-lg text-slate-700 flex items-center gap-2">🗃️ أرشيف السجلات</h2>
+                </div>
+                <div class="flex gap-2">
+                    <button id="manager-records-back-to-folders" onclick="renderManagerRecordsArchiveFolders()" class="hidden bg-slate-100 text-slate-600 px-3 py-2 rounded-xl text-[10px] font-bold border border-slate-200">رجوع للمجلدات</button>
+                </div>
+            </header>
+            <main id="manager-records-archive-content" class="max-w-6xl mx-auto p-4 md:p-8 relative z-10"></main>
+        </div>
+    </div>
 
     <!-- واجهة سجلات المدير -->
     <div id="manager-records-view" class="global-app-bg no-print internal-watermark">
@@ -1658,7 +1681,7 @@ body{overflow-x:hidden}
 
     <script>
         const VISIT_AIDS = ["الكتاب المدرسي", "الكتاب الإلكتروني", "سبورة تقليدية", "أقلام ملونة", "سبورة ذكية", "جهاز عرض", "جهاز حاسب آلي", "صور توضيحية", "عروض تقديمية", "نماذج مجسمة", "وسائط متعددة", "برمجيات و تطبيقات"];
-        const CATEGORY_DATA = {
+        var CATEGORY_DATA = {
             "1": { name: "أداء الواجبات الوظيفية", profGoal: "الالتزام بالأنظمة واللوائح والتعليمات المنظمة للعمل التربوي.", genGoal: "التواجد في مقر العمل وفق المواعيد الرسمية وإنجاز المعاملات بدقة وسرعة.", selfEval: "القيادة المدرسية", allGoals: ["الالتزام بساعات الدوام الرسمي حضوراً وانصرافاً بنسبة 100%.", "توثيق وحفظ التعاميم الرسمية في سجلات منظمة و مؤرشفة.", "الرد على الخطابات الرسمية خلال 24 ساعة من استلامها.", "توزيع المهام الإدارية بوضوح مطلع العام الدراسي.", "تحديث بيانات المدرسة في الأنظمة الإلكترونية دورياً.", "متابظة انتظام المعلمين في الحصص الدراسية يومياً.", "إعداد جدول المناوبة والإشراف على تنفيذه.", "تنفيذ التكليفات الصادرة من إدارة التعليم بموضوعية.", "الحفاظ على سرية المعلومات الخاصة بالمنسوبين والطلاب.", "إعداد التقرير السنوي الختامي في الموعد المحدد."] },
             "2": { name: "التفاعل مع المجتمع المهني", profGoal: "بناء علاقات تعاونية مثمرة مع الزملاء والجهات التعليمية.", genGoal: "المشاركة الفاعلة في الاجتماعات وتبادل الخبرات مع القيادات التربوية.", selfEval: "القيادة المدرسية", allGoals: ["حضور جميع اجتماعات مكتب التعليم واللقاءات التربوية.", "تنظيم لقاء شهري لمنسوبي المدرسة لتعزيز الترابط.", "المشاركة في عضوية اللجان التربوية المحلية.", "القيام بزيارات تبادلية مع مدارس متميزة سنوياً.", "المساهمة بأوراق عمل في الملتقيات القيادية.", "بناء شراكات مع مؤسسات الحي لخدمة الأهداف التعليمية.", "تفعيل التواصل المهني الرسمي عبر البريد الإلكتروني.", "المشاركة في المجتمعات المهنية الافتراضية المعتمدة.", "استضافة مديري مدارس آخرين لنقل التجارب الناجحة.", "نشر الممارسات الإدارية المتميزة في النشرات التربوية."] },
             "3": { name: "التفاعل مع أولياء الأمور", profGoal: "تعزيز الشراكة بين المدرسة والأسرة لدعم الطلاب.", genGoal: "تفعيل مجلس أولياء الأمور وتخصيص قنوات تواصل دورية.", selfEval: "القيادة المدرسية", allGoals: ["عقد لقاء فصلي موسع مع أولياء الأمور.", "تفعيل الرسائل نصية لإبلاغ الأهل بالمستجدات.", "تخصيص ساعة أسبوعية لاستقبال ملاحظات الأهل.", "قياس رضا أولياء الأمور عبر استبانات دورية.", "تنظيم برامج توعوية للأهل حول دعم الأبناء دراسياً.", "إشراك الأهل في تقديم ورش عمل مهنية للطلاب.", "إبلاغ ولي الأمر فوراً عند تكرار غياب الطالب.", "تكريم أولياء الأمور المتعاونين في حفل ختامي.", "إنشاء ركن توعوي لأولياء الأمور داخل المدرسة.", "الرد على استفسارات الأهل الرقمية في وقت قياسي."] },
@@ -4101,6 +4124,8 @@ document.addEventListener("click", function(e){
     if(managerCurrentRecordKind === 'word'){
       record.editedHtml = editor.innerHTML;
       const htmlDoc = '<!DOCTYPE html><html><head><meta charset="UTF-8"><style id="ss-code-flash-guard">body{overflow-x:hidden}.safe-hidden-deactivate{display:none!important}</style></head><body>' + editor.innerHTML + '
+
+
 </body></html>';
       record.file = new Blob([htmlDoc], {type:'application/msword'});
       if(!/\.doc$/i.test(record.name)) record.name = record.name.replace(/\.(docx|doc)$/i,'') + '_معدل.doc';
@@ -4166,7 +4191,9 @@ document.addEventListener("click", function(e){
     }
     if(editor && editor.style.display !== 'none'){
       const w = window.open('', '_blank');
-      w.document.write('<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>نظام القيادة المدرسية الذكي | قسم المدير</title><style>body{font-family:Cairo,Tajawal,Arial;padding:20px}</style><style id="ss-code-flash-guard">body{overflow-x:hidden}.safe-hidden-deactivate{display:none!important}</style></head><body>' + editor.innerHTML + '
+      w.document.write('<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>طباعة</title><style>body{font-family:Cairo,Tajawal,Arial;padding:20px}</style><style id="ss-code-flash-guard">body{overflow-x:hidden}.safe-hidden-deactivate{display:none!important}</style></head><body>' + editor.innerHTML + '
+
+
 </body></html>');
       w.document.close();
       setTimeout(() => w.print(), 400);
@@ -4359,6 +4386,8 @@ document.addEventListener("click", function(e){
       else {html='<div style="font-family:Arial;text-align:center;padding:50px"><h2>'+title+'</h2><p>هذا النوع محفوظ داخل المكتبة، وقد لا يدعم المتصفح طباعته مباشرة. استخدم المعاينة أو افتحه من الجهاز للطباعة.</p></div>';}
     }catch(e){html='<div style="font-family:Arial;text-align:center;padding:50px"><h2>'+title+'</h2><p>تعذرت المعاينة الطباعية لهذا الملف.</p></div>';}
     w.document.open(); w.document.write('<!doctype html><html dir="rtl"><head><meta charset="utf-8"><title>'+title+'</title><style>@page{size:A4;margin:10mm}body{font-family:Arial,Tahoma,sans-serif}</style><style id="ss-code-flash-guard">body{overflow-x:hidden}.safe-hidden-deactivate{display:none!important}</style></head><body>'+html+'<script>setTimeout(function(){window.focus();window.print()},600)<\/script>
+
+
 </body></html>'); w.document.close();
   };
 
@@ -4399,6 +4428,122 @@ document.addEventListener("click", function(e){
 
 
 <script>function openManagerAIAssistantGenerator(){window.open('manager_ai_assistant_generator.html','_blank');}</script>
-    <script src="user-profile-engine.js"></script>
+
+
+
+<!-- FORCE_CATEGORY_AUTOFILL_2026_06_04 -->
+<script>
+(function(){
+  'use strict';
+  function txt(el,v){ if(el){ el.innerText = v || ''; el.textContent = v || ''; } }
+  function selectedCategoryName(sel){
+    if(!sel) return '';
+    var opt = sel.options && sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex] : null;
+    return (opt && (opt.textContent||opt.innerText) || sel.value || '').trim();
+  }
+  window.__forceFillReportCategoryData = function(){
+    var sel = document.getElementById('categorySelect');
+    if(!sel || !sel.value) return;
+    try{ if(typeof window.__nativeUpdateRelatedElements === 'function') window.__nativeUpdateRelatedElements(); }catch(e){}
+    var cat = sel.value;
+    var name = selectedCategoryName(sel);
+    var d = (window.CATEGORY_DATA && window.CATEGORY_DATA[cat]) || null;
+    var rel = document.getElementById('relatedElement');
+    var main = document.getElementById('mainGoal');
+    if(d){
+      txt(rel, d.profGoal || d.el || d.related || d.name || name);
+      txt(main, d.genGoal || d.main || d.mainGoal || d.profGoal || name);
+      var goals = d.allGoals || d.goals || [];
+      for(var i=0;i<5;i++) txt(document.getElementById('subGoal-'+i), goals[i] || '');
+    } else {
+      var map = window.__ROLE_CATEGORY_MAP || {};
+      var m = map[cat] || null;
+      var lib = window.SUPPORT_GOALS_LIBRARY || {};
+      var goals2 = lib[cat] || (m && m.goals) || [];
+      if(m){
+        txt(rel, m.el || m.profGoal || name);
+        txt(main, m.main || m.genGoal || m.el || name);
+      } else {
+        if(rel && (!rel.innerText.trim() || rel.innerText.indexOf('اختر المجال')>=0)) txt(rel, name);
+        if(main && !main.innerText.trim()) txt(main, name);
+      }
+      for(var j=0;j<5;j++) txt(document.getElementById('subGoal-'+j), goals2[j] || '');
+    }
+    try{ if(typeof updateReportProgress === 'function') updateReportProgress(); }catch(e){}
+  };
+  var old = window.updateRelatedElements;
+  if(typeof old === 'function'){
+    window.__nativeUpdateRelatedElements = old;
+    window.updateRelatedElements = function(){ window.__forceFillReportCategoryData(); };
+  }
+  ['saveReportToArchive','saveReport','saveCurrentReport','confirmSaveReport'].forEach(function(n){
+    var f = window[n];
+    if(typeof f === 'function' && !f.__forceCategoryWrapped){
+      var w = function(){ window.__forceFillReportCategoryData(); return f.apply(this, arguments); };
+      w.__forceCategoryWrapped = true;
+      window[n] = w;
+    }
+  });
+  document.addEventListener('change', function(e){ if(e.target && e.target.id === 'categorySelect') setTimeout(window.__forceFillReportCategoryData, 0); }, true);
+})();
+</script>
+
+<script id="manager-records-archive-engine-final">
+(function(){
+  if(window.__MANAGER_RECORDS_ARCHIVE_ENGINE_FINAL__) return;
+  window.__MANAGER_RECORDS_ARCHIVE_ENGINE_FINAL__ = true;
+  const ARCHIVE_KEY = 'school_manager_records_archive_v1';
+  const FOLDERS = [{"id": "schoolProfile", "name": "البيانات الأساسية والحوكمة المدرسية"}, {"id": "orgStructure", "name": "سجل الهيكل التنظيمي وتوزيع المسؤوليات"}, {"id": "operationalPlan", "name": "سجل الخطة التشغيلية ومؤشرات التنفيذ"}, {"id": "committees", "name": "سجل اللجان والمجالس المدرسية"}, {"id": "meetings", "name": "سجل الاجتماعات القيادية والمدرسية"}, {"id": "powers", "name": "سجل متابعة الصلاحيات والقرارات المدرسية"}, {"id": "correspondence", "name": "سجل الوارد والصادر والتعاميم"}, {"id": "supportSupervisor", "name": "سجل زيارات المشرف المساند"}, {"id": "internalAudit", "name": "سجل التدقيق الداخلي والامتثال"}, {"id": "riskGovernance", "name": "سجل المخاطر والحوكمة المدرسية"}, {"id": "partnerships", "name": "سجل الشراكات والمجتمع المدرسي"}, {"id": "classVisits", "name": "سجل الزيارات الصفية ودعم التدريس"}, {"id": "teacherPerformance", "name": "سجل الأداء الوظيفي والنمو المهني"}, {"id": "curriculum", "name": "سجل تنفيذ الخطط الدراسية والمناهج"}, {"id": "lessonPlanning", "name": "سجل التخطيط للدروس وتحسين الممارسات"}, {"id": "plc", "name": "سجل المجتمعات المهنية والتعلم التعاوني"}, {"id": "remedialEnrichment", "name": "سجل الخطط العلاجية والإثرائية"}, {"id": "learningResources", "name": "سجل مصادر التعلم والتقنيات التعليمية"}, {"id": "specialGifted", "name": "سجل رعاية الموهوبين وذوي الاحتياجات التعليمية"}, {"id": "safety", "name": "سجل الأمن والسلامة والطوارئ"}, {"id": "discipline", "name": "سجل الانضباط المدرسي والسلوك"}, {"id": "studentCases", "name": "سجل الحالات الطلابية والدعم المساند"}, {"id": "health", "name": "سجل الصحة المدرسية والبيئة الآمنة"}, {"id": "maintenance", "name": "سجل الصيانة والمرافق والتجهيزات"}, {"id": "custody", "name": "سجل العهد والجرد والمستودعات"}, {"id": "transport", "name": "سجل النقل المدرسي والحركة اليومية"}, {"id": "activities", "name": "سجل الأنشطة والبرامج المدرسية"}, {"id": "digital", "name": "سجل التحول الرقمي والخدمات الإلكترونية"}, {"id": "achievement", "name": "سجل التحصيل الدراسي وتحليل النتائج"}, {"id": "kpis", "name": "سجل مؤشرات الأداء المدرسي"}, {"id": "nationalTests", "name": "سجل الاختبارات الوطنية والمركزية"}, {"id": "skills", "name": "سجل المهارات الأساسية والفجوات التعليمية"}, {"id": "improvementPlan", "name": "سجل خطط التحسين وقياس الأثر"}, {"id": "attendanceImpact", "name": "سجل أثر الانضباط على نواتج التعلم"}, {"id": "excellence", "name": "سجل التميز والتكريم والإنجازات"}, {"id": "closingReports", "name": "سجل التقارير الختامية ورفع التوصيات"}];
+  let currentFolder = null;
+  function esc(v){return String(v||'').replace(/[&<>"']/g,function(ch){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];});}
+  function getArchive(){try{const a=JSON.parse(localStorage.getItem(ARCHIVE_KEY)||'[]'); return Array.isArray(a)?a:[];}catch(e){return [];}}
+  function setArchive(a){localStorage.setItem(ARCHIVE_KEY, JSON.stringify(a||[]));}
+  function folderById(id){return FOLDERS.find(f=>f.id===id) || FOLDERS[0] || {id:'other',name:'سجل'};}
+  function hideManagerViews(){['welcome-dashboard','main-report-app','archive-view','stats-view','portfolio-view','manager-records-view'].forEach(function(id){const el=document.getElementById(id); if(el){el.style.display='none'; if(el.classList) el.classList.add('hidden');}});}
+  function showDashboard(){const d=document.getElementById('welcome-dashboard'); if(d){d.style.display='block'; if(d.classList) d.classList.remove('hidden');}}
+  window.openManagerRecordsArchiveView=function(){const v=document.getElementById('manager-records-archive-view'); if(!v) return alert('واجهة أرشيف السجلات غير موجودة.'); hideManagerViews(); v.style.display='block'; if(v.classList) v.classList.remove('hidden'); renderManagerRecordsArchiveFolders();};
+  window.closeManagerRecordsArchiveView=function(){const v=document.getElementById('manager-records-archive-view'); if(v){v.style.display='none'; if(v.classList) v.classList.add('hidden');} showDashboard();};
+  window.renderManagerRecordsArchiveFolders=function(){
+    currentFolder=null;
+    const c=document.getElementById('manager-records-archive-content'); const b=document.getElementById('manager-records-back-to-folders');
+    if(b) b.classList.add('hidden'); if(!c) return;
+    const archive=getArchive(); const counts={};
+    archive.forEach(r=>{const fid=r.folderId||r.recordId||''; counts[fid]=(counts[fid]||0)+1;});
+    c.innerHTML='<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">'+FOLDERS.map(function(f){
+      const count=counts[f.id]||0;
+      return '<div onclick="openManagerRecordsArchiveFolder(\''+esc(f.id)+'\')" class="bg-white/90 p-8 rounded-[35px] shadow-lg border border-emerald-100 hover:border-emerald-400 cursor-pointer transition-all flex flex-col gap-4">'
+        +'<div class="flex items-center justify-between"><div class="text-4xl">📂</div><span class="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold">'+count+' سجل</span></div>'
+        +'<h3 class="font-bold text-slate-800 text-lg">'+esc(f.name)+'</h3><p class="text-[11px] text-slate-400 font-bold">مجلد مطابق لسجل المدير، ويحفظ النسخ المنفذة دون حذف السابق.</p></div>';
+    }).join('')+'</div>';
+  };
+  window.openManagerRecordsArchiveFolder=function(folderId){
+    currentFolder=folderId; const c=document.getElementById('manager-records-archive-content'); const b=document.getElementById('manager-records-back-to-folders');
+    if(b) b.classList.remove('hidden'); if(!c) return;
+    const folder=folderById(folderId);
+    const rows=getArchive().filter(r=>r.folderId===folderId || r.recordId===folderId || r.folderName===folder.name);
+    c.innerHTML='<section class="space-y-4"><div class="bg-white/90 border border-emerald-100 rounded-[30px] p-5 flex justify-between items-center gap-3">'
+      +'<div><h3 class="font-black text-emerald-800 text-xl">📂 '+esc(folder.name)+'</h3><p class="text-xs text-slate-400 font-bold mt-1">عدد السجلات: '+rows.length+'</p></div>'
+      +'<button onclick="renderManagerRecordsArchiveFolders()" class="bg-slate-100 text-slate-600 px-4 py-2 rounded-xl text-xs font-bold">رجوع</button></div>'
+      +(rows.length?rows.map(function(r){return '<div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex justify-between items-center gap-3 flex-wrap">'
+        +'<div><h4 class="font-bold text-slate-800">'+esc(r.displayName||r.title||folder.name)+'</h4><p class="text-[10px] text-slate-400 font-bold mt-1">'+esc(r.title||folder.name)+' — '+esc(r.createdAt||'')+'</p></div>'
+        +'<div class="flex gap-2 flex-wrap"><button onclick="previewManagerRecordArchiveItem('+Number(r.id)+')" class="bg-teal-600 text-white px-4 py-2 rounded-xl text-[10px] font-bold">عرض</button>'
+        +'<button onclick="printManagerRecordArchiveItem('+Number(r.id)+')" class="bg-slate-700 text-white px-4 py-2 rounded-xl text-[10px] font-bold">طباعة</button>'
+        +'<button onclick="deleteManagerRecordArchiveItem('+Number(r.id)+')" class="bg-red-50 text-red-500 px-4 py-2 rounded-xl text-[10px] font-bold">حذف</button></div></div>';}).join(''):'<div class="bg-white border border-dashed border-slate-200 rounded-[30px] p-10 text-center text-slate-400 font-bold">لا توجد سجلات محفوظة داخل هذا المجلد.</div>')+'</section>';
+  };
+  function item(id){return getArchive().find(r=>String(r.id)===String(id));}
+  function docFor(r,autoPrint){
+    if(!r) return ''; let doc=r.htmlContent||'';
+    if(!doc) doc='<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>'+esc(r.title||'سجل')+'</title><style>body{font-family:Arial;padding:24px;direction:rtl}</style></head><body><h2>'+esc(r.title||'سجل')+'</h2></body></html>';
+    const valuesScript='<script>(function(){var values='+JSON.stringify(r.values||{}).replace(/</g,'\\u003c')+';function fill(){Object.keys(values).forEach(function(k){var el=document.querySelector("[data-k=\""+CSS.escape(k)+"\"]"); if(el){el.value=values[k]||""; el.setAttribute("value",values[k]||""); el.textContent=el.tagName==="TEXTAREA"?(values[k]||""):el.textContent;}}); var ap=document.getElementById("archivePanel"); if(ap) ap.style.display="none";} if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",fill);else fill();})();<\/script>';
+    const printScript=autoPrint?'<script>window.addEventListener("load",function(){setTimeout(function(){window.print()},700)});<\/script>':'';
+    if(doc.indexOf('</body>')!==-1) doc=doc.replace('</body>', valuesScript+printScript+'</body>'); else doc+=valuesScript+printScript;
+    return doc;
+  }
+  window.previewManagerRecordArchiveItem=function(id){const r=item(id); if(!r) return; const w=window.open('','_blank'); w.document.open(); w.document.write(docFor(r,false)); w.document.close();};
+  window.printManagerRecordArchiveItem=function(id){const r=item(id); if(!r) return; const w=window.open('','_blank'); w.document.open(); w.document.write(docFor(r,true)); w.document.close();};
+  window.deleteManagerRecordArchiveItem=function(id){if(!confirm('هل تريد حذف هذا السجل؟')) return; setArchive(getArchive().filter(r=>String(r.id)!==String(id))); currentFolder?openManagerRecordsArchiveFolder(currentFolder):renderManagerRecordsArchiveFolders();};
+  window.addEventListener('message',function(event){const data=event.data||{}; if(data.type!=='MANAGER_RECORD_SAVED') return; if(document.getElementById('manager-records-archive-view')?.style.display!=='none') renderManagerRecordsArchiveFolders();});
+})();
+</script>
 </body>
 </html>

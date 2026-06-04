@@ -196,7 +196,7 @@
       label = document.createElement('div');
       label.id = 'activeSchoolLabel';
       label.dir = 'rtl';
-      label.style.cssText = 'position:fixed;top:12px;left:14px;z-index:2147482000;background:rgba(15,118,110,.95);color:#fff;border-radius:999px;padding:8px 13px;font:900 11px Cairo,Tahoma,Arial;box-shadow:0 8px 20px rgba(0,0,0,.18);max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+      label.style.cssText = 'position:fixed;top:12px;left:calc(50% + 8px);z-index:2147482000;background:rgba(15,118,110,.95);color:#fff;border-radius:999px;padding:8px 13px;font:900 11px Cairo,Tahoma,Arial;box-shadow:0 8px 20px rgba(0,0,0,.18);max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
       document.body.appendChild(label);
     }
     label.textContent = 'المدرسة النشطة: ' + (s.schoolName || s.schoolId);

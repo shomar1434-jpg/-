@@ -149,7 +149,7 @@
     var st = document.createElement('style');
     st.id = 'multiSchoolSwitcherStyle';
     st.textContent =
-      '#multiSchoolSwitchBtn{position:fixed;top:12px;right:14px;z-index:2147482500;border:0;border-radius:999px;background:#0f766e;color:#fff;padding:10px 15px;font:900 12px Cairo,Tahoma,Arial;box-shadow:0 10px 24px rgba(0,0,0,.22);cursor:pointer}' +
+      '#multiSchoolSwitchBtn{position:fixed;top:12px;right:calc(50% + 8px);transform:translateX(0);max-width:220px;white-space:nowrap;z-index:2147482500;border:0;border-radius:999px;background:#0f766e;color:#fff;padding:10px 15px;font:900 12px Cairo,Tahoma,Arial;box-shadow:0 10px 24px rgba(0,0,0,.22);cursor:pointer}' +
       '#multiSchoolModal{position:fixed;inset:0;z-index:2147483600;font-family:Cairo,Tahoma,Arial,sans-serif;direction:rtl}' +
       '#multiSchoolModal .msShade{position:absolute;inset:0;background:rgba(15,23,42,.55);backdrop-filter:blur(3px)}' +
       '#multiSchoolModal .msBox{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:min(720px,calc(100vw - 28px));max-height:85vh;overflow:auto;background:#fff;border-radius:24px;box-shadow:0 25px 80px rgba(0,0,0,.35);padding:22px}' +

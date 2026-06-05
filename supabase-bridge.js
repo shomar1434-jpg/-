@@ -30,9 +30,9 @@
 
   function appRoleToDb(role){
     role = String(role || '').trim();
-    if(['leadership','manager','مدير','قسم المدير'].includes(role)) return 'manager';
-    if(['agency','agent','وكيل','قسم الوكيل','قسم الوكيل/ة'].includes(role)) return 'agent';
-    if(['performance','teacher','معلم','قسم المعلم','قسم المعلم/ة'].includes(role)) return 'teacher';
+    if(['leadership','manager','مدير','قسم المدير/المديرة'].includes(role)) return 'manager';
+    if(['agency','agent','وكيل','قسم الوكيل/الوكيلة','قسم الوكيل/الوكيلة/ة'].includes(role)) return 'agent';
+    if(['performance','teacher','معلم','قسم المعلم/المعلمة','قسم المعلم/المعلمة/ة'].includes(role)) return 'teacher';
     if(['student_advisor','advisor','موجه','موجه طلابي','قسم الموجه'].includes(role)) return 'student_advisor';
     if(role === 'owner') return 'owner';
     return role || 'teacher';

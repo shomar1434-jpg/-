@@ -284,7 +284,7 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
             grid.innerHTML = '';
             const apps = role === 'leadership' ? ['leadership', 'agency', 'performance', 'student_advisor', 'activity_leader'] : [role];
             apps.forEach(appId => {
-                const titles = { 'leadership': '🏛️ قسم مدير/ة النظام', 'agency': '📑 قسم الوكيل/ة', 'performance': '👨‍🏫 قسم المعلم/ة', 'student_advisor': '🧭 قسم الموجه/ة الطلابي/ة', 'activity_leader': '🏃 قسم رائد/ة النشاط' };
+                const titles = { 'leadership': '🏛️ قسم مدير/ة النظام', 'agency': '📑 قسم الوكيل/الوكيلة/ة', 'performance': '👨‍🏫 قسم المعلم/المعلمة/ة', 'student_advisor': '🧭 قسم الموجه/ة الطلابي/ة', 'activity_leader': '🏃 قسم رائد/ة النشاط' };
                 const card = document.createElement('div');
                 card.className = "app-card p-8 text-center cursor-pointer shadow-lg hover:shadow-2xl transition-all hover:scale-105";
                 card.innerHTML = `<h2 class="font-bold text-xl text-slate-800">${titles[appId]}</h2><p class="text-[10px] text-teal-600 mt-2 font-bold">نظام نشط ومؤمن ✅</p><button class="mt-6 bg-teal-700 text-white px-6 py-2 rounded-xl w-full font-bold shadow-md">دخول</button>`;
@@ -316,7 +316,7 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
         };
 
         const roleLabel = (role) => {
-            const labels = { leadership: 'قسم مدير/ة النظام', agency: 'قسم الوكيل/ة', performance: 'قسم المعلم/ة', student_advisor: 'قسم الموجه/ة الطلابي/ة', activity_leader: 'قسم رائد/ة النشاط' };
+            const labels = { leadership: 'قسم مدير/ة النظام', agency: 'قسم الوكيل/الوكيلة/ة', performance: 'قسم المعلم/المعلمة/ة', student_advisor: 'قسم الموجه/ة الطلابي/ة', activity_leader: 'قسم رائد/ة النشاط' };
             return labels[role] || role || 'غير محدد';
         };
 
@@ -459,7 +459,7 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
         const normalizeImportedRole = (value) => {
             const v = String(value || '').trim().toLowerCase();
             if (!v) return 'performance';
-            if (['leadership', 'manager', 'admin', 'مدير', 'مديرة', 'قائد', 'قائدة', 'المدير', 'المديرة'].includes(v)) return 'leadership';
+            if (['leadership', 'manager', 'admin', 'مدير', 'مديرة', 'مدير', 'مديرة', 'المدير', 'المديرة'].includes(v)) return 'leadership';
             if (['agency', 'agent', 'vice', 'وكيل', 'وكيلة', 'الوكيل', 'الوكيلة'].includes(v)) return 'agency';
             if (['performance', 'teacher', 'معلم', 'معلمة', 'المعلم', 'المعلمة'].includes(v)) return 'performance';
             if (['student_advisor','advisor','counselor','موجه','موجهة','الموجه','الموجهة','موجه طلابي','موجهة طلابية'].includes(v)) return 'student_advisor';
@@ -596,7 +596,7 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
             if (currentUser?.role === 'agency' && role !== 'performance') {
                 return showToast('صلاحية الوكيل/ة تشمل متابعة المعلمين/المعلمات فقط');
             }
-            const titleMap = { leadership: '🏛️ قائمة قسم مدير/ة النظام', agency: '📑 قائمة قسم الوكيل/ة', performance: '👨‍🏫 قائمة قسم المعلم/ة', student_advisor: '🧭 قائمة قسم الموجه/ة الطلابي/ة', activity_leader: '🏃 قائمة قسم رائد/ة النشاط' };
+            const titleMap = { leadership: '🏛️ قائمة قسم مدير/ة النظام', agency: '📑 قائمة قسم الوكيل/الوكيلة/ة', performance: '👨‍🏫 قائمة قسم المعلم/المعلمة/ة', student_advisor: '🧭 قائمة قسم الموجه/ة الطلابي/ة', activity_leader: '🏃 قائمة قسم رائد/ة النشاط' };
             document.getElementById('role-list-title').innerText = titleMap[role] || 'القائمة';
             const container = document.getElementById('role-list-container');
             container.innerHTML = '';
@@ -728,7 +728,7 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
                 label.innerHTML = `<input type="checkbox" class="notif-recipient" value="${safeJs(u.id)}" data-role="${safeJs(u.role)}" data-name="${safeJs(u.name)}"><span><b>${u.name || 'بدون اسم'}</b><br><small class="text-slate-500">${roleLabel(u.role)}</small></span>`;
                 list.appendChild(label);
             });
-            if (hint) hint.innerText = currentUser?.role === 'agency' ? 'يمكن للوكيل/ة الإرسال إلى قسم المعلم/ة فقط.' : 'يمكن للمدير/ة الإرسال إلى قسم الوكيل/ة وقسم المعلم/ة.';
+            if (hint) hint.innerText = currentUser?.role === 'agency' ? 'يمكن للوكيل/ة الإرسال إلى قسم المعلم/المعلمة/ة فقط.' : 'يمكن للمدير/ة الإرسال إلى قسم الوكيل/الوكيلة/ة وقسم المعلم/المعلمة/ة.';
         };
 
         const toggleNotifRecipients = (checked) => {
@@ -1450,7 +1450,7 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
             <div class="box"><div class="label">التوصيات والقرارات</div>${m.recommendations || ''}</div>
             <div class="box"><div class="label">المهام الناتجة</div>${m.tasks || ''}</div>
             <div class="box"><div class="label">ملاحظات ودردشة الاجتماع</div>${(m.chat || []).map(c => (c.by || '') + ': ' + (c.text || '')).join('<br>')}</div>
-            <br><br><div class="meta"><div>توقيع قائد/ة المدرسة: ....................</div><div>توقيع معد المحضر: ....................</div></div>
+            <br><br><div class="meta"><div>توقيع مدير/مديرة المدرسة: ....................</div><div>توقيع معد المحضر: ....................</div></div>
             <button onclick="window.print()" style="padding:10px 25px;border:0;border-radius:12px;background:#1e7b78;color:white;font-weight:bold">طباعة</button>
 
 
@@ -2180,7 +2180,7 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
       platformParticipants,
       selectedParticipants,
       teamsText,
-      prompt: `أنت مساعد محاضر اجتماعات داخل منصة القيادة المدرسية الذكية.\nالمطلوب: تحليل نص/ملف اجتماع Microsoft Teams واستخراج الحضور الفعلي وتعبئة محضر رسمي جاهز لاعتماد المدير.\n\nأعد الناتج JSON فقط دون شرح خارج JSON وبالمفاتيح التالية:\n{\n  "title": "عنوان مناسب للاجتماع",\n  "type": "نوع الاجتماع",\n  "attendees": ["أسماء الحاضرين الفعليين فقط"],\n  "absentees": ["أسماء غير حاضرين إن أمكن"],\n  "agenda": "محاور الاجتماع كنقاط واضحة",\n  "recommendations": "التوصيات والقرارات كنقاط واضحة",\n  "tasks": "المهام الناتجة: المهمة - المسؤول - تاريخ المتابعة إن وجد",\n  "approvalNote": "صيغة مختصرة للمدير للاعتماد النهائي"\n}\n\nبيانات النموذج الحالية:\n${JSON.stringify(current, null, 2)}\n\nقائمة مستخدمي المنصة المتاحين للمطابقة:\n${participantsList || 'لا توجد قائمة مستخدمين ظاهرة'}\n\nنص/ملف Teams:\n${teamsText || 'لا يوجد نص Teams، اعتمد على بيانات النموذج الحالية إن وجدت.'}`
+      prompt: `أنت مساعد محاضر اجتماعات داخل منصة الإدارة المدرسية الذكية.\nالمطلوب: تحليل نص/ملف اجتماع Microsoft Teams واستخراج الحضور الفعلي وتعبئة محضر رسمي جاهز لاعتماد المدير.\n\nأعد الناتج JSON فقط دون شرح خارج JSON وبالمفاتيح التالية:\n{\n  "title": "عنوان مناسب للاجتماع",\n  "type": "نوع الاجتماع",\n  "attendees": ["أسماء الحاضرين الفعليين فقط"],\n  "absentees": ["أسماء غير حاضرين إن أمكن"],\n  "agenda": "محاور الاجتماع كنقاط واضحة",\n  "recommendations": "التوصيات والقرارات كنقاط واضحة",\n  "tasks": "المهام الناتجة: المهمة - المسؤول - تاريخ المتابعة إن وجد",\n  "approvalNote": "صيغة مختصرة للمدير للاعتماد النهائي"\n}\n\nبيانات النموذج الحالية:\n${JSON.stringify(current, null, 2)}\n\nقائمة مستخدمي المنصة المتاحين للمطابقة:\n${participantsList || 'لا توجد قائمة مستخدمين ظاهرة'}\n\nنص/ملف Teams:\n${teamsText || 'لا يوجد نص Teams، اعتمد على بيانات النموذج الحالية إن وجدت.'}`
     };
   }
 

@@ -94,7 +94,10 @@
     card.innerHTML='<div class="ss-performance-badge">📘</div><div style="flex:1"><h3>ملف الأداء الوظيفي</h3><p>تعبئة بيانات الملف وتجميع الشواهد تلقائيًا من الأرشيف حسب مجالات القسم.</p></div><div class="ss-perf-open">فتح</div>';
     card.onclick=openPerformanceFile;
     var grid=likelyDashboardGrid(dash);
-    if(grid){grid.appendChild(card);} else {var target=dash.querySelector('.ss-support-center-row')||dash.lastElementChild; if(target&&target.parentNode)target.parentNode.insertBefore(card,target); else dash.appendChild(card);}
+    if(grid){
+      var perfDash=[].slice.call(grid.children||[]).find(function(el){return (el.textContent||'').indexOf('لوحة متابعة الأداء المدرسي')>-1;});
+      if(perfDash) grid.insertBefore(card, perfDash); else grid.appendChild(card);
+    } else {var target=dash.querySelector('.ss-support-center-row')||dash.lastElementChild; if(target&&target.parentNode)target.parentNode.insertBefore(card,target); else dash.appendChild(card);}
   }
 
   function chips(items,type){return (items||[]).map(function(x,i){var text=type==='file'?(x.name||'ملف'):(x.text||x.url||'رابط'); return '<span class="ss-perf-chip">'+esc(text)+' <button type="button" onclick="window.ssPerfRemoveItem(\''+type+'\','+i+')">×</button></span>';}).join('') || '<span style="color:#94a3b8;font-weight:800">لا توجد عناصر مضافة</span>';}

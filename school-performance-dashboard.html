@@ -60,6 +60,8 @@
 #compareSelectors .compareGroup.show,#compareSelectors .compareGroup.is-active{display:flex!important}
 #compareSelectors label{display:flex!important;align-items:center!important;gap:8px!important;min-width:260px!important;background:#f8fbff!important;border:1px solid #dbeafe!important;border-radius:14px!important;padding:10px 12px!important;font-weight:900!important;color:#173152!important}
 #compareSelectors select{min-width:155px!important;border:1px solid #bfdbfe!important;border-radius:11px!important;padding:8px 10px!important;background:#fff!important;color:#0f172a!important;font-weight:800!important}
+
+.adminEmployeePanel{margin-top:16px;display:grid;grid-template-columns:repeat(5,1fr);gap:16px}.adminMetric{background:linear-gradient(135deg,#ffffff,#f4fbf8);border:1px solid #dce7f0;border-radius:22px;box-shadow:var(--shadow);padding:18px}.adminMetric span{color:var(--muted);font-weight:900}.adminMetric b{display:block;font-size:32px;color:#0f7a60;margin-top:8px}.adminMetric small{color:#64748b;font-weight:800}.adminArchiveTable{margin-top:16px}.adminArchiveTable table{width:100%;border-collapse:separate;border-spacing:0 8px}.adminArchiveTable td,.adminArchiveTable th{padding:10px;text-align:right}.adminArchiveTable td{background:#f8fbff;border-top:1px solid #edf2f7;border-bottom:1px solid #edf2f7}.adminArchiveTable td:first-child{border-radius:0 12px 12px 0}.adminArchiveTable td:last-child{border-radius:12px 0 0 12px}@media(max-width:1000px){.adminEmployeePanel{grid-template-columns:1fr 1fr}}@media(max-width:650px){.adminEmployeePanel{grid-template-columns:1fr}}
 </style>
 
 <style id="remove-comparison-buttons-and-dashboard-art-final">
@@ -77,6 +79,8 @@
 @keyframes spdDashSpin{to{transform:rotate(360deg)}}
 @keyframes spdBarRise{0%,100%{transform:scaleY(.82)}50%{transform:scaleY(1)}}
 @media(max-width:900px){.spd-dash-art{width:100%;min-width:0;height:102px}.spd-hero{flex-wrap:wrap!important}}
+
+.adminEmployeePanel{margin-top:16px;display:grid;grid-template-columns:repeat(5,1fr);gap:16px}.adminMetric{background:linear-gradient(135deg,#ffffff,#f4fbf8);border:1px solid #dce7f0;border-radius:22px;box-shadow:var(--shadow);padding:18px}.adminMetric span{color:var(--muted);font-weight:900}.adminMetric b{display:block;font-size:32px;color:#0f7a60;margin-top:8px}.adminMetric small{color:#64748b;font-weight:800}.adminArchiveTable{margin-top:16px}.adminArchiveTable table{width:100%;border-collapse:separate;border-spacing:0 8px}.adminArchiveTable td,.adminArchiveTable th{padding:10px;text-align:right}.adminArchiveTable td{background:#f8fbff;border-top:1px solid #edf2f7;border-bottom:1px solid #edf2f7}.adminArchiveTable td:first-child{border-radius:0 12px 12px 0}.adminArchiveTable td:last-child{border-radius:12px 0 0 12px}@media(max-width:1000px){.adminEmployeePanel{grid-template-columns:1fr 1fr}}@media(max-width:650px){.adminEmployeePanel{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -99,6 +103,7 @@
       <button class="btn" data-role="teacher" onclick="setRole('teacher',this)">👥 المعلمون/المعلمات</button>
       <button class="btn" data-role="advisor" onclick="setRole('advisor',this)">🧭 الموجه الطلابي/الموجهة الطلابية</button>
       <button class="btn" data-role="activity" onclick="setRole('activity',this)">🏅 رائد/رائدة النشاط</button>
+      <button class="btn" data-role="admin_employee" onclick="setRole('admin_employee',this)">🗃️ الموظفون الإداريون</button>
     </div>
     <div class="filters" id="periodFilters">
       <button class="btn blue active" data-period="today" onclick="setPeriod('today',this)">اليوم</button>
@@ -122,6 +127,19 @@
     <div class="card kpi"><div class="kpiIcon" style="background:#fff0f3;color:#e11d48">📎</div><h3>الشواهد المضافة</h3><div class="num" id="evidenceNum">53</div><div class="trend">↑ 18% عن الفترة السابقة</div><svg class="spark" viewBox="0 0 160 40"><polyline points="0,30 22,12 44,24 66,19 88,26 110,14 132,21 160,10" fill="none" stroke="#e11d48" stroke-width="4" stroke-linecap="round"/></svg></div>
     <div class="card kpi"><div class="kpiIcon" style="background:#f3eaff;color:var(--purple)">👥</div><h3>المستخدمون النشطون</h3><div class="num" id="usersNum">28</div><div class="trend">↑ 12% عن الفترة السابقة</div><svg class="spark" viewBox="0 0 160 40"><polyline points="0,31 20,28 40,20 60,24 80,16 100,22 120,19 140,17 160,12" fill="none" stroke="#8b5cf6" stroke-width="4" stroke-linecap="round"/></svg></div>
   </section>
+
+  <section class="adminEmployeePanel" id="adminEmployeeDashboardPanel">
+    <div class="adminMetric"><span>👥 الموظفون الإداريون</span><b id="adminEmpTotal">0</b><small>النشطون في المدرسة</small></div>
+    <div class="adminMetric"><span>⏳ خطط بانتظار الاعتماد</span><b id="adminEmpPending">0</b><small>لدى المدير/الوكيل</small></div>
+    <div class="adminMetric"><span>✅ خطط معتمدة</span><b id="adminEmpApproved">0</b><small>مرتبطة بالتقييم</small></div>
+    <div class="adminMetric"><span>📈 متوسط التقييم</span><b id="adminEmpAvg">0</b><small>من التقييمات المحفوظة</small></div>
+    <div class="adminMetric"><span>🛠 خطط تحسين</span><b id="adminEmpImprovement">0</b><small>مقترحة أو مطلوبة</small></div>
+  </section>
+  <section class="card adminArchiveTable" id="adminEmployeeArchivePanel">
+    <div class="chartTitle">أداء الموظفين الإداريين حسب جهة الإشراف <span>🗃️</span></div>
+    <table><thead><tr><th>المؤشر</th><th>إشراف المدير</th><th>إشراف الوكيل</th><th>الإجمالي</th></tr></thead><tbody id="adminEmpRows"></tbody></table>
+  </section>
+
 
   <section class="charts">
     <div class="card"><div class="chartTitle">نسبة الإنجاز حسب المجالات <span>🟢</span></div><div class="bars" id="domainBars"></div></div>
@@ -149,8 +167,8 @@
 
 (function(){
 'use strict';
-var ROLE_DEFS={manager:{label:'المدير/المديرة',icon:'👤'},vice:{label:'الوكيل/الوكيلة',icon:'🧑‍💼'},teacher:{label:'المعلمون/المعلمات',icon:'👥'},advisor:{label:'الموجه الطلابي/الموجهة الطلابية',icon:'🧭'},activity:{label:'رائد/رائدة النشاط',icon:'🏅'}};
-var ROLE_ORDER=['manager','vice','teacher','advisor','activity'];
+var ROLE_DEFS={manager:{label:'المدير/المديرة',icon:'👤'},vice:{label:'الوكيل/الوكيلة',icon:'🧑‍💼'},teacher:{label:'المعلمون/المعلمات',icon:'👥'},advisor:{label:'الموجه الطلابي/الموجهة الطلابية',icon:'🧭'},activity:{label:'رائد/رائدة النشاط',icon:'🏅'},admin_employee:{label:'الموظفون الإداريون',icon:'🗃️'}};
+var ROLE_ORDER=['manager','vice','teacher','advisor','activity','admin_employee'];
 var DOMAIN_DEFS=['القيادة والإدارة المدرسية','التعليم والتعلم','نواتج التعلم','البيئة المدرسية'];
 var currentRole='all', currentPeriod='today', LIVE_CACHE=null;
 var selectedYear=1448, selectedMonth=1, selectedWeek=1, selectedDay='all', selectedTerm='term1', compareMode='';
@@ -164,7 +182,13 @@ function lower(v){return norm(v).toLowerCase();}
 function schoolId(){try{var q=new URLSearchParams(location.search||'');var u=parse(localStorage.getItem('currentSchoolUser'),{})||parse(localStorage.getItem('currentUser'),{})||{};var s=parse(localStorage.getItem('smartSchool.currentSchool'),{})||{};return norm(q.get('school')||q.get('schoolId')||q.get('school_id')||localStorage.getItem('active_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||localStorage.getItem('smart_school_id')||u.schoolId||u.activeSchoolId||s.schoolId||s.id||'');}catch(e){return '';}}
 function schoolName(){try{var q=new URLSearchParams(location.search||'');var u=parse(localStorage.getItem('currentSchoolUser'),{})||parse(localStorage.getItem('currentUser'),{})||{};var s=parse(localStorage.getItem('smartSchool.currentSchool'),{})||{};return norm(q.get('schoolName')||q.get('school_name')||localStorage.getItem('active_school_name')||localStorage.getItem('current_school_name')||localStorage.getItem('school_name')||localStorage.getItem('persist_school')||u.schoolName||s.schoolName||s.school_name||'المدرسة النشطة');}catch(e){return 'المدرسة النشطة';}}
 function sameSchool(item){var sid=schoolId();if(!sid||!item||typeof item!=='object')return true;var v=item.schoolId||item.school_id||item.activeSchoolId||item.smart_school_id||item.targetSchoolId||item.sourceSchoolId||'';if(!v&&item.school&&typeof item.school==='object')v=item.school.id||item.school.schoolId||'';if(!v)return true;return String(v)===String(sid);}
-function inferRole(key,item){var s=lower(key+' '+JSON.stringify({role:item&&item.role,dbRole:item&&item.dbRole,section:item&&item.section,type:item&&item.type,archiveType:item&&item.archiveType,ownerRole:item&&item.ownerRole,createdByRole:item&&item.createdByRole,category:item&&item.category,folder:item&&item.folder}));
+
+function isAdminEmployeeText(s){return /admin_employee|administrative_employee|administrative|موظف إداري|الموظف الإداري|الموظفين الإداريين|إداريين|إداري|اداري|اداريين|سكرتير|مدخل بيانات|مشرف نقل/i.test(s||'')}
+function adminEmployeeScoreFromStatus(item){var st=lower((item&&item.status)||'');var score=Number((item&&item.score)||(item&&item.total)||(item&&item.averageEvaluation)||(item&&item.evaluation)||0);if(score){return score<=5?Math.round(score*20):Math.min(100,Math.round(score));}if(/approved|معتمد|اعتماد/.test(st))return 100;if(/pending|انتظار|قيد|مراجعة/.test(st))return 45;if(/returned|معاد|تعديل/.test(st))return 25;if(/disabled|معطل/.test(st))return 0;return countEvidence(item)>0?70:50;}
+function applyAdminEmployeeRoleMetrics(d){try{var raw=localStorage.getItem('administrative_employee_plans')||localStorage.getItem('admin_employee_plans')||'[]';var plans=parse(raw,[])||[];if(!Array.isArray(plans))plans=[];var active=plans.filter(function(p){return p&&p.active!==false&&sameSchool(p)});var r=d.roles.admin_employee;if(!r)return d;active.forEach(function(p){var sc=adminEmployeeScoreFromStatus(p);r.records++;d.totals.records++;r.scores.push(sc);d.domain['القيادة والإدارة المدرسية'].scores.push(sc);var ev=countEvidence(p);r.evidence+=ev;d.totals.evidence+=ev;var row={role:'admin_employee',roleLabel:ROLE_DEFS.admin_employee.label,title:p.name||p.employeeName||p.title||'خطة موظف إداري',score:sc,evidence:ev,date:parseDate(p),kind:'record'};d.records.push(row);if(ev>0)d.evidenceItems.push(row);});active.forEach(function(p){var id=p.id||p.email||p.empno||p.name||p.employeeName;if(id)d.users.add('admin_employee_'+id);});}catch(e){}return d;}
+
+function inferRole(key,item){var s=lower(key+' '+JSON.stringify({role:item&&item.role,dbRole:item&&item.dbRole,section:item&&item.section,type:item&&item.type,archiveType:item&&item.archiveType,ownerRole:item&&item.ownerRole,createdByRole:item&&item.createdByRole,category:item&&item.category,folder:item&&item.folder,title:item&&item.title,name:item&&item.name,employeeName:item&&item.employeeName,jobTitle:item&&item.jobTitle,supervisor:item&&item.supervisor}));
+ if(isAdminEmployeeText&&isAdminEmployeeText(s))return 'admin_employee';
  if(/activity|رائد|رائدة|النشاط/.test(s))return 'activity';
  if(/student_advisor|advisor|موجه|مرشد|الإرشاد|ارشاد/.test(s))return 'advisor';
  if(/teacher|معلم|معلمة|المعلم/.test(s))return 'teacher';
@@ -289,15 +313,16 @@ function addMetric(data,role,kind,item,key){if(!sameSchool(item)||!inPeriod(item
 function scanValue(data,key,val){if(val==null)return;if(Array.isArray(val)){val.forEach(function(x){scanValue(data,key,x);});return;}if(typeof val!=='object')return;
  if(!sameSchool(val))return;
  if(isUserKey(key)||val.email||val.fullName||val.role){var id=val.email||val.id||val.uid||val.name||JSON.stringify(val).slice(0,80); if(id)data.users.add(id);}
- var role=inferRole(key,val);var hasReport=isReportKey(key)||val.reportTitle||val.reportType||val.content&&val.category;var hasRecord=isRecordKey(key)||val.recordName||val.recordTitle||val.archiveType&&/record|سجل/i.test(val.archiveType);
- if(hasReport&&!hasRecord)addMetric(data,role,'report',val,key);else if(hasRecord)addMetric(data,role,'record',val,key);
+ var role=inferRole(key,val);var adminHit=(role==='admin_employee')||isAdminEmployeeText(key);var hasReport=isReportKey(key)||val.reportTitle||val.reportType||val.content&&val.category;var hasRecord=isRecordKey(key)||val.recordName||val.recordTitle||val.archiveType&&/record|سجل/i.test(val.archiveType);
+ if(adminHit&&(val.status||val.supervisor||val.employeeName||val.jobTitle||/administrative_employee_plans|admin_employee_plans/i.test(key))){addMetric(data,'admin_employee','record',val,key);}
+ else if(hasReport&&!hasRecord)addMetric(data,role,'report',val,key);else if(hasRecord)addMetric(data,role,'record',val,key);
  ['reports','items','files','records','archive','archives','data','children','folders'].forEach(function(p){if(Array.isArray(val[p]))val[p].forEach(function(x){scanValue(data,key+'_'+p,x);});});}
 function emptyData(){var d={roles:{},domain:{},totals:{reports:0,records:0,evidence:0},users:new Set(),records:[],evidenceItems:[]};ROLE_ORDER.forEach(function(k){d.roles[k]={id:k,label:ROLE_DEFS[k].label,icon:ROLE_DEFS[k].icon,reports:0,records:0,evidence:0,users:0,scores:[],score:0};});DOMAIN_DEFS.forEach(function(x){d.domain[x]={name:x,scores:[],score:0};});return d;}
 function finalize(d){ROLE_ORDER.forEach(function(k){var r=d.roles[k];r.users=0;r.score=r.scores.length?Math.round(r.scores.reduce(function(a,b){return a+b;},0)/r.scores.length):0;});Object.keys(d.domain).forEach(function(k){var x=d.domain[k];x.score=x.scores.length?Math.round(x.scores.reduce(function(a,b){return a+b;},0)/x.scores.length):0;});d.totals.users=d.users.size;var scores=ROLE_ORDER.map(function(k){return d.roles[k].score;}).filter(function(x){return x>0});d.readiness=scores.length?Math.round(scores.reduce(function(a,b){return a+b;},0)/scores.length):0;d.topRecords=d.records.slice().sort(function(a,b){return (b.score-a.score)||(b.evidence-a.evidence);}).slice(0,6);d.lateRecords=d.records.filter(function(x){return x.score<75;}).sort(function(a,b){return a.score-b.score;}).slice(0,6);d.latestEvidence=d.evidenceItems.sort(function(a,b){return (b.date?b.date.getTime():0)-(a.date?a.date.getTime():0);}).slice(0,6);return d;}
-function collectLocal(){var d=emptyData();for(var i=0;i<localStorage.length;i++){var key=localStorage.key(i)||'';if(/activation|theme|token|password|api|supabaseAnonKey/i.test(key))continue;var raw=localStorage.getItem(key);var val=parse(raw,'__raw__');if(val==='__raw__')continue;scanValue(d,key,val);}return finalize(d);}
+function collectLocal(){var d=emptyData();for(var i=0;i<localStorage.length;i++){var key=localStorage.key(i)||'';if(/activation|theme|token|password|api|supabaseAnonKey/i.test(key))continue;var raw=localStorage.getItem(key);var val=parse(raw,'__raw__');if(val==='__raw__')continue;scanValue(d,key,val);}applyAdminEmployeeRoleMetrics(d);return finalize(d);}
 function mergeData(a,b){if(!b)return a;ROLE_ORDER.forEach(function(k){var ar=a.roles[k],br=b.roles[k];ar.reports+=br.reports;ar.records+=br.records;ar.evidence+=br.evidence;ar.scores=ar.scores.concat(br.scores);});Object.keys(a.domain).forEach(function(k){a.domain[k].scores=a.domain[k].scores.concat((b.domain[k]||{scores:[]}).scores);});a.totals.reports+=b.totals.reports;a.totals.records+=b.totals.records;a.totals.evidence+=b.totals.evidence;b.users.forEach(function(u){a.users.add(u);});a.records=a.records.concat(b.records);a.evidenceItems=a.evidenceItems.concat(b.evidenceItems);return finalize(a);}
 async function ensureSupabase(){try{if(window.supabase&&window.supabase.createClient)return window.supabase;if(document.getElementById('supabase-js-sdk'))return null;await new Promise(function(res,rej){var s=document.createElement('script');s.id='supabase-js-sdk';s.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';s.onload=res;s.onerror=rej;document.head.appendChild(s);});return window.supabase;}catch(e){return null;}}
-async function collectRemote(){var d=emptyData(),sid=schoolId();if(!sid)return finalize(d);try{var sdk=await ensureSupabase();if(!sdk||!sdk.createClient)return finalize(d);var url=localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co';var key=localStorage.getItem('smartSchoolSupabaseAnonKey')||'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaWpoZ3ZidHJ2bW1sY3NzeGhodCIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzc4Njk2ODM1LCJleHAiOjIwOTQyNzI4MzV9.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';var sb=sdk.createClient(url,key);var tables=['reports','school_reports','records','archives','evidences','files','school_members','users'];for(var t=0;t<tables.length;t++){try{var q=await sb.from(tables[t]).select('*').eq('school_id',sid).limit(1000);if(q&&q.data)q.data.forEach(function(row){scanValue(d,tables[t],row);});}catch(e){}}}catch(e){}return finalize(d);}
+async function collectRemote(){var d=emptyData(),sid=schoolId();if(!sid)return finalize(d);try{var sdk=await ensureSupabase();if(!sdk||!sdk.createClient)return finalize(d);var url=localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co';var key=localStorage.getItem('smartSchoolSupabaseAnonKey')||'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaWpoZ3ZidHJ2bW1sY3NzeGhodCIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzc4Njk2ODM1LCJleHAiOjIwOTQyNzI4MzV9.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';var sb=sdk.createClient(url,key);var tables=['reports','school_reports','records','archives','evidences','files','school_members','users','administrative_employee_plans','admin_employee_plans','employee_evaluations','improvement_plans'];for(var t=0;t<tables.length;t++){try{var q=await sb.from(tables[t]).select('*').eq('school_id',sid).limit(1000);if(q&&q.data)q.data.forEach(function(row){scanValue(d,tables[t],row);});}catch(e){}}}catch(e){}return finalize(d);}
 async function loadData(){var local=collectLocal();var remote=await collectRemote();LIVE_CACHE=mergeData(local,remote);return LIVE_CACHE;}
 function getCurrentData(){return LIVE_CACHE||collectLocal();}
 function periodMultiplier(){return {today:1,week:1,month:1,term:1}[currentPeriod]||1;}
@@ -383,9 +408,9 @@ async function refreshDashboard(){
 
 function renderDomains(d){var colors=['green','cyan','orange','blue'];document.getElementById('domainBars').innerHTML=window.__SSP_LIVE__.DOMAIN_DEFS.map(function(name,i){var x=d.domain[name]||{score:0};return '<div class="barRow"><b>'+name+'</b><div class="barBg"><div class="barFill '+colors[i]+'" style="width:'+x.score+'%"></div></div><b>'+x.score+'%</b></div>';}).join('');}
 
-function renderRoles(d){var colors=['blue','orange','purple','green','cyan'];var entries=roleDataArray(d);document.getElementById('roleBars').innerHTML=entries.map(function(r,i){return '<div><div class="col" style="height:'+Math.max(10,r.score*2)+'px;background:linear-gradient(180deg,var(--'+colors[i]+'),#dbeafe)">'+r.score+'%</div></div>';}).join('');document.getElementById('roleLabels').innerHTML=entries.map(function(r){return '<div class="colLabel">'+r.label.split('/')[0].replace('الموجه الطلابي','الموجه').replace('رائد','الرائد')+'</div>';}).join('');}
+function renderRoles(d){var colors=['blue','orange','purple','green','cyan','green'];var entries=roleDataArray(d);document.getElementById('roleBars').innerHTML=entries.map(function(r,i){return '<div><div class="col" style="height:'+Math.max(10,r.score*2)+'px;background:linear-gradient(180deg,var(--'+colors[i]+'),#dbeafe)">'+r.score+'%</div></div>';}).join('');document.getElementById('roleLabels').innerHTML=entries.map(function(r){return '<div class="colLabel">'+r.label.split('/')[0].replace('الموجه الطلابي','الموجه').replace('رائد','الرائد')+'</div>';}).join('');}
 function renderRolesComparison(bundle){
- var colors=['blue','orange','purple','green','cyan'];
+ var colors=['blue','orange','purple','green','cyan','green'];
  var roles=window.__SSP_LIVE__.ROLE_ORDER;
  var labels=bundle.labels||[];
  document.getElementById('roleBars').innerHTML=roles.map(function(k,i){
@@ -481,6 +506,8 @@ document.getElementById('year').textContent=new Date().getFullYear();buildPeriod
 #compareSelectors label{display:flex!important;align-items:center!important;gap:8px!important;min-width:280px!important;background:#f8fbff!important;border:1px solid #dbeafe!important;border-radius:14px!important;padding:10px 12px!important;font-weight:900!important;color:#173152!important}
 #compareSelectors select{min-width:155px!important;border:1px solid #bfdbfe!important;border-radius:11px!important;padding:8px 10px!important;background:#fff!important;color:#0f172a!important;font-weight:800!important}
 @media(max-width:900px){#compareSelectors label{width:100%!important;min-width:0!important}#compareSelectors select{flex:1!important;min-width:120px!important}}
+
+.adminEmployeePanel{margin-top:16px;display:grid;grid-template-columns:repeat(5,1fr);gap:16px}.adminMetric{background:linear-gradient(135deg,#ffffff,#f4fbf8);border:1px solid #dce7f0;border-radius:22px;box-shadow:var(--shadow);padding:18px}.adminMetric span{color:var(--muted);font-weight:900}.adminMetric b{display:block;font-size:32px;color:#0f7a60;margin-top:8px}.adminMetric small{color:#64748b;font-weight:800}.adminArchiveTable{margin-top:16px}.adminArchiveTable table{width:100%;border-collapse:separate;border-spacing:0 8px}.adminArchiveTable td,.adminArchiveTable th{padding:10px;text-align:right}.adminArchiveTable td{background:#f8fbff;border-top:1px solid #edf2f7;border-bottom:1px solid #edf2f7}.adminArchiveTable td:first-child{border-radius:0 12px 12px 0}.adminArchiveTable td:last-child{border-radius:12px 0 0 12px}@media(max-width:1000px){.adminEmployeePanel{grid-template-columns:1fr 1fr}}@media(max-width:650px){.adminEmployeePanel{grid-template-columns:1fr}}
 </style>
 <script id="final-compare-dropdown-logic-fix">
 (function(){
@@ -577,5 +604,21 @@ document.getElementById('year').textContent=new Date().getFullYear();buildPeriod
 })();
 </script>
 
+
+<script id="admin-employee-dashboard-metrics">
+(function(){
+  function parse(v,f){try{return JSON.parse(v||'')}catch(e){return f}}
+  function plans(){return (parse(localStorage.getItem('administrative_employee_plans'),'[]')||[]).map(function(p){p.active=(typeof p.active==='undefined')?true:p.active;return p;});}
+  function evalScore(id){try{var e=parse(localStorage.getItem('administrative_employee_eval_'+id),null);return e?(Number(e.total)||Number(e.score)||0):0}catch(x){return 0}}
+  function calc(){var all=plans();var active=all.filter(function(p){return p.active!==false});var manager=active.filter(function(p){return (p.supervisor||'manager')==='manager'});var agent=active.filter(function(p){return (p.supervisor||'manager')!=='manager'});function count(a,st){return a.filter(function(p){return p.status===st}).length}function avg(a){var vals=a.map(function(p){return evalScore(p.id)}).filter(Boolean);return vals.length?Math.round(vals.reduce(function(s,x){return s+x},0)/vals.length):0}function improvement(a){return a.filter(function(p){return p.improvementPlan||String(p.status||'').match(/improvement|تحسين/)||evalScore(p.id)>0&&evalScore(p.id)<3}).length}
+    var metrics={total:active.length,pending:count(active,'pending'),approved:count(active,'approved'),returned:count(active,'returned'),disabled:all.filter(function(p){return p.active===false}).length,averageEvaluation:avg(active),improvement:improvement(active),manager:{total:manager.length,pending:count(manager,'pending'),approved:count(manager,'approved'),avg:avg(manager),improvement:improvement(manager)},agent:{total:agent.length,pending:count(agent,'pending'),approved:count(agent,'approved'),avg:avg(agent),improvement:improvement(agent)},updatedAt:new Date().toISOString()};
+    try{localStorage.setItem('administrative_employee_metrics',JSON.stringify(metrics))}catch(e){};return metrics;}
+  function set(id,val){var el=document.getElementById(id);if(el)el.textContent=val;}
+  function render(){var m=calc();set('adminEmpTotal',m.total);set('adminEmpPending',m.pending);set('adminEmpApproved',m.approved);set('adminEmpAvg',m.averageEvaluation);set('adminEmpImprovement',m.improvement);var body=document.getElementById('adminEmpRows');if(body){body.innerHTML='<tr><td>عدد الموظفين</td><td>'+m.manager.total+'</td><td>'+m.agent.total+'</td><td>'+m.total+'</td></tr><tr><td>خطط بانتظار الاعتماد</td><td>'+m.manager.pending+'</td><td>'+m.agent.pending+'</td><td>'+m.pending+'</td></tr><tr><td>خطط معتمدة</td><td>'+m.manager.approved+'</td><td>'+m.agent.approved+'</td><td>'+m.approved+'</td></tr><tr><td>متوسط التقييم</td><td>'+m.manager.avg+'</td><td>'+m.agent.avg+'</td><td>'+m.averageEvaluation+'</td></tr><tr><td>خطط تحسين</td><td>'+m.manager.improvement+'</td><td>'+m.agent.improvement+'</td><td>'+m.improvement+'</td></tr>'}var users=document.getElementById('usersNum');if(users){var base=Number(users.textContent)||0; if(m.total>base) users.textContent=m.total;}}
+  var old=window.refreshDashboard;window.refreshDashboard=function(){try{if(typeof old==='function')old()}catch(e){}render()};
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',render);else render();
+  window.addEventListener('storage',function(e){if(String(e.key||'').match(/administrative_employee|employee/i))render()});
+})();
+</script>
 </body>
 </html>

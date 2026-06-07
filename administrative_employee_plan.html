@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>خطة الأداء الوظيفي للموظف الإداري</title>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&display=swap" rel="stylesheet">
+<style>
+:root{--g:#0f6b4a;--d:#0b3d2f;--bg:#f3f8f5;--line:#d8e8df;--gold:#c9a227}
+*{box-sizing:border-box}body{margin:0;font-family:Tajawal,Arial,sans-serif;background:linear-gradient(135deg,#eef8f3,#fff8e8);color:#17263a}
+.wrap{max-width:1050px;margin:auto;padding:22px}.hero{background:linear-gradient(135deg,#0b3d2f,#1b8a61);color:#fff;border-radius:28px;padding:22px;display:flex;gap:16px;align-items:center;box-shadow:0 12px 30px #0b3d2f33}.hero img{width:72px;background:#fff;border-radius:18px;padding:9px}.hero h1{margin:0;font-size:25px}.hero p{margin:5px 0 0;opacity:.9}.card{background:#fff;border:1px solid var(--line);border-radius:22px;padding:20px;margin-top:18px;box-shadow:0 10px 28px #08331e12}.title{font-weight:900;color:var(--d);font-size:18px;margin-bottom:14px;border-bottom:2px solid #eef6f1;padding-bottom:10px}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}@media(max-width:750px){.grid{grid-template-columns:1fr}.hero{flex-direction:column;text-align:center}}
+label{display:block;font-weight:800;color:#334155;margin-bottom:6px;font-size:13px}input,select,textarea{width:100%;border:1.5px solid var(--line);border-radius:12px;padding:10px;font-family:inherit;background:#fbfffd}textarea{min-height:70px}
+table{width:100%;border-collapse:collapse;margin-top:8px}th,td{border:1px solid var(--line);padding:8px;text-align:right}th{background:#0f6b4a;color:white}.btns{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:18px}.btn{border:0;border-radius:12px;padding:11px 18px;font-family:inherit;font-weight:900;cursor:pointer}.primary{background:#0f6b4a;color:white}.gold{background:#f5e7b5;color:#634b00}.muted{background:#eef2f7;color:#334155}.danger{background:#ffe9e9;color:#b42318}.chip{display:inline-block;border-radius:999px;padding:5px 12px;background:#eef8f3;color:#0f6b4a;font-weight:900}
+.status{font-weight:900}.pending{color:#c78300}.approved{color:#0f6b4a}.returned{color:#c0392b}
+@media print{.btns{display:none}.wrap{padding:0}.card,.hero{box-shadow:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="hero">
+<img src="https://salogos.b-cdn.net/logos/svg/1774895141785-5zgexuf8.svg" alt="شعار وزارة التعليم">
+<div><h1>نظام الإدارة المدرسية الذكي - خطة الموظف الإداري</h1><p>إعداد خطة الأداء الوظيفي وإرسالها للمسؤول المباشر للاعتماد</p></div>
+</header>
+<section class="card">
+<div class="title">بيانات الموظف/ة الإداري/ة</div>
+<div class="grid">
+<div><label>اسم الموظف/ة</label><input id="empName"></div>
+<div><label>البريد / رقم الجوال</label><input id="empContact"></div>
+<div><label>المسمى الوظيفي</label><select id="jobTitle"><option>مساعد إداري</option><option>كاتب مدرسة</option><option>سكرتير</option><option>مدخل بيانات</option><option>مشرف نقل مدرسي</option><option>محضر مختبر</option><option>أمين مصادر تعلم</option><option>مشرف فصول</option></select></div>
+<div><label>يتبع إشراف</label><select id="supervisor"><option value="manager">مدير/مديرة المدرسة</option><option value="agent">وكيل/وكيلة المدرسة</option></select></div>
+<div><label>العام الدراسي</label><select id="year"></select></div>
+<div><label>حالة الخطة</label><div class="chip status pending" id="statusText">مسودة</div></div>
+</div>
+</section>
+<section class="card">
+<div class="title">الأهداف الوظيفية المقترحة</div>
+<table><thead><tr><th>م</th><th>الهدف</th><th>مؤشر القياس</th><th>الناتج المستهدف</th><th>الوزن %</th></tr></thead><tbody id="goalsBody"></tbody></table>
+<div class="btns"><button class="btn muted" onclick="addGoal()">+ إضافة هدف</button></div>
+</section>
+<section class="card">
+<div class="title">الشواهد والاحتياج التطويري</div>
+<div class="grid">
+<div><label>الشواهد المتوقعة</label><textarea id="evidence"></textarea></div>
+<div><label>الاحتياج التدريبي / الدعم المطلوب</label><textarea id="needs"></textarea></div>
+<div><label>ملاحظات الموظف/ة</label><textarea id="notes"></textarea></div>
+<div><label>ملاحظات المسؤول المباشر</label><textarea id="reviewNotes" readonly></textarea></div>
+</div>
+</section>
+<div class="btns">
+<button class="btn primary" onclick="savePlan('draft')">حفظ مسودة</button>
+<button class="btn gold" onclick="savePlan('pending')">إرسال لاعتماد المسؤول</button>
+<button class="btn muted" onclick="window.print()">طباعة / حفظ PDF</button>
+<button class="btn danger" onclick="history.back()">رجوع</button>
+</div>
+</div>
+<script>
+const params=new URLSearchParams(location.search);
+const currentEmail=localStorage.getItem('currentUserEmail')||params.get('email')||'';
+const currentName=localStorage.getItem('currentUserName')||'';
+function fillYears(){const y=document.getElementById('year');for(let i=1448;i<=1477;i++){let o=document.createElement('option');o.value=i+'هـ';o.textContent=i+'هـ';y.appendChild(o)}}
+function addGoal(g={}){const b=document.getElementById('goalsBody');const n=b.children.length+1;const tr=document.createElement('tr');tr.innerHTML=`<td>${n}</td><td><input value="${g.goal||''}"></td><td><input value="${g.kpi||''}"></td><td><input value="${g.target||''}"></td><td><input type="number" min="0" max="100" value="${g.weight||''}"></td>`;b.appendChild(tr)}
+function collect(){let existing=(JSON.parse(localStorage.getItem('administrative_employee_plans')||'[]')).find(x=>String(x.id)===String(currentEmail));return {id: currentEmail||('emp_'+Date.now()), name:empName.value, contact:empContact.value, jobTitle:jobTitle.value, supervisor:supervisor.value, year:year.value, status:statusText.dataset.status||'draft', active: existing&&typeof existing.active!=='undefined'?existing.active:true, archive: existing&&existing.archive?existing.archive:[], history: existing&&existing.history?existing.history:[], evidence:evidence.value, needs:needs.value, notes:notes.value, reviewNotes:reviewNotes.value, updatedAt:new Date().toISOString(), goals:[...goalsBody.querySelectorAll('tr')].map(tr=>{let i=tr.querySelectorAll('input');return {goal:i[0].value,kpi:i[1].value,target:i[2].value,weight:i[3].value}})}}
+function savePlan(status){let p=collect();p.status=status;let arr=JSON.parse(localStorage.getItem('administrative_employee_plans')||'[]');arr=arr.filter(x=>String(x.id)!==String(p.id));p.history=p.history||[];p.history.unshift({action:status==='pending'?'إرسال للاعتماد':'حفظ مسودة',at:new Date().toISOString(),by:'الموظف الإداري'});arr.push(p);localStorage.setItem('administrative_employee_plans',JSON.stringify(arr));try{localStorage.setItem('administrative_employee_metrics_touch',new Date().toISOString())}catch(e){}statusText.dataset.status=status;statusText.textContent=status==='pending'?'بانتظار الاعتماد':status==='approved'?'معتمدة':'مسودة';statusText.className='chip status '+(status==='approved'?'approved':status==='pending'?'pending':'');alert(status==='pending'?'تم إرسال الخطة للمسؤول المباشر':'تم الحفظ');}
+function load(){fillYears();empName.value=currentName;empContact.value=currentEmail;const arr=JSON.parse(localStorage.getItem('administrative_employee_plans')||'[]');const p=arr.find(x=>String(x.id)===String(currentEmail));if(p){empName.value=p.name||'';empContact.value=p.contact||'';jobTitle.value=p.jobTitle||jobTitle.value;supervisor.value=p.supervisor||'manager';year.value=p.year||year.value;evidence.value=p.evidence||'';needs.value=p.needs||'';notes.value=p.notes||'';reviewNotes.value=p.reviewNotes||'';goalsBody.innerHTML='';(p.goals||[]).forEach(addGoal);statusText.dataset.status=p.status||'draft';statusText.textContent=p.status==='pending'?'بانتظار الاعتماد':p.status==='approved'?'معتمدة':p.status==='returned'?'معادة للتعديل':'مسودة';} if(!goalsBody.children.length){addGoal();addGoal();addGoal();}}
+load();
+</script>
+</body></html>

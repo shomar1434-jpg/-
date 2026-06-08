@@ -282,22 +282,30 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
             const grid = document.getElementById('apps-grid');
             if (!grid) return;
             grid.innerHTML = '';
-            const apps = role === 'leadership' ? ['leadership', 'agency', 'performance', 'student_advisor', 'activity_leader', 'administrative_employee'] : [role];
+            const apps = role === 'leadership'
+                ? ['leadership', 'agency', 'performance', 'student_advisor', 'activity_leader', 'administrative_employee']
+                : [role];
+            const meta = {
+                leadership: { title: 'قسم مدير/ة النظام', icon: '🏛️', tone: 'blue' },
+                agency: { title: 'قسم الوكيل/ة', icon: '👥', tone: 'purple' },
+                performance: { title: 'قسم المعلم/المعلمة', icon: '👨‍🏫', tone: 'green' },
+                administrative_employee: { title: 'قسم الموظف/ة الإداري/ة', icon: '💼', tone: 'teal' },
+                activity_leader: { title: 'قسم رائد/ة النشاط', icon: '🏃', tone: 'orange' },
+                student_advisor: { title: 'قسم الموجه/ة الطلابي/ة', icon: '🧭', tone: 'violet' }
+            };
             apps.forEach(appId => {
-                const titles = { 'leadership': '🏛️ قسم مدير/ة النظام', 'agency': '📑 قسم الوكيل/الوكيلة/ة', 'performance': '👨‍🏫 قسم المعلم/المعلمة/ة', 'student_advisor': '🧭 قسم الموجه/ة الطلابي/ة', 'activity_leader': '🏃 قسم رائد/ة النشاط', 'administrative_employee': '👤 قسم الموظف/ة الإداري/ة' };
+                const item = meta[appId] || { title: appId, icon: '📌', tone: 'teal' };
                 const card = document.createElement('div');
-                card.className = "app-card p-8 text-center cursor-pointer shadow-lg hover:shadow-2xl transition-all hover:scale-105";
-                card.innerHTML = `<h2 class="font-bold text-xl text-slate-800">${titles[appId]}</h2><p class="text-[10px] text-teal-600 mt-2 font-bold">نظام نشط ومؤمن ✅</p><button class="mt-6 bg-teal-700 text-white px-6 py-2 rounded-xl w-full font-bold shadow-md">دخول</button>`;
+                card.className = "app-card text-center cursor-pointer shadow-lg hover:shadow-2xl transition-all hover:scale-105";
+                card.innerHTML = `
+                    <div class="role-icon role-${item.tone}">${item.icon}</div>
+                    <h2 class="font-bold text-xl text-slate-800">${item.title}</h2>
+                    <p class="text-[10px] text-teal-600 mt-2 font-bold">نظام نشط ومؤمن ✅</p>
+                    <button class="mt-6 bg-teal-700 text-white px-6 py-2 rounded-xl w-full font-bold shadow-md">دخول</button>
+                `;
                 card.onclick = () => launchApp(appId);
                 grid.appendChild(card);
             });
-            if (role === 'leadership') {
-                const schoolCard = document.createElement('div');
-                schoolCard.className = "app-card p-8 text-center cursor-pointer shadow-lg hover:shadow-2xl transition-all hover:scale-105";
-                schoolCard.innerHTML = `<h2 class="font-bold text-xl text-slate-800">🏫 إدارة المدارس</h2><p class="text-[10px] text-teal-600 mt-2 font-bold">إنشاء المدارس وربط المديرين والروابط المستقلة</p><button class="mt-6 bg-teal-700 text-white px-6 py-2 rounded-xl w-full font-bold shadow-md">فتح الإدارة</button>`;
-                schoolCard.onclick = () => showSchoolManagementPanel();
-                grid.appendChild(schoolCard);
-            }
         };
 
         const launchApp = (appId) => {

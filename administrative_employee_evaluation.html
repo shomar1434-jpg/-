@@ -175,6 +175,10 @@ body{font-family:'Tajawal',sans-serif;background:linear-gradient(150deg,#f0f7f4,
 .emp-pill{display:inline-flex;align-items:center;gap:6px;background:var(--gp);color:var(--gd);border:1px solid #bdd8cb;border-radius:999px;padding:5px 10px;font-size:11px;font-weight:800}
 @media print{.emp-manager{display:none!important}}
 
+
+/* لوحة نتائج تقييم الموظف الإداري وربطها بخطة التحسين */
+.adminEvalResultPanel{background:#fff;border:1px solid var(--bd);border-radius:16px;padding:18px;margin-bottom:16px;box-shadow:var(--sh)}
+.adminEvalKpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:10px 0 14px}.adminEvalKpi{background:#fbfffd;border:1px solid var(--bd);border-radius:14px;padding:14px;text-align:center}.adminEvalKpi b{display:block;font-size:28px;color:var(--gd);font-family:'Amiri',serif}.adminEvalKpi span{font-size:12px;color:var(--tl);font-weight:800}.adminEvalBars{display:grid;grid-template-columns:1fr 1fr;gap:12px}.adminEvalBar{border:1px solid var(--bd);border-radius:13px;padding:12px;background:#fafff8}.adminEvalBar .line{height:9px;background:#e8f5ef;border-radius:99px;overflow:hidden;margin-top:8px}.adminEvalBar .line i{display:block;height:100%;background:linear-gradient(90deg,var(--gd),var(--gl));width:0}.adminImproveList{display:grid;gap:8px;margin-top:10px}.adminImproveItem{border:1px solid #f1d3aa;background:#fffaf0;border-radius:12px;padding:10px;color:#7c2d12;font-weight:800;display:flex;justify-content:space-between;gap:10px;align-items:center}@media(max-width:800px){.adminEvalKpis,.adminEvalBars{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -581,6 +585,19 @@ body{font-family:'Tajawal',sans-serif;background:linear-gradient(150deg,#f0f7f4,
       <div class="fg"><label>النقاط التي تحتاج إلى تطوير</label><textarea rows="4" placeholder="1.&#10;2.&#10;3.&#10;4."></textarea></div>
     </div>
     <div class="fg" style="margin-top:10px"><label>الملاحظات العامة للمقيِّم</label><textarea rows="2" placeholder="أي توصيات أو ملاحظات ختامية..."></textarea></div>
+  </div>
+
+  
+  <div class="adminEvalResultPanel" id="adminEvalResultPanel">
+    <div class="ctitle"><div class="cicon">📊</div>نتائج التقييم وفرص التحسين</div>
+    <div class="adminEvalKpis">
+      <div class="adminEvalKpi"><span>الدرجة النهائية</span><b id="adminEvalTotal">—</b></div>
+      <div class="adminEvalKpi"><span>مستوى الأداء</span><b id="adminEvalLevel" style="font-size:20px">—</b></div>
+      <div class="adminEvalKpi"><span>تقييم الأهداف</span><b id="adminEvalObj">—</b></div>
+      <div class="adminEvalKpi"><span>تقييم الجدارات</span><b id="adminEvalComp">—</b></div>
+    </div>
+    <div class="adminEvalBars"><div class="adminEvalBar"><b>مخطط الأداء الشامل</b><div class="line"><i id="adminEvalTotalBar"></i></div><div class="mini" id="adminEvalAdvice">يتم تحديث النتائج بعد احتساب التقييم.</div></div><div class="adminEvalBar"><b>فرص التحسين المستخرجة من التقييم</b><div class="adminImproveList" id="adminImproveList"><div class="mini">لا توجد بيانات تقييم محفوظة بعد.</div></div></div></div>
+    <div class="btn-row noPrint" style="margin-top:14px"><button class="btn btn-p" onclick="createImprovementFromEvaluation()">📈 إنشاء خطة تحسين تلقائية</button></div>
   </div>
 
   <!-- مخطط الرادار -->
@@ -1229,5 +1246,30 @@ initEmployees();
 })();
 </script>
 
+
+<script>
+(function(){
+  function val(id){var el=document.getElementById(id);return el?String(el.value||el.textContent||''):''}
+  function num(v){var n=parseFloat(String(v||'').replace(/[^0-9.\-]/g,''));return isNaN(n)?0:n}
+  window.saveAdministrativeEmployeeEvaluationForImprovement=function(showAlert){
+    try{var qs=new URLSearchParams(location.search);var emp=qs.get('emp')||'';if(!emp){if(showAlert)alert('لا يوجد موظف مرتبط بهذا التقييم.');return null;}if(typeof calcAll==='function')calcAll();var total=num(val('sc-total')),obj=num(val('sc-obj')),comp=num(val('sc-comp'));var lows=[];for(var i=1;i<=20;i++){var name=val('oname-'+i),rating=num(val('erating-'+i));if(name&&rating&&rating<=2)lows.push({area:name,score:rating,note:'هدف وظيفي بدرجة منخفضة'});}if(Array.isArray(window.competencies)){window.competencies.forEach(function(c){var r=num(val('cr-'+c.id));if(r&&r<=2)lows.push({area:c.name,score:r,note:'جدارة تحتاج تحسين'});});}var data={id:emp,total:total,score:total,objectiveScore:obj,competencyScore:comp,lowAreas:lows,updated:new Date().toISOString()};localStorage.setItem('administrative_employee_eval_'+emp,JSON.stringify(data));try{window.dispatchEvent(new StorageEvent('storage',{key:'administrative_employee_eval_'+emp}));}catch(e){}if(showAlert)alert('تم حفظ التقييم وربطه بخطة التحسين.');return data;}catch(e){console.warn(e);if(showAlert)alert('تعذر حفظ التقييم.');return null;}};
+  function addSaveButton(){try{var qs=new URLSearchParams(location.search);if(!qs.get('emp'))return;var rows=document.querySelectorAll('#p7 .btn-row');var row=rows[rows.length-1];if(!row||document.getElementById('saveAdminEvalBtn'))return;var b=document.createElement('button');b.id='saveAdminEvalBtn';b.className='btn btn-p';b.textContent='💾 حفظ التقييم وربطه بخطة التحسين';b.onclick=function(){saveAdministrativeEmployeeEvaluationForImprovement(true)};row.insertBefore(b,row.children[2]||null);}catch(e){}}
+  window.addEventListener('load',function(){setTimeout(addSaveButton,500)});
+})();
+</script>
+
+<script>
+(function(){
+function getQS(){return new URLSearchParams(location.search)}
+function getEmpId(){return getQS().get('emp')||getQS().get('id')||''}
+function toNum(x){x=parseFloat(String(x||'').replace(/[^0-9.\-]/g,''));return isNaN(x)?0:x}
+function getVal(id){var el=document.getElementById(id);return el?(el.textContent||el.value||''):''}
+function getLevel(score){score=Number(score)||0;if(!score)return 'غير مكتمل';if(score<=2)return 'أداء منخفض';if(score<3.5)return 'يحتاج تطوير';if(score<4.5)return 'جيد';return 'متميز'}
+function getLowAreas(){var arr=[];try{if(typeof competencies!=='undefined'&&Array.isArray(competencies)){competencies.forEach(function(c){var el=document.getElementById('cr-'+c.id);var r=toNum(el&&el.value);if(r&&r<=2)arr.push({area:c.name,score:r,note:'جدارة منخفضة في التقييم'});});}}catch(e){}try{for(var i=1;i<=30;i++){var n=document.getElementById('oname-'+i);var r=document.getElementById('erating-'+i);var name=n&&n.value;var rating=toNum(r&&r.value);if(name&&rating&&rating<=2)arr.push({area:name,score:rating,note:'هدف وظيفي منخفض الإنجاز'});}}catch(e){}var seen={};return arr.filter(function(x){if(seen[x.area])return false;seen[x.area]=1;return true;});}
+function renderAdminEvalPanel(){try{if(typeof calcAll==='function')calcAll();var total=toNum(getVal('sc-total')), obj=toNum(getVal('sc-obj')), comp=toNum(getVal('sc-comp'));var t=document.getElementById('adminEvalTotal'),o=document.getElementById('adminEvalObj'),c=document.getElementById('adminEvalComp'),l=document.getElementById('adminEvalLevel'),bar=document.getElementById('adminEvalTotalBar'),ad=document.getElementById('adminEvalAdvice');if(t)t.textContent=total?total.toFixed(2):'—';if(o)o.textContent=obj?obj.toFixed(2):'—';if(c)c.textContent=comp?comp.toFixed(2):'—';if(l)l.textContent=getLevel(total);if(bar)bar.style.width=Math.max(0,Math.min(100,total/5*100))+'%';if(ad)ad.textContent=total?'تم بناء فرص التحسين من الدرجات الأقل من 3.':'يتم تحديث النتائج بعد احتساب التقييم.';var lows=getLowAreas();var list=document.getElementById('adminImproveList');if(list){list.innerHTML=lows.length?lows.map(function(x){return '<div class="adminImproveItem"><span>⚠️ '+x.area+'</span><small>درجة '+x.score+'</small></div>';}).join(''):'<div class="mini">لا توجد فرص تحسين منخفضة بعد اكتمال التقييم.</div>';}}catch(e){console.warn(e)}}
+window.createImprovementFromEvaluation=function(){try{var id=getEmpId();if(!id){alert('لا يوجد موظف مرتبط بهذا التقييم. افتح التقييم من صفحة إدارة الموظفين الإداريين.');return;}if(typeof saveAdministrativeEmployeeEvaluationForImprovement==='function'){saveAdministrativeEmployeeEvaluationForImprovement(false);}else{var data={id:id,total:toNum(getVal('sc-total')),objectiveScore:toNum(getVal('sc-obj')),competencyScore:toNum(getVal('sc-comp')),lowAreas:getLowAreas(),updated:new Date().toISOString()};localStorage.setItem('administrative_employee_eval_'+id,JSON.stringify(data));}location.href='administrative_employee_improvement.html?emp='+encodeURIComponent(id)+'&supervisor='+(getQS().get('supervisor')||'manager');}catch(e){console.warn(e);alert('تعذر إنشاء خطة التحسين تلقائيًا.')}};
+window.addEventListener('load',function(){setTimeout(renderAdminEvalPanel,400)});document.addEventListener('change',function(){setTimeout(renderAdminEvalPanel,150)});document.addEventListener('input',function(){setTimeout(renderAdminEvalPanel,150)});
+})();
+</script>
 </body>
 </html>

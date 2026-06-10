@@ -4527,7 +4527,7 @@ body{overflow-x:hidden}
       html+=btn('ssInbox','🔔','تلقي التنبيهات','');
       html+=btn('ssExit','⏻','الخروج','danger');
     } else {
-      html+=btn('ssTeacherRecords','📚','سجلات المعلم','gold');
+      html+='<button type="button" class="ss-final-btn gold" id="ssTeacherRecords" onclick="event.preventDefault();event.stopPropagation();if(event.stopImmediatePropagation)event.stopImmediatePropagation();window.forceOpenTeacherRecords();return false;">📚<span class="ss-tip">سجلات المعلم</span><span class="ss-final-badge" id="ssTeacherRecordsBadge">0</span><span class="ss-final-meeting-dot" id="ssTeacherRecordsMeetingDot"></span></button>';
       html+=btn('ssDataAnalysis','📊','تحليل البيانات','blue');
       html+=btn('ssMeetWallet','📁','محفظة الاجتماعات','');
       html+=btn('ssInbox','🔔','تلقي التنبيهات','');
@@ -4536,8 +4536,30 @@ body{overflow-x:hidden}
     }
     b.innerHTML=html;
   }
-  function attach(){var q=function(id){return document.getElementById(id)}; q('ssBack')&&q('ssBack').addEventListener('click',function(){location.href='index.html'}); q('ssExit')&&q('ssExit').addEventListener('click',function(){location.href='index.html'}); q('ssTeachers')&&q('ssTeachers').addEventListener('click',function(){showUsers('teacher')}); q('ssAgents')&&q('ssAgents').addEventListener('click',function(){showUsers('agent')}); q('ssActivate')&&q('ssActivate').addEventListener('click',showActivation); q('ssRegLink')&&q('ssRegLink').addEventListener('click',showRegLink); q('ssAlert')&&q('ssAlert').addEventListener('click',showAlert); q('ssInbox')&&q('ssInbox').addEventListener('click',showInbox); q('ssMeetWallet')&&q('ssMeetWallet').addEventListener('click',showWallet); q('ssMeetingRoom')&&q('ssMeetingRoom').addEventListener('click',showMeetingRoom); q('ssCloud')&&q('ssCloud').addEventListener('click',showCloud); q('ssTeacherRecords')&&q('ssTeacherRecords').addEventListener('click',showTeacherRecords); q('ssDataAnalysis')&&q('ssDataAnalysis').addEventListener('click',showDataAnalysis); }
+  function attach(){var q=function(id){return document.getElementById(id)}; q('ssBack')&&q('ssBack').addEventListener('click',function(){location.href='index.html'}); q('ssExit')&&q('ssExit').addEventListener('click',function(){location.href='index.html'}); q('ssTeachers')&&q('ssTeachers').addEventListener('click',function(){showUsers('teacher')}); q('ssAgents')&&q('ssAgents').addEventListener('click',function(){showUsers('agent')}); q('ssActivate')&&q('ssActivate').addEventListener('click',showActivation); q('ssRegLink')&&q('ssRegLink').addEventListener('click',showRegLink); q('ssAlert')&&q('ssAlert').addEventListener('click',showAlert); q('ssInbox')&&q('ssInbox').addEventListener('click',showInbox); q('ssMeetWallet')&&q('ssMeetWallet').addEventListener('click',showWallet); q('ssMeetingRoom')&&q('ssMeetingRoom').addEventListener('click',showMeetingRoom); q('ssCloud')&&q('ssCloud').addEventListener('click',showCloud); q('ssTeacherRecords')&&q('ssTeacherRecords').addEventListener('click',function(e){e.preventDefault();e.stopPropagation();window.forceOpenTeacherRecords();return false;}); q('ssDataAnalysis')&&q('ssDataAnalysis').addEventListener('click',showDataAnalysis); }
   function showUsers(role){var list=users().filter(function(u){return u.role===role}); panel(role==='teacher'?'المعلمون':'الوكلاء', list.length?list.map(function(u){return '<div class="ss-card"><b>'+esc(u.name)+'</b><div class="ss-muted">'+esc(u.email||'')+' — '+(u.status==='active'?'مفعل':'بانتظار التفعيل')+'</div></div>'}).join(''):'<div class="ss-empty">لا توجد حسابات مسجلة.</div>')}
+  function openTeacherRecord(file){
+    // فتح سجلات المعلم داخل إطار مستقل، مع منع أي استدعاء خاطئ لطباعة التقارير
+    var allowed={
+      'teacher_records_attendance.html':true,
+      'teacher_records_participation.html':true,
+      'teacher_records_student_work.html':true
+    };
+    if(!allowed[file]) return false;
+    var titles={
+      'teacher_records_attendance.html':'كشف متابعة غياب الطلاب',
+      'teacher_records_participation.html':'سجل متابعة المشاركة والتفاعل الصفي',
+      'teacher_records_student_work.html':'سجل متابعة أعمال الطلاب'
+    };
+    panel(titles[file] || 'سجلات المعلم',
+      '<div style="height:82vh;border:1px solid #e5e7eb;border-radius:18px;overflow:hidden;background:#fff">'+
+      '<iframe src="'+file+'" title="'+(titles[file]||'سجلات المعلم')+'" style="width:100%;height:100%;border:0;background:#fff"></iframe>'+
+      '</div>'
+    );
+    return false;
+  }
+  window.openTeacherRecord=openTeacherRecord;
+
   function showTeacherRecords(){
     var records=[
       {title:'كشف متابعة غياب الطلاب', file:'teacher_records_attendance.html', desc:'سجل متابعة الغياب مع الاستيراد والطباعة والحفظ كـ PDF.'},
@@ -4546,7 +4568,7 @@ body{overflow-x:hidden}
     ];
     panel('سجلات المعلم',
       '<div class="ss-muted" style="margin-bottom:12px;font-weight:800">اختر السجل لفتحه كما هو بكامل خصائصه المعدة بصيغة HTML.</div>'+
-      records.map(function(r){return '<button class="ss-card" style="width:100%;text-align:right;cursor:pointer" onclick="window.open(\''+r.file+'\',\'_blank\')"><b>'+esc(r.title)+'</b><div class="ss-muted">'+esc(r.desc)+'</div></button>';}).join('')
+      records.map(function(r){return '<button type="button" class="ss-card" style="width:100%;text-align:right;cursor:pointer" onclick="event.preventDefault();event.stopPropagation();if(event.stopImmediatePropagation)event.stopImmediatePropagation();openTeacherRecord(\''+r.file+'\');return false;"><b>'+esc(r.title)+'</b><div class="ss-muted">'+esc(r.desc)+'</div></button>';}).join('')
     );
   }
 
@@ -4783,6 +4805,46 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
   function showCloud(){panel('الرفع السحابي','<div class="ss-card"><b>منصة الإدارة المدرسية الذكية</b><div class="ss-muted">تجهيز ملف/مجلد سحابي يحمل اسم منصة الإدارة المدرسية الذكية، وداخله نسخة مطابقة للأقسام مع استثناء تقرير جديد وداشبورد المتابعة.</div></div><div class="ss-field"><label>اختر السحابة</label><select id="cloudProvider"><option>حفظ داخل المنصة</option><option>OneDrive</option><option>Google Drive</option><option>تخطي الآن</option></select></div><div class="ss-actions"><button class="ss-action blue" id="cloudOpenOneDrive">فتح OneDrive وربط الحساب</button><button class="ss-action blue" id="cloudUpload">رفع ملف</button><button class="ss-action" id="cloudPackage">إنشاء النسخة المطابقة</button><button class="ss-action secondary" id="cloudMap">تنزيل الخريطة</button></div><input id="cloudFile" type="file" style="display:none">'); document.getElementById('cloudOpenOneDrive').onclick=function(){window.open('https://onedrive.live.com/login','_blank','noopener')}; document.getElementById('cloudUpload').onclick=function(){document.getElementById('cloudFile').click()}; document.getElementById('cloudFile').onchange=function(e){alert('تم تجهيز الملف للرفع إلى '+val('cloudProvider')+' داخل مجلد '+APP)}; document.getElementById('cloudPackage').onclick=function(){var data={root:APP,excluded:['تقرير جديد','داشبورد المتابعة'],folders:['الأرشيف الذكي','محفظة الاجتماعات','التنبيهات','المرفقات'],role:ROLE,createdAt:new Date().toISOString()}; download('cloud-package.json',JSON.stringify(data,null,2));}; document.getElementById('cloudMap').onclick=function(){download('cloud-map.json',JSON.stringify({root:APP,excluded:['تقرير جديد','داشبورد المتابعة']},null,2));};}
   function download(name,text){var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:'application/json'}));a.download=name;a.click();setTimeout(function(){URL.revokeObjectURL(a.href)},1000)}
   function updateBadges(){var b=document.getElementById('ssInboxBadge'), d=document.getElementById('ssInboxMeetingDot'); if(b){var n=notifs(ROLE).filter(function(x){return !x.read}).length;b.textContent=n;b.style.display=n?'flex':'none'} if(d){var m=notifs(ROLE).some(function(x){return x.type==='meeting'&&!x.read});d.style.display=m?'block':'none'} var mb=document.getElementById('ssMeetWalletBadge'); if(mb){var c=minutes(ROLE).length;mb.textContent=c;mb.style.display=c?'flex':'none'}}
+
+  window.forceOpenTeacherRecords=function(){
+    var files=[
+      ['كشف متابعة غياب الطلاب','teacher_records_attendance.html','سجل متابعة الغياب مع الاستيراد والطباعة والحفظ كـ PDF.'],
+      ['سجل متابعة المشاركة والتفاعل الصفي','teacher_records_participation.html','سجل المشاركة والتفاعل الصفي مع كامل أدوات التحرير والطباعة.'],
+      ['سجل متابعة أعمال الطلاب','teacher_records_student_work.html','سجل أعمال الطلاب والدرجات والملاحظات مع الاستيراد والطباعة.']
+    ];
+    panel('سجلات المعلم',
+      '<div class="ss-muted" style="margin-bottom:12px;font-weight:800">اختر السجل لفتحه كما هو بكامل خصائصه المعدة بصيغة HTML.</div>'+
+      files.map(function(r){
+        return '<button type="button" class="ss-card teacher-record-card" data-teacher-record="'+r[1]+'" style="width:100%;text-align:right;cursor:pointer" onclick="event.preventDefault();event.stopPropagation();if(event.stopImmediatePropagation)event.stopImmediatePropagation();window.openTeacherRecord(\''+r[1]+'\');return false;"><b>'+esc(r[0])+'</b><div class="ss-muted">'+esc(r[2])+'</div></button>';
+      }).join('')
+    );
+    return false;
+  };
+
+  window.showTeacherRecords=window.forceOpenTeacherRecords;
+
+  document.addEventListener('click',function(e){
+    var btn=e.target && e.target.closest ? e.target.closest('#ssTeacherRecords') : null;
+    if(btn){
+      e.preventDefault();
+      e.stopPropagation();
+      if(e.stopImmediatePropagation)e.stopImmediatePropagation();
+      window.forceOpenTeacherRecords();
+      return false;
+    }
+    var rec=e.target && e.target.closest ? e.target.closest('.teacher-record-card,[data-teacher-record]') : null;
+    if(rec){
+      var file=rec.getAttribute('data-teacher-record');
+      if(file){
+        e.preventDefault();
+        e.stopPropagation();
+        if(e.stopImmediatePropagation)e.stopImmediatePropagation();
+        window.openTeacherRecord(file);
+        return false;
+      }
+    }
+  },true);
+
   function boot(){renderBar();attach();document.getElementById('ssFinalClose').onclick=close;document.getElementById('ssFinalBackdrop').onclick=function(e){if(e.target.id==='ssFinalBackdrop')close()}; window.addEventListener('ssDataChanged',updateBadges); updateBadges();}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 })();

@@ -2821,10 +2821,22 @@ body{overflow-x:hidden}
 
         
 
+
 function getWakilRecordsPath() {
-    const currentPath = window.location.pathname;
-    const basePath = currentPath.substring(0, currentPath.lastIndexOf('/') + 1);
-    return basePath + 'records/wakil/wakil-records.html';
+    // تم إخراج سجلات الوكيل إلى جذر المشروع لتعمل مباشرة على GitHub Pages
+    // بدون الاعتماد على عمق المجلدات.
+    const baseUrl = new URL('.', window.location.href);
+    return new URL('wakil-records.html', baseUrl).href;
+}
+
+function getWakilRecordsCandidates() {
+    const baseUrl = new URL('.', window.location.href);
+    return [
+        new URL('wakil-records.html', baseUrl).href,
+        new URL('./wakil-records.html', baseUrl).href,
+        new URL('records/wakil/wakil-records.html', baseUrl).href,
+        new URL('./records/wakil/wakil-records.html', baseUrl).href
+    ];
 }
 
 function decodeWakilRecordsTemplate() {
@@ -2836,43 +2848,64 @@ function decodeWakilRecordsTemplate() {
     return new TextDecoder('utf-8').decode(bytes);
 }
 
+function injectHtmlIntoWakilFrame(frame, html, sourceUrl) {
+    const baseHref = sourceUrl ? sourceUrl.substring(0, sourceUrl.lastIndexOf('/') + 1) : './';
+    frame.removeAttribute('src');
+    frame.srcdoc = '<base href="' + baseHref.replace(/"/g, '&quot;') + '">' + html;
+}
+
 function showWakilRecordsFallback(message) {
     const frame = document.getElementById('wakil-records-frame');
     if (!frame) return;
+    frame.removeAttribute('src');
     frame.srcdoc = `
         <div dir="rtl" style="font-family:Tajawal,Arial,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;flex-direction:column;background:#f8fafc;color:#334155;text-align:center;padding:30px">
             <h2 style="font-size:28px;margin-bottom:12px;">تعذر تحميل سجلات الوكيل</h2>
             <p style="font-size:16px;line-height:1.8">${message || 'تعذر العثور على ملف سجلات الوكيل داخل النسخة.'}</p>
-            <code style="background:#fff;padding:10px 16px;border-radius:12px;margin-top:10px;border:1px solid #e2e8f0;">records/wakil/wakil-records.html</code>
+            <code style="background:#fff;padding:10px 16px;border-radius:12px;margin-top:10px;border:1px solid #e2e8f0;">wakil-records.html</code>
         </div>
     `;
 }
 
-function loadWakilRecordsInline() {
+async function loadWakilRecordsInline() {
     const frame = document.getElementById('wakil-records-frame');
     if (!frame) return;
 
-    const recordsPath = getWakilRecordsPath();
-
-    // المسار الأساسي: تحميل ملف سجلات الوكيل الحقيقي من داخل الحزمة.
-    // هذا يمنع ظهور رسالة القالب الداخلي الناقص على GitHub Pages والجوال.
     frame.removeAttribute('srcdoc');
-    frame.onerror = function () {
+
+    // على GitHub Pages: لا نضع الرابط مباشرة داخل iframe حتى لا تظهر صفحة 404 داخل المنصة.
+    // نفحص الملف أولاً، ثم نحقن محتواه داخل iframe عبر srcdoc.
+    for (const url of getWakilRecordsCandidates()) {
         try {
-            const html = decodeWakilRecordsTemplate();
+            const response = await fetch(url + (url.includes('?') ? '&' : '?') + 'v=' + Date.now(), { cache: 'no-store' });
+            if (!response.ok) continue;
+            const html = await response.text();
             if (html && html.includes('سجلات الوكيل التفاعلية')) {
-                frame.removeAttribute('src');
-                frame.srcdoc = html;
+                injectHtmlIntoWakilFrame(frame, html, url);
                 return;
             }
         } catch (e) {
-            console.error('فشل تحميل السجلات المدمجة داخليًا:', e);
+            // عند التشغيل المحلي file:// قد يفشل fetch، لذلك ننتقل للمسار المباشر في الأسفل.
         }
-        showWakilRecordsFallback('ملف سجلات الوكيل غير موجود أو لم يتم تحميله من المسار الصحيح. تأكد من وجوده داخل records/wakil/wakil-records.html في النسخة المرفوعة.');
-    };
+    }
 
-    frame.src = recordsPath + '?v=' + Date.now();
+    try {
+        const html = decodeWakilRecordsTemplate();
+        if (html && html.includes('سجلات الوكيل التفاعلية')) {
+            injectHtmlIntoWakilFrame(frame, html, getWakilRecordsPath());
+            return;
+        }
+    } catch (e) {
+        console.error('فشل تحميل السجلات المدمجة داخليًا:', e);
+    }
+
+    // دعم التشغيل المحلي المباشر، مع أن GitHub سيستخدم طريقة fetch أعلاه.
+    frame.onerror = function () {
+        showWakilRecordsFallback('لم يتم العثور على ملف wakil-records.html في جذر المشروع. تأكد من رفعه بجانب index.html و agent.html.');
+    };
+    frame.src = getWakilRecordsPath();
 }
+
 
 function openAgentRecordsView() {
     const welcome = document.getElementById('welcome-dashboard');

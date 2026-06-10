@@ -6,9 +6,19 @@
 (function(){
   var qs = new URLSearchParams(location.search || '');
   var mode = (qs.get('mode') || '').toLowerCase();
-  var followEmailRaw = qs.get('followEmail') || qs.get('email') || qs.get('targetEmail') || '';
-  var isFollow = !!followEmailRaw || qs.get('follow') === '1' || qs.get('readonly') === '1' || mode.indexOf('supervisor') >= 0;
-  if (!isFollow) return;
+  // لا يتم تفعيل وضع المتابعة بمجرد وجود email في رابط تسجيل/دخول المستخدم.
+  // وضع المتابعة يظهر فقط عند دخول المدير/المشرف برابط متابعة صريح.
+  var explicitFollow = qs.get('follow') === '1' || qs.get('followMode') === '1' || qs.get('monitoring') === 'true' || mode.indexOf('follow') >= 0 || mode.indexOf('supervisor') >= 0 || mode.indexOf('monitor') >= 0;
+  var followEmailRaw = qs.get('followEmail') || qs.get('targetEmail') || (explicitFollow ? (qs.get('email') || '') : '');
+  var isFollow = explicitFollow && !!(followEmailRaw || qs.get('targetUser') || qs.get('followUserId') || qs.get('userId') || qs.get('uid'));
+  if (!isFollow) {
+    try {
+      sessionStorage.removeItem('smartSchoolUnifiedOpsV2_follow_context');
+      localStorage.removeItem('smartSchoolUnifiedOpsV2_follow_context');
+      localStorage.removeItem('follow_context');
+    } catch(e) {}
+    return;
+  }
 
   function rawGet(k){ try { return Storage.prototype.getItem.call(localStorage, k); } catch(e){ return null; } }
   function rawSet(k,v){ try { return Storage.prototype.setItem.call(localStorage, k, v); } catch(e){} }
@@ -34,8 +44,17 @@
   if (!followEmail && profile.email) followEmail = norm(profile.email);
 
   var accountName = profile.name || profile.fullName || profile.username || qs.get('followName') || 'حساب الموجه/ة الطلابي/ة';
-  var accountRole = (profile.role || qs.get('targetRole') || qs.get('role') || 'teacher').toLowerCase();
-  var roleLabel = accountRole.indexOf('agent') >= 0 || accountRole.indexOf('وكيل') >= 0 ? 'وكيل' : 'معلم';
+  var accountRole = (profile.role || qs.get('targetRole') || qs.get('role') || 'student_advisor').toLowerCase();
+  function roleLabelOf(role){
+    role = String(role || '').toLowerCase();
+    if (/student[_-]?advisor|advisor|counselor|guide|موجه|مرشد/.test(role)) return 'موجه/ة طلابي/ة';
+    if (/activity[_-]?leader|activity|رائد|نشاط/.test(role)) return 'رائد/ة النشاط';
+    if (/agent|agency|وكيل/.test(role)) return 'وكيل/ة';
+    if (/manager|admin|مدير/.test(role)) return 'مدير/ة';
+    if (/teacher|performance|معلم/.test(role)) return 'معلم/ة';
+    return 'مستخدم/ة';
+  }
+  var roleLabel = roleLabelOf(accountRole);
   var accountKey = safeKey(followEmail || accountName || 'teacher');
   var prefix = 'follow_account_' + accountKey + '_';
   var sharedPrefix = 'account_' + accountKey + '_';

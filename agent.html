@@ -20,7 +20,7 @@
 (function(){
   var qs=new URLSearchParams(location.search);
   var mode=(qs.get('mode')||'').toLowerCase();
-  var isFollow=qs.get('follow')==='1' || qs.get('readonly')==='1' || qs.get('monitoring')==='true' || mode.indexOf('supervisor')>-1;
+  var isFollow=qs.get('follow')==='1' || qs.get('followMode')==='1' || qs.get('monitoring')==='true' || mode.indexOf('supervisor')>-1 || mode.indexOf('follow')>-1;
   var targetUser=qs.get('targetUser') || qs.get('followUserId') || qs.get('userId') || qs.get('uid') || '';
   var targetEmail=qs.get('followEmail') || qs.get('email') || qs.get('targetEmail') || '';
   var targetRole=qs.get('targetRole') || qs.get('role') || '';
@@ -93,7 +93,7 @@
     try{
       if(!document.getElementById('supervisor-readonly-style')){
         var st=document.createElement('style'); st.id='supervisor-readonly-style';
-        var roleLabel=((window.FOLLOW_TARGET_ROLE==='agent'||window.FOLLOW_TARGET_ROLE==='agency')?'وكيل':((window.FOLLOW_TARGET_ROLE==='teacher'||window.FOLLOW_TARGET_ROLE==='performance')?'معلم':'مستخدم'));
+        var roleLabel=(function(role){role=String(role||'').toLowerCase(); if(/student[_-]?advisor|advisor|counselor|guide|موجه|مرشد/.test(role)) return 'موجه/ة طلابي/ة'; if(/activity[_-]?leader|activity|رائد|نشاط/.test(role)) return 'رائد/ة النشاط'; if(/agent|agency|وكيل/.test(role)) return 'وكيل/ة'; if(/manager|admin|مدير/.test(role)) return 'مدير/ة'; if(/teacher|performance|معلم/.test(role)) return 'معلم/ة'; return 'مستخدم/ة';})(window.FOLLOW_TARGET_ROLE);
         var followTitle='وضع متابعة إشرافي — '+roleLabel+': '+(profile.name||'المستخدم المحدد')+' — '+(profile.email||targetEmail||'بدون بريد');
         st.textContent='html.follow-banner-hidden body::before{display:none!important}[data-supervisor-hidden="true"]{display:none!important}.supervisor-readonly-lock{pointer-events:none!important;opacity:.55!important;filter:grayscale(.35)!important} html[data-supervisor-readonly="true"] body::before{content:'+JSON.stringify(followTitle)+';position:fixed;top:8px;left:16px;transform:none;z-index:2147483647;background:#0f766e;color:#fff;padding:7px 16px;border-radius:999px;font:800 11px Cairo,Arial;box-shadow:0 8px 20px rgba(0,0,0,.24);max-width:92vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}';
         document.head.appendChild(st);
@@ -125,7 +125,7 @@
   }
   document.addEventListener('DOMContentLoaded',function(){
     var name=profile.name||'المستخدم المحدد';
-    var roleLabel=((window.FOLLOW_TARGET_ROLE==='agent'||window.FOLLOW_TARGET_ROLE==='agency')?'وكيل':((window.FOLLOW_TARGET_ROLE==='teacher'||window.FOLLOW_TARGET_ROLE==='performance')?'معلم':'مستخدم'));
+    var roleLabel=(function(role){role=String(role||'').toLowerCase(); if(/student[_-]?advisor|advisor|counselor|guide|موجه|مرشد/.test(role)) return 'موجه/ة طلابي/ة'; if(/activity[_-]?leader|activity|رائد|نشاط/.test(role)) return 'رائد/ة النشاط'; if(/agent|agency|وكيل/.test(role)) return 'وكيل/ة'; if(/manager|admin|مدير/.test(role)) return 'مدير/ة'; if(/teacher|performance|معلم/.test(role)) return 'معلم/ة'; return 'مستخدم/ة';})(window.FOLLOW_TARGET_ROLE);
     var email=profile.email||targetEmail||'';
     var badge=document.createElement('div');
     badge.id='account-follow-target-badge';
@@ -3419,7 +3419,7 @@ function openWakilRecordsNewTab() {
     var email=String(selected.email||'').trim().toLowerCase();
     if(!email){alert('لا يمكن الدخول للمتابعة لأن هذا الحساب لا يحتوي على بريد منصة مدرستي.');return;}
     try{sessionStorage.setItem(NS+'_last_follow_target',JSON.stringify(selected));}catch(e){}
-    var file = role==='agent' ? 'agent.html' : 'teacher.html';
+    var file = role==='agent' ? 'agent.html' : (role==='student_advisor' ? 'student_advisor.html' : (role==='activity_leader' ? 'activity_leader.html' : 'teacher.html'));
     var __qp=new URLSearchParams(location.search||''); var __sid=__qp.get('schoolId')||__qp.get('school_id')||''; var params = '?follow=1&readonly=1&mode=supervisor_readonly&viewer='+encodeURIComponent(ROLE||'manager')+'&viewerRole='+encodeURIComponent(ROLE||'manager')+'&returnRole='+encodeURIComponent(ROLE||'manager')+'&targetRole='+encodeURIComponent(role)+'&followEmail='+encodeURIComponent(email)+'&targetEmail='+encodeURIComponent(email)+'&targetUser='+encodeURIComponent(userId)+'&followUserId='+encodeURIComponent(userId)+'&userId='+encodeURIComponent(userId)+'&uid='+encodeURIComponent(userId)+'&schoolId='+encodeURIComponent(__sid)+'&schoolMode=independent&independent=true&loginMode=direct&direct=1&blockNewReport=true&archiveReadOnly=true';
     window.location.href = file + params;
   }

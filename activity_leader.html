@@ -48,15 +48,11 @@ body[data-ss-role="activity-leader"] #main-report-app{
 (function(){
   var qs = new URLSearchParams(location.search || '');
   var mode = (qs.get('mode') || '').toLowerCase();
-  var loginMode = (qs.get('loginMode') || '').toLowerCase();
-  var roleParam = (qs.get('role') || '').toLowerCase();
-
-  // تصحيح مهم:
-  // رابط الدخول الحقيقي يمرر email في الاستعلام، وهذا لا يعني وضع متابعة.
-  // وضع المتابعة يظهر فقط عند وجود علامة متابعة صريحة من المدير/الوكيل/المشرف.
-  var explicitFollow = qs.get('follow') === '1' || qs.get('readonly') === '1' || mode.indexOf('supervisor') >= 0 || mode.indexOf('follow') >= 0 || mode.indexOf('monitor') >= 0;
-  var directLogin = !explicitFollow && (qs.get('direct') === '1' || loginMode === 'direct' || roleParam === 'activity_leader' || roleParam === 'activity-leader');
-  var isFollow = explicitFollow || (!directLogin && (qs.get('monitoring') === 'true'));
+  // لا يتم تفعيل وضع المتابعة بمجرد وجود email في رابط تسجيل/دخول المستخدم.
+  // وضع المتابعة يظهر فقط عند دخول المدير/المشرف برابط متابعة صريح.
+  var explicitFollow = qs.get('follow') === '1' || qs.get('followMode') === '1' || qs.get('monitoring') === 'true' || mode.indexOf('follow') >= 0 || mode.indexOf('supervisor') >= 0 || mode.indexOf('monitor') >= 0;
+  var followEmailRaw = qs.get('followEmail') || qs.get('targetEmail') || (explicitFollow ? (qs.get('email') || '') : '');
+  var isFollow = explicitFollow && !!(followEmailRaw || qs.get('targetUser') || qs.get('followUserId') || qs.get('userId') || qs.get('uid'));
   if (!isFollow) {
     try {
       sessionStorage.removeItem('smartSchoolUnifiedOpsV2_follow_context');
@@ -65,8 +61,6 @@ body[data-ss-role="activity-leader"] #main-report-app{
     } catch(e) {}
     return;
   }
-
-  var followEmailRaw = qs.get('followEmail') || qs.get('targetEmail') || '';
 
   function rawGet(k){ try { return Storage.prototype.getItem.call(localStorage, k); } catch(e){ return null; } }
   function rawSet(k,v){ try { return Storage.prototype.setItem.call(localStorage, k, v); } catch(e){} }
@@ -93,7 +87,16 @@ body[data-ss-role="activity-leader"] #main-report-app{
 
   var accountName = profile.name || profile.fullName || profile.username || qs.get('followName') || 'حساب مسؤول/ة النشاط';
   var accountRole = (qs.get('targetRole') || profile.role || qs.get('role') || 'activity_leader').toLowerCase();
-  var roleLabel = accountRole.indexOf('agent') >= 0 || accountRole.indexOf('وكيل') >= 0 ? 'وكيل' : (accountRole.indexOf('activity') >= 0 || accountRole.indexOf('نشاط') >= 0 ? 'مسؤول/ة النشاط' : 'معلم');
+  function roleLabelOf(role){
+    role = String(role || '').toLowerCase();
+    if (/student[_-]?advisor|advisor|counselor|guide|موجه|مرشد/.test(role)) return 'موجه/ة طلابي/ة';
+    if (/activity[_-]?leader|activity|رائد|نشاط/.test(role)) return 'رائد/ة النشاط';
+    if (/agent|agency|وكيل/.test(role)) return 'وكيل/ة';
+    if (/manager|admin|مدير/.test(role)) return 'مدير/ة';
+    if (/teacher|performance|معلم/.test(role)) return 'معلم/ة';
+    return 'مستخدم/ة';
+  }
+  var roleLabel = roleLabelOf(accountRole);
   var accountKey = safeKey(followEmail || accountName || 'teacher');
   var prefix = 'follow_account_' + accountKey + '_';
   var sharedPrefix = 'account_' + accountKey + '_';

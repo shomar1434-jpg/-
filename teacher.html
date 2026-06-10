@@ -20,18 +20,19 @@
 (function(){
   var qs = new URLSearchParams(location.search || '');
   var mode = (qs.get('mode') || '').toLowerCase();
-  var explicitFollow = qs.get('follow') === '1' || qs.get('followMode') === '1' || mode.indexOf('follow') >= 0 || mode.indexOf('supervisor') >= 0 || mode.indexOf('monitor') >= 0;
+  // لا يتم تفعيل وضع المتابعة بمجرد وجود email في رابط تسجيل/دخول المستخدم.
+  // وضع المتابعة يظهر فقط عند دخول المدير/المشرف برابط متابعة صريح.
+  var explicitFollow = qs.get('follow') === '1' || qs.get('followMode') === '1' || qs.get('monitoring') === 'true' || mode.indexOf('follow') >= 0 || mode.indexOf('supervisor') >= 0 || mode.indexOf('monitor') >= 0;
   var followEmailRaw = qs.get('followEmail') || qs.get('targetEmail') || (explicitFollow ? (qs.get('email') || '') : '');
-  var isFollow = explicitFollow || qs.get('readonly') === '1';
-
-  try {
-    var currentUser = JSON.parse(localStorage.getItem('currentSchoolUser') || localStorage.getItem('currentUser') || 'null') || {};
-    var currentRole = String(currentUser.role || currentUser.dbRole || '').toLowerCase();
-    var isTeacherSelfLogin = /teacher|performance|معلم/.test(currentRole) && !explicitFollow && qs.get('readonly') !== '1';
-    if (isTeacherSelfLogin) isFollow = false;
-  } catch(e) {}
-
-  if (!isFollow) return;
+  var isFollow = explicitFollow && !!(followEmailRaw || qs.get('targetUser') || qs.get('followUserId') || qs.get('userId') || qs.get('uid'));
+  if (!isFollow) {
+    try {
+      sessionStorage.removeItem('smartSchoolUnifiedOpsV2_follow_context');
+      localStorage.removeItem('smartSchoolUnifiedOpsV2_follow_context');
+      localStorage.removeItem('follow_context');
+    } catch(e) {}
+    return;
+  }
 
   function rawGet(k){ try { return Storage.prototype.getItem.call(localStorage, k); } catch(e){ return null; } }
   function rawSet(k,v){ try { return Storage.prototype.setItem.call(localStorage, k, v); } catch(e){} }
@@ -58,7 +59,16 @@
 
   var accountName = profile.name || profile.fullName || profile.username || qs.get('followName') || 'حساب المعلم';
   var accountRole = (profile.role || qs.get('targetRole') || qs.get('role') || 'teacher').toLowerCase();
-  var roleLabel = accountRole.indexOf('agent') >= 0 || accountRole.indexOf('وكيل') >= 0 ? 'وكيل' : 'معلم';
+  function roleLabelOf(role){
+    role = String(role || '').toLowerCase();
+    if (/student[_-]?advisor|advisor|counselor|guide|موجه|مرشد/.test(role)) return 'موجه/ة طلابي/ة';
+    if (/activity[_-]?leader|activity|رائد|نشاط/.test(role)) return 'رائد/ة النشاط';
+    if (/agent|agency|وكيل/.test(role)) return 'وكيل/ة';
+    if (/manager|admin|مدير/.test(role)) return 'مدير/ة';
+    if (/teacher|performance|معلم/.test(role)) return 'معلم/ة';
+    return 'مستخدم/ة';
+  }
+  var roleLabel = roleLabelOf(accountRole);
   var accountKey = safeKey(followEmail || accountName || 'teacher');
   var prefix = 'follow_account_' + accountKey + '_';
   var sharedPrefix = 'account_' + accountKey + '_';
@@ -1735,6 +1745,23 @@
     z-index: 2147482500 !important;
     transform: none !important;
   }
+
+  /* عزل أيقونة سجلات المعلم عن أيقونة الخروج وأي طبقة علوية */
+  #ssFinalBar #ssTeacherRecords{
+    pointer-events:auto !important;
+    position:relative !important;
+    z-index:2147483605 !important;
+    isolation:isolate !important;
+  }
+  #ssFinalBar #ssTeacherRecords *,
+  #ssFinalBar #ssExit *{
+    pointer-events:none !important;
+  }
+  #ssFinalBar #ssExit{
+    pointer-events:auto !important;
+    position:relative !important;
+    z-index:2147482401 !important;
+  }
 }
 @media print {
   #ssFinalBar,
@@ -2131,6 +2158,36 @@ body{overflow-x:hidden}
 </div>
 </div>
 </div>
+</div>
+<!-- قسم داخلي ثابت لسجلات المعلم وتحليل الدرجات - بديل آمن عن الأيقونات الجانبية -->
+<div id="teacherRecordsAnalysisSection" class="w-full mb-10">
+  <div class="bg-white/95 backdrop-blur border border-teal-100 rounded-[38px] shadow-xl p-6 md:p-8">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-5">
+      <div>
+        <h3 class="font-black text-slate-800 text-lg">سجلات المعلم وملف تحليل الدرجات</h3>
+        <p class="text-[11px] text-slate-500 font-bold mt-1">تفتح جميع الملفات في صفحة مستقلة لضمان عدم تداخلها مع واجهة قسم المعلم.</p>
+      </div>
+      <span class="bg-teal-50 text-teal-700 border border-teal-100 px-4 py-2 rounded-full text-xs font-black">قسم مستقل داخل واجهة المعلم</span>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+      <a href="teacher_records_attendance.html" target="_blank" rel="noopener" class="group bg-slate-50 hover:bg-white border border-slate-100 hover:border-teal-400 rounded-[26px] p-5 transition-all shadow-sm flex items-center gap-4">
+        <div class="w-12 h-12 rounded-2xl bg-teal-600 text-white flex items-center justify-center text-xl shadow-lg">📋</div>
+        <div><p class="font-black text-slate-800 text-sm">كشف متابعة غياب الطلاب</p><p class="text-[10px] text-slate-400 font-bold mt-1">فتح في صفحة مستقلة</p></div>
+      </a>
+      <a href="teacher_records_participation.html" target="_blank" rel="noopener" class="group bg-slate-50 hover:bg-white border border-slate-100 hover:border-teal-400 rounded-[26px] p-5 transition-all shadow-sm flex items-center gap-4">
+        <div class="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center text-xl shadow-lg">📝</div>
+        <div><p class="font-black text-slate-800 text-sm">سجل متابعة المشاركة والتفاعل الصفي</p><p class="text-[10px] text-slate-400 font-bold mt-1">فتح في صفحة مستقلة</p></div>
+      </a>
+      <a href="teacher_records_student_work.html" target="_blank" rel="noopener" class="group bg-slate-50 hover:bg-white border border-slate-100 hover:border-teal-400 rounded-[26px] p-5 transition-all shadow-sm flex items-center gap-4">
+        <div class="w-12 h-12 rounded-2xl bg-cyan-700 text-white flex items-center justify-center text-xl shadow-lg">📚</div>
+        <div><p class="font-black text-slate-800 text-sm">سجل متابعة أعمال الطلاب</p><p class="text-[10px] text-slate-400 font-bold mt-1">فتح في صفحة مستقلة</p></div>
+      </a>
+      <a href="teacher_data_analysis.html" target="_blank" rel="noopener" class="group bg-slate-50 hover:bg-white border border-slate-100 hover:border-teal-400 rounded-[26px] p-5 transition-all shadow-sm flex items-center gap-4">
+        <div class="w-12 h-12 rounded-2xl bg-blue-700 text-white flex items-center justify-center text-xl shadow-lg">📊</div>
+        <div><p class="font-black text-slate-800 text-sm">ملف تحليل الدرجات</p><p class="text-[10px] text-slate-400 font-bold mt-1">فتح في صفحة مستقلة</p></div>
+      </a>
+    </div>
+  </div>
 </div>
 <div class="w-full mb-10">
 <div class="assistant-alert-button p-7 rounded-[38px] shadow-2xl cursor-pointer transition-all flex items-center justify-between group hover:scale-[1.01] text-white" onclick="openAssistantAlerts()">
@@ -4505,7 +4562,13 @@ body{overflow-x:hidden}
   function saveMinutes(role,m){var a=minutes(role); a.unshift(Object.assign({id:uid('min'),createdAt:new Date().toISOString()},m)); write(NS+'_minutes_'+role,a)}
   function panel(t,h){document.getElementById('ssFinalTitle').textContent=t;document.getElementById('ssFinalBody').innerHTML=h;document.getElementById('ssFinalBackdrop').style.display='flex'}
   function close(){document.getElementById('ssFinalBackdrop').style.display='none'}
-  function btn(id,icon,tip,cls){return '<button type="button" class="ss-final-btn '+(cls||'')+'" id="'+id+'">'+icon+'<span class="ss-tip">'+tip+'</span><span class="ss-final-badge" id="'+id+'Badge">0</span><span class="ss-final-meeting-dot" id="'+id+'MeetingDot"></span></button>'}
+  function btn(id,icon,tip,cls){
+    // حماية خاصة لأيقونة سجلات المعلم: رابط مستقل مباشر وليس زر عام حتى لا يرث أي معالج خروج.
+    if(id==='ssTeacherRecords'){
+      return '<a class="ss-final-btn '+(cls||'')+'" id="ssTeacherRecords" href="teacher_records_index.html" data-floating-label="'+tip+'" aria-label="'+tip+'" title="'+tip+'">'+icon+'<span class="ss-tip">'+tip+'</span><span class="ss-final-badge" id="ssTeacherRecordsBadge">0</span><span class="ss-final-meeting-dot" id="ssTeacherRecordsMeetingDot"></span></a>';
+    }
+    return '<button type="button" class="ss-final-btn '+(cls||'')+'" id="'+id+'" data-floating-label="'+tip+'" aria-label="'+tip+'" title="'+tip+'">'+icon+'<span class="ss-tip">'+tip+'</span><span class="ss-final-badge" id="'+id+'Badge">0</span><span class="ss-final-meeting-dot" id="'+id+'MeetingDot"></span></button>'
+  }
   function renderBar(){var b=document.getElementById('ssFinalBar'), html='';
     html+=btn('ssBack','🏠','العودة للقائمة','gray');
     if(ROLE==='manager'){
@@ -4527,8 +4590,8 @@ body{overflow-x:hidden}
       html+=btn('ssInbox','🔔','تلقي التنبيهات','');
       html+=btn('ssExit','⏻','الخروج','danger');
     } else {
-      html+='<button type="button" class="ss-final-btn gold" id="ssTeacherRecords" onclick="event.preventDefault();event.stopPropagation();if(event.stopImmediatePropagation)event.stopImmediatePropagation();window.forceOpenTeacherRecords();return false;">📚<span class="ss-tip">سجلات المعلم</span><span class="ss-final-badge" id="ssTeacherRecordsBadge">0</span><span class="ss-final-meeting-dot" id="ssTeacherRecordsMeetingDot"></span></button>';
-      html+=btn('ssDataAnalysis','📊','تحليل البيانات','blue');
+      // تم حذف أيقونتي سجلات المعلم وتحليل البيانات من القائمة الجانبية نهائياً
+      // ونقل الوصول إليهما إلى قسم داخلي داخل واجهة المعلم لمنع تداخل النقر مع زر الخروج.
       html+=btn('ssMeetWallet','📁','محفظة الاجتماعات','');
       html+=btn('ssInbox','🔔','تلقي التنبيهات','');
       html+=btn('ssCloud','☁️','الرفع السحابي','blue');
@@ -4536,51 +4599,37 @@ body{overflow-x:hidden}
     }
     b.innerHTML=html;
   }
-  function attach(){var q=function(id){return document.getElementById(id)}; q('ssBack')&&q('ssBack').addEventListener('click',function(){location.href='index.html'}); q('ssExit')&&q('ssExit').addEventListener('click',function(){location.href='index.html'}); q('ssTeachers')&&q('ssTeachers').addEventListener('click',function(){showUsers('teacher')}); q('ssAgents')&&q('ssAgents').addEventListener('click',function(){showUsers('agent')}); q('ssActivate')&&q('ssActivate').addEventListener('click',showActivation); q('ssRegLink')&&q('ssRegLink').addEventListener('click',showRegLink); q('ssAlert')&&q('ssAlert').addEventListener('click',showAlert); q('ssInbox')&&q('ssInbox').addEventListener('click',showInbox); q('ssMeetWallet')&&q('ssMeetWallet').addEventListener('click',showWallet); q('ssMeetingRoom')&&q('ssMeetingRoom').addEventListener('click',showMeetingRoom); q('ssCloud')&&q('ssCloud').addEventListener('click',showCloud); q('ssTeacherRecords')&&q('ssTeacherRecords').addEventListener('click',function(e){e.preventDefault();e.stopPropagation();window.forceOpenTeacherRecords();return false;}); q('ssDataAnalysis')&&q('ssDataAnalysis').addEventListener('click',showDataAnalysis); }
+  function attach(){var q=function(id){return document.getElementById(id)}; q('ssBack')&&q('ssBack').addEventListener('click',function(){location.href='index.html'}); q('ssExit')&&q('ssExit').addEventListener('click',function(){location.href='index.html'}); q('ssTeachers')&&q('ssTeachers').addEventListener('click',function(){showUsers('teacher')}); q('ssAgents')&&q('ssAgents').addEventListener('click',function(){showUsers('agent')}); q('ssActivate')&&q('ssActivate').addEventListener('click',showActivation); q('ssRegLink')&&q('ssRegLink').addEventListener('click',showRegLink); q('ssAlert')&&q('ssAlert').addEventListener('click',showAlert); q('ssInbox')&&q('ssInbox').addEventListener('click',showInbox); q('ssMeetWallet')&&q('ssMeetWallet').addEventListener('click',showWallet); q('ssMeetingRoom')&&q('ssMeetingRoom').addEventListener('click',showMeetingRoom); q('ssCloud')&&q('ssCloud').addEventListener('click',showCloud); q('ssTeacherRecords')&&q('ssTeacherRecords').addEventListener('click',function(e){return openTeacherRecordsPage(e);}); q('ssDataAnalysis')&&q('ssDataAnalysis').addEventListener('click',showDataAnalysis); }
   function showUsers(role){var list=users().filter(function(u){return u.role===role}); panel(role==='teacher'?'المعلمون':'الوكلاء', list.length?list.map(function(u){return '<div class="ss-card"><b>'+esc(u.name)+'</b><div class="ss-muted">'+esc(u.email||'')+' — '+(u.status==='active'?'مفعل':'بانتظار التفعيل')+'</div></div>'}).join(''):'<div class="ss-empty">لا توجد حسابات مسجلة.</div>')}
   function openTeacherRecord(file){
-    // فتح سجلات المعلم داخل إطار مستقل، مع منع أي استدعاء خاطئ لطباعة التقارير
+    // فتح سجل المعلم كصفحة مستقلة وليس داخل إطار أو نافذة داخل القسم.
     var allowed={
       'teacher_records_attendance.html':true,
       'teacher_records_participation.html':true,
       'teacher_records_student_work.html':true
     };
     if(!allowed[file]) return false;
-    var titles={
-      'teacher_records_attendance.html':'كشف متابعة غياب الطلاب',
-      'teacher_records_participation.html':'سجل متابعة المشاركة والتفاعل الصفي',
-      'teacher_records_student_work.html':'سجل متابعة أعمال الطلاب'
-    };
-    panel(titles[file] || 'سجلات المعلم',
-      '<div style="height:82vh;border:1px solid #e5e7eb;border-radius:18px;overflow:hidden;background:#fff">'+
-      '<iframe src="'+file+'" title="'+(titles[file]||'سجلات المعلم')+'" style="width:100%;height:100%;border:0;background:#fff"></iframe>'+
-      '</div>'
-    );
+    window.location.href=file;
     return false;
   }
-  window.openTeacherRecord=openTeacherRecord;
+
+  function openTeacherRecordsPage(e){
+    // ربط نهائي مباشر لأيقونة سجلات المعلم بصفحة السجلات المستقلة.
+    // لا يفتح داخل iframe ولا يستدعي الخروج أو أي لوحة داخلية.
+    if(e){
+      if(e.preventDefault) e.preventDefault();
+      if(e.stopPropagation) e.stopPropagation();
+      if(e.stopImmediatePropagation) e.stopImmediatePropagation();
+    }
+    window.location.href='teacher_records_index.html';
+    return false;
+  }
 
   function showTeacherRecords(){
-    var records=[
-      {title:'كشف متابعة غياب الطلاب', file:'teacher_records_attendance.html', desc:'سجل متابعة الغياب مع الاستيراد والطباعة والحفظ كـ PDF.'},
-      {title:'سجل متابعة المشاركة و التفاعل الصفي', file:'teacher_records_participation.html', desc:'سجل المشاركة والتفاعل الصفي مع كامل أدوات التحرير والطباعة.'},
-      {title:'سجل متابعة أعمال الطلاب', file:'teacher_records_student_work.html', desc:'سجل أعمال الطلاب والدرجات والملاحظات مع الاستيراد والطباعة.'}
-    ];
-    panel('سجلات المعلم',
-      '<div class="ss-muted" style="margin-bottom:12px;font-weight:800">اختر السجل لفتحه كما هو بكامل خصائصه المعدة بصيغة HTML.</div>'+
-      records.map(function(r){return '<button type="button" class="ss-card" style="width:100%;text-align:right;cursor:pointer" onclick="event.preventDefault();event.stopPropagation();if(event.stopImmediatePropagation)event.stopImmediatePropagation();openTeacherRecord(\''+r.file+'\');return false;"><b>'+esc(r.title)+'</b><div class="ss-muted">'+esc(r.desc)+'</div></button>';}).join('')
-    );
+    return openTeacherRecordsPage();
   }
 
-
-  function showDataAnalysis(){
-    panel('تحليل البيانات',
-      '<div class="ss-muted" style="margin-bottom:12px;font-weight:800">أداة تحليل بيانات الاختبارات تعمل في إطار مستقل حتى لا تؤثر على أيقونات المنصة أو الشريط العلوي.</div>'+ 
-      '<div style="height:78vh;border:1px solid #e5e7eb;border-radius:18px;overflow:hidden;background:#fff">'+
-      '<iframe src="teacher_data_analysis.html" title="تحليل البيانات" style="width:100%;height:100%;border:0;background:#fff"></iframe>'+ 
-      '</div>'
-    );
-  }
+  function showDataAnalysis(){ window.open('teacher_data_analysis.html','_blank','noopener'); }
 
   function showActivation(){var u=users(); panel('تنشيط المستخدمين وإدارة الصلاحيات','<div class="ss-grid"><div class="ss-field"><label>الاسم</label><input id="uName" placeholder="اسم المستخدم"></div><div class="ss-field"><label>البريد</label><input id="uEmail" placeholder="بريد منصة مدرستي"></div><div class="ss-field"><label>الدور</label><select id="uRole"><option value="agent">وكيل</option><option value="teacher">معلم</option><option value="activity_leader">رائد/ة النشاط</option></select></div><div class="ss-field"><label>الحالة</label><select id="uStatus"><option value="pending">بانتظار التفعيل</option><option value="active">مفعل</option></select></div></div><div class="ss-field"><label>الصلاحيات</label><input id="uPerm" placeholder="مثال: alerts, meetings, archive-view"></div><div class="ss-actions"><button class="ss-action" id="addUser">إضافة/حفظ مستخدم</button></div><hr style="margin:14px 0;border:0;border-top:1px solid #e5e7eb"><div id="userList">'+renderUserList(u)+'</div>'); document.getElementById('addUser').onclick=function(){var nu={id:uid('user'),name:val('uName'),email:val('uEmail'),role:val('uRole'),status:val('uStatus'),permissions:val('uPerm').split(',').map(function(x){return x.trim()}).filter(Boolean)}; var arr=users(); arr.unshift(nu); saveUsers(arr); showActivation();}}
   function renderUserList(arr){return arr.map(function(u){return '<div class="ss-card"><b>'+esc(u.name||'مستخدم')+'</b><div class="ss-muted">'+esc(u.email||'')+' — '+(u.role==='agent'?'وكيل':(u.role==='activity_leader'?'رائد/ة النشاط':'معلم'))+' — '+(u.status==='active'?'مفعل':'بانتظار التفعيل')+'</div><div class="ss-actions"><button class="ss-action blue" onclick="ssFinalActivate(\''+u.id+'\')">تفعيل</button><button class="ss-action secondary" onclick="ssFinalEditUser(\''+u.id+'\')">تعديل</button></div></div>'}).join('')||'<div class="ss-empty">لا توجد حسابات.</div>'}
@@ -4806,44 +4855,17 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
   function download(name,text){var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:'application/json'}));a.download=name;a.click();setTimeout(function(){URL.revokeObjectURL(a.href)},1000)}
   function updateBadges(){var b=document.getElementById('ssInboxBadge'), d=document.getElementById('ssInboxMeetingDot'); if(b){var n=notifs(ROLE).filter(function(x){return !x.read}).length;b.textContent=n;b.style.display=n?'flex':'none'} if(d){var m=notifs(ROLE).some(function(x){return x.type==='meeting'&&!x.read});d.style.display=m?'block':'none'} var mb=document.getElementById('ssMeetWalletBadge'); if(mb){var c=minutes(ROLE).length;mb.textContent=c;mb.style.display=c?'flex':'none'}}
 
-  window.forceOpenTeacherRecords=function(){
-    var files=[
-      ['كشف متابعة غياب الطلاب','teacher_records_attendance.html','سجل متابعة الغياب مع الاستيراد والطباعة والحفظ كـ PDF.'],
-      ['سجل متابعة المشاركة والتفاعل الصفي','teacher_records_participation.html','سجل المشاركة والتفاعل الصفي مع كامل أدوات التحرير والطباعة.'],
-      ['سجل متابعة أعمال الطلاب','teacher_records_student_work.html','سجل أعمال الطلاب والدرجات والملاحظات مع الاستيراد والطباعة.']
-    ];
-    panel('سجلات المعلم',
-      '<div class="ss-muted" style="margin-bottom:12px;font-weight:800">اختر السجل لفتحه كما هو بكامل خصائصه المعدة بصيغة HTML.</div>'+
-      files.map(function(r){
-        return '<button type="button" class="ss-card teacher-record-card" data-teacher-record="'+r[1]+'" style="width:100%;text-align:right;cursor:pointer" onclick="event.preventDefault();event.stopPropagation();if(event.stopImmediatePropagation)event.stopImmediatePropagation();window.openTeacherRecord(\''+r[1]+'\');return false;"><b>'+esc(r[0])+'</b><div class="ss-muted">'+esc(r[2])+'</div></button>';
-      }).join('')
-    );
-    return false;
-  };
+  // ربط ثابت لأيقونة سجلات المعلم دون تداخل مع زر الخروج، مع الاعتماد على الدالة النهائية التي تفتح صفحة السجلات المستقلة.
+  window.forceOpenTeacherRecords=function(){ return openTeacherRecordsPage(); };
+  window.showTeacherRecords=showTeacherRecords;
+  window.openTeacherRecord=openTeacherRecord;
+  window.openTeacherRecordsPage=openTeacherRecordsPage;
 
-  window.showTeacherRecords=window.forceOpenTeacherRecords;
 
-  document.addEventListener('click',function(e){
-    var btn=e.target && e.target.closest ? e.target.closest('#ssTeacherRecords') : null;
-    if(btn){
-      e.preventDefault();
-      e.stopPropagation();
-      if(e.stopImmediatePropagation)e.stopImmediatePropagation();
-      window.forceOpenTeacherRecords();
-      return false;
-    }
-    var rec=e.target && e.target.closest ? e.target.closest('.teacher-record-card,[data-teacher-record]') : null;
-    if(rec){
-      var file=rec.getAttribute('data-teacher-record');
-      if(file){
-        e.preventDefault();
-        e.stopPropagation();
-        if(e.stopImmediatePropagation)e.stopImmediatePropagation();
-        window.openTeacherRecord(file);
-        return false;
-      }
-    }
-  },true);
+  
+
+  // تم تعطيل حارس النقر القديم بعد حذف أيقونة سجلات المعلم من الشريط الجانبي.
+
 
   function boot(){renderBar();attach();document.getElementById('ssFinalClose').onclick=close;document.getElementById('ssFinalBackdrop').onclick=function(e){if(e.target.id==='ssFinalBackdrop')close()}; window.addEventListener('ssDataChanged',updateBadges); updateBadges();}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();

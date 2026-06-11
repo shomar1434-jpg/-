@@ -1,0 +1,1 @@
+/* Smart AI old floating widget disabled. AI tools are now inside top AI CENTER. */

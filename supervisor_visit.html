@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>الزيارة الإشرافية</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  body{font-family:Cairo,Tajawal,Arial,sans-serif;margin:0;min-height:100vh;background:linear-gradient(135deg,#ecfeff,#f8fafc);color:#0f172a}
+  .card{background:rgba(255,255,255,.94);border:1px solid #dbeafe;border-radius:34px;box-shadow:0 18px 45px rgba(15,23,42,.08)}
+  .role-card{transition:.18s ease;cursor:pointer}
+  .role-card:hover{transform:translateY(-4px);border-color:#0f766e}
+  #viewer{display:none;position:fixed;inset:0;background:#fff;z-index:20}
+  #viewerBar{height:64px;background:#0f172a;color:white;display:flex;align-items:center;justify-content:space-between;padding:10px 16px;gap:10px;box-shadow:0 8px 25px rgba(15,23,42,.18)}
+  #viewerFrame{width:100%;height:calc(100vh - 64px);border:0;background:white}
+  .btn{border:0;border-radius:16px;padding:10px 15px;font-weight:900;cursor:pointer}
+  #visitUserDrawer{display:none;position:fixed;top:64px;right:0;bottom:0;width:min(340px,86vw);background:#fff;border-left:1px solid #e2e8f0;z-index:25;box-shadow:-12px 0 30px rgba(15,23,42,.16);padding:14px;overflow:auto}
+  #visitUserDrawer .drawer-title{font-weight:900;color:#0f766e;margin:4px 0 12px}
+  .visit-user-card{width:100%;text-align:right;border:1px solid #e2e8f0;background:#f8fafc;border-radius:16px;padding:12px;margin-bottom:8px;cursor:pointer;font-family:Cairo,Tajawal,Arial,sans-serif}
+  .visit-user-card:hover{background:#ecfeff;border-color:#0f766e}
+  .visit-user-card b{display:block;color:#0f172a}.visit-user-card small{color:#64748b;font-weight:700}
+</style></head>
+<body>
+<main id="portal" class="max-w-6xl mx-auto px-5 py-10">
+  <section class="card p-8 mb-8 text-center">
+    <div class="text-5xl mb-3">🧭</div>
+    <h1 id="school-title" class="text-3xl md:text-4xl font-black text-slate-800">الزيارة الإشرافية</h1>
+    <p class="mt-3 text-slate-500 font-bold">وضع المعاينة فقط — لا توجد صلاحيات تعديل أو حذف أو إضافة</p>
+    <div class="mt-5 flex flex-wrap gap-2 justify-center">
+      <button onclick="closeSupervisorVisitPage()" class="btn bg-slate-100 text-slate-700">خروج</button>
+    </div>
+  </section>
+
+  <section class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+    <div class="card role-card p-7 text-center" onclick="openRole('manager')">
+      <div class="text-5xl mb-3">🏛️</div><h2 class="font-black text-xl">قسم المدير/المديرة</h2><p class="text-xs text-slate-500 mt-2 font-bold">معاينة الإنجاز والسجلات</p>
+    </div>
+    <div class="card role-card p-7 text-center" onclick="openRole('agent')">
+      <div class="text-5xl mb-3">📑</div><h2 class="font-black text-xl">قسم الوكيل/الوكيلة</h2><p class="text-xs text-slate-500 mt-2 font-bold">معاينة الأرشيف والسجلات</p>
+    </div>
+    <div class="card role-card p-7 text-center" onclick="openRole('teacher')">
+      <div class="text-5xl mb-3">👨‍🏫</div><h2 class="font-black text-xl">قسم المعلم/المعلمة</h2><p class="text-xs text-slate-500 mt-2 font-bold">معاينة فقط</p>
+    </div>
+    <div class="card role-card p-7 text-center" onclick="openRole('student_advisor')">
+      <div class="text-5xl mb-3">🧭</div><h2 class="font-black text-xl">قسم الموجه/ة الطلابي/ة</h2><p class="text-xs text-slate-500 mt-2 font-bold">معاينة فقط</p>
+    </div>
+  </section>
+</main>
+
+<section id="viewer">
+  <div id="viewerBar">
+    <div>
+      <b id="viewerTitle">الزيارة الإشرافية</b>
+      <div style="font-size:11px;color:#cbd5e1;font-weight:700">معاينة فقط — الأزرار المؤثرة معطلة</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn bg-teal-600 text-white" onclick="openSupervisorVisitForm()">ملاحظات إشرافية</button>
+      <button class="btn bg-slate-100 text-slate-800" onclick="backToPortal()">العودة للقائمة</button>
+      <button class="btn bg-red-500 text-white" onclick="backToPortal()">خروج</button>
+    </div>
+  </div>
+  <aside id="visitUserDrawer" aria-label="قائمة المستخدمين"></aside>
+  <iframe id="viewerFrame" title="معاينة القسم"></iframe>
+</section>
+<script>
+const qs = new URLSearchParams(location.search);
+const schoolId = qs.get('school_id') || qs.get('schoolId') || localStorage.getItem('current_school_id') || localStorage.getItem('school_id') || 'school';
+const schoolName = qs.get('school_name') || qs.get('schoolName') || localStorage.getItem('school_name') || localStorage.getItem('persist_school') || 'المدرسة';
+const token = qs.get('token') || localStorage.getItem('supervisor_visit_token_'+schoolId) || 'visit';
+let currentRole = '';
+
+document.getElementById('school-title').textContent = schoolName + ' — الزيارة الإشرافية';
+
+
+function closeSupervisorVisitPage(){
+  try { window.open('', '_self'); window.close(); } catch(e) {}
+  setTimeout(function(){
+    document.body.innerHTML = '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:Cairo,Tajawal,Arial,sans-serif;background:#f8fafc;color:#0f172a;text-align:center"><div><div style="font-size:46px;margin-bottom:12px">✅</div><h2 style="margin:0;font-weight:900">تم إغلاق الزيارة الإشرافية</h2><p style="color:#64748b;font-weight:700">يمكنك إغلاق تبويب المتصفح الآن.</p></div></div>';
+  }, 250);
+}
+
+function pageFor(role){
+  return role==='manager'?'manager.html':role==='agent'?'agent.html':role==='teacher'?'teacher.html':'student_advisor.html';
+}
+function roleName(role){
+  return role==='manager'?'قسم المدير/المديرة':role==='agent'?'قسم الوكيل/الوكيلة':role==='teacher'?'قسم المعلم/المعلمة':'قسم الموجه/ة الطلابي/ة';
+}
+function readVisitUsers(){
+  try{return JSON.parse(localStorage.getItem('smartSchoolUnifiedOpsV2_users') || '[]') || [];}catch(e){return [];}
+}
+function normalizeVisitRole(role){
+  role=String(role||'').toLowerCase();
+  if(role==='leadership'||role==='manager') return 'manager';
+  if(role==='agency'||role==='agent') return 'agent';
+  if(role==='advisor'||role==='student_advisor') return 'student_advisor';
+  return role || 'teacher';
+}
+function usersForVisitRole(role){
+  const r=normalizeVisitRole(role);
+  return readVisitUsers().filter(u=>normalizeVisitRole(u.role)===r && (u.status==='active'||u.isActive===true||u.active===true));
+}
+function openRole(role){
+  const list = usersForVisitRole(role);
+  if(list.length > 1){
+    currentRole = role;
+    document.getElementById('portal').style.display = 'none';
+    document.getElementById('viewer').style.display = 'block';
+    document.getElementById('viewerTitle').textContent = schoolName + ' — اختيار مستخدم من ' + roleName(role);
+    document.getElementById('viewerFrame').src = 'about:blank';
+    const drawer=document.getElementById('visitUserDrawer');
+    drawer.innerHTML = '<div class="drawer-title">اختر المستخدم للدخول للزيارة</div>' + list.map(u=>'<button class="visit-user-card" type="button" onclick="openRoleUser(\''+role+'\',\''+String(u.id||'').replace(/'/g,'')+'\')"><b>'+String(u.name||'مستخدم').replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]))+'</b><small>'+String(u.email||'').replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]))+'</small></button>').join('');
+    drawer.style.display='block';
+    return;
+  }
+  openRoleUser(role, list[0] && list[0].id);
+}
+function openRoleUser(role, userId){
+  const drawer=document.getElementById('visitUserDrawer'); if(drawer) drawer.style.display='none';
+  const selected = userId ? usersForVisitRole(role).find(u=>String(u.id)===String(userId)) : null;
+  currentRole = role;
+  document.getElementById('viewerTitle').textContent = schoolName + ' — ' + roleName(role) + (selected && selected.name ? ' — ' + selected.name : '');
+  document.getElementById('portal').style.display = 'none';
+  document.getElementById('viewer').style.display = 'block';
+  const q = new URLSearchParams({
+    mode:'supervisor_visit',
+    readonly:'1',
+    follow:'1',
+    school_id:schoolId,
+    schoolId:schoolId,
+    school_name:schoolName,
+    token:token,
+    targetRole:role,
+    returnRole:'supervisor_visit',
+    schoolMode:'independent',
+    independent:'true',
+    loginMode:'direct',
+    direct:'1'
+  });
+  if(selected){
+    q.set('targetUser', selected.id || '');
+    q.set('followUserId', selected.id || '');
+    q.set('userId', selected.id || '');
+    q.set('uid', selected.id || '');
+    q.set('followEmail', selected.email || '');
+    q.set('targetEmail', selected.email || '');
+  }
+  const frame = document.getElementById('viewerFrame');
+  frame.src = pageFor(role) + '?' + q.toString();
+  frame.onload = protectFrame;
+}
+function backToPortal(){
+  const drawer=document.getElementById('visitUserDrawer'); if(drawer) drawer.style.display='none';
+  const frame = document.getElementById('viewerFrame');
+  frame.src = 'about:blank';
+  document.getElementById('viewer').style.display = 'none';
+  document.getElementById('portal').style.display = 'block';
+}
+function protectFrame(){
+  const frame = document.getElementById('viewerFrame');
+  let doc;
+  try{ doc = frame.contentDocument || frame.contentWindow.document; }catch(e){ return; }
+  if(!doc) return;
+
+  function apply(){
+    try{
+      ['activation-overlay','welcome-gate','login-overlay','login-gate'].forEach(id=>{
+        const el = doc.getElementById(id);
+        if(el){ el.style.display='none'; el.classList && el.classList.add('hidden'); }
+      });
+
+      const welcome = doc.getElementById('welcome-dashboard');
+      if(welcome){ welcome.classList.remove('hidden'); if(!welcome.style.display || welcome.style.display==='none') welcome.style.display='block'; }
+
+      doc.querySelectorAll('input,textarea,select,[contenteditable="true"]').forEach(el=>{
+        el.setAttribute('readonly','readonly');
+        if(el.tagName==='SELECT' || el.type==='file' || el.type==='checkbox' || el.type==='radio') el.setAttribute('disabled','disabled');
+        if(el.getAttribute('contenteditable')==='true') el.setAttribute('contenteditable','false');
+      });
+
+      doc.querySelectorAll('button,a,[role="button"],input[type="button"],input[type="submit"]').forEach(el=>{
+        const text = ((el.innerText||el.textContent||'')+' '+(el.title||'')+' '+(el.getAttribute('aria-label')||'')).trim();
+        const onclick = String(el.getAttribute('onclick')||'');
+        const isExit = /خروج|العودة للقائمة|عودة للقائمة|الرئيسية/.test(text) || /goHome|logout|exit|index\.html/.test(onclick);
+        if(isExit){
+          el.onclick = function(e){ e.preventDefault(); e.stopPropagation(); backToPortal(); return false; };
+          return;
+        }
+        const allowed = /معاينة|عرض|فتح|بحث|طباعة|الأرشيف|ارشيف|داشبورد|محفظة|سجلات|السجلات|القائمة/.test(text);
+        const destructive = /حذف|إضافة|اضافة|حفظ|تعديل|رفع|إرسال|ارسال|تنشيط|اعتماد|استيراد|تصدير|delete|save|edit|upload|send|add/.test(text+' '+onclick);
+        if(destructive && !allowed){
+          el.style.display='none';
+          el.setAttribute('disabled','disabled');
+        }
+      });
+    }catch(e){}
+  }
+  apply();
+  setTimeout(apply,500);
+  setTimeout(apply,1500);
+}
+
+function openSupervisorVisitForm(){
+  currentRole = 'supervisor_visit_form';
+  document.getElementById('viewerTitle').textContent = schoolName + ' — استمارة الزيارة الإشرافية';
+  document.getElementById('portal').style.display = 'none';
+  document.getElementById('viewer').style.display = 'block';
+  const q = new URLSearchParams({
+    mode:'supervisor_visit_form',
+    school_id:schoolId,
+    school_name:schoolName,
+    token:token,
+    schoolId:schoolId,
+    schoolMode:'independent',
+    independent:'true',
+    loginMode:'direct',
+    direct:'1'
+  });
+  const frame = document.getElementById('viewerFrame');
+  frame.onload = null;
+  frame.src = 'supervisor_visit_form.html?' + q.toString();
+}
+
+function copyVisitLink(){
+  const url = location.origin + location.pathname + '?school_id=' + encodeURIComponent(schoolId) + '&school_name=' + encodeURIComponent(schoolName) + '&token=' + encodeURIComponent(token);
+  navigator.clipboard && navigator.clipboard.writeText(url);
+  alert('تم نسخ رابط الزيارة الإشرافية');
+}
+</script>
+
+
+<!-- SAFE_FIX: independent school return button only -->
+<style id="independent-school-return-button-style">
+  #independentSchoolReturnBtn{
+    position:fixed!important;
+    right:18px!important;
+    bottom:18px!important;
+    z-index:999999!important;
+    width:54px!important;
+    height:54px!important;
+    border:0!important;
+    border-radius:50%!important;
+    background:#0f766e!important;
+    color:#fff!important;
+    box-shadow:0 10px 28px rgba(15,118,110,.35)!important;
+    display:flex!important;
+    align-items:center!important;
+    justify-content:center!important;
+    font-size:24px!important;
+    font-weight:900!important;
+    cursor:pointer!important;
+    font-family:Arial,Tahoma,sans-serif!important;
+  }
+  #independentSchoolReturnBtn:hover{filter:brightness(.95)!important;transform:translateY(-1px)!important}
+  #independentSchoolReturnBtn::after{
+    content:'العودة لشاشة الدخول';
+    position:absolute;
+    right:62px;
+    bottom:8px;
+    white-space:nowrap;
+    background:#0f172a;
+    color:#fff;
+    font-size:11px;
+    font-weight:800;
+    padding:7px 10px;
+    border-radius:999px;
+    opacity:0;
+    pointer-events:none;
+    transition:.18s ease;
+  }
+  #independentSchoolReturnBtn:hover::after{opacity:1}
+  @media print{#independentSchoolReturnBtn{display:none!important}}
+</style>
+<script id="independent-school-return-button-script">
+(function(){
+  if(window.__independentSchoolReturnButtonInstalled) return;
+  window.__independentSchoolReturnButtonInstalled = true;
+  function isIndependentSchoolScope(){
+    try{
+      var p = new URLSearchParams(location.search || '');
+      var independentFlag = String(p.get('independent') || '').toLowerCase() === 'true';
+      var schoolMode = String(p.get('schoolMode') || '').toLowerCase() === 'independent';
+      var loginMode = String(p.get('loginMode') || '').toLowerCase() === 'direct';
+      var direct = String(p.get('direct') || '').toLowerCase() === '1';
+      var hasSchoolId = !!String(p.get('schoolId') || '').trim();
+      return (independentFlag || schoolMode) && (loginMode || direct || hasSchoolId);
+    }catch(e){ return false; }
+  }
+  function targetLoginUrl(){
+    var p = new URLSearchParams(location.search || '');
+    var schoolId = String(p.get('schoolId') || '').trim();
+    var q = new URLSearchParams();
+    if(schoolId) q.set('schoolId', schoolId);
+    q.set('return','1');
+    return 'school-login.html' + (q.toString() ? ('?' + q.toString()) : '');
+  }
+  function install(){
+    if(!isIndependentSchoolScope()) return;
+    if(document.getElementById('independentSchoolReturnBtn')) return;
+    var btn=document.createElement('button');
+    btn.id='independentSchoolReturnBtn';
+    btn.type='button';
+    btn.title='العودة لشاشة دخول المدرسة';
+    btn.setAttribute('aria-label','العودة لشاشة دخول المدرسة');
+    btn.innerHTML='↩';
+    btn.addEventListener('click', function(ev){
+      ev.preventDefault();
+      ev.stopPropagation();
+      location.href = targetLoginUrl();
+    }, true);
+    document.body.appendChild(btn);
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', install);
+  else install();
+})();
+</script>
+
+<script src="school-exit-scope.js" defer></script>
+
+<script id="current-visible-report-print-fix-v132">
+(function(){
+  if (window.__CURRENT_VISIBLE_REPORT_PRINT_FIX_V132__) return;
+  window.__CURRENT_VISIBLE_REPORT_PRINT_FIX_V132__ = true;
+
+  function syncLiveValues(root){
+    if(!root) return;
+    root.querySelectorAll('select').forEach(function(sel){
+      Array.prototype.forEach.call(sel.options || [], function(opt){ opt.removeAttribute('selected'); });
+      if(sel.selectedIndex >= 0 && sel.options[sel.selectedIndex]){
+        sel.options[sel.selectedIndex].setAttribute('selected','selected');
+      }
+    });
+    root.querySelectorAll('input, textarea').forEach(function(el){
+      if(el.type === 'checkbox' || el.type === 'radio'){
+        if(el.checked) el.setAttribute('checked','checked'); else el.removeAttribute('checked');
+      } else {
+        el.setAttribute('value', el.value || '');
+        if(el.tagName === 'TEXTAREA') el.textContent = el.value || '';
+      }
+    });
+    root.querySelectorAll('[contenteditable="true"]').forEach(function(el){
+      el.setAttribute('data-print-text', el.innerHTML || '');
+    });
+  }
+
+  function ensurePrintCss(){
+    var old = document.getElementById('current-visible-report-print-style-v132');
+    if(old) old.remove();
+    var style = document.createElement('style');
+    style.id = 'current-visible-report-print-style-v132';
+    style.textContent = [
+      '@media print{',
+      '@page{size:A4 portrait;margin:0!important;}',
+      'html,body{margin:0!important;padding:0!important;background:#fff!important;width:210mm!important;min-width:210mm!important;max-width:210mm!important;height:auto!important;overflow:visible!important;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}',
+      'body.current-visible-report-print-mode > *:not(#main-report-app){display:none!important;visibility:hidden!important;}',
+      'body.current-visible-report-print-mode #main-report-app{display:block!important;visibility:visible!important;position:static!important;inset:auto!important;margin:0!important;padding:0!important;background:#fff!important;width:210mm!important;min-width:210mm!important;max-width:210mm!important;height:auto!important;overflow:visible!important;}',
+      'body.current-visible-report-print-mode #main-report-app.hidden{display:block!important;}',
+      'body.current-visible-report-print-mode #main-report-app > nav,body.current-visible-report-print-mode #main-report-app .no-print,body.current-visible-report-print-mode #main-report-app .progress-top-bar,body.current-visible-report-print-mode #main-report-app button,body.current-visible-report-print-mode #main-report-app input[type="file"],body.current-visible-report-print-mode #main-report-app .delete-btn-box,body.current-visible-report-print-mode #main-report-app .magic-goal-btn,body.current-visible-report-print-mode #main-report-app .support-goal-btn,body.current-visible-report-print-mode #main-report-app .theme-icon-btn{display:none!important;visibility:hidden!important;}',
+      'body.current-visible-report-print-mode #report-content-container{display:block!important;visibility:visible!important;position:static!important;margin:0!important;padding:0!important;background:#fff!important;width:210mm!important;min-width:210mm!important;max-width:210mm!important;height:auto!important;overflow:visible!important;}',
+      'body.current-visible-report-print-mode #report-content-container *{visibility:visible!important;}',
+      'body.current-visible-report-print-mode #report-content-container .no-print,body.current-visible-report-print-mode #report-content-container button,body.current-visible-report-print-mode #report-content-container input[type="file"],body.current-visible-report-print-mode #report-content-container .delete-btn-box,body.current-visible-report-print-mode #report-content-container .magic-goal-btn,body.current-visible-report-print-mode #report-content-container .support-goal-btn{display:none!important;visibility:hidden!important;}',
+      'body.current-visible-report-print-mode #report-content-container .page-container{display:flex!important;visibility:visible!important;position:relative!important;width:210mm!important;min-width:210mm!important;max-width:210mm!important;height:297mm!important;min-height:297mm!important;max-height:297mm!important;margin:0!important;padding:7mm!important;box-sizing:border-box!important;background:#fff!important;box-shadow:none!important;border-radius:0!important;overflow:hidden!important;page-break-inside:avoid!important;break-inside:avoid-page!important;}',
+      'body.current-visible-report-print-mode #report-content-container .page-container:first-of-type{page-break-after:always!important;break-after:page!important;}',
+      'body.current-visible-report-print-mode #report-content-container .page-container:nth-of-type(2){page-break-after:avoid!important;break-after:avoid!important;}',
+      'body.current-visible-report-print-mode #report-content-container .page-container:nth-of-type(n+3){display:none!important;visibility:hidden!important;}',
+      'body.current-visible-report-print-mode #report-content-container .border-double-frame{display:flex!important;flex-direction:column!important;height:100%!important;max-height:100%!important;overflow:hidden!important;box-sizing:border-box!important;}',
+      'body.current-visible-report-print-mode #report-content-container table,body.current-visible-report-print-mode #report-content-container tr,body.current-visible-report-print-mode #report-content-container td,body.current-visible-report-print-mode #report-content-container th{page-break-inside:avoid!important;break-inside:avoid!important;}',
+      'body.current-visible-report-print-mode #report-content-container select{appearance:none!important;-webkit-appearance:none!important;border:0!important;background:transparent!important;color:inherit!important;text-align:center!important;text-align-last:center!important;}',
+      'body.current-visible-report-print-mode #report-content-container img{max-width:100%!important;max-height:100%!important;object-fit:contain!important;}',
+      'body.current-visible-report-print-mode #report-content-container .sig-stamp-container{min-height:70px!important;height:90px!important;display:flex!important;align-items:center!important;justify-content:center!important;overflow:hidden!important;}',
+      'body.current-visible-report-print-mode .internal-watermark::before{display:none!important;visibility:hidden!important;}',
+      '}'
+    ].join('\n');
+    document.head.appendChild(style);
+  }
+
+  function cleanupPrintMode(){
+    document.body.classList.remove('current-visible-report-print-mode');
+    window.__currentVisibleReportPrintLock = false;
+    window.removeEventListener('afterprint', cleanupPrintMode);
+  }
+
+  window.platformPrintCurrentReportOnly = function(){
+    var app = document.getElementById('main-report-app');
+    var container = document.getElementById('report-content-container');
+    if(!container || !container.querySelector('.page-container')){
+      if(typeof showToast === 'function') showToast('افتح التقرير أولاً قبل الطباعة');
+      else alert('افتح التقرير أولاً قبل الطباعة');
+      return false;
+    }
+    if(window.__currentVisibleReportPrintLock) return false;
+    window.__currentVisibleReportPrintLock = true;
+    if(app){ app.classList.remove('hidden'); app.style.display = 'block'; }
+    syncLiveValues(container);
+    ensurePrintCss();
+    document.body.classList.add('current-visible-report-print-mode');
+    window.removeEventListener('afterprint', cleanupPrintMode);
+    window.addEventListener('afterprint', cleanupPrintMode);
+    setTimeout(function(){
+      window.focus();
+      window.print();
+      setTimeout(cleanupPrintMode, 1800);
+    }, 80);
+    return false;
+  };
+
+  window.preparePrint = window.platformPrintCurrentReportOnly;
+  document.addEventListener('click', function(ev){
+    var btn = ev.target && ev.target.closest ? ev.target.closest('button,[onclick]') : null;
+    if(!btn) return;
+    var text = (btn.textContent || '').replace(/\s+/g,' ').trim();
+    var onclick = btn.getAttribute('onclick') || '';
+    if(onclick.indexOf('preparePrint') !== -1 || /الطباعة\s*والحفظ|للطباعة\s*والحفظ|طباعة\s*و\s*حفظ/.test(text)){
+      ev.preventDefault();
+      ev.stopPropagation();
+      window.platformPrintCurrentReportOnly();
+    }
+  }, true);
+})();
+</script>
+</body>
+</html>

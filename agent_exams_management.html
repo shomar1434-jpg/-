@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>نظام إدارة أعمال الاختبارات</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
+<style>
+:root{--green:#006c4f;--green2:#0c8f6a;--soft:#eefaf5;--line:#79b39f;--ink:#17252f;--muted:#667085;--bg:#f5f7f6;--danger:#b42318;--warn:#b54708;}
+*{box-sizing:border-box} body{margin:0;font-family:"Tahoma","Arial",sans-serif;background:linear-gradient(rgba(245,247,246,.92),rgba(245,247,246,.92)),url('a_clean_white_document_template_with_green_borders.png') center/cover fixed;color:var(--ink)}
+.app{max-width:1400px;margin:auto;padding:18px}.topbar{background:white;border:2px solid var(--green);border-radius:22px;padding:16px 20px;display:flex;gap:12px;align-items:center;justify-content:space-between;box-shadow:0 8px 25px #0001}.brand h1{margin:0;color:var(--green);font-size:28px}.brand p{margin:6px 0 0;color:var(--muted)}.actions{display:flex;gap:8px;flex-wrap:wrap}.btn{border:0;border-radius:12px;background:var(--green);color:white;padding:10px 14px;font-weight:700;cursor:pointer}.btn.secondary{background:#e9f5f0;color:var(--green);border:1px solid var(--line)}.btn.warn{background:var(--warn)}.btn.danger{background:var(--danger)}
+.layout{display:grid;grid-template-columns:250px 1fr;gap:16px;margin-top:16px}.side{background:white;border:1px solid #d7e8e1;border-radius:18px;padding:12px;height:max-content;position:sticky;top:10px}.tab{width:100%;padding:13px 12px;border:0;background:transparent;text-align:right;border-radius:12px;font-weight:700;color:#344054;cursor:pointer}.tab.active,.tab:hover{background:var(--soft);color:var(--green)}.panel{display:none;background:white;border:1px solid #d7e8e1;border-radius:18px;padding:16px;box-shadow:0 8px 25px #0000000c}.panel.active{display:block}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.grid2{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.card{background:#fff;border:1px solid #d7e8e1;border-radius:16px;padding:14px;margin-bottom:12px}.card h2,.card h3{margin:0 0 12px;color:var(--green)}label{display:block;font-size:13px;color:#344054;font-weight:700;margin-bottom:6px}input,select,textarea{width:100%;border:1px solid #cfd8d3;border-radius:10px;padding:10px;background:white;font-family:inherit}textarea{min-height:110px;resize:vertical}.hint{font-size:12px;color:var(--muted);line-height:1.7}.tablewrap{overflow:auto;border-radius:12px;border:1px solid #d7e8e1}table{width:100%;border-collapse:collapse;background:white}th,td{border:1px solid #d7e8e1;padding:9px;text-align:center;font-size:13px}th{background:var(--soft);color:var(--green);font-weight:800}.statrow{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}.stat{background:linear-gradient(180deg,#fff,#f2fbf7);border:1px solid var(--line);border-radius:14px;text-align:center;padding:13px}.stat b{display:block;color:var(--green);font-size:25px}.pill{display:inline-flex;align-items:center;padding:5px 10px;border-radius:999px;background:#eff8ff;color:#175cd3;font-size:12px;font-weight:700}.print-area{display:none}.inlineBtns{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.committee-box{border:1px solid #d7e8e1;border-radius:14px;padding:12px;margin:8px 0;background:#fcfffe}.checkbox-list{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.check{display:flex;align-items:center;gap:7px;background:#f8fbfa;border:1px solid #e0ece7;border-radius:9px;padding:7px}.check input{width:auto}.badge{background:#ecfdf3;color:#027a48;border-radius:10px;padding:4px 8px;font-weight:700;font-size:12px}.room-mode-note{font-size:12px;color:#667085;margin-top:6px;line-height:1.7}.divider{height:2px;background:var(--green);margin:12px 0}
+.official-page{width:210mm;min-height:297mm;background:white;margin:auto;padding:7mm;border:3.4px solid var(--green);border-radius:7mm;position:relative;overflow:hidden;color:#111;box-shadow:0 10px 30px #0002}.official-page:before{content:"";position:absolute;inset:0;background:url('a_clean_white_document_template_with_green_borders.png') center/cover no-repeat;opacity:.018;pointer-events:none}.official-content{position:relative;z-index:1;min-height:282mm;display:flex;flex-direction:column;padding-bottom:4mm}.moe-head{direction:ltr;display:grid;grid-template-columns:33% 34% 33%;grid-template-areas:"left logo right";align-items:start;gap:2mm;min-height:51mm;padding:5mm 3mm 0}.head-right{grid-area:right;direction:rtl;text-align:right;justify-self:stretch;font-weight:800;line-height:2.08;font-size:15.5px;white-space:nowrap;padding-right:1mm}.head-row{display:flex;align-items:center;justify-content:flex-start;gap:2mm}.head-label{white-space:nowrap;min-width:auto}.head-right .fill{display:inline-block;border-bottom:2px dotted #555;min-width:118px;margin:0;vertical-align:middle;text-align:center;line-height:1.25}.head-left{grid-area:left;direction:rtl;text-align:right;justify-self:stretch;font-weight:800;line-height:2.08;font-size:15.5px;white-space:nowrap;padding-right:8mm}.head-left .val{display:inline-block;min-width:78px;text-align:right;margin-right:6px}.logo{grid-area:logo;direction:rtl;text-align:center;color:var(--green);align-self:start;justify-self:center;margin-top:0}.moe-logo-img{width:55mm;max-height:34mm;object-fit:contain;display:block;margin:0 auto}.logo-mark{display:none}.logo-title,.logo-en{display:none}.head-line{height:3.2px;background:var(--green);margin:0 2mm 8mm}.doc-title{border:2.8px solid var(--green);background:linear-gradient(180deg,#fbfffd 0%,#eefaf4 100%);box-shadow:inset 0 0 18px rgba(0,108,79,.09);border-radius:5mm;text-align:center;color:#005f45;font-weight:900;font-size:27px;padding:5.5mm 3mm;margin:0 2mm 5mm}.meta-row{display:grid;grid-template-columns:repeat(3,1fr);gap:4mm;margin:0 2mm 5mm}.meta-box{border:1.8px solid var(--line);border-radius:2mm;padding:3mm;text-align:center;font-weight:800;background:#fbfffd}.print-table{margin:0 2mm;width:calc(100% - 4mm)}.print-table th,.print-table td{font-size:13.5px;padding:5.2px;border:1px solid #72a894}.print-table th{background:#dff2e8;color:#064e3b}.sign-area{display:grid;grid-template-columns:1fr 1fr;gap:12mm;margin:6mm 2mm 0;font-weight:800;break-inside:avoid;page-break-inside:avoid}.sig-line{border-bottom:2px dotted #333;display:inline-block;min-width:170px}.footer-note{margin:auto 2mm 0;text-align:center;font-size:11px;border-top:2px solid var(--green);padding-top:3mm;break-inside:avoid}.mini-stats{border:1.8px solid var(--line);border-radius:3mm;padding:3mm;margin:4mm 2mm 0;break-inside:avoid}.mini-stats h4{margin:0 0 2mm;text-align:center;color:var(--green)}.mini-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:3mm}.mini{border:1px solid var(--line);text-align:center;border-radius:2mm;padding:2mm}.mini b{display:block;font-size:16px}.incident-fields{display:grid;grid-template-columns:1fr 1fr;gap:3mm;margin:4mm 2mm}.field-box{border:1.5px solid var(--line);border-radius:2mm;padding:3mm;min-height:12mm}.field-box.full{grid-column:1/-1;min-height:24mm}.field-label{font-weight:900;color:var(--green);margin-bottom:1mm}.dash-line{border-bottom:1.5px dotted #555;display:block;height:9mm}
+@page{size:A4;margin:0} @media print{body{background:white}.app{display:none}.print-area{display:block}.official-page{margin:0;width:210mm;height:297mm;min-height:297mm;border-radius:7mm;page-break-after:always;box-shadow:none}.official-page:last-child{page-break-after:auto}.no-print{display:none!important} }
+@media(max-width:900px){.layout{grid-template-columns:1fr}.side{position:static}.grid,.grid2,.grid3,.statrow{grid-template-columns:1fr}.checkbox-list{grid-template-columns:1fr}.official-page{width:100%;min-height:auto}.moe-head{grid-template-columns:1fr}.head-left,.head-right,.logo{text-align:center}}
+.query-preview-card{background:linear-gradient(180deg,#fff,#f4fbf7);border:1px solid var(--line);border-radius:16px;padding:12px}.query-url{direction:ltr;text-align:left;background:#f6f8fa;border:1px solid #d0d7de;border-radius:10px;padding:10px;overflow:auto;color:#0969da}
+</style></head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="brand"><h1>نظام إدارة أعمال الاختبارات</h1><p>توزيع اللجان، كشوف الطلاب، الحضور والغياب، المحاضر، الملاحظون، الأرشيف والطباعة الرسمية.</p></div>
+    <div class="actions"><button class="btn secondary" onclick="saveAll()">حفظ محلي</button><button class="btn secondary" onclick="loadAll()">استرجاع</button><button class="btn danger" onclick="clearAll()">تفريغ</button></div>
+  </div>
+  <div class="layout">
+    <nav class="side">
+      <button class="tab active" data-tab="settings">١. بيانات المدرسة</button>
+      <button class="tab" data-tab="students">٢. الطلاب</button>
+      <button class="tab" data-tab="subjects">٣. المواد والجدول</button>
+      <button class="tab" data-tab="rooms">٤. اللجان والقاعات</button>
+      <button class="tab" data-tab="distribute">٥. التوزيع والطباعة</button>
+      <button class="tab" data-tab="observers">٦. الملاحظون</button>
+      <button class="tab" data-tab="attendance">٧. الحضور والغياب</button>
+      <button class="tab" data-tab="incidents">٨. المحاضر والنماذج</button>
+      <button class="tab" data-tab="query">٩. استعلام الطالب</button>
+      <button class="tab" data-tab="archive">١٠. الأرشيف</button>
+    </nav>
+    <main>
+      <section id="settings" class="panel active"><div class="card"><h2>بيانات الترويسة الرسمية</h2><div class="grid">
+        <div><label>إدارة التعليم</label><input id="eduDept" value="إدارة تعليم"></div><div><label>المدرسة</label><input id="school" value="المدرسة"></div><div><label>العام الدراسي</label><input id="year" value="1445 هـ"></div><div><label>الفصل الدراسي</label><select id="term"><option>الأول</option><option>الثاني</option><option>الثالث</option></select></div>
+        <div><label>اليوم</label><input id="day" value="الأحد"></div><div><label>التاريخ</label><input id="date" value="1445/05/22 هـ"></div><div><label>اسم مدير المدرسة</label><input id="principal" placeholder="اسم مدير المدرسة"></div><div><label>عنوان النظام</label><input id="systemTitle" value="أسماء الطلاب في اللجنة رقم"></div>
+      </div></div><div class="card"><h3>ملاحظة</h3><p class="hint">جميع النماذج تطبع على A4 بترويسة خضراء مطابقة للنمط الرسمي، والشعار في الوسط، والعنوان داخل إحاطة مظللة.</p></div></section>
+
+      <section id="students" class="panel"><div class="card"><h2>استيراد وإدخال بيانات الطلاب</h2><p class="hint">يمكن الاستيراد من Excel / CSV / TXT / PDF / Word / SVG، أو الإدخال اليدوي. الأعمدة المقبولة: اسم الطالب، السجل المدني، المرحلة/الصف، الشعبة. ويقبل النظام أيضًا عناوين مثل: الاسم، الهوية، الصف، الفصل، الشعبة.</p><div class="grid3"><div><label>ملف الطلاب</label><input id="studentsFile" type="file" accept=".xlsx,.xls,.csv,.txt,.pdf,.docx,.svg"></div><div><label>طريقة التعامل مع البيانات</label><select id="studentsImportMode"><option value="replace">استبدال القائمة الحالية</option><option value="append">إضافة للقائمة الحالية</option></select></div><div style="align-self:end"><button class="btn" onclick="importStudentsFile()">استيراد من ملف</button></div></div><textarea id="studentsText" placeholder="أحمد محمد الزهراني,1234567890,أول ثانوي,أ"></textarea><div class="inlineBtns"><button class="btn" onclick="importStudents()">استيراد من النص اليدوي</button><button class="btn secondary" onclick="addManualStudent()">إضافة طالب يدوي</button><button class="btn secondary" onclick="sampleStudents()">تجربة بيانات</button></div><div class="grid"><div><label>اسم الطالب اليدوي</label><input id="manualStudentName"></div><div><label>السجل المدني</label><input id="manualStudentId"></div><div><label>المرحلة/الصف</label><select id="manualStudentStage"></select></div><div><label>الشعبة</label><input id="manualStudentSection" placeholder="أ / ب / 1"></div></div></div><div class="card"><h3>قائمة الطلاب</h3><div class="tablewrap"><table id="studentsTable"><thead><tr><th>م</th><th>اسم الطالب</th><th>السجل المدني</th><th>المرحلة</th><th>الشعبة</th></tr></thead><tbody></tbody></table></div></div></section>
+
+      <section id="subjects" class="panel"><div class="card"><h2>المواد وجدول الاختبار</h2><div class="grid3"><div><label>المادة</label><input id="subjectInput" placeholder="الرياضيات"></div><div><label>اليوم</label><input id="subjectDay" placeholder="الأحد"></div><div><label>التاريخ</label><input id="subjectDate" placeholder="1445/05/22 هـ"></div></div><div class="inlineBtns"><button class="btn" onclick="addSubject()">إضافة مادة</button></div><div class="tablewrap"><table id="subjectsTable"><thead><tr><th>م</th><th>المادة</th><th>اليوم</th><th>التاريخ</th><th>حذف</th></tr></thead><tbody></tbody></table></div></div></section>
+
+      <section id="rooms" class="panel"><div class="card"><h2>إعداد اللجان والقاعات</h2><div class="grid3"><div><label>عدد اللجان</label><input id="roomCount" type="number" value="2" min="1"></div><div><label>السعة الافتراضية</label><input id="defaultCapacity" type="number" value="25" min="1"></div><div style="align-self:end"><button class="btn" onclick="buildRooms()">إنشاء اللجان</button></div></div></div><div id="roomsContainer"></div></section>
+
+      <section id="distribute" class="panel"><div class="card"><h2>توزيع الطلاب وطباعة كشوف اللجان</h2><div class="grid3"><div><label>المادة للطباعة</label><select id="printSubject"></select></div><div><label>اللجنة</label><select id="printRoom"></select></div><div style="align-self:end"><button class="btn" onclick="distributeStudents()">تنفيذ التوزيع</button></div></div><div class="inlineBtns"><button class="btn secondary" onclick="printCommittee()">طباعة اللجنة المحددة</button><button class="btn secondary" onclick="printAllCommittees()">طباعة جميع اللجان</button><button class="btn secondary" onclick="printCallSheets()">كشف المناداة</button></div></div><div class="card"><h3>ملخص التوزيع</h3><div class="statrow" id="stats"></div><div id="distributionPreview" class="tablewrap"></div></div></section>
+
+      <section id="observers" class="panel"><div class="card"><h2>استيراد المعلمين وتوزيع الملاحظين</h2><p class="hint">يمكن استيراد أسماء المعلمين من Excel / CSV / TXT / PDF / Word / SVG، أو إدخالهم يدويًا، ثم اختيار الملاحظ من القائمة عند توزيع اللجان.</p><div class="grid3"><div><label>ملف المعلمين</label><input id="teachersFile" type="file" accept=".xlsx,.xls,.csv,.txt,.pdf,.docx,.svg"></div><div><label>إدخال يدوي للمعلم</label><input id="manualTeacherName" list="teachersList"></div><div style="align-self:end"><button class="btn secondary" onclick="importTeachersFile()">استيراد المعلمين</button><button class="btn secondary" onclick="addManualTeacher()">إضافة معلم</button></div></div></div><div class="card"><h2>توزيع الملاحظين</h2><div class="grid3"><div><label>اسم الملاحظ</label><input id="observerName" list="teachersList"></div><div><label>اللجنة</label><select id="observerRoom"></select></div><div style="align-self:end"><button class="btn" onclick="assignObserver()">إضافة/تعديل</button></div></div><div class="inlineBtns"><button class="btn secondary" onclick="printObservers()">طباعة توزيع الملاحظين</button><button class="btn secondary" onclick="printDelivery()">طباعة استلام وتسليم أوراق الأسئلة</button></div><div class="grid2"><div><h3>قائمة الملاحظين</h3><div class="tablewrap"><table id="observersTable"><thead><tr><th>اللجنة</th><th>الملاحظ</th></tr></thead><tbody></tbody></table></div></div><div><h3>قائمة المعلمين المستوردة</h3><div class="tablewrap"><table id="teachersTable"><thead><tr><th>م</th><th>اسم المعلم</th><th>التخصص/المادة</th></tr></thead><tbody></tbody></table></div></div></div></div></section>
+
+      <section id="attendance" class="panel"><div class="card"><h2>الحضور والغياب</h2><div class="grid3"><div><label>المادة</label><select id="attSubject"></select></div><div><label>اللجنة</label><select id="attRoom"></select></div><div style="align-self:end"><button class="btn" onclick="renderAttendance()">عرض طلاب اللجنة</button></div></div><div class="inlineBtns"><button class="btn secondary" onclick="printAttendance()">طباعة كشف الحضور والتوقيع</button><button class="btn warn" onclick="printAbsenceReport()">طباعة نموذج غياب طالب</button><button class="btn secondary" onclick="clearAttendanceForm()">مسح كشف الحضور الحالي</button></div><div id="attendanceList" class="tablewrap"></div></div></section>
+
+      <section id="incidents" class="panel"><div class="card"><h2>المحاضر والنماذج الرسمية</h2><div class="grid3"><div><label>نوع النموذج</label><select id="incidentType" onchange="updateIncidentPersonMode()"><option>نموذج غياب طالب</option><option>محضر غش</option><option>محضر إزعاج</option><option>محضر تأخر طالب</option><option>محضر تلف ورقة إجابة</option><option>محضر فتح مظروف الأسئلة</option><option>سجل استلام وتسليم أوراق الإجابة</option><option>إقرار إنهاء المنهج</option><option>تكليف وضع الأسئلة للمعلم</option><option>نموذج اكتمال تسليم الاختبارات</option><option>نموذج الانتهاء من التصوير</option><option>محضر استلام المصحح لأوراق الإجابة</option><option>محضر استلام الأوراق من الكنترول بعد التصحيح</option></select></div><div><label id="incidentPersonLabel">اسم الطالب</label><input id="incidentStudent" list="studentsList" placeholder="اختر الاسم أو اكتبه يدويًا"></div><div><label>المادة</label><select id="incidentSubject"></select></div></div><div class="grid2"><div><label id="incidentDescLabel">وصف الواقعة / الملاحظات</label><textarea id="incidentDesc"></textarea></div><div><label id="incidentActionLabel">الإجراء المتخذ</label><textarea id="incidentAction"></textarea></div></div><div class="inlineBtns"><button class="btn" onclick="printIncident()">طباعة النموذج</button><button class="btn secondary" onclick="clearIncidentForm()">مسح بيانات النموذج الحالي</button><button class="btn warn" onclick="newIncidentForm()">نموذج جديد</button></div><p class="hint" id="incidentModeHint">النماذج الطلابية تسحب الاسم من بيانات الطلاب، وبقية النماذج تسحب الاسم من بيانات المعلمين مع بقاء الإدخال اليدوي متاحًا.</p></div></section>
+
+      <section id="query" class="panel"><div class="card"><h2>استعلام الطالب عن اللجنة</h2><div class="grid2"><div><label>الاسم أو السجل المدني</label><input id="queryText" placeholder="اكتب الاسم أو السجل المدني"></div><div style="align-self:end"><button class="btn" onclick="queryStudent()">استعلام</button></div></div><div id="queryResult" style="margin-top:12px"></div></div><div class="card"><h3>رابط/صفحة استعلام الطلاب</h3><p class="hint">بعد تنفيذ التوزيع اضغط الزر التالي لإنشاء صفحة مستقلة يستطيع الطالب فتحها والاستعلام بالاسم أو السجل المدني. ارفع الصفحة الناتجة على GitHub Pages أو أي استضافة مدرسية ثم أرسل الرابط للطلاب.</p><div class="inlineBtns"><button class="btn" onclick="generateStudentQueryFile()">إنشاء وتنزيل صفحة الاستعلام</button><button class="btn secondary" onclick="previewStudentQueryFile()">فتح معاينة الاستعلام</button><button class="btn secondary" onclick="copyQueryMessage()">نسخ رسالة الإرسال للطلاب</button></div><div id="queryLinkBox" class="hint" style="margin-top:10px"></div></div></section>
+
+      <section id="archive" class="panel"><div class="card"><h2>الأرشيف المحلي</h2><p class="hint">يتم حفظ بيانات النظام محليًا في المتصفح. ويمكن طباعة النماذج وحفظها PDF من نافذة الطباعة.</p><div class="inlineBtns"><button class="btn secondary" onclick="saveAll()">حفظ نسخة</button><button class="btn secondary" onclick="exportJSON()">تصدير JSON</button></div></div></section>
+    </main>
+  </div>
+</div>
+<datalist id="studentsList"></datalist>
+<datalist id="teachersList"></datalist>
+<div id="printArea" class="print-area"></div>
+<script>
+const stages=['رابع','خامس','سادس','أول متوسط','ثاني متوسط','ثالث متوسط','أول ثانوي','ثاني ثانوي','ثالث ثانوي'];
+let students=[],teachers=[],subjects=[{name:'الرياضيات',day:'الأحد',date:'1445/05/22 هـ'}],rooms=[],distribution={},observers={},attendance={};
+const $=id=>document.getElementById(id);
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab,.panel').forEach(x=>x.classList.remove('active'));b.classList.add('active');$(b.dataset.tab).classList.add('active')});
+function getSettings(){return {eduDept:$('eduDept').value,school:$('school').value,year:$('year').value,term:$('term').value,day:$('day').value,date:$('date').value,principal:$('principal').value,title:$('systemTitle').value}}
+function updateLists(){['printSubject','attSubject','incidentSubject'].forEach(id=>{$(id).innerHTML=subjects.map(s=>`<option>${s.name}</option>`).join('')});['printRoom','observerRoom','attRoom'].forEach(id=>{$(id).innerHTML=rooms.map(r=>`<option value="${r.no}">اللجنة رقم (${r.no})</option>`).join('')});$('studentsList').innerHTML=students.map(s=>`<option value="${s.name}"></option>`).join('');if($('teachersList'))$('teachersList').innerHTML=teachers.map(t=>`<option value="${t.name}"></option>`).join('');if($('manualStudentStage'))$('manualStudentStage').innerHTML=stages.map(x=>`<option>${x}</option>`).join('');renderSubjects();renderRooms();renderObservers();renderTeachers();}
+function importStudents(){students=$('studentsText').value.split(/\n+/).map((line,i)=>{let p=line.split(/\t|,/).map(x=>x.trim());return {name:p[0]||'',id:p[1]||'',stage:normalizeStage(p[2]||''),section:p[3]||''}}).filter(s=>s.name);distribution={};renderStudents();updateLists();saveAll(false)}
+function normalizeHeader(x){x=String(x||'').trim().replace(/\s+/g,' ');return x}
+function guessRecordFromRow(row,type='student'){
+  let keys=Object.keys(row||{});let val=(names)=>{for(let n of names){let k=keys.find(k=>normalizeHeader(k).includes(n));if(k!==undefined&&row[k]!==undefined&&String(row[k]).trim())return String(row[k]).trim()}return ''};
+  if(type==='teacher')return {name:val(['اسم المعلم','المعلم','الاسم','اسم']),subject:val(['التخصص','المادة','القسم'])};
+  return {name:val(['اسم الطالب','الطالب','الاسم','اسم']),id:val(['السجل المدني','الهوية','رقم الهوية','السجل','رقم']),stage:normalizeStage(val(['المرحلة','الصف','المستوى'])),section:val(['الشعبة','الفصل','القسم'])};
+}
+function normalizeStage(x){x=String(x||'').trim();let found=stages.find(s=>x.includes(s)||s.includes(x));return found||x}
+function getPhase(stage){stage=normalizeStage(stage);if(['رابع','خامس','سادس'].includes(stage))return 'ابتدائي';if(['أول متوسط','ثاني متوسط','ثالث متوسط'].includes(stage))return 'متوسط';if(['أول ثانوي','ثاني ثانوي','ثالث ثانوي'].includes(stage))return 'ثانوي';return stage||''}
+function getSections(){return [...new Set(students.map(s=>String(s.section||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ar'))}
+function parseDelimitedText(text,type='student'){
+  let lines=String(text||'').split(/\n+/).map(x=>x.trim()).filter(Boolean); if(!lines.length)return [];
+  let sep=lines[0].includes('\t')?'\t':(lines[0].includes(';')?';':',');
+  let first=lines[0].split(sep).map(x=>x.trim());let hasHeader=first.some(x=>/اسم|طالب|معلم|هوية|سجل|مرحلة|صف|مادة|تخصص|شعبة|فصل/.test(x));
+  if(hasHeader){return lines.slice(1).map(line=>{let cells=line.split(sep).map(x=>x.trim());let obj={};first.forEach((h,i)=>obj[h]=cells[i]||'');return guessRecordFromRow(obj,type)}).filter(x=>x.name)}
+  return lines.map(line=>{let p=line.split(/\t|,|;/).map(x=>x.trim());return type==='teacher'?{name:p[0]||'',subject:p[1]||''}:{name:p[0]||'',id:p[1]||'',stage:normalizeStage(p[2]||''),section:p[3]||''}}).filter(x=>x.name)
+}
+async function readOfficeLikeFile(file,type='student'){
+  let ext=(file.name.split('.').pop()||'').toLowerCase();
+  if(['xlsx','xls'].includes(ext)){
+    if(!window.XLSX){alert('تعذر تحميل قارئ Excel. افتح الملف بوجود اتصال بالإنترنت أو الصق البيانات يدويًا.');return []}
+    let data=await file.arrayBuffer();let wb=XLSX.read(data,{type:'array'});let ws=wb.Sheets[wb.SheetNames[0]];let json=XLSX.utils.sheet_to_json(ws,{defval:''});
+    if(json.length) return json.map(r=>guessRecordFromRow(r,type)).filter(x=>x.name);
+    let arr=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});return arr.map(r=>type==='teacher'?{name:r[0]||'',subject:r[1]||''}:{name:r[0]||'',id:r[1]||'',stage:normalizeStage(r[2]||''),section:r[3]||''}).filter(x=>x.name);
+  }
+  if(ext==='pdf'){
+    if(!window.pdfjsLib){alert('تعذر تحميل قارئ PDF. يفضل استخدام Excel أو نسخ النص يدويًا.');return []}
+    pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+    let pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;let text='';
+    for(let i=1;i<=pdf.numPages;i++){let page=await pdf.getPage(i);let content=await page.getTextContent();text+=content.items.map(it=>it.str).join(' ')+'\n'}
+    return parseLooseLines(text,type);
+  }
+  if(ext==='docx'){
+    if(!window.mammoth){alert('تعذر تحميل قارئ Word. يفضل استخدام Excel أو نسخ النص يدويًا.');return []}
+    let out=await mammoth.extractRawText({arrayBuffer:await file.arrayBuffer()});return parseLooseLines(out.value,type);
+  }
+  if(ext==='svg'){
+    let txt=await file.text();let text=txt.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');return parseLooseLines(text,type);
+  }
+  return parseDelimitedText(await file.text(),type);
+}
+function parseLooseLines(text,type='student'){
+  let lines=String(text||'').replace(/\r/g,'\n').split(/\n+/).map(x=>x.trim()).filter(Boolean);
+  let parsed=parseDelimitedText(lines.join('\n'),type); if(parsed.length)return parsed;
+  let words=String(text||'').split(/\s{2,}|\n+/).map(x=>x.trim()).filter(Boolean);
+  if(type==='teacher') return words.filter(x=>x.length>5&&!/وزارة|تعليم|مدرسة|المملكة/.test(x)).map(x=>({name:x,subject:''}));
+  return words.map(x=>({name:x,id:'',stage:''})).filter(x=>x.name.length>5&&!/وزارة|تعليم|مدرسة|المملكة/.test(x));
+}
+function mergeByKey(oldArr,newArr,keyFn){let map=new Map();[...oldArr,...newArr].forEach(x=>{let k=keyFn(x);if(k&&!map.has(k))map.set(k,x)});return [...map.values()]}
+async function importStudentsFile(){let f=$('studentsFile').files[0];if(!f){alert('اختر ملف الطلاب أولاً');return}let rows=await readOfficeLikeFile(f,'student');let mode=$('studentsImportMode').value;students=mode==='append'?mergeByKey(students,rows,x=>x.id||x.name):rows;$('studentsText').value=students.map(s=>`${s.name},${s.id||''},${s.stage||''}`).join('\n');distribution={};renderStudents();updateLists();saveAll(false);alert('تم استيراد '+rows.length+' طالب/طلاب')}
+function addManualStudent(){let name=$('manualStudentName').value.trim();if(!name)return;students=mergeByKey(students,[{name,id:$('manualStudentId').value.trim(),stage:$('manualStudentStage').value,section:$('manualStudentSection').value.trim()}],x=>x.id||x.name);$('manualStudentName').value='';$('manualStudentId').value='';$('manualStudentSection').value='';renderStudents();updateLists();saveAll(false)}
+async function importTeachersFile(){let f=$('teachersFile').files[0];if(!f){alert('اختر ملف المعلمين أولاً');return}let rows=await readOfficeLikeFile(f,'teacher');teachers=mergeByKey(teachers,rows,x=>x.name);renderTeachers();updateLists();saveAll(false);alert('تم استيراد '+rows.length+' معلم/معلمين')}
+function addManualTeacher(){let name=$('manualTeacherName').value.trim();if(!name)return;teachers=mergeByKey(teachers,[{name,subject:''}],x=>x.name);$('manualTeacherName').value='';renderTeachers();updateLists();saveAll(false)}
+function renderTeachers(){let tb=$('teachersTable');if(!tb)return;tb.querySelector('tbody').innerHTML=teachers.map((t,i)=>`<tr><td>${i+1}</td><td>${t.name}</td><td>${t.subject||''}</td></tr>`).join('')}
+
+function sampleStudents(){let names=['أحمد محمد الزهراني','إبراهيم علي الغامدي','أسامة حسن العمري','بدر سعيد المالكي','تركي أحمد الحربي','حسن عبدالله الشهري','خالد محمد القحطاني','سعد ناصر العصيمي','سلمان فهد العنزي','عبدالعزيز خالد السبيعي','فارس صالح الدوسري','محمد عبدالله العتيبي','نايف سالم الحربي','وليد فهد المطيري','يوسف علي الشهراني','راكان حمد اليامي','زياد ماجد الحارثي','عبدالله سعيد القرني','ماجد حسن المالكي','نواف عبدالعزيز البلوي'];let st=['أول ثانوي','ثاني ثانوي','ثالث ثانوي'];$('studentsText').value=Array.from({length:60},(_,i)=>`${names[i%names.length]} ${i+1},${1000000000+i},${st[i%3]},${['أ','ب','ج'][i%3]}`).join('\n');importStudents();}
+function renderStudents(){$('studentsTable').querySelector('tbody').innerHTML=students.map((s,i)=>`<tr><td>${i+1}</td><td>${s.name}</td><td>${s.id}</td><td>${s.stage}</td><td>${s.section||''}</td></tr>`).join('')}
+function addSubject(){let name=$('subjectInput').value.trim();if(!name)return;subjects.push({name,day:$('subjectDay').value,date:$('subjectDate').value});$('subjectInput').value='';renderSubjects();updateLists();}
+function renderSubjects(){$('subjectsTable').querySelector('tbody').innerHTML=subjects.map((s,i)=>`<tr><td>${i+1}</td><td>${s.name}</td><td>${s.day||''}</td><td>${s.date||''}</td><td><button class="btn danger" onclick="subjects.splice(${i},1);updateLists()">حذف</button></td></tr>`).join('')}
+function buildRooms(){let n=+$('roomCount').value||1,cap=+$('defaultCapacity').value||25;rooms=Array.from({length:n},(_,i)=>({no:i+1,capacity:cap,mode:'mixed',allowed:[...stages],sections:[],phases:['ابتدائي','متوسط','ثانوي']}));distribution={};updateLists();saveAll(false)}
+function roomModeLabel(m){return {'grade':'حسب الصف','gradeSection':'حسب الصف والشعبة','phase':'حسب المرحلة','mixed':'لجنة مشتركة بين الصفوف والمراحل'}[m]||'لجنة مشتركة'}
+function renderRooms(){let c=$('roomsContainer');let secs=getSections();c.innerHTML=rooms.map((r,idx)=>{r.mode=r.mode||'mixed';r.allowed=r.allowed||[...stages];r.sections=r.sections||[];r.phases=r.phases||['ابتدائي','متوسط','ثانوي'];return `<div class="committee-box"><h3>اللجنة رقم (${r.no})</h3><div class="grid3"><div><label>سعة اللجنة</label><input type="number" value="${r.capacity}" onchange="rooms[${idx}].capacity=+this.value;saveAll(false)"></div><div><label>شرط توزيع اللجنة</label><select onchange="rooms[${idx}].mode=this.value;renderRooms();saveAll(false)"><option value="grade" ${r.mode==='grade'?'selected':''}>حسب الصف</option><option value="gradeSection" ${r.mode==='gradeSection'?'selected':''}>حسب الصف والشعبة</option><option value="phase" ${r.mode==='phase'?'selected':''}>حسب المرحلة</option><option value="mixed" ${r.mode==='mixed'?'selected':''}>لجنة مشتركة بين الصفوف والمراحل</option></select></div><div><label>ملحوظة التوزيع</label><div class="room-mode-note">يعتمد التوزيع دائمًا على التسلسل المنطقي للصفوف ثم الترتيب الأبجدي، ولا يكرر أي طالب سبق اختياره في لجنة أخرى.</div></div></div>${roomFilterControls(r,idx,secs)}</div>`}).join('')}
+function roomFilterControls(r,idx,secs){
+  if(r.mode==='phase')return `<div><label>المراحل التعليمية المسموحة</label><div class="checkbox-list">${['ابتدائي','متوسط','ثانوي'].map(ph=>`<label class="check"><input type="checkbox" ${r.phases.includes(ph)?'checked':''} onchange="togglePhase(${idx},'${ph}',this.checked)"> ${ph}</label>`).join('')}</div></div>`;
+  let stageBox=`<div><label>${r.mode==='mixed'?'الصفوف/المراحل المسموحة للجنة المشتركة':'الصفوف المسموحة'}</label><div class="checkbox-list">${stages.map(st=>`<label class="check"><input type="checkbox" ${r.allowed.includes(st)?'checked':''} onchange="toggleStage(${idx},'${st}',this.checked)"> ${st}</label>`).join('')}</div></div>`;
+  if(r.mode==='gradeSection'){
+    let sectionItems=(secs.length?secs:['أ','ب','ج','د']).map(sec=>`<label class="check"><input type="checkbox" ${r.sections.includes(sec)?'checked':''} onchange="toggleSection(${idx},'${sec}',this.checked)"> شعبة ${sec}</label>`).join('');
+    return stageBox+`<div style="margin-top:10px"><label>الشعب المسموحة</label><div class="checkbox-list">${sectionItems}</div><p class="hint">اترك الشعب دون تحديد إذا أردت السماح بجميع الشعب للصفوف المختارة.</p></div>`;
+  }
+  return stageBox;
+}
+function toggleStage(idx,st,checked){if(checked&&!rooms[idx].allowed.includes(st))rooms[idx].allowed.push(st);if(!checked)rooms[idx].allowed=rooms[idx].allowed.filter(x=>x!==st);distribution={};saveAll(false)}
+function togglePhase(idx,ph,checked){rooms[idx].phases=rooms[idx].phases||[];if(checked&&!rooms[idx].phases.includes(ph))rooms[idx].phases.push(ph);if(!checked)rooms[idx].phases=rooms[idx].phases.filter(x=>x!==ph);distribution={};saveAll(false)}
+function toggleSection(idx,sec,checked){rooms[idx].sections=rooms[idx].sections||[];if(checked&&!rooms[idx].sections.includes(sec))rooms[idx].sections.push(sec);if(!checked)rooms[idx].sections=rooms[idx].sections.filter(x=>x!==sec);distribution={};saveAll(false)}
+function studentAllowedInRoom(s,r){
+  let stage=normalizeStage(s.stage),section=String(s.section||'').trim();
+  if(r.mode==='phase')return (r.phases||[]).includes(getPhase(stage));
+  if(r.mode==='gradeSection')return (r.allowed||[]).includes(stage) && (!(r.sections||[]).length || (r.sections||[]).includes(section));
+  return (r.allowed||[]).includes(stage);
+}
+function studentKey(s){return String(s.id||s.name||'').trim()}
+function distributeStudents(){distribution={};let sorted=[...students].sort((a,b)=>(stages.indexOf(normalizeStage(a.stage))-stages.indexOf(normalizeStage(b.stage)))||String(a.section||'').localeCompare(String(b.section||''),'ar')||a.name.localeCompare(b.name,'ar'));let used=new Set();rooms.forEach(r=>{distribution[r.no]=[];for(let s of sorted){if(distribution[r.no].length>=r.capacity)break;let key=studentKey(s);if(!key||used.has(key))continue;if(studentAllowedInRoom(s,r)){distribution[r.no].push(s);used.add(key)}}});renderDistribution();saveAll(false)}
+function renderDistribution(){let stats=$('stats');let total=Object.values(distribution).flat().length;stats.innerHTML=`<div class="stat"><span>إجمالي الطلاب</span><b>${students.length}</b></div><div class="stat"><span>الموزعون</span><b>${total}</b></div><div class="stat"><span>المتبقون</span><b>${students.length-total}</b></div><div class="stat"><span>عدد اللجان</span><b>${rooms.length}</b></div><div class="stat"><span>المواد</span><b>${subjects.length}</b></div>`;$('distributionPreview').innerHTML=`<table><thead><tr><th>اللجنة</th><th>عدد الطلاب</th><th>شرط اللجنة</th><th>المراحل/الصفوف</th><th>الملاحظ</th></tr></thead><tbody>${rooms.map(r=>{let arr=distribution[r.no]||[];let counts=stageCounts(arr);return `<tr><td>اللجنة رقم (${r.no})</td><td>${arr.length}</td><td>${roomModeLabel(r.mode)}</td><td>${Object.entries(counts).filter(([k,v])=>v).map(([k,v])=>`${k}: ${v}`).join(' - ')}</td><td>${observers[r.no]||''}</td></tr>`}).join('')}</tbody></table>`;updateLists();}
+function stageCounts(arr){let o={};stages.forEach(s=>o[s]=0);arr.forEach(s=>o[s.stage]=(o[s.stage]||0)+1);return o}
+function pageHeader(title,meta=''){let s=getSettings();return `<div class="official-page"><div class="official-content"><div class="moe-head"><div class="head-left"><div>العام الدراسي : <span class="val">${s.year}</span></div><div>الفصل الدراسي : <span class="val">${s.term}</span></div><div>اليوم : <span class="val">${s.day}</span></div><div>التاريخ : <span class="val">${s.date}</span></div></div><div class="logo"><img class="moe-logo-img" alt="شعار وزارة التعليم" src="https://salogos.b-cdn.net/logos/svg/1774895141785-5zgexuf8.svg"></div><div class="head-right"><div>المملكة العربية السعودية</div><div>وزارة التعليم</div><div class="head-row"><span class="head-label">إدارة تعليم</span><span class="fill">${s.eduDept}</span></div><div class="head-row"><span class="head-label">المدرسة</span><span class="fill">${s.school}</span></div></div></div><div class="head-line"></div><div class="doc-title">${title}</div>${meta}`}
+function pageFooter(){return `<div class="footer-note">ملاحظة: على الطالب التواجد قبل بدء الاختبار بوقت كافٍ مع الالتزام بالأنظمة والتعليمات.</div></div></div>`}
+function subjectByName(subjectName){return subjects.find(x=>x.name==subjectName)||{name:subjectName,day:getSettings().day,date:getSettings().date}}
+function officialMeta(items){return `<div class="meta-row">${items.map(x=>`<div class="meta-box">${x}</div>`).join('')}</div>`}
+function committeePage(no,subjectName){let arr=distribution[no]||[],s=getSettings(),counts=stageCounts(arr),subject=subjectByName(subjectName);let showStage=Object.values(counts).filter(v=>v>0).length>1;let title=`${s.title} (${no})`;let meta=officialMeta([`العام الدراسي : ${s.year}`,`الفصل الدراسي : ${s.term}`,`المادة : ${subject.name}`]);let rows=arr.map((x,i)=>`<tr><td>${i+1}</td><td style="text-align:right">${x.name}</td>${showStage?`<td>${x.stage}</td>`:''}<td>${subject.name}</td><td>................................</td></tr>`).join('');let stat=`<div class="mini-stats"><h4>إحصائية اللجنة</h4><div class="mini-grid"><div class="mini">إجمالي الطلاب<b>${arr.length}</b></div>${['أول ثانوي','ثاني ثانوي','ثالث ثانوي','ثالث متوسط'].map(st=>`<div class="mini">${st}<b>${counts[st]||0}</b></div>`).join('')}</div></div>`;return pageHeader(title,meta)+`<table class="print-table"><thead><tr><th style="width:8%">م</th><th>اسم الطالب</th>${showStage?'<th style="width:16%">المرحلة</th>':''}<th style="width:16%">المادة</th><th style="width:25%">التوقيع</th></tr></thead><tbody>${rows}</tbody></table>${stat}<div class="sign-area"><div>اسم الملاحظ : <span class="sig-line">${observers[no]||''}</span><br><br>توقيعه : <span class="sig-line"></span></div><div>اسم مدير المدرسة : <span class="sig-line">${s.principal||''}</span><br><br>توقيعه : <span class="sig-line"></span></div></div>`+pageFooter()}
+function printHTML(html){$('printArea').innerHTML=html;setTimeout(()=>window.print(),200)}
+function printCommittee(){let no=$('printRoom').value,sub=$('printSubject').value;if(!distribution[no])distributeStudents();printHTML(committeePage(no,sub));}
+function printAllCommittees(){let sub=$('printSubject').value;if(!Object.keys(distribution).length)distributeStudents();printHTML(rooms.map(r=>committeePage(r.no,sub)).join(''))}
+function printCallSheets(){let sub=$('printSubject').value;if(!Object.keys(distribution).length)distributeStudents();let html=rooms.map(r=>committeePage(r.no,sub)).join('');printHTML(html)}
+function assignObserver(){observers[$('observerRoom').value]=$('observerName').value;renderObservers();saveAll(false)}
+function renderObservers(){$('observersTable').querySelector('tbody').innerHTML=rooms.map(r=>`<tr><td>اللجنة رقم (${r.no})</td><td>${observers[r.no]||''}</td></tr>`).join('')}
+function printObservers(){let rows=rooms.map((r,i)=>`<tr><td>${i+1}</td><td>اللجنة رقم (${r.no})</td><td>${observers[r.no]||''}</td><td>............................</td><td>............................</td></tr>`).join('');let meta=officialMeta([`عدد اللجان : ${rooms.length}`,`العام الدراسي : ${getSettings().year}`,`الفصل الدراسي : ${getSettings().term}`]);printHTML(pageHeader('توزيع الملاحظين على اللجان',meta)+`<table class="print-table"><thead><tr><th style="width:8%">م</th><th>اللجنة</th><th>اسم الملاحظ</th><th>التوقيع</th><th>ملاحظات</th></tr></thead><tbody>${rows}</tbody></table><div class="sign-area"><div>مسؤول الاختبارات : <span class="sig-line"></span><br><br>توقيعه : <span class="sig-line"></span></div><div>اعتماد مدير المدرسة : <span class="sig-line">${getSettings().principal||''}</span><br><br>توقيعه : <span class="sig-line"></span></div></div>`+pageFooter())}
+function printDelivery(){let sub=$('printSubject').value||'';let rows=rooms.map((r,i)=>`<tr><td>${i+1}</td><td>اللجنة رقم (${r.no})</td><td>${sub}</td><td>${observers[r.no]||''}</td><td>.............</td><td>.............</td></tr>`).join('');let meta=officialMeta([`المادة : ${sub}`,`اليوم : ${getSettings().day}`,`التاريخ : ${getSettings().date}`]);printHTML(pageHeader('سجل استلام وتسليم أوراق الأسئلة',meta)+`<table class="print-table"><thead><tr><th style="width:7%">م</th><th>اللجنة</th><th>المادة</th><th>المستلم</th><th>وقت الاستلام</th><th>التوقيع</th></tr></thead><tbody>${rows}</tbody></table><div class="sign-area"><div>مسؤول التسليم : <span class="sig-line"></span><br><br>توقيعه : <span class="sig-line"></span></div><div>رئيس لجنة الاختبارات : <span class="sig-line"></span><br><br>توقيعه : <span class="sig-line"></span></div></div>`+pageFooter())}
+function renderAttendance(){let no=$('attRoom').value,arr=distribution[no]||[];$('attendanceList').innerHTML=`<table><thead><tr><th>م</th><th>اسم الطالب</th><th>المرحلة</th><th>حاضر</th><th>غائب</th></tr></thead><tbody>${arr.map((s,i)=>`<tr><td>${i+1}</td><td>${s.name}</td><td>${s.stage}</td><td><input type="checkbox" checked></td><td><input type="checkbox"></td></tr>`).join('')}</tbody></table>`}
+function printAttendance(){let no=$('attRoom').value,sub=$('attSubject').value;if(!distribution[no])distributeStudents();let arr=distribution[no]||[],subject=subjectByName(sub);let rows=arr.map((s,i)=>`<tr><td>${i+1}</td><td style="text-align:right">${s.name}</td><td>${s.stage}</td><td>${subject.name}</td><td>........................</td></tr>`).join('');let meta=officialMeta([`اللجنة رقم : ${no}`,`المادة : ${subject.name}`,`إجمالي الطلاب : ${arr.length}`]);printHTML(pageHeader(`كشف الحضور والتوقيع للجنة رقم (${no})`,meta)+`<table class="print-table"><thead><tr><th style="width:8%">م</th><th>اسم الطالب</th><th>المرحلة</th><th>المادة</th><th>التوقيع</th></tr></thead><tbody>${rows}</tbody></table><div class="sign-area"><div>اسم الملاحظ : <span class="sig-line">${observers[no]||''}</span><br><br>توقيعه : <span class="sig-line"></span></div><div>اسم مدير المدرسة : <span class="sig-line">${getSettings().principal||''}</span><br><br>توقيعه : <span class="sig-line"></span></div></div>`+pageFooter())}
+function printAbsenceReport(){let no=$('attRoom').value,arr=distribution[no]||[],sub=$('attSubject').value,subject=subjectByName(sub);let rows=arr.map((s,i)=>`<tr><td>${i+1}</td><td style="text-align:right">${s.name}</td><td>${s.stage}</td><td>${subject.name}</td><td>حاضر / غائب</td><td>........................</td></tr>`).join('');let meta=officialMeta([`اللجنة رقم : ${no}`,`المادة : ${subject.name}`,`إجمالي الطلاب : ${arr.length}`]);printHTML(pageHeader(`نموذج متابعة غياب طلاب اللجنة رقم (${no})`,meta)+`<table class="print-table"><thead><tr><th style="width:7%">م</th><th>اسم الطالب</th><th>المرحلة</th><th>المادة</th><th>الحالة</th><th>التوقيع</th></tr></thead><tbody>${rows}</tbody></table><div class="sign-area"><div>اسم الملاحظ : <span class="sig-line">${observers[no]||''}</span><br><br>توقيعه : <span class="sig-line"></span></div><div>اعتماد مدير المدرسة : <span class="sig-line">${getSettings().principal||''}</span><br><br>توقيعه : <span class="sig-line"></span></div></div>`+pageFooter())}
+
+function getStagesInUse(){
+  let vals=[...new Set(students.map(s=>s.stage).filter(Boolean))];
+  return vals.length?vals:stages.slice(0,3);
+}
+function subjectsByStageRows(mode){
+  let sts=getStagesInUse();
+  let subs=subjects.length?subjects:[{name:'الرياضيات'}];
+  let rows=[];
+  sts.forEach(stage=>{
+    subs.forEach((sub,i)=>{
+      rows.push(`<tr><td>${rows.length+1}</td><td>${stage}</td><td>${sub.name}</td><td>☐ ${mode[0]}</td><td>☐ ${mode[1]}</td><td>........................</td><td>........................</td></tr>`)
+    })
+  });
+  return rows.join('');
+}
+
+function isStudentIncidentType(type){
+  return ['نموذج غياب طالب','محضر غش','محضر إزعاج','محضر تأخر طالب','محضر تلف ورقة إجابة'].includes(type);
+}
+function selectedPersonName(){return ($('incidentStudent')?.value||'').trim();}
+function selectedStudent(){let n=selectedPersonName();return students.find(s=>s.name===n)||{};}
+function selectedTeacher(){let n=selectedPersonName();return teachers.find(t=>t.name===n)||{};}
+function updateIncidentPersonMode(){
+  if(!$('incidentType')||!$('incidentStudent')) return;
+  let type=$('incidentType').value;
+  let studentMode=isStudentIncidentType(type);
+  $('incidentPersonLabel').textContent=studentMode?'اسم الطالب':'اسم المعلم/المعلمة';
+  $('incidentStudent').setAttribute('list',studentMode?'studentsList':'teachersList');
+  $('incidentStudent').placeholder=studentMode?'اختر الطالب من القائمة أو اكتب الاسم يدويًا':'اختر المعلم/المعلمة من القائمة أو اكتب الاسم يدويًا';
+  if($('incidentDescLabel')) $('incidentDescLabel').textContent=studentMode?'وصف الواقعة / الملاحظات':'بيان التكليف / الملاحظات';
+  if($('incidentActionLabel')) $('incidentActionLabel').textContent=studentMode?'الإجراء المتخذ':'ملاحظات لجنة الاختبارات / الإجراء';
+  if($('incidentModeHint')) $('incidentModeHint').innerHTML=studentMode?'هذا النموذج يخص الطالب؛ اختر اسم الطالب ليتم تعبئة السجل المدني والمرحلة تلقائيًا في الطباعة.':'هذا النموذج يخص المعلم؛ اختر اسم المعلم/المعلمة ليتم تعبئة بيانات المعلم في المحضر أو الإقرار.';
+}
+
+function printCurriculumCompletion(){
+  let subject=subjectByName($('incidentSubject').value), teacher=$('incidentStudent').value || '................................';
+  let meta=officialMeta([`المادة : ${subject.name}`,`اليوم : ${getSettings().day}`,`التاريخ : ${getSettings().date}`]);
+  let body=`<div class="incident-fields"><div class="field-box"><div class="field-label">اسم المعلم/المعلمة</div>${teacher}</div><div class="field-box"><div class="field-label">المادة</div>${subject.name}</div><div class="field-box"><div class="field-label">المرحلة/الصف</div><span class="dash-line"></span></div><div class="field-box"><div class="field-label">تاريخ الإقرار</div>${getSettings().date}</div><div class="field-box full"><div class="field-label">نص الإقرار</div>أقر أنا الموضح اسمي أعلاه بأنني أنهيت تدريس مقرر المادة وفق الخطة الزمنية المعتمدة، وتمت معالجة الفاقد التعليمي ومراجعة المهارات والمعارف الأساسية قبل موعد الاختبار.</div><div class="field-box full"><div class="field-label">ملاحظات لجنة الاختبارات</div><span class="dash-line"></span><span class="dash-line"></span></div></div><div class="sign-area"><div>اسم المعلم/المعلمة : <span class="sig-line">${teacher}</span><br><br>توقيعه : <span class="sig-line"></span></div><div>اعتماد مدير المدرسة : <span class="sig-line">${getSettings().principal||''}</span><br><br>توقيعه : <span class="sig-line"></span></div></div>`;
+  printHTML(pageHeader('إقرار إنهاء المنهج',meta)+body+pageFooter());
+}
+function printTeacherQuestionAssignment(){
+  let subject=subjectByName($('incidentSubject').value), teacher=$('incidentStudent').value || '................................';
+  let meta=officialMeta([`المادة : ${subject.name}`,`اليوم : ${getSettings().day}`,`التاريخ : ${getSettings().date}`]);
+  let body=`<div class="incident-fields"><div class="field-box"><div class="field-label">اسم المعلم/المعلمة المكلف</div>${teacher}</div><div class="field-box"><div class="field-label">المادة</div>${subject.name}</div><div class="field-box"><div class="field-label">المرحلة/الصف</div><span class="dash-line"></span></div><div class="field-box"><div class="field-label">موعد تسليم الأسئلة</div><span class="dash-line"></span></div><div class="field-box full"><div class="field-label">نص التكليف</div>بناءً على تنظيم أعمال الاختبارات، يتم تكليف المعلم/المعلمة الموضح اسمه أعلاه بإعداد أسئلة اختبار المادة وفق جدول المواصفات، مع نموذج الإجابة، ومراعاة السرية التامة وتسليمها للجنة الاختبارات في الموعد المحدد.</div><div class="field-box full"><div class="field-label">ملاحظات لجنة الاختبارات</div><span class="dash-line"></span><span class="dash-line"></span></div></div><div class="sign-area"><div>اسم المعلم/المعلمة : <span class="sig-line">${teacher}</span><br><br>توقيعه : <span class="sig-line"></span></div><div>رئيس لجنة الاختبارات / مدير المدرسة : <span class="sig-line">${getSettings().principal||''}</span><br><br>توقيعه : <span class="sig-line"></span></div></div>`;
+  printHTML(pageHeader('تكليف وضع الأسئلة للمعلم',meta)+body+pageFooter());
+}
+function printSubjectTracking(title,mode){
+  let meta=officialMeta([`العام الدراسي : ${getSettings().year}`,`الفصل الدراسي : ${getSettings().term}`,`التاريخ : ${getSettings().date}`]);
+  let rows=subjectsByStageRows(mode);
+  let body=`<table class="print-table"><thead><tr><th style="width:7%">م</th><th>المرحلة</th><th>المادة</th><th>${mode[0]}</th><th>${mode[1]}</th><th>اسم المسؤول</th><th>التوقيع</th></tr></thead><tbody>${rows}</tbody></table><div class="sign-area"><div>مسؤول الكنترول : <span class="sig-line"></span><br><br>توقيعه : <span class="sig-line"></span></div><div>اعتماد مدير المدرسة : <span class="sig-line">${getSettings().principal||''}</span><br><br>توقيعه : <span class="sig-line"></span></div></div>`;
+  printHTML(pageHeader(title,meta)+body+pageFooter());
+}
+function printAnswerSheetsReceipt(title,fromControl){
+  let subject=subjectByName($('incidentSubject').value), receiver=$('incidentStudent').value || '................................';
+  let meta=officialMeta([`المادة : ${subject.name}`,`اليوم : ${getSettings().day}`,`التاريخ : ${getSettings().date}`]);
+  let label=fromControl?'اسم المستلم من الكنترول':'اسم المصحح المستلم';
+  let rows=''; for(let i=1;i<=8;i++){rows+=`<tr><td>${i}</td><td>........................</td><td>${subject.name}</td><td>........................</td><td>........................</td><td>........................</td></tr>`}
+  let body=`<div class="incident-fields"><div class="field-box"><div class="field-label">${label}</div>${receiver}</div><div class="field-box"><div class="field-label">المادة</div>${subject.name}</div><div class="field-box"><div class="field-label">إجمالي عدد الأوراق</div><span class="dash-line"></span></div><div class="field-box"><div class="field-label">وقت الاستلام</div><span class="dash-line"></span></div></div><table class="print-table"><thead><tr><th style="width:7%">م</th><th>المرحلة/الصف</th><th>المادة</th><th>عدد الأوراق</th><th>اسم المستلم</th><th>التوقيع</th></tr></thead><tbody>${rows}</tbody></table><div class="sign-area"><div>${label} : <span class="sig-line">${receiver}</span><br><br>توقيعه : <span class="sig-line"></span></div><div>مسؤول الكنترول : <span class="sig-line"></span><br><br>توقيعه : <span class="sig-line"></span></div></div>`;
+  printHTML(pageHeader(title,meta)+body+pageFooter());
+}
+
+function clearIncidentForm(){
+  ['incidentStudent','incidentDesc','incidentAction'].forEach(id=>{ if($(id)) $(id).value=''; });
+  if($('incidentSubject') && $('incidentSubject').options.length) $('incidentSubject').selectedIndex=0;
+  updateIncidentPersonMode();
+  $('printArea').innerHTML='';
+}
+function newIncidentForm(){
+  if(confirm('سيتم مسح بيانات النموذج الحالي فقط، مع بقاء بيانات الطلاب والمعلمين والتوزيع محفوظة. هل تريد المتابعة؟')) clearIncidentForm();
+}
+function clearAttendanceForm(){
+  if($('attendanceList')) $('attendanceList').innerHTML='';
+  $('printArea').innerHTML='';
+}
+
+function printIncident(){
+  let type=$('incidentType').value;
+  if(type==='إقرار إنهاء المنهج')return printCurriculumCompletion();
+  if(type==='تكليف وضع الأسئلة للمعلم')return printTeacherQuestionAssignment();
+  if(type==='نموذج اكتمال تسليم الاختبارات')return printSubjectTracking(type,['تم التسليم','لم يتم التسليم']);
+  if(type==='نموذج الانتهاء من التصوير')return printSubjectTracking(type,['تم التصوير','لم يتم']);
+  if(type==='محضر استلام المصحح لأوراق الإجابة')return printAnswerSheetsReceipt(type,false);
+  if(type==='محضر استلام الأوراق من الكنترول بعد التصحيح')return printAnswerSheetsReceipt(type,true);
+  let personName=selectedPersonName(), subject=subjectByName($('incidentSubject').value), desc=$('incidentDesc').value, act=$('incidentAction').value;
+  let meta=officialMeta([`المادة : ${subject.name}`,`اليوم : ${getSettings().day}`,`التاريخ : ${getSettings().date}`]);
+  if(isStudentIncidentType(type)){
+    let stu=selectedStudent();
+    let body=`<div class="incident-fields"><div class="field-box"><div class="field-label">اسم الطالب</div>${personName||'<span class="dash-line"></span>'}</div><div class="field-box"><div class="field-label">السجل المدني</div>${stu.id||'<span class="dash-line"></span>'}</div><div class="field-box"><div class="field-label">المرحلة</div>${stu.stage||'<span class="dash-line"></span>'}</div><div class="field-box"><div class="field-label">المادة</div>${subject.name||'<span class="dash-line"></span>'}</div><div class="field-box full"><div class="field-label">وصف الواقعة / البيان</div>${desc||'<span class="dash-line"></span><span class="dash-line"></span><span class="dash-line"></span>'}</div><div class="field-box full"><div class="field-label">الإجراء المتخذ</div>${act||'<span class="dash-line"></span><span class="dash-line"></span>'}</div></div><div class="sign-area"><div>اسم الملاحظ : <span class="sig-line"></span><br><br>توقيعه : <span class="sig-line"></span></div><div>اعتماد مدير المدرسة : <span class="sig-line">${getSettings().principal||''}</span><br><br>توقيعه : <span class="sig-line"></span></div></div>`;
+    return printHTML(pageHeader(type,meta)+body+pageFooter());
+  }
+  let teacher=selectedTeacher();
+  let body=`<div class="incident-fields"><div class="field-box"><div class="field-label">اسم المعلم/المعلمة</div>${personName||'<span class="dash-line"></span>'}</div><div class="field-box"><div class="field-label">التخصص/المادة</div>${teacher.subject||subject.name||'<span class="dash-line"></span>'}</div><div class="field-box"><div class="field-label">المادة</div>${subject.name||'<span class="dash-line"></span>'}</div><div class="field-box"><div class="field-label">التاريخ</div>${getSettings().date||'<span class="dash-line"></span>'}</div><div class="field-box full"><div class="field-label">البيان / الملاحظات</div>${desc||'<span class="dash-line"></span><span class="dash-line"></span><span class="dash-line"></span>'}</div><div class="field-box full"><div class="field-label">الإجراء / التوجيه</div>${act||'<span class="dash-line"></span><span class="dash-line"></span>'}</div></div><div class="sign-area"><div>اسم المعلم/المعلمة : <span class="sig-line">${personName||''}</span><br><br>توقيعه : <span class="sig-line"></span></div><div>اعتماد مدير المدرسة : <span class="sig-line">${getSettings().principal||''}</span><br><br>توقيعه : <span class="sig-line"></span></div></div>`;
+  printHTML(pageHeader(type,meta)+body+pageFooter());
+}
+function queryStudent(){let q=$('queryText').value.trim();let found=null,roomNo='';for(let [no,arr] of Object.entries(distribution)){found=arr.find(s=>s.name.includes(q)||s.id==q);if(found){roomNo=no;break}}$('queryResult').innerHTML=found?`<div class="card"><h3>نتيجة الاستعلام</h3><p><b>الطالب:</b> ${found.name}</p><p><b>المرحلة:</b> ${found.stage}${found.section?' - الشعبة: '+found.section:''}</p><p><b>اللجنة:</b> رقم (${roomNo})</p><p><b>الملاحظ:</b> ${observers[roomNo]||''}</p></div>`:`<div class="card"><b style="color:var(--danger)">لم يتم العثور على الطالب ضمن التوزيع الحالي.</b></div>`}
+
+function getQueryData(){
+  if(!Object.keys(distribution).length) distributeStudents();
+  let s=getSettings();
+  let rows=[];
+  Object.entries(distribution).forEach(([roomNo,arr])=>{
+    (arr||[]).forEach((stu,i)=>rows.push({name:stu.name||'',id:stu.id||'',stage:stu.stage||'',section:stu.section||'',committee:roomNo,seat:i+1,observer:observers[roomNo]||''}));
+  });
+  return {settings:s,generatedAt:new Date().toLocaleString('ar-SA'),students:rows};
+}
+function buildStudentQueryHTML(){
+  let data=getQueryData();
+  let dataJson=JSON.stringify(data).replace(/<\/script/gi,'<\\/script');
+  return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>استعلام الطالب عن لجنة الاختبار</title><style>
+  :root{--green:#006c4f;--line:#79b39f;--soft:#eefaf5;--ink:#17252f;--danger:#b42318}*{box-sizing:border-box}body{margin:0;font-family:Tahoma,Arial,sans-serif;background:linear-gradient(135deg,#f7fbf9,#e8f5ef);color:var(--ink);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:18px}.wrap{width:min(760px,100%);background:white;border:3px solid var(--green);border-radius:26px;box-shadow:0 18px 45px #0002;padding:22px}.head{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;border-bottom:3px solid var(--green);padding-bottom:16px;margin-bottom:18px}.right{text-align:right;font-weight:800;line-height:1.9}.left{text-align:right;font-weight:800;line-height:1.9}.logo{text-align:center;color:var(--green)}.logo img{width:155px;max-width:45vw;display:block;margin:auto}.title{background:linear-gradient(180deg,#fbfffd,#eefaf4);border:2px solid var(--green);border-radius:18px;text-align:center;color:var(--green);font-weight:900;font-size:26px;padding:15px;margin:16px 0}.search{display:grid;grid-template-columns:1fr auto;gap:10px;margin:16px 0}input{border:1.7px solid var(--line);border-radius:14px;padding:15px;font-family:inherit;font-size:18px}button{border:0;border-radius:14px;background:var(--green);color:white;font-weight:900;padding:0 24px;font-size:16px;cursor:pointer}.result{margin-top:14px}.card{border:1.5px solid var(--line);border-radius:18px;background:#fbfffd;padding:16px;line-height:2}.card h2{margin:0 0 10px;color:var(--green)}.row{display:grid;grid-template-columns:150px 1fr;border-bottom:1px dashed #c7ded3;padding:7px 0}.row:last-child{border-bottom:0}.label{font-weight:900;color:var(--green)}.notfound{color:var(--danger);font-weight:900;text-align:center;border:1px solid #f5c2c0;background:#fff5f5;border-radius:14px;padding:14px}.note{font-size:12px;text-align:center;color:#667085;margin-top:18px}@media(max-width:640px){.head{grid-template-columns:1fr}.right,.left,.logo{text-align:center}.search{grid-template-columns:1fr}button{height:52px}.row{grid-template-columns:1fr}.title{font-size:21px}}
+  </style></head><body><main class="wrap"><section class="head"><div class="right"><div>المملكة العربية السعودية</div><div>وزارة التعليم</div><div>${data.settings.eduDept||'إدارة التعليم'}</div><div>${data.settings.school||'المدرسة'}</div></div><div class="logo"><img src="https://salogos.b-cdn.net/logos/svg/1774895141785-5zgexuf8.svg" alt="وزارة التعليم"></div><div class="left"><div>العام الدراسي : ${data.settings.year||''}</div><div>الفصل الدراسي : ${data.settings.term||''}</div><div>اليوم : ${data.settings.day||''}</div><div>التاريخ : ${data.settings.date||''}</div></div></section><div class="title">استعلام الطالب عن لجنة الاختبار</div><div class="search"><input id="q" placeholder="اكتب الاسم أو السجل المدني" autocomplete="off"><button onclick="searchStudent()">استعلام</button></div><div id="result" class="result"></div><p class="note">تظهر النتيجة حسب آخر توزيع معتمد من المدرسة. عند عدم ظهور النتيجة يرجى مراجعة إدارة المدرسة.</p></main><script>const DATA=${dataJson};function norm(x){return String(x||'').trim().replace(/\s+/g,' ')}function searchStudent(){let q=norm(document.getElementById('q').value);let box=document.getElementById('result');if(!q){box.innerHTML='<div class="notfound">الرجاء إدخال الاسم أو السجل المدني.</div>';return}let found=DATA.students.find(s=>norm(s.id)===q||norm(s.name).includes(q));if(!found){box.innerHTML='<div class="notfound">لم يتم العثور على الطالب ضمن التوزيع الحالي.</div>';return}box.innerHTML='<div class="card"><h2>نتيجة الاستعلام</h2><div class="row"><div class="label">اسم الطالب</div><div>'+found.name+'</div></div><div class="row"><div class="label">المرحلة</div><div>'+found.stage+'</div></div><div class="row"><div class="label">اللجنة</div><div>رقم ('+found.committee+')</div></div><div class="row"><div class="label">رقم الترتيب</div><div>'+found.seat+'</div></div><div class="row"><div class="label">الملاحظ</div><div>'+(found.observer||'')+'</div></div></div>'}document.getElementById('q').addEventListener('keydown',e=>{if(e.key==='Enter')searchStudent()});<\/script>
+</body></html>`;
+}
+function downloadFile(name,content){let blob=new Blob([content],{type:'text/html;charset=utf-8'});let url=URL.createObjectURL(blob);let a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1500);return url;}
+function generateStudentQueryFile(){
+  let html=buildStudentQueryHTML();
+  downloadFile('student_exam_committee_query.html',html);
+  $('queryLinkBox').innerHTML='تم إنشاء صفحة الاستعلام وتنزيلها باسم <b>student_exam_committee_query.html</b>. ارفع هذا الملف على رابط عام ثم أرسله للطلاب.';
+}
+function previewStudentQueryFile(){
+  let html=buildStudentQueryHTML();
+  let blob=new Blob([html],{type:'text/html;charset=utf-8'});
+  let url=URL.createObjectURL(blob);
+  window.open(url,'_blank');
+  $('queryLinkBox').innerHTML='<div class="query-preview-card">تم فتح معاينة محلية. هذا الرابط للمعاينة على جهازك فقط وليس رابطًا عامًا للإرسال:<div class="query-url">'+url+'</div></div>';
+}
+function copyQueryMessage(){
+  let msg='أبنائي الطلاب، يمكنكم الاستعلام عن لجنة الاختبار من خلال الرابط المرسل، وذلك بإدخال الاسم أو السجل المدني. في حال عدم ظهور النتيجة يرجى مراجعة إدارة المدرسة.';
+  navigator.clipboard&&navigator.clipboard.writeText(msg);
+  $('queryLinkBox').innerHTML='تم تجهيز رسالة الإرسال للطلاب:<br><b>'+msg+'</b>';
+}
+function saveAll(alertIt=true){let data={students,teachers,subjects,rooms,distribution,observers,settings:getSettings()};localStorage.setItem('examsSystemMOE',JSON.stringify(data));if(alertIt)alert('تم الحفظ محليًا')}
+function loadAll(){let d=JSON.parse(localStorage.getItem('examsSystemMOE')||'{}');students=d.students||students;teachers=d.teachers||teachers;subjects=d.subjects||subjects;rooms=d.rooms||rooms;distribution=d.distribution||{};observers=d.observers||{};if(d.settings)Object.entries(d.settings).forEach(([k,v])=>{let map={eduDept:'eduDept',school:'school',year:'year',term:'term',day:'day',date:'date',principal:'principal',title:'systemTitle'};if($(map[k]))$(map[k]).value=v});renderStudents();renderTeachers();renderDistribution();updateLists()}
+function clearAll(){if(confirm('سيتم تفريغ جميع البيانات المحلية.')){localStorage.removeItem('examsSystemMOE');location.reload()}}
+function exportJSON(){let blob=new Blob([localStorage.getItem('examsSystemMOE')||'{}'],{type:'application/json'});let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='exams-system-data.json';a.click()}
+buildRooms();updateLists();renderSubjects();updateIncidentPersonMode();
+</script>
+</body>
+</html>

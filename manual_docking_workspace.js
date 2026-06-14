@@ -119,14 +119,17 @@
 
       #manualDockControlPanel{
         position:fixed;
-        right:14px;
-        bottom:14px;
+        right:auto;
+        left:92px;
+        bottom:18px;
         z-index:2147483644;
         display:flex;
         gap:7px;
         align-items:center;
         direction:rtl;
         font-family:Cairo,Tahoma,Arial,sans-serif;
+        max-width:calc(100vw - 120px);
+        flex-wrap:wrap;
       }
       #manualDockControlPanel button{
         border:0;
@@ -150,8 +153,9 @@
       }
       #manualDockTip{
         position:fixed;
-        right:14px;
-        bottom:60px;
+        right:auto;
+        left:92px;
+        bottom:64px;
         z-index:2147483643;
         background:rgba(15,23,42,.88);
         color:#fff;
@@ -163,6 +167,22 @@
         transition:opacity .2s ease;
       }
       #manualDockTip.show{opacity:1;}
+      @media(max-width:700px){
+        #manualDockControlPanel{
+          left:64px;
+          bottom:16px;
+          max-width:calc(100vw - 82px);
+          gap:5px;
+        }
+        #manualDockControlPanel button{
+          padding:7px 9px;
+          font-size:10px;
+        }
+        #manualDockTip{
+          left:64px;
+          bottom:58px;
+        }
+      }
       @media print{
         #manualDockControlPanel,#manualDockTip{display:none!important}
         .mdw-managed{transform:none!important;opacity:1!important;filter:none!important}

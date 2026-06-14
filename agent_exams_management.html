@@ -24,12 +24,19 @@
 .exam-records-layout{display:grid;grid-template-columns:280px 1fr;gap:14px;align-items:start}.exam-records-sidebar{background:#f7fbf9;border:1.7px solid var(--line);border-radius:18px;padding:12px;position:sticky;top:12px}.exam-records-sidebar h3{margin:0 0 10px;color:var(--green);font-size:16px}.exam-records-sidebar button{width:100%;display:block;text-align:right;border:1px solid #cfe5dc;background:#fff;color:#123;border-radius:12px;padding:10px 12px;margin:7px 0;font-weight:900;cursor:pointer}.exam-records-sidebar button:hover,.exam-records-sidebar button.active{background:linear-gradient(180deg,#e9fff5,#dff7ec);border-color:var(--green);color:#005f45}.exam-record-view{background:#fff;border:1.7px solid var(--line);border-radius:18px;padding:14px;min-height:220px}.exam-record-title{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;border-bottom:1px solid #d7eee5;padding-bottom:10px;margin-bottom:12px}.exam-record-title h3{margin:0;color:var(--green);font-size:18px}.record-form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}.record-form-grid textarea{min-height:110px}.record-form-note{background:#f6fbf8;border:1px dashed var(--line);border-radius:14px;padding:12px;color:#375;font-weight:700;margin:10px 0}.template-picker-title{font-weight:900;color:#006c4f;margin:12px 0 6px}
 @media(max-width:900px){.exam-records-layout{grid-template-columns:1fr}.exam-records-sidebar{position:static}}
 
-</style></head>
+
+/* ===== Committee Cards Section ===== */
+.committee-cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-top:12px}.committee-card{border:1.8px solid var(--green);border-radius:16px;background:linear-gradient(180deg,#fff,#f6fffb);padding:12px;box-shadow:0 8px 18px #006c4f12;break-inside:avoid;page-break-inside:avoid}.committee-card h4{margin:0 0 8px;color:var(--green);font-size:16px}.committee-card .card-row{display:grid;grid-template-columns:92px 1fr;gap:6px;border-top:1px dashed #cfe5dc;padding:6px 0;font-size:13px}.committee-card .card-label{font-weight:900;color:#006c4f}.committee-card .card-val{font-weight:800;color:#17252f}.committee-cards-print-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:4mm;margin:0 2mm}.committee-cards-print-grid .committee-card{box-shadow:none;border-radius:4mm;padding:3mm}.cards-summary{background:#f6fbf8;border:1px dashed var(--line);border-radius:12px;padding:10px;margin-top:10px;color:#375;font-weight:800}
+@media print{.committee-cards-grid{grid-template-columns:repeat(2,1fr)!important}.committee-card{box-shadow:none!important}}
+
+</style><script src="active_school_scope.js"></script>
+<script src="school_isolation_guard.js?v=nonblock20260614"></script>
+</head>
 <body>
 <div class="app">
   <div class="topbar">
     <div class="brand"><h1>نظام إدارة أعمال الاختبارات</h1><p>توزيع اللجان، كشوف الطلاب، الحضور والغياب، المحاضر، الملاحظون، الأرشيف والطباعة الرسمية.</p></div>
-    <div class="actions"><button class="btn secondary" onclick="saveAll()">حفظ محلي</button><button class="btn secondary" onclick="loadAll()">استرجاع</button><button class="btn danger" onclick="clearAll()">تفريغ</button></div>
+    <div class="actions"><button class="btn secondary" onclick="saveAll()">حفظ ومزامنة</button><button class="btn secondary" onclick="loadAll()">استرجاع</button><button class="btn danger" onclick="clearAll()">تفريغ</button></div>
   </div>
   <div class="layout">
     <nav class="side">
@@ -37,12 +44,13 @@
       <button class="tab" data-tab="students">٢. الطلاب</button>
       <button class="tab" data-tab="subjects">٣. المواد والجدول</button>
       <button class="tab" data-tab="rooms">٤. اللجان والقاعات</button>
-      <button class="tab" data-tab="distribute">٥. التوزيع والطباعة</button>
-      <button class="tab" data-tab="observers">٦. الملاحظون</button>
-      <button class="tab" data-tab="attendance">٧. الحضور والغياب</button>
-      <button class="tab" data-tab="incidents">٨. المحاضر والنماذج</button>
-      <button class="tab" data-tab="query">٩. استعلام الطالب</button>
-      <button class="tab" data-tab="archive">١٠. الأرشيف</button>
+      <button class="tab" data-tab="committeeCards">٥. بطاقات اللجان</button>
+      <button class="tab" data-tab="distribute">٦. التوزيع والطباعة</button>
+      <button class="tab" data-tab="observers">٧. الملاحظون</button>
+      <button class="tab" data-tab="attendance">٨. الحضور والغياب</button>
+      <button class="tab" data-external="exam_committees_forms.html" title="يفتح ملف المحاضر واللجان في صفحة مستقلة">٩. المحاضر والنماذج</button>
+      <button class="tab" data-tab="query">١٠. استعلام الطالب</button>
+      <button class="tab" data-tab="archive">١١. الأرشيف</button>
     </nav>
     <main>
       <section id="settings" class="panel active"><div class="card"><h2>بيانات الترويسة الرسمية</h2><div class="grid">
@@ -69,6 +77,8 @@
       <section id="rooms" class="panel"><div class="card"><h2>إعداد اللجان والقاعات</h2><p class="hint">أنشئ اللجان واحدة بعد الأخرى. بعد حفظ كل لجنة يتم خصم طلابها مباشرة من العدد المتبقي، ويمنع النظام تكرار الطالب في أكثر من لجنة.</p><div class="statrow" id="roomProgress"></div><div class="inlineBtns"><button class="btn" onclick="createCommitteeDraft()">+ إنشاء لجنة</button><button class="btn secondary" onclick="resetCommitteesConfirm()">إعادة ضبط اللجان</button></div></div><div id="roomsContainer"></div>
       <div class="card"><h2>نماذج اللجان والقاعات</h2><p class="hint">تظهر النماذج هنا بقائمة جانبية موحدة مثل سجلات الوكيل، وتسحب بيانات اللجان والطلاب تلقائياً من توزيع أعمال الاختبارات.</p><div class="exam-records-layout"><aside class="exam-records-sidebar" id="committeeRecordsSidebar"><h3>اللجان والقاعات</h3><button onclick="openExamTemplateForm('committee-list',this)">كشف اللجنة</button><button onclick="openExamTemplateForm('committee-columns',this)">كشف الأعمدة</button><button onclick="openExamTemplateForm('call-sheet',this)">كشف المناداة</button><button onclick="openExamTemplateForm('attendance-sheet',this)">كشف الحضور</button><button onclick="openExamTemplateForm('absence-sheet',this)">كشف الغياب</button></aside><div class="exam-record-view" id="committeeRecordView"><div class="record-form-note">اختر النموذج من القائمة الجانبية، ثم اطبعه بتنسيق أعمال الاختبارات الرسمي المطابق لترويسة وحاشية سجلات الوكيل.</div></div></div></div></section>
 
+      <section id="committeeCards" class="panel"><div class="card"><h2>بطاقات اللجان</h2><p class="hint">ينشئ هذا القسم بطاقة لكل طالب / طالبة حسب اللجنة والقاعة والعمود، وتحتوي البطاقة على: اسم الطالب، الصف، السجل المدني، رقم القاعة، رقم العمود. يتم الاعتماد على آخر توزيع محفوظ في قسم اللجان والقاعات.</p><div class="grid3"><div><label>اللجنة / القاعة</label><select id="cardsRoom"><option value="all">جميع اللجان</option></select></div><div><label>طريقة العرض</label><select id="cardsViewMode"><option value="screen">عرض على الشاشة</option><option value="print">تجهيز للطباعة</option></select></div><div style="align-self:end"><button class="btn" onclick="renderCommitteeCards()">عرض البطاقات</button></div></div><div class="inlineBtns"><button class="btn secondary" onclick="printCommitteeCards()">طباعة بطاقات اللجان</button><button class="btn secondary" onclick="exportCommitteeCardsCSV()">تصدير CSV</button></div><div id="committeeCardsSummary" class="cards-summary">لم يتم عرض البطاقات بعد.</div><div id="committeeCardsPreview" class="committee-cards-grid"></div></div></section>
+
       <section id="distribute" class="panel"><div class="card"><h2>توزيع الطلاب وطباعة كشوف اللجان</h2><div class="grid3"><div><label>المادة للطباعة</label><select id="printSubject"></select></div><div><label>اللجنة</label><select id="printRoom"></select></div><div style="align-self:end"><button class="btn" onclick="renderDistribution()">تحديث الملخص</button></div></div><div class="inlineBtns"><button class="btn secondary" onclick="printCommittee()">طباعة اللجنة المحددة</button><button class="btn secondary" onclick="printAllCommittees()">طباعة جميع اللجان</button><button class="btn secondary" onclick="printCallSheets()">كشف المناداة</button><button class="btn secondary" onclick="printAttendance()">طباعة كشف الحضور</button><button class="btn warn" onclick="printAbsenceReport()">طباعة نموذج الغياب</button></div></div><div class="card"><h3>ملخص التوزيع</h3><div class="statrow" id="stats"></div><div id="distributionPreview" class="tablewrap"></div></div></section>
 
       <section id="observers" class="panel"><div class="card"><h2>استيراد المعلمين وتوزيع الملاحظين</h2><p class="hint">يمكن استيراد أسماء المعلمين من Excel / CSV / TXT / PDF / Word / SVG، أو إدخالهم يدويًا، ثم اختيار الملاحظ من القائمة عند توزيع اللجان.</p><div class="grid3"><div><label>ملف المعلمين</label><input id="teachersFile" type="file" accept=".xlsx,.xls,.csv,.txt,.pdf,.docx,.svg"></div><div><label>إدخال يدوي للمعلم</label><input id="manualTeacherName" list="teachersList"></div><div style="align-self:end"><button class="btn secondary" onclick="importTeachersFile()">استيراد المعلمين</button><button class="btn secondary" onclick="addManualTeacher()">إضافة معلم</button></div></div></div><div class="card"><h2>توزيع الملاحظين</h2><div class="grid3"><div><label>اسم الملاحظ</label><input id="observerName" list="teachersList"></div><div><label>اللجنة</label><select id="observerRoom"></select></div><div style="align-self:end"><button class="btn" onclick="assignObserver()">إضافة/تعديل</button></div></div><div class="inlineBtns"><button class="btn secondary" onclick="printObservers()">طباعة توزيع الملاحظين</button><button class="btn secondary" onclick="printDelivery()">طباعة استلام وتسليم أوراق الأسئلة</button></div><div class="grid2"><div><h3>قائمة الملاحظين</h3><div class="tablewrap"><table id="observersTable"><thead><tr><th>اللجنة</th><th>الملاحظ</th></tr></thead><tbody></tbody></table></div></div><div><h3>قائمة المعلمين المستوردة</h3><div class="tablewrap"><table id="teachersTable"><thead><tr><th>م</th><th>اسم المعلم</th><th>التخصص/المادة</th></tr></thead><tbody></tbody></table></div></div></div></div></section>
@@ -79,7 +89,7 @@
 
       <section id="query" class="panel"><div class="card"><h2>استعلام الطالب عن اللجنة</h2><div class="grid2"><div><label>الاسم أو السجل المدني</label><input id="queryText" placeholder="اكتب الاسم أو السجل المدني"></div><div style="align-self:end"><button class="btn" onclick="queryStudent()">استعلام</button></div></div><div id="queryResult" style="margin-top:12px"></div></div><div class="card"><h3>رابط/صفحة استعلام الطلاب</h3><p class="hint">بعد تنفيذ التوزيع اضغط الزر التالي لإنشاء صفحة مستقلة يستطيع الطالب فتحها والاستعلام بالاسم أو السجل المدني. ارفع الصفحة الناتجة على GitHub Pages أو أي استضافة مدرسية ثم أرسل الرابط للطلاب.</p><div class="inlineBtns"><button class="btn" onclick="generateStudentQueryFile()">إنشاء وتنزيل صفحة الاستعلام</button><button class="btn secondary" onclick="previewStudentQueryFile()">فتح معاينة الاستعلام</button><button class="btn secondary" onclick="copyQueryMessage()">نسخ رسالة الإرسال للطلاب</button></div><div id="queryLinkBox" class="hint" style="margin-top:10px"></div></div></section>
 
-      <section id="archive" class="panel"><div class="card"><h2>الأرشيف المحلي</h2><p class="hint">يتم حفظ بيانات النظام محليًا في المتصفح. ويمكن طباعة النماذج وحفظها PDF من نافذة الطباعة.</p><div class="inlineBtns"><button class="btn secondary" onclick="saveAll()">حفظ نسخة</button><button class="btn secondary" onclick="exportJSON()">تصدير JSON</button></div></div></section>
+      <section id="archive" class="panel"><div class="card"><h2>الأرشيف والحفظ السحابي</h2><p class="hint">يتم حفظ بيانات النظام محليًا مع محاولة المزامنة السحابية حسب المدرسة المستقلة، ويمكن طباعة النماذج وحفظها PDF من نافذة الطباعة.</p><div class="inlineBtns"><button class="btn secondary" onclick="saveAll()">حفظ نسخة</button><button class="btn secondary" onclick="exportJSON()">تصدير JSON</button></div></div></section>
     </main>
   </div>
 </div>
@@ -87,10 +97,32 @@
 <datalist id="teachersList"></datalist>
 <div id="printArea" class="print-area"></div>
 <script>
-const stages=['أول ابتدائي','ثاني ابتدائي','ثالث ابتدائي','رابع ابتدائي','خامس ابتدائي','سادس ابتدائي','أول متوسط','ثاني متوسط','ثالث متوسط','أول ثانوي','ثاني ثانوي','ثالث ثانوي'];
+const stages=['أول ابتدائي','ثاني ابتدائي','ثالث ابتدائي','رابع ابتدائي','خامس ابتدائي','سادس ابتدائي','أول متوسط','ثاني متوسط','ثالث متوسط','أول ثانوي','ثاني ثانوي','ثالث ثانوي','ثالث ثانوي مسار عام','ثالث ثانوي مسار صحة وحياة','ثالث ثانوي مسار علوم الحاسب','ثالث ثانوي إدارة الأعمال','ثالث ثانوي المسار الشرعي'];
 let students=[],teachers=[],subjects=[],rooms=[],distribution={},observers={},attendance={};
 const $=id=>document.getElementById(id);
-document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab,.panel').forEach(x=>x.classList.remove('active'));b.classList.add('active');$(b.dataset.tab).classList.add('active')});
+
+function __ssAppendSchoolParams(url){
+  try{
+    const q=new URLSearchParams(location.search||'');
+    const read=(k)=>{try{return localStorage.getItem(k)||''}catch(e){return ''}};
+    const safeJson=(k)=>{try{return JSON.parse(read(k)||'{}')||{}}catch(e){return {}}};
+    const u=safeJson('currentSchoolUser')||safeJson('currentUser')||{};
+    const s=safeJson('smartSchool.currentSchool')||{};
+    const schoolId=q.get('schoolId')||q.get('school_id')||read('active_school_id')||read('current_school_id')||read('school_id')||read('smart_school_id')||u.schoolId||u.activeSchoolId||s.schoolId||s.id||'';
+    const schoolName=q.get('schoolName')||q.get('school_name')||read('active_school_name')||read('current_school_name')||read('school_name')||read('persist_school')||u.schoolName||s.schoolName||'';
+    const schoolCode=q.get('schoolCode')||q.get('school_code')||read('active_school_code')||read('school_code')||u.schoolCode||s.schoolCode||'';
+    const sep=url.indexOf('?')>-1?'&':'?';
+    const params=new URLSearchParams();
+    if(schoolId) params.set('schoolId', schoolId);
+    if(schoolName) params.set('schoolName', schoolName);
+    if(schoolCode) params.set('schoolCode', schoolCode);
+    params.set('schoolMode','independent'); params.set('independent','true');
+    const str=params.toString();
+    return str ? url+sep+str : url;
+  }catch(e){return url;}
+}
+
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{if(b.dataset.external){window.open(__ssAppendSchoolParams(b.dataset.external),'_blank','noopener');return;}document.querySelectorAll('.tab,.panel').forEach(x=>x.classList.remove('active'));b.classList.add('active');const panel=$(b.dataset.tab);if(panel){panel.classList.add('active');}});
 function getSettings(){return {eduDept:$('eduDept').value,school:$('school').value,year:$('year').value,term:$('term').value,gregorianDate:($('mainGregorianDate')?.value||''),day:$('day').value,date:$('date').value,principal:$('principal').value,title:$('systemTitle').value}}
 function updateLists(){let uniqueSubjects=[...new Set(subjects.map(s=>s.name).filter(Boolean))];['printSubject','attSubject','incidentSubject'].forEach(id=>{if($(id))$(id).innerHTML=uniqueSubjects.map(s=>`<option>${s}</option>`).join('')});['printRoom','observerRoom','attRoom'].forEach(id=>{if($(id))$(id).innerHTML=rooms.map(r=>`<option value="${r.no}">اللجنة رقم (${r.no})</option>`).join('')});$('studentsList').innerHTML=students.map(s=>`<option value="${s.name}"></option>`).join('');if($('teachersList'))$('teachersList').innerHTML=teachers.map(t=>`<option value="${t.name}"></option>`).join('');if($('manualStudentStage'))$('manualStudentStage').innerHTML=stages.map(x=>`<option>${x}</option>`).join('');hydrateSubjectStageSelect();renderSubjects();renderRooms();renderObservers();renderTeachers();}
 function importStudents(){students=$('studentsText').value.split(/\n+/).map((line,i)=>{let p=line.split(/\t|,|،|;/).map(x=>x.trim());return normalizeImportedStudentRecord({name:p[0]||'',id:p[1]||'',stage:normalizeStage(p[2]||''),section:p[3]||''})}).filter(s=>s.name);distribution={};rooms=[];window.currentCommitteeDraft=null;renderStudents();updateLists();saveAll(false)}
@@ -100,10 +132,32 @@ function guessRecordFromRow(row,type='student'){
   if(type==='teacher')return {name:val(['اسم المعلم','المعلم','الاسم','اسم']),subject:val(['التخصص','المادة','القسم'])};
   return normalizeImportedStudentRecord({name:val(['اسم الطالب','الطالب','الاسم','اسم']),id:val(['السجل المدني','الهوية','رقم الهوية','السجل','رقم']),stage:normalizeStage(val(['المرحلة','الصف','المستوى'])),section:val(['الشعبة','الفصل','القسم'])});
 }
+
+function normalizeThirdSecondaryTrack(x){
+  let t=String(x||'').trim()
+    .replace(/[إأآ]/g,'ا')
+    .replace(/ى/g,'ي')
+    .replace(/ة/g,'ه')
+    .replace(/[\u200E\u200F\u202A-\u202E]/g,'')
+    .replace(/[()\[\]{}]/g,' ')
+    .replace(/[\/_|،,;:.-]+/g,' ')
+    .replace(/\s+/g,' ')
+    .trim();
+  let isThird=/(^|\s)(ثالث|الثالث|3|٣)(\s|$)/.test(t) && /(ثانوي|الثانوي|ثانويه|الثانويه)/.test(t);
+  if(!isThird) return '';
+  if(/(صحه\s*وحياه|صحة\s*وحياة|صحي|health)/i.test(t)) return 'ثالث ثانوي مسار صحة وحياة';
+  if(/(علوم\s*الحاسب|حاسب|الحاسوب|تقنيه|تقنية|computer)/i.test(t)) return 'ثالث ثانوي مسار علوم الحاسب';
+  if(/(اداره\s*الاعمال|إدارة\s*الأعمال|اعمال|الأعمال|business)/i.test(t)) return 'ثالث ثانوي إدارة الأعمال';
+  if(/(شرعي|الشريعي|الشريعة|مسار\s*شرعي)/i.test(t)) return 'ثالث ثانوي المسار الشرعي';
+  if(/(مسار\s*عام|عام)/i.test(t)) return 'ثالث ثانوي مسار عام';
+  return '';
+}
 function normalizeStage(x){
   x=String(x||'').trim();
   if(!x)return '';
   let raw=x;
+  let trackedThirdSecondary=normalizeThirdSecondaryTrack(raw);
+  if(trackedThirdSecondary) return trackedThirdSecondary;
   let t=x
     .replace(/[إأآ]/g,'ا')
     .replace(/ى/g,'ي')
@@ -166,7 +220,7 @@ function normalizeStage(x){
   });
   return found||raw;
 }
-function getPhase(stage){stage=normalizeStage(stage);if(['أول ابتدائي','ثاني ابتدائي','ثالث ابتدائي','رابع ابتدائي','خامس ابتدائي','سادس ابتدائي'].includes(stage))return 'ابتدائي';if(['أول متوسط','ثاني متوسط','ثالث متوسط'].includes(stage))return 'متوسط';if(['أول ثانوي','ثاني ثانوي','ثالث ثانوي'].includes(stage))return 'ثانوي';return stage||''}
+function getPhase(stage){stage=normalizeStage(stage);if(['أول ابتدائي','ثاني ابتدائي','ثالث ابتدائي','رابع ابتدائي','خامس ابتدائي','سادس ابتدائي'].includes(stage))return 'ابتدائي';if(['أول متوسط','ثاني متوسط','ثالث متوسط'].includes(stage))return 'متوسط';if(['أول ثانوي','ثاني ثانوي','ثالث ثانوي'].includes(stage)||String(stage||'').startsWith('ثالث ثانوي'))return 'ثانوي';return stage||''}
 function getSections(){return [...new Set(students.map(s=>String(s.section||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ar'))}
 function parseDelimitedText(text,type='student'){
   let lines=String(text||'').split(/\n+/).map(x=>x.trim()).filter(Boolean); if(!lines.length)return [];
@@ -376,15 +430,70 @@ function getAllowedStageOrder(r){
   return stages.filter(st=>allowed.includes(st));
 }
 function getCommitteeCandidates(r,exceptNo){let used=getDistributedKeys(exceptNo);return [...students].map(normalizeImportedStudentRecord).filter(s=>{let k=studentKey(s);return k&&!used.has(k)&&studentAllowedInRoom(s,r)}).sort(committeeSort)}
+function activeStageOrderFromStudents(arr, r){
+  let present=new Set((arr||[]).map(s=>normalizeStage(s.stage)).filter(Boolean));
+  let ordered=[];
+  try{ ordered=getAllowedStageOrder(r||{}).filter(st=>present.has(normalizeStage(st))); }catch(e){ ordered=[]; }
+  if(!ordered.length){
+    ordered=Array.from(present).sort((a,b)=>gradeIndex(a)-gradeIndex(b)||String(a).localeCompare(String(b),'ar'));
+  }
+  return ordered;
+}
+function buildBalancedColumnStagePlan(stageOrder, columnCount){
+  columnCount=Math.max(1,+columnCount||1);
+  stageOrder=(stageOrder||[]).filter(Boolean);
+  if(!stageOrder.length)return Array.from({length:columnCount},()=> '');
+  let plan=[];
+  for(let i=0;i<columnCount;i++){
+    let candidate=stageOrder[i % stageOrder.length];
+    if(plan.length && candidate===plan[plan.length-1] && stageOrder.length>1){
+      for(let j=1;j<stageOrder.length;j++){
+        let alt=stageOrder[(i+j) % stageOrder.length];
+        if(alt!==plan[plan.length-1]){candidate=alt;break;}
+      }
+    }
+    plan.push(candidate);
+  }
+  return plan;
+}
+function assignBalancedColumnsByGrade(r, arr){
+  arr=(arr||[]).map(normalizeImportedStudentRecord).filter(s=>s.name);
+  let colCount=Math.max(1,+((r&&r.columnCount)||(r&&r.columns)||(r&&r.colCount)||1)||1);
+  if(!arr.length)return [];
+  let stageOrder=activeStageOrderFromStudents(arr, r||{});
+  let plan=buildBalancedColumnStagePlan(stageOrder, colCount);
+  let columnByStage={};
+  plan.forEach((st,idx)=>{ if(st){ (columnByStage[st]=columnByStage[st]||[]).push(idx+1); } });
+  let groups=stageOrder.map(st=>({stage:st, items:arr.filter(s=>normalizeStage(s.stage)===normalizeStage(st)).sort(arabicNameSort)}));
+  // أي صف لم يحصل على عمود خاص لأن عدد الأعمدة أقل من عدد الصفوف يوزع على الأعمدة الأقل حملاً.
+  let loads=Array.from({length:colCount},()=>0);
+  let result=[];
+  groups.forEach((g, gi)=>{
+    let cols=(columnByStage[g.stage]||[]).slice();
+    if(!cols.length) cols=[(gi % colCount)+1];
+    g.items.forEach((s,i)=>{
+      let col=cols[i % cols.length];
+      result.push(Object.assign({},s,{column:col,columnNumber:col}));
+      loads[col-1]++;
+    });
+  });
+  // إذا وجدت سجلات بصف غير معروف، توزع على الأعمدة الأقل حملاً.
+  arr.filter(s=>!stageOrder.some(st=>normalizeStage(st)===normalizeStage(s.stage))).sort(arabicNameSort).forEach(s=>{
+    let best=0;
+    for(let i=1;i<loads.length;i++) if(loads[i]<loads[best]) best=i;
+    loads[best]++;
+    result.push(Object.assign({},s,{column:best+1,columnNumber:best+1}));
+  });
+  return result.sort((a,b)=>(+a.column||0)-(+b.column||0) || (gradeIndex(a.stage)-gradeIndex(b.stage)) || arabicNameSort(a,b));
+}
 function balancedDistributionByGrade(r,exceptNo){
   let cap=Math.max(0,+r.capacity||0);
   let candidates=getCommitteeCandidates(r,exceptNo);
   if(!cap||!candidates.length)return [];
   let stageOrder=getAllowedStageOrder(r);
   let groups=stageOrder.map(stage=>({stage,items:candidates.filter(s=>normalizeStage(s.stage)===stage).sort(arabicNameSort),idx:0})).filter(g=>g.items.length);
-  if(!groups.length)return candidates.slice(0,cap).sort(committeeSort);
+  if(!groups.length)return assignBalancedColumnsByGrade(r,candidates.slice(0,cap));
   let picked=[];
-  // توزيع متوازن: يمر على الصفوف المختارة بالتتابع ليأخذ طالب/طالبة من كل صف حسب الترتيب الأبجدي، ثم يعرض النتيجة مجمعة حسب الصف.
   while(picked.length<cap){
     let added=false;
     for(let g of groups){
@@ -393,7 +502,7 @@ function balancedDistributionByGrade(r,exceptNo){
     }
     if(!added)break;
   }
-  return picked.sort(committeeSort);
+  return assignBalancedColumnsByGrade(r,picked);
 }
 function getCommitteePreview(r,exceptNo){return balancedDistributionByGrade(r,exceptNo)}
 function countDistributed(){return Object.values(distribution||{}).flat().length}
@@ -443,18 +552,48 @@ function pageHeader(title,meta=''){let s=getSettings();return `<div class="offic
 function pageFooter(){return `<div class="footer-note">ملاحظة: على الطالب التواجد قبل بدء الاختبار بوقت كافٍ مع الالتزام بالأنظمة والتعليمات.</div></div></div>`}
 function subjectByName(subjectName){return subjects.find(x=>x.name==subjectName)||{name:subjectName,day:getSettings().day,date:getSettings().date}}
 function officialMeta(items){return `<div class="meta-row">${items.map(x=>`<div class="meta-box">${x}</div>`).join('')}</div>`}
-function getStudentColumnNumber(index,colCount,total){colCount=Math.max(1,+colCount||1);let size=Math.ceil((+total||0)/colCount)||1;return Math.floor(index/size)+1}
-function splitCommitteeColumns(arr,colCount){colCount=Math.max(1,+colCount||1);arr=(arr||[]).slice().sort(committeeSort);let size=Math.ceil(arr.length/colCount)||1;let cols=[];for(let c=0;c<colCount;c++){cols.push(arr.slice(c*size,(c+1)*size));}return cols.filter(c=>c.length)}
-function committeeColumnsTable(arr,colCount,showStage){let cols=splitCommitteeColumns(arr,colCount);let max=Math.max(0,...cols.map(c=>c.length));let head=cols.map((c,i)=>`<th colspan="${showStage?3:2}">العمود ${i+1}</th>`).join('');let sub=cols.map(()=>`<th style="width:5%">م</th><th>اسم الطالب</th>${showStage?'<th style="width:12%">الصف</th>':''}`).join('');let rows='';for(let r=0;r<max;r++){rows+='<tr>'+cols.map((col,ci)=>{let s=col[r];let no=cols.slice(0,ci).reduce((a,c)=>a+c.length,0)+r+1;return s?`<td>${no}</td><td style="text-align:right">${s.name}</td>${showStage?`<td>${s.stage}</td>`:''}`:`<td></td><td></td>${showStage?'<td></td>':''}`}).join('')+'</tr>'}return `<table class="print-table"><thead><tr>${head}</tr><tr>${sub}</tr></thead><tbody>${rows}</tbody></table>`}
+function getStudentColumnNumber(index,colCount,total,student,roomNo){
+  if(student && (student.column||student.columnNumber)) return +(student.column||student.columnNumber)||'';
+  if(roomNo!==undefined && student){
+    return getCommitteeColumnForStudent(roomNo, student);
+  }
+  colCount=Math.max(1,+colCount||1);
+  let size=Math.ceil((+total||0)/colCount)||1;
+  return Math.floor(index/size)+1;
+}
+function splitCommitteeColumns(arr,colCount,room){
+  colCount=Math.max(1,+colCount||1);
+  let prepared=assignBalancedColumnsByGrade(room||{columnCount:colCount}, (arr||[]));
+  let cols=Array.from({length:colCount},()=>[]);
+  prepared.forEach(s=>{
+    let c=Math.max(1,Math.min(colCount,+((s&&s.column)||(s&&s.columnNumber))||1));
+    cols[c-1].push(s);
+  });
+  cols.forEach(c=>c.sort((a,b)=>(gradeIndex(a.stage)-gradeIndex(b.stage))||arabicNameSort(a,b)));
+  return cols.filter(c=>c.length);
+}
+function committeeColumnsTable(arr,colCount,showStage,room){
+  let cols=splitCommitteeColumns(arr,colCount,room||{columnCount:colCount});
+  let max=Math.max(0,...cols.map(c=>c.length));
+  let head=cols.map((c,i)=>`<th colspan="${showStage?3:2}">العمود ${i+1}</th>`).join('');
+  let sub=cols.map(()=>`<th style="width:5%">م</th><th>اسم الطالب</th>${showStage?'<th style="width:12%">الصف</th>':''}`).join('');
+  let rows='';
+  for(let r=0;r<max;r++){
+    rows+='<tr>'+cols.map((col,ci)=>{
+      let s=col[r];let no=r+1;
+      return s?`<td>${no}</td><td style="text-align:right">${s.name}</td>${showStage?`<td>${s.stage}</td>`:''}`:`<td></td><td></td>${showStage?'<td></td>':''}`;
+    }).join('')+'</tr>';
+  }
+  return `<table class="print-table"><thead><tr>${head}</tr><tr>${sub}</tr></thead><tbody>${rows}</tbody></table>`;
+}
 function getScheduleForStage(stage){let st=normalizeStage(stage);return (subjects||[]).filter(s=>normalizeStage(s.stage)===st).sort((a,b)=>String(a.date||'').localeCompare(String(b.date||''))||String(a.start||'').localeCompare(String(b.start||'')))}
 function scheduleRowsForStage(stage){let list=getScheduleForStage(stage);if(!list.length)return '<div class="hint">لا يوجد جدول مواد مرتبط بهذا الصف حتى الآن.</div>';return `<table><thead><tr><th>اليوم</th><th>التاريخ</th><th>الزمن</th><th>المادة</th></tr></thead><tbody>${list.map(s=>`<tr><td>${s.day||''}</td><td>${s.hijri||formatHijriFromGregorian(s.date)||s.date||''}</td><td>${s.start||''} - ${s.end||''}</td><td>${s.name||''}</td></tr>`).join('')}</tbody></table>`}
 
 function getCommitteeColumnForStudent(roomNo,student){
   let r=rooms.find(x=>String(x.no)===String(roomNo))||{};
-  let arr=(distribution[roomNo]||[]).slice().sort(committeeSort);
-  let idx=arr.findIndex(x=>studentKey(x)===studentKey(student));
-  if(idx<0)return '';
-  return getStudentColumnNumber(idx, r.columnCount||1, arr.length);
+  let arr=assignBalancedColumnsByGrade(r,(distribution[roomNo]||[]));
+  let found=arr.find(x=>studentKey(x)===studentKey(student));
+  return found?(found.column||found.columnNumber||''):'';
 }
 function enrichStudentForLookup(roomNo,student,index){
   let r=rooms.find(x=>String(x.no)===String(roomNo))||{};
@@ -472,7 +611,7 @@ function enrichStudentForLookup(roomNo,student,index){
   };
 }
 
-function committeePage(no,subjectName){let arr=(distribution[no]||[]).slice().sort(committeeSort),s=getSettings(),counts=stageCounts(arr),subject=subjectByName(subjectName);let r=rooms.find(x=>String(x.no)===String(no))||{};let showStage=Object.values(counts).filter(v=>v>0).length>1;let title=`${s.title} (${no})`;let meta=officialMeta([`العام الدراسي : ${s.year}`,`الفصل الدراسي : ${s.term}`,`المادة : ${subject.name}`,`أعمدة القاعة : ${r.columnCount||2}`]);let statStages=stages.filter(st=>(counts[st]||0)>0);let stat=`<div class="mini-stats"><h4>إحصائية اللجنة</h4><div class="mini-grid"><div class="mini">إجمالي الطلاب<b>${arr.length}</b></div>${statStages.map(st=>`<div class="mini">${st}<b>${counts[st]||0}</b></div>`).join('')}</div></div>`;return pageHeader(title,meta)+committeeColumnsTable(arr,r.columnCount||2,showStage)+stat+`<div class="sign-area"><div>اسم الملاحظ : <span class="sig-line">${observers[no]||''}</span><br><br>توقيعه : <span class="sig-line"></span></div><div>اعتماد مدير المدرسة : <span class="sig-line">${getSettings().principal||''}</span><br><br>توقيعه : <span class="sig-line"></span></div></div>`+pageFooter()}
+function committeePage(no,subjectName){let arr=(distribution[no]||[]).slice().sort(committeeSort),s=getSettings(),counts=stageCounts(arr),subject=subjectByName(subjectName);let r=rooms.find(x=>String(x.no)===String(no))||{};let showStage=Object.values(counts).filter(v=>v>0).length>1;let title=`${s.title} (${no})`;let meta=officialMeta([`العام الدراسي : ${s.year}`,`الفصل الدراسي : ${s.term}`,`المادة : ${subject.name}`,`أعمدة القاعة : ${r.columnCount||2}`]);let statStages=stages.filter(st=>(counts[st]||0)>0);let stat=`<div class="mini-stats"><h4>إحصائية اللجنة</h4><div class="mini-grid"><div class="mini">إجمالي الطلاب<b>${arr.length}</b></div>${statStages.map(st=>`<div class="mini">${st}<b>${counts[st]||0}</b></div>`).join('')}</div></div>`;return pageHeader(title,meta)+committeeColumnsTable(arr,r.columnCount||2,showStage,r)+stat+`<div class="sign-area"><div>اسم الملاحظ : <span class="sig-line">${observers[no]||''}</span><br><br>توقيعه : <span class="sig-line"></span></div><div>اعتماد مدير المدرسة : <span class="sig-line">${getSettings().principal||''}</span><br><br>توقيعه : <span class="sig-line"></span></div></div>`+pageFooter()}
 function printCommittee(){let no=$('printRoom').value,sub=$('printSubject').value;if(!distribution[no])distributeStudents();printHTML(committeePage(no,sub));}
 function printAllCommittees(){let sub=$('printSubject').value;if(!Object.keys(distribution).length)distributeStudents();printHTML(rooms.map(r=>committeePage(r.no,sub)).join(''))}
 function printCallSheets(){let sub=$('printSubject').value;if(!Object.keys(distribution).length)distributeStudents();let html=rooms.map(r=>committeePage(r.no,sub)).join('');printHTML(html)}
@@ -481,8 +620,13 @@ function renderObservers(){$('observersTable').querySelector('tbody').innerHTML=
 function printObservers(){let rows=rooms.map((r,i)=>`<tr><td>${i+1}</td><td>اللجنة رقم (${r.no})</td><td>${observers[r.no]||''}</td><td>............................</td><td>............................</td></tr>`).join('');let meta=officialMeta([`عدد اللجان : ${rooms.length}`,`العام الدراسي : ${getSettings().year}`,`الفصل الدراسي : ${getSettings().term}`]);printHTML(pageHeader('توزيع الملاحظين على اللجان',meta)+`<table class="print-table"><thead><tr><th style="width:8%">م</th><th>اللجنة</th><th>اسم الملاحظ</th><th>التوقيع</th><th>ملاحظات</th></tr></thead><tbody>${rows}</tbody></table><div class="sign-area"><div>مسؤول الاختبارات : <span class="sig-line"></span><br><br>توقيعه : <span class="sig-line"></span></div><div>اعتماد مدير المدرسة : <span class="sig-line">${getSettings().principal||''}</span><br><br>توقيعه : <span class="sig-line"></span></div></div>`+pageFooter())}
 function printDelivery(){let sub=$('printSubject').value||'';let rows=rooms.map((r,i)=>`<tr><td>${i+1}</td><td>اللجنة رقم (${r.no})</td><td>${sub}</td><td>${observers[r.no]||''}</td><td>.............</td><td>.............</td></tr>`).join('');let meta=officialMeta([`المادة : ${sub}`,`اليوم : ${getSettings().day}`,`التاريخ : ${getSettings().date}`]);printHTML(pageHeader('سجل استلام وتسليم أوراق الأسئلة',meta)+`<table class="print-table"><thead><tr><th style="width:7%">م</th><th>اللجنة</th><th>المادة</th><th>المستلم</th><th>وقت الاستلام</th><th>التوقيع</th></tr></thead><tbody>${rows}</tbody></table><div class="sign-area"><div>مسؤول التسليم : <span class="sig-line"></span><br><br>توقيعه : <span class="sig-line"></span></div><div>رئيس لجنة الاختبارات : <span class="sig-line"></span><br><br>توقيعه : <span class="sig-line"></span></div></div>`+pageFooter())}
 function renderAttendance(){let no=$('attRoom').value,arr=distribution[no]||[];$('attendanceList').innerHTML=`<table><thead><tr><th>م</th><th>اسم الطالب</th><th>المرحلة</th><th>حاضر</th><th>غائب</th></tr></thead><tbody>${arr.map((s,i)=>`<tr><td>${i+1}</td><td>${s.name}</td><td>${s.stage}</td><td><input type="checkbox" checked></td><td><input type="checkbox"></td></tr>`).join('')}</tbody></table>`}
-function printAttendance(){let no=$('attRoom').value,sub=$('attSubject').value;if(!distribution[no])distributeStudents();let arr=distribution[no]||[],subject=subjectByName(sub);let rows=arr.map((s,i)=>`<tr><td>${i+1}</td><td style="text-align:right">${s.name}</td><td>${s.stage}</td><td>${subject.name}</td><td>........................</td></tr>`).join('');let meta=officialMeta([`اللجنة رقم : ${no}`,`المادة : ${subject.name}`,`إجمالي الطلاب : ${arr.length}`]);printHTML(pageHeader(`كشف الحضور والتوقيع للجنة رقم (${no})`,meta)+`<table class="print-table"><thead><tr><th style="width:8%">م</th><th>اسم الطالب</th><th>المرحلة</th><th>المادة</th><th>التوقيع</th></tr></thead><tbody>${rows}</tbody></table><div class="sign-area"><div>اسم الملاحظ : <span class="sig-line">${observers[no]||''}</span><br><br>توقيعه : <span class="sig-line"></span></div><div>اسم مدير المدرسة : <span class="sig-line">${getSettings().principal||''}</span><br><br>توقيعه : <span class="sig-line"></span></div></div>`+pageFooter())}
-function printAbsenceReport(){let no=$('attRoom').value,arr=distribution[no]||[],sub=$('attSubject').value,subject=subjectByName(sub);let rows=arr.map((s,i)=>`<tr><td>${i+1}</td><td style="text-align:right">${s.name}</td><td>${s.stage}</td><td>${subject.name}</td><td>حاضر / غائب</td><td>........................</td></tr>`).join('');let meta=officialMeta([`اللجنة رقم : ${no}`,`المادة : ${subject.name}`,`إجمالي الطلاب : ${arr.length}`]);printHTML(pageHeader(`نموذج متابعة غياب طلاب اللجنة رقم (${no})`,meta)+`<table class="print-table"><thead><tr><th style="width:7%">م</th><th>اسم الطالب</th><th>المرحلة</th><th>المادة</th><th>الحالة</th><th>التوقيع</th></tr></thead><tbody>${rows}</tbody></table><div class="sign-area"><div>اسم الملاحظ : <span class="sig-line">${observers[no]||''}</span><br><br>توقيعه : <span class="sig-line"></span></div><div>اعتماد مدير المدرسة : <span class="sig-line">${getSettings().principal||''}</span><br><br>توقيعه : <span class="sig-line"></span></div></div>`+pageFooter())}
+function printAttendance(){let no=$('attRoom').value,sub=$('attSubject').value;if(!distribution[no])distributeStudents();let arr=distribution[no]||[],subject=subjectByName(sub);let rows=arr.map((s,i)=>`<tr><td>${i+1}</td><td style="text-align:right">${s.name}</td><td>${s.stage}</td><td>${getCommitteeColumnForStudent(no,s)||''}</td><td>${subject.name}</td><td>........................</td></tr>`).join('');let meta=officialMeta([`اللجنة رقم : ${no}`,`المادة : ${subject.name}`,`إجمالي الطلاب : ${arr.length}`]);printHTML(pageHeader(`كشف الحضور والتوقيع للجنة رقم (${no})`,meta)+`<table class="print-table"><thead><tr><th style="width:7%">م</th><th>اسم الطالب</th><th>المرحلة</th><th>العمود</th><th>المادة</th><th>التوقيع</th></tr></thead><tbody>${rows}</tbody></table><div class="sign-area"><div>اسم الملاحظ : <span class="sig-line">${observers[no]||''}</span><br><br>توقيعه : <span class="sig-line"></span></div><div>اسم مدير المدرسة : <span class="sig-line">${getSettings().principal||''}</span><br><br>توقيعه : <span class="sig-line"></span></div></div>`+pageFooter())}
+function printAbsenceReport(){
+  let no=$('attRoom').value,arr=distribution[no]||[],sub=$('attSubject').value,subject=subjectByName(sub);
+  let rows=arr.map((s,i)=>`<tr><td>${i+1}</td><td style="text-align:right">${s.name}</td><td>${s.stage}</td><td>${getCommitteeColumnForStudent(no,s)||''}</td><td>${subject.name}</td><td>حاضر / غائب</td><td>........................</td></tr>`).join('');
+  let meta=officialMeta([`اللجنة رقم : ${no}`,`المادة : ${subject.name}`,`إجمالي الطلاب : ${arr.length}`]);
+  printHTML(pageHeader(`نموذج متابعة غياب طلاب اللجنة رقم (${no})`,meta)+`<table class="print-table"><thead><tr><th style="width:7%">م</th><th>اسم الطالب</th><th>المرحلة</th><th>العمود</th><th>المادة</th><th>الحالة</th><th>التوقيع</th></tr></thead><tbody>${rows}</tbody></table><div class="sign-area"><div>اسم الملاحظ : <span class="sig-line">${observers[no]||''}</span><br><br>توقيعه : <span class="sig-line"></span></div><div>اعتماد مدير المدرسة : <span class="sig-line">${getSettings().principal||''}</span><br><br>توقيعه : <span class="sig-line"></span></div></div>`+pageFooter())
+}
 
 function getStagesInUse(){
   let vals=[...new Set(students.map(s=>s.stage).filter(Boolean))];
@@ -590,7 +734,7 @@ function queryStudent(){
       roomNo=no;
       roomName=r.name||('اللجنة رقم ('+no+')');
       roomTitle=r.room||'';
-      roomColumn=getStudentColumnNumber(idx,r.columnCount||1,sorted.length);
+      roomColumn=getCommitteeColumnForStudent(no, found)||getStudentColumnNumber(idx,r.columnCount||1,sorted.length,found,no);
       break;
     }
   }
@@ -606,27 +750,49 @@ function getQueryData(){
     let sorted=(arr||[]).slice().sort(committeeSort);
     sorted.forEach((stu,i)=>rows.push(enrichStudentForLookup(roomNo,stu,i)));
   });
-  let schedule=(subjects||[]).map(x=>({stage:x.stage||'',name:x.name||'',day:x.day||'',date:x.date||'',hijri:x.hijri||formatHijriFromGregorian(x.date),start:x.start||'',end:x.end||''}));
+  let schedule=(subjects||[]).map(x=>({
+    stage:x.stage||'',
+    displayStage:x.stage||'',
+    name:x.name||'',
+    day:x.day||'',
+    date:x.date||'',
+    hijri:x.hijri||formatHijriFromGregorian(x.date),
+    start:x.start||'',
+    end:x.end||''
+  }));
   return {settings:s,generatedAt:new Date().toLocaleString('ar-SA'),students:rows,schedule};
 }
-
 
 function buildStudentQueryDataJSON(){
   return JSON.stringify(getQueryData(),null,2);
 }
-function buildStudentQueryHTML(){
-  let data=getQueryData();
-  let dataJson=JSON.stringify(data).replace(/<\/script/gi,'<\\/script');
-  return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>استعلام الطالب عن لجنة الاختبار</title><style>
-  :root{--green:#006c4f;--line:#79b39f;--soft:#eefaf5;--ink:#17252f;--danger:#b42318}*{box-sizing:border-box}body{margin:0;font-family:Tahoma,Arial,sans-serif;background:linear-gradient(135deg,#f7fbf9,#e8f5ef);color:var(--ink);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:18px;overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y}.wrap{width:min(760px,100%);background:white;border:3px solid var(--green);border-radius:26px;box-shadow:0 18px 45px #0002;padding:22px}.head{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;border-bottom:3px solid var(--green);padding-bottom:16px;margin-bottom:18px}.right{text-align:right;font-weight:800;line-height:1.9}.left{text-align:right;font-weight:800;line-height:1.9}.logo{text-align:center;color:var(--green)}.moe-logo{width:125px;max-width:100%;height:auto;display:block;margin:auto}.moe-emblem{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-width:150px;color:var(--green);font-weight:900}.moe-emblem .dots{font-size:18px;letter-spacing:3px;line-height:.55;color:var(--green);direction:ltr}.moe-emblem .moe-text{font-size:18px;line-height:1.25}.moe-emblem small{font-size:10px;font-weight:700;color:#2f7364}.title{background:linear-gradient(180deg,#fbfffd,#eefaf4);border:2px solid var(--green);border-radius:18px;text-align:center;color:var(--green);font-weight:900;font-size:26px;padding:15px;margin:16px 0}.search{display:grid;grid-template-columns:1fr auto;gap:10px;margin:16px 0}input{border:1.7px solid var(--line);border-radius:14px;padding:15px;font-family:inherit;font-size:18px;direction:ltr;text-align:center;unicode-bidi:plaintext;-webkit-user-select:text;user-select:text}button{border:0;border-radius:14px;background:var(--green);color:white;font-weight:900;padding:0 24px;font-size:16px;cursor:pointer}.result{margin-top:14px}.card{border:1.5px solid var(--line);border-radius:18px;background:#fbfffd;padding:16px;line-height:2}.card h2{margin:0 0 10px;color:var(--green)}.row{display:grid;grid-template-columns:150px 1fr;border-bottom:1px dashed #c7ded3;padding:7px 0}.row:last-child{border-bottom:0}.label{font-weight:900;color:var(--green)}.notfound{color:var(--danger);font-weight:900;text-align:center;border:1px solid #f5c2c0;background:#fff5f5;border-radius:14px;padding:14px}.lookup-table{width:100%;border-collapse:collapse;margin-top:10px}.lookup-table th,.lookup-table td{border:1px solid #c7ded3;padding:8px;text-align:center}.lookup-table th{background:var(--soft);color:var(--green)}.note{font-size:12px;text-align:center;color:#667085;margin-top:18px}@media(max-width:640px){.head{grid-template-columns:1fr}.right,.left,.logo{text-align:center}.search{grid-template-columns:1fr}button{height:52px}.row{grid-template-columns:1fr}.title{font-size:21px}}
-  
-/* ===== FINAL EXAMS OFFICIAL RECORDS PANEL: سجلات أعمال الاختبارات الموحدة ===== */
-.exam-records-layout{display:grid;grid-template-columns:280px 1fr;gap:14px;align-items:start}.exam-records-sidebar{background:#f7fbf9;border:1.7px solid var(--line);border-radius:18px;padding:12px;position:sticky;top:12px}.exam-records-sidebar h3{margin:0 0 10px;color:var(--green);font-size:16px}.exam-records-sidebar button{width:100%;display:block;text-align:right;border:1px solid #cfe5dc;background:#fff;color:#123;border-radius:12px;padding:10px 12px;margin:7px 0;font-weight:900;cursor:pointer}.exam-records-sidebar button:hover,.exam-records-sidebar button.active{background:linear-gradient(180deg,#e9fff5,#dff7ec);border-color:var(--green);color:#005f45}.exam-record-view{background:#fff;border:1.7px solid var(--line);border-radius:18px;padding:14px;min-height:220px}.exam-record-title{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;border-bottom:1px solid #d7eee5;padding-bottom:10px;margin-bottom:12px}.exam-record-title h3{margin:0;color:var(--green);font-size:18px}.record-form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}.record-form-grid textarea{min-height:110px}.record-form-note{background:#f6fbf8;border:1px dashed var(--line);border-radius:14px;padding:12px;color:#375;font-weight:700;margin:10px 0}.template-picker-title{font-weight:900;color:#006c4f;margin:12px 0 6px}
-@media(max-width:900px){.exam-records-layout{grid-template-columns:1fr}.exam-records-sidebar{position:static}}
 
-</style></head><body><main class="wrap"><section class="head"><div class="right"><div>المملكة العربية السعودية</div><div>وزارة التعليم</div><div>${data.settings.eduDept||'إدارة التعليم'}</div><div>${data.settings.school||'المدرسة'}</div></div><div class="logo"><img class="moe-logo" src="https://salogos.b-cdn.net/logos/svg/1774895141785-5zgexuf8.svg" alt="شعار وزارة التعليم" onerror="this.style.display='none';this.parentNode.innerHTML='<div class=\'moe-text\'>وزارة التعليم<br><small>Ministry of Education</small></div>';"></div><div class="left"><div>العام الدراسي : ${data.settings.year||''}</div><div>الفصل الدراسي : ${data.settings.term||''}</div><div>اليوم : ${data.settings.day||''}</div><div>التاريخ : ${data.settings.date||''}</div></div></section><div class="title">استعلام الطالب عن لجنة الاختبار</div><div class="search"><input id="q" placeholder="اكتب الاسم أو السجل المدني" autocomplete="off"><button onclick="searchStudent()">استعلام</button></div><div id="result" class="result"></div><p class="note">تظهر النتيجة حسب آخر توزيع معتمد من المدرسة. عند عدم ظهور النتيجة يرجى مراجعة إدارة المدرسة.</p></main><script>const DATA=${dataJson};function norm(x){return String(x||'').replace(/[\u200E\u200F\u202A-\u202E]/g,'').replace(/[٠-٩]/g,function(d){return '٠١٢٣٤٥٦٧٨٩'.indexOf(d)}).replace(/[۰-۹]/g,function(d){return '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)}).replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').trim().replace(/\s+/g,' ')}function normalizeStageLookup(x){x=String(x||'').trim().replace(/[إأآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/[\u200E\u200F\u202A-\u202E]/g,'').replace(/^(الصف|صف|مرحله|المرحله|المستوي|مستوي)\s+/,'').replace(/\s+/g,' ');var order='';if(/(^|\s)(اول|اولي|الاول|الاولى|1|١)(\s|$)/.test(x))order='أول';else if(/(^|\s)(ثاني|الثاني|2|٢)(\s|$)/.test(x))order='ثاني';else if(/(^|\s)(ثالث|الثالث|3|٣)(\s|$)/.test(x))order='ثالث';else if(/(^|\s)(رابع|الرابع|4|٤)(\s|$)/.test(x))order='رابع';else if(/(^|\s)(خامس|الخامس|5|٥)(\s|$)/.test(x))order='خامس';else if(/(^|\s)(سادس|السادس|6|٦)(\s|$)/.test(x))order='سادس';var stage='';if(/ابتدائي|الابتدائي|ابتدائيه/.test(x))stage='ابتدائي';else if(/متوسط|المتوسط|متوسطه/.test(x))stage='متوسط';else if(/ثانوي|الثانوي|ثانويه/.test(x))stage='ثانوي';if(order&&stage)return order+' '+stage;return x;}function scheduleStageMatchesStudent(a,b){a=String(a||'').trim();b=String(b||'').trim();if(!a||!b)return false;if(a===b)return true;var na=normalizeStageLookup(a),nb=normalizeStageLookup(b);if(na===nb)return true;if(nb==='ثالث ثانوي'&&a.indexOf('ثالث ثانوي')===0)return true;return false;}function searchStudent(){var q=norm(document.getElementById('q').value);var box=document.getElementById('result');if(!q){box.innerHTML='<div class="notfound">الرجاء إدخال الاسم أو السجل المدني.</div>';return}var found=DATA.students.find(function(s){return norm(s.id)===q||norm(s.name).indexOf(q)>-1;});if(!found){box.innerHTML='<div class="notfound">لم يتم العثور على الطالب ضمن التوزيع الحالي.</div>';return}var schedule=(DATA.schedule||[]).filter(function(x){return scheduleStageMatchesStudent(x.stage,found.stage)}).sort(function(a,b){return String(a.date||'').localeCompare(String(b.date||''))||String(a.start||'').localeCompare(String(b.start||''))});var sch=schedule.length?'<h2>جدول مواد الاختبار الخاص بالصف</h2><table class="lookup-table"><thead><tr><th>اليوم</th><th>التاريخ</th><th>الزمن</th><th>المادة</th></tr></thead><tbody>'+schedule.map(function(s){return '<tr><td>'+(s.day||'')+'</td><td>'+(s.hijri||s.date||'')+'</td><td>'+(s.start||'')+' - '+(s.end||'')+'</td><td>'+(s.name||'')+'</td></tr>'}).join('')+'</tbody></table>':'<div class="note">لا يوجد جدول مواد مرتبط بهذا الصف حتى الآن.</div>';box.innerHTML='<div class="card"><h2>نتيجة الاستعلام</h2><div class="row"><div class="label">اسم الطالب / الطالبة</div><div>'+found.name+'</div></div><div class="row"><div class="label">اسم اللجنة</div><div>'+(found.committeeName||('اللجنة رقم ('+found.committee+')'))+'</div></div>'+(found.roomName?'<div class="row"><div class="label">القاعة</div><div>'+found.roomName+'</div></div>':'')+'<div class="row"><div class="label">العمود</div><div>'+(found.column||'غير محدد')+'</div></div>'+sch+'</div>'}document.getElementById('q').addEventListener('keydown',e=>{if(e.key==='Enter')searchStudent()});<\/script>
-</body></html>`;
+
+function buildStudentQueryHTML(){
+  var data=getQueryData();
+  var dataJson=JSON.stringify(data).replace(/<\/script/gi,'<\\/script');
+  var css=""
+    +":root{--green:#006c4f;--line:#79b39f;--soft:#eefaf5;--ink:#17252f;--danger:#b42318}"
+    +"*{box-sizing:border-box}body{margin:0;font-family:Tahoma,Arial,sans-serif;background:linear-gradient(135deg,#f7fbf9,#e8f5ef);color:var(--ink);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:18px;overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y}"
+    +".wrap{width:min(820px,100%);background:white;border:3px solid var(--green);border-radius:26px;box-shadow:0 18px 45px #0002;padding:22px}.head{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;border-bottom:3px solid var(--green);padding-bottom:16px;margin-bottom:18px}.right,.left{font-weight:800;line-height:1.9}.logo{text-align:center;color:var(--green)}"
+    +".moe-logo{width:128px;max-width:100%;height:auto;display:block;margin:auto}.moe-text{font-size:18px;line-height:1.35;font-weight:900;color:var(--green);border:1px solid var(--green);border-radius:14px;padding:8px 10px;background:#f7fffb}.title{background:linear-gradient(180deg,#fbfffd,#eefaf4);border:2px solid var(--green);border-radius:18px;text-align:center;color:var(--green);font-weight:900;font-size:26px;padding:15px;margin:16px 0}"
+    +".search{display:grid;grid-template-columns:1fr auto;gap:10px;margin:16px 0}input{border:1.7px solid var(--line);border-radius:14px;padding:15px;font-family:inherit;font-size:18px;direction:ltr;text-align:center;unicode-bidi:plaintext;-webkit-user-select:text;user-select:text}button{border:0;border-radius:14px;background:var(--green);color:white;font-weight:900;padding:0 24px;font-size:16px;cursor:pointer}.result{margin-top:14px}"
+    +".card{border:1.5px solid var(--line);border-radius:18px;background:#fbfffd;padding:16px;line-height:2}.card h2{margin:0 0 10px;color:var(--green)}.row{display:grid;grid-template-columns:175px 1fr;border-bottom:1px dashed #c7ded3;padding:7px 0}.row:last-child{border-bottom:0}.label{font-weight:900;color:var(--green)}.notfound{color:var(--danger);font-weight:900;text-align:center;border:1px solid #f5c2c0;background:#fff5f5;border-radius:14px;padding:14px}"
+    +".lookup-table{width:100%;border-collapse:collapse;margin-top:10px}.lookup-table th,.lookup-table td{border:1px solid #c7ded3;padding:8px;text-align:center}.lookup-table th{background:var(--soft);color:var(--green)}.note{font-size:12px;text-align:center;color:#667085;margin-top:18px}@media(max-width:640px){.head{grid-template-columns:1fr}.right,.left,.logo{text-align:center}.search{grid-template-columns:1fr}button{height:52px}.row{grid-template-columns:1fr}.title{font-size:21px}.lookup-table{font-size:12px}}";
+  var qjs="const DATA=__DATA__;\n"
+  +"function esc(v){return String(v==null?'':v).replace(/[&<>\\\"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','\\\"':'&quot;',\"'\":'&#39;'}[c]||c})}\n"
+  +"function norm(x){return String(x||'').replace(/[‎‏‪-‮]/g,'').replace(/[٠-٩]/g,function(d){return '٠١٢٣٤٥٦٧٨٩'.indexOf(d)}).replace(/[۰-۹]/g,function(d){return '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)}).replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').trim().replace(/\\s+/g,' ')}\n"
+  +"function normalizeThirdTrack(x){var t=norm(x).replace(/ه/g,'ة');var isThird=/(^|\\s)(ثالث|الثالث|3|٣)(\\s|$)/.test(t)&&/(ثانوي|الثانوي|ثانوية)/.test(t);if(!isThird)return '';if(/(صحة\\s*وحياة|صحه\\s*وحياه|صحي)/.test(t))return 'ثالث ثانوي مسار صحة وحياة';if(/(علوم\\s*الحاسب|حاسب|الحاسوب|تقنية|تقنيه)/.test(t))return 'ثالث ثانوي مسار علوم الحاسب';if(/(إدارة\\s*الأعمال|ادارة\\s*الاعمال|اعمال|الأعمال)/.test(t))return 'ثالث ثانوي إدارة الأعمال';if(/(شرعي|الشريعة|الشريعه|مسار\\s*شرعي)/.test(t))return 'ثالث ثانوي المسار الشرعي';if(/(مسار\\s*عام|عام)/.test(t))return 'ثالث ثانوي مسار عام';return ''}\n"
+  +"function normalizeStageLookup(x){x=String(x||'').trim().replace(/[إأآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/[‎‏‪-‮]/g,'').replace(/^(الصف|صف|مرحله|المرحله|المستوي|مستوي)\\s+/,'').replace(/\\s+/g,' ');var tr=normalizeThirdTrack(x);if(tr)return tr;var order='';if(/(^|\\s)(اول|اولي|الاول|الاولى|1|١)(\\s|$)/.test(x))order='أول';else if(/(^|\\s)(ثاني|الثاني|2|٢)(\\s|$)/.test(x))order='ثاني';else if(/(^|\\s)(ثالث|الثالث|3|٣)(\\s|$)/.test(x))order='ثالث';else if(/(^|\\s)(رابع|الرابع|4|٤)(\\s|$)/.test(x))order='رابع';else if(/(^|\\s)(خامس|الخامس|5|٥)(\\s|$)/.test(x))order='خامس';else if(/(^|\\s)(سادس|السادس|6|٦)(\\s|$)/.test(x))order='سادس';var stage='';if(/ابتدائي|الابتدائي|ابتدائيه/.test(x))stage='ابتدائي';else if(/متوسط|المتوسط|متوسطه/.test(x))stage='متوسط';else if(/ثانوي|الثانوي|ثانويه/.test(x))stage='ثانوي';if(order&&stage)return order+' '+stage;return x;}\n"
+  +"function isThird(s){return normalizeStageLookup(s).indexOf('ثالث ثانوي')===0}\n"
+  +"function isThirdTrack(s){return normalizeStageLookup(s).indexOf('ثالث ثانوي ')===0}\n"
+  +"function matchStage(scheduleStage,studentStage){var a=normalizeStageLookup(scheduleStage),b=normalizeStageLookup(studentStage);if(!a||!b)return false;if(a===b)return true;if(isThird(a)&&isThird(b)){if(isThirdTrack(b)){return a===b || a==='ثالث ثانوي'}return true}return false}\n"
+  +"function searchStudent(){var q=norm(document.getElementById('q').value);var box=document.getElementById('result');if(!q){box.innerHTML='<div class=\\\"notfound\\\">الرجاء إدخال الاسم أو السجل المدني.</div>';return}var found=(DATA.students||[]).find(function(s){return norm(s.id)===q||norm(s.name).indexOf(q)>-1});if(!found){box.innerHTML='<div class=\\\"notfound\\\">لم يتم العثور على الطالب / الطالبة ضمن التوزيع الحالي.</div>';return}var foundStage=normalizeStageLookup(found.stage||'');var schedule=(DATA.schedule||[]).filter(function(x){return matchStage(x.stage,foundStage)}).sort(function(a,b){return String(a.date||'').localeCompare(String(b.date||''))||String(a.start||'').localeCompare(String(b.start||''))||String(a.stage||'').localeCompare(String(b.stage||''),'ar')});var sch=schedule.length?'<h2>جدول الاختبار حسب الصف / المسار</h2><table class=\\\"lookup-table\\\"><thead><tr><th>المرحلة / المسار</th><th>اليوم</th><th>التاريخ</th><th>الزمن</th><th>المادة</th></tr></thead><tbody>'+schedule.map(function(s){return '<tr><td>'+esc(s.displayStage||s.stage||'')+'</td><td>'+esc(s.day||'')+'</td><td>'+esc(s.hijri||s.date||'')+'</td><td>'+esc(s.start||'')+' - '+esc(s.end||'')+'</td><td>'+esc(s.name||'')+'</td></tr>'}).join('')+'</tbody></table>':'<div class=\\\"note\\\">لا يوجد جدول مواد مرتبط بهذا الصف / المسار حتى الآن.</div>';box.innerHTML='<div class=\\\"card\\\"><h2>نتيجة الاستعلام</h2><div class=\\\"row\\\"><div class=\\\"label\\\">اسم الطالب / الطالبة</div><div>'+esc(found.name)+'</div></div><div class=\\\"row\\\"><div class=\\\"label\\\">الصف / المسار</div><div>'+esc(foundStage||found.stage||'')+'</div></div><div class=\\\"row\\\"><div class=\\\"label\\\">اسم اللجنة</div><div>'+esc(found.committeeName||(found.committee?('اللجنة رقم ('+found.committee+')'):'غير محدد'))+'</div></div>'+(found.roomName?'<div class=\\\"row\\\"><div class=\\\"label\\\">القاعة</div><div>'+esc(found.roomName)+'</div></div>':'')+'<div class=\\\"row\\\"><div class=\\\"label\\\">العمود</div><div>'+esc(found.column||'غير محدد')+'</div></div>'+sch+'</div>'}\n"
+  +"document.addEventListener('DOMContentLoaded',function(){var q=document.getElementById('q');if(q){q.addEventListener('keydown',function(e){if(e.key==='Enter')searchStudent()})}});".replace('__DATA__', dataJson);
+  function plain(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]||c})}
+  return '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>استعلام الطالب عن لجنة الاختبار</title><style>'+css+'</style></head><body><main class="wrap"><section class="head"><div class="right"><div>المملكة العربية السعودية</div><div>وزارة التعليم</div><div>'+plain((data.settings&&data.settings.eduDept)||'إدارة التعليم')+'</div><div>'+plain((data.settings&&data.settings.school)||'المدرسة')+'</div></div><div class="logo"><img class="moe-logo" src="https://salogos.b-cdn.net/logos/svg/1774895141785-5zgexuf8.svg" alt="شعار وزارة التعليم" referrerpolicy="no-referrer" crossorigin="anonymous" onerror="this.style.display=\'none\';this.parentNode.innerHTML=\'<div class=moe-text>وزارة التعليم<br><small>Ministry of Education</small></div>\';"><div class="moe-text" style="display:none">وزارة التعليم</div></div><div class="left"><div>العام الدراسي : '+plain((data.settings&&data.settings.year)||'')+'</div><div>الفصل الدراسي : '+plain((data.settings&&data.settings.term)||'')+'</div><div>اليوم : '+plain((data.settings&&data.settings.day)||'')+'</div><div>التاريخ : '+plain((data.settings&&data.settings.date)||'')+'</div></div></section><div class="title">استعلام الطالب عن لجنة الاختبار</div><div class="search"><input id="q" placeholder="اكتب الاسم أو السجل المدني" autocomplete="off"><button onclick="searchStudent()">استعلام</button></div><div id="result" class="result"></div><p class="note">تظهر النتيجة حسب آخر توزيع معتمد من المدرسة. عند عدم ظهور النتيجة يرجى مراجعة إدارة المدرسة.</p></main>'+'<scr'+'ipt>'+qjs+'</scr'+'ipt></body></html>';
 }
+
 function downloadFile(name,content,type){
   let blob=new Blob([content],{type:type||'text/html;charset=utf-8'});
   let url=URL.createObjectURL(blob);
@@ -661,10 +827,22 @@ function copyQueryMessage(){
   navigator.clipboard&&navigator.clipboard.writeText(msg);
   $('queryLinkBox').innerHTML='تم تجهيز رسالة الإرسال للطلاب:<br><b>'+msg+'</b>';
 }
-function saveAll(alertIt=true){let data={students,teachers,subjects,rooms,distribution,observers,settings:{...getSettings(),scheduleTitle:getScheduleTitle()}};localStorage.setItem('examsSystemMOE',JSON.stringify(data));if(alertIt)alert('تم الحفظ محليًا')}
-function loadAll(){let d=JSON.parse(localStorage.getItem('examsSystemMOE')||'{}');students=d.students||students;teachers=d.teachers||teachers;subjects=d.subjects||subjects;rooms=d.rooms||rooms;distribution=d.distribution||{};observers=d.observers||{};if(d.settings)Object.entries(d.settings).forEach(([k,v])=>{let map={eduDept:'eduDept',school:'school',year:'year',term:'term',gregorianDate:'mainGregorianDate',day:'day',date:'date',principal:'principal',title:'systemTitle',scheduleTitle:'scheduleTitle'};if($(map[k]))$(map[k]).value=v});if($('mainGregorianDate')&&$('mainGregorianDate').value)syncMainHeaderHijriFromDate(false);renderStudents();renderTeachers();renderDistribution();updateLists()}
+
+function __ssExamStorageKey(){
+  try{
+    const q=new URLSearchParams(location.search||'');
+    const u=JSON.parse(localStorage.getItem('currentSchoolUser')||localStorage.getItem('currentUser')||'{}')||{};
+    const s=JSON.parse(localStorage.getItem('smartSchool.currentSchool')||'{}')||{};
+    const sid=q.get('schoolId')||q.get('school_id')||localStorage.getItem('active_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||u.schoolId||u.activeSchoolId||s.schoolId||s.id||'';
+    return sid ? ('examsSystemMOE__school__'+sid) : 'examsSystemMOE';
+  }catch(e){return 'examsSystemMOE';}
+}
+function __ssLegacyExamData(){try{return localStorage.getItem(__ssExamStorageKey())||'{}'}catch(e){return '{}'}}
+
+function saveAll(alertIt=true){let data={students,teachers,subjects,rooms,distribution,observers,settings:{...getSettings(),scheduleTitle:getScheduleTitle()}};localStorage.setItem(__ssExamStorageKey(),JSON.stringify(data));if(alertIt)alert('تم الحفظ محليًا')}
+function loadAll(){let d=JSON.parse(localStorage.getItem(__ssExamStorageKey())||__ssLegacyExamData()||'{}');students=d.students||students;teachers=d.teachers||teachers;subjects=d.subjects||subjects;rooms=d.rooms||rooms;distribution=d.distribution||{};observers=d.observers||{};if(d.settings)Object.entries(d.settings).forEach(([k,v])=>{let map={eduDept:'eduDept',school:'school',year:'year',term:'term',gregorianDate:'mainGregorianDate',day:'day',date:'date',principal:'principal',title:'systemTitle',scheduleTitle:'scheduleTitle'};if($(map[k]))$(map[k]).value=v});if($('mainGregorianDate')&&$('mainGregorianDate').value)syncMainHeaderHijriFromDate(false);renderStudents();renderTeachers();renderDistribution();updateLists()}
 function clearAll(){if(confirm('سيتم تفريغ جميع البيانات المحلية.')){localStorage.removeItem('examsSystemMOE');location.reload()}}
-function exportJSON(){let blob=new Blob([localStorage.getItem('examsSystemMOE')||'{}'],{type:'application/json'});let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='exams-system-data.json';a.click()}
+function exportJSON(){let blob=new Blob([localStorage.getItem(__ssExamStorageKey())||'{}'],{type:'application/json'});let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='exams-system-data.json';a.click()}
 initMainHeaderDate();buildRooms();updateLists();renderSubjects();updateIncidentPersonMode();
 
 
@@ -683,7 +861,7 @@ function committeeOfficialRows(arr,withColumn,withStatus){return (arr||[]).map((
 function printExamTemplate(type){let c=getTemplateCtx();if(['committee-list','committee-columns','call-sheet','attendance-sheet','absence-sheet'].includes(type)&&(!c.arr||!c.arr.length)){if(!Object.keys(distribution||{}).length&&typeof distributeStudents==='function')distributeStudents();c=getTemplateCtx();}
  let title=EXAM_RECORD_TITLES[type]||'نموذج';let meta=officialMeta([`اللجنة : ${c.no?('رقم ('+c.no+')'):'غير محددة'}`,`القاعة : ${c.room.room||c.room.name||'غير محددة'}`,`المادة : ${c.subject.name||c.sub||'غير محددة'}`,`الفترة : ${c.period||'غير محددة'}`]);let body='';
  if(type==='committee-list'||type==='call-sheet'){body=`<table class="print-table"><thead><tr><th style="width:7%">م</th><th>اسم الطالب / الطالبة</th><th>السجل المدني</th><th>الصف</th><th>التوقيع</th></tr></thead><tbody>${committeeOfficialRows(c.arr,false,false)}</tbody></table>`+officialSignatureBlock('الملاحظ / الملاحظة','مدير / مديرة المدرسة',observers[c.no]||'',getSettings().principal)}
- else if(type==='committee-columns'){body=committeeColumnsTable(c.arr,c.room.columns||c.room.colCount||1,true)+officialSignatureBlock('مسؤول / مسؤولة اللجنة','مدير / مديرة المدرسة',observers[c.no]||'',getSettings().principal)}
+ else if(type==='committee-columns'){body=committeeColumnsTable(c.arr,c.room.columns||c.room.colCount||c.room.columnCount||1,true,c.room)+officialSignatureBlock('مسؤول / مسؤولة اللجنة','مدير / مديرة المدرسة',observers[c.no]||'',getSettings().principal)}
  else if(type==='attendance-sheet'){body=`<table class="print-table"><thead><tr><th style="width:7%">م</th><th>اسم الطالب / الطالبة</th><th>السجل المدني</th><th>الصف</th><th>العمود</th><th>الحالة</th><th>التوقيع</th></tr></thead><tbody>${committeeOfficialRows(c.arr,true,true)}</tbody></table>`+officialSignatureBlock('الملاحظ / الملاحظة','مدير / مديرة المدرسة',observers[c.no]||'',getSettings().principal)}
  else if(type==='absence-sheet'){body=`<table class="print-table"><thead><tr><th style="width:7%">م</th><th>اسم الطالب / الطالبة</th><th>السجل المدني</th><th>الصف</th><th>العمود</th><th>سبب الغياب</th><th>التوقيع</th></tr></thead><tbody>${(c.arr||[]).map((s,i)=>`<tr><td>${i+1}</td><td style="text-align:right">${examSafe(s.name)}</td><td>${examSafe(s.id||s.nationalId||'')}</td><td>${examSafe(s.stage||s.grade||'')}</td><td>${examSafe(s.column||getStudentColumnNumber(i+1,(c.room.columns||1),c.arr.length))}</td><td>........................</td><td>........................</td></tr>`).join('')}</tbody></table>`+officialSignatureBlock('الملاحظ / الملاحظة','مدير / مديرة المدرسة',observers[c.no]||'',getSettings().principal)}
  else {body=officialIncidentBody(type,c)}
@@ -704,6 +882,263 @@ function officialIncidentBody(type,c){let student=students.find(s=>s.name===c.pe
  else if(type==='question-assignment') text='يتم تكليف المعلم / المعلمة بإعداد أسئلة الاختبار ونموذج الإجابة وفق جدول المواصفات، وتسليمها في الموعد المحدد.';
  return common+`<div class="incident-fields"><div class="field-box full"><div class="field-label">نص النموذج</div>${text}</div></div>`+officialSignatureBlock('رئيس / رئيسة اللجنة','مدير / مديرة المدرسة',observers[c.no]||'',getSettings().principal)}
 
+
+
+/* ===== EXAMS_FINAL_STABLE_PATCH_V1: طباعة + نماذج سجلات الوكيل + حفظ ومزامنة + استعلام iOS ===== */
+(function(){
+  const MOE_LOGO = 'https://salogos.b-cdn.net/logos/svg/1774895141785-5zgexuf8.svg';
+  function clean(v){return String(v ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+  function safeJsonParse(v, fallback){try{return JSON.parse(v||'')}catch(e){return fallback}}
+  function activeSchoolId(){
+    try{
+      const q=new URLSearchParams(location.search||'');
+      const u=safeJsonParse(localStorage.getItem('currentSchoolUser'),{})||safeJsonParse(localStorage.getItem('currentUser'),{})||{};
+      const s=safeJsonParse(localStorage.getItem('smartSchool.currentSchool'),{})||{};
+      return String(q.get('schoolId')||q.get('school_id')||q.get('school')||localStorage.getItem('active_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||localStorage.getItem('smart_school_id')||u.schoolId||u.school_id||s.schoolId||s.id||'').trim();
+    }catch(e){return ''}
+  }
+  function activeSchoolName(){
+    try{
+      const q=new URLSearchParams(location.search||'');
+      const u=safeJsonParse(localStorage.getItem('currentSchoolUser'),{})||safeJsonParse(localStorage.getItem('currentUser'),{})||{};
+      const s=safeJsonParse(localStorage.getItem('smartSchool.currentSchool'),{})||{};
+      return String(q.get('schoolName')||q.get('school_name')||localStorage.getItem('active_school_name')||localStorage.getItem('current_school_name')||localStorage.getItem('school_name')||localStorage.getItem('persist_school')||localStorage.getItem('smart_school_name')||u.schoolName||u.school_name||s.schoolName||s.school_name||'').trim();
+    }catch(e){return ''}
+  }
+  function activeManagerName(){
+    try{
+      const u=safeJsonParse(localStorage.getItem('currentSchoolUser'),{})||safeJsonParse(localStorage.getItem('currentUser'),{})||{};
+      const s=safeJsonParse(localStorage.getItem('smartSchool.currentSchool'),{})||{};
+      return String(localStorage.getItem('manager_name')||localStorage.getItem('school_manager_name')||localStorage.getItem('smart_school_manager')||u.name||u.fullName||u.full_name||s.managerName||s.manager_name||'').trim();
+    }catch(e){return ''}
+  }
+  window.applyActiveSchoolSettingsToExams = function(){
+    try{
+      const school = activeSchoolName();
+      const principal = activeManagerName();
+      if(school && document.getElementById('school')) document.getElementById('school').value = school;
+      if(principal && document.getElementById('principal')) document.getElementById('principal').value = principal;
+      const edu = localStorage.getItem('education_department') || localStorage.getItem('edu_dept') || localStorage.getItem('smart_school_education_department') || '';
+      if(edu && document.getElementById('eduDept')) document.getElementById('eduDept').value = edu;
+    }catch(e){}
+  };
+
+  window.getExamsStorageKey = function(){ return 'examsSystemMOE:' + (activeSchoolId() || activeSchoolName() || 'default'); };
+  window.collectExamsPayload = function(){
+    return {
+      school_id: activeSchoolId(), school_name: activeSchoolName(), section:'exam_works',
+      students: window.students||[], teachers: window.teachers||[], subjects: window.subjects||[], rooms: window.rooms||[], distribution: window.distribution||{}, observers: window.observers||{}, attendance: window.attendance||{},
+      settings: Object.assign({}, (typeof getSettings==='function'?getSettings():{}), {scheduleTitle:(typeof getScheduleTitle==='function'?getScheduleTitle():'جدول الاختبارات')}),
+      lookup_data: (typeof getQueryData==='function'?getQueryData():{}), updated_at: new Date().toISOString()
+    };
+  };
+  function restorePayload(d){
+    if(!d) return;
+    if(d.payload) d=d.payload;
+    window.students = d.students || [];
+    window.teachers = d.teachers || [];
+    window.subjects = d.subjects || [];
+    window.rooms = d.rooms || [];
+    window.distribution = d.distribution || {};
+    window.observers = d.observers || {};
+    window.attendance = d.attendance || {};
+    if(d.settings){
+      const map={eduDept:'eduDept',school:'school',year:'year',term:'term',gregorianDate:'mainGregorianDate',day:'day',date:'date',principal:'principal',title:'systemTitle',scheduleTitle:'scheduleTitle'};
+      Object.entries(d.settings).forEach(([k,v])=>{const el=document.getElementById(map[k]||k); if(el) el.value=v;});
+    }
+    try{ if(document.getElementById('mainGregorianDate') && document.getElementById('mainGregorianDate').value && typeof syncMainHeaderHijriFromDate==='function') syncMainHeaderHijriFromDate(false); }catch(e){}
+    try{ if(typeof renderStudents==='function')renderStudents(); }catch(e){}
+    try{ if(typeof renderTeachers==='function')renderTeachers(); }catch(e){}
+    try{ if(typeof renderSubjects==='function')renderSubjects(); }catch(e){}
+    try{ if(typeof renderDistribution==='function')renderDistribution(); }catch(e){}
+    try{ if(typeof updateLists==='function')updateLists(); }catch(e){}
+  }
+  async function ensureSupabaseClient(){
+    try{
+      if(window.supabase && window.supabase.createClient){
+        const url=localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co';
+        const key=localStorage.getItem('smartSchoolSupabaseAnonKey')||'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaWpoZ3ZidHJ2bW1sY3NzeGhodCIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzc4Njk2ODM1LCJleHAiOjIwOTQyNzI4MzV9.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
+        return window.__examsSupabaseClient || (window.__examsSupabaseClient=window.supabase.createClient(url,key));
+      }
+      await new Promise((resolve,reject)=>{let s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';s.onload=resolve;s.onerror=reject;document.head.appendChild(s);});
+      return ensureSupabaseClient();
+    }catch(e){return null}
+  }
+  async function saveCloud(payload){
+    const sid=payload.school_id; if(!sid) return {ok:false,msg:'لا يوجد معرف مدرسة نشطة للحفظ السحابي'};
+    const sb=await ensureSupabaseClient(); if(!sb) return {ok:false,msg:'Supabase غير جاهز'};
+    const row={school_id:sid,section:'exam_works',payload:payload,updated_at:new Date().toISOString()};
+    const tables=['school_exam_work','school_exam_works','exam_works','school_records','records'];
+    for(const table of tables){
+      try{
+        let q=await sb.from(table).upsert(row,{onConflict:'school_id,section'}).select().limit(1);
+        if(!q.error) return {ok:true,table};
+      }catch(e){}
+      try{
+        let q=await sb.from(table).insert(row).select().limit(1);
+        if(!q.error) return {ok:true,table};
+      }catch(e){}
+    }
+    return {ok:false,msg:'لم يتم العثور على جدول سحابي مناسب لأعمال الاختبارات'};
+  }
+  async function loadCloud(){
+    const sid=activeSchoolId(); if(!sid) return null;
+    const sb=await ensureSupabaseClient(); if(!sb) return null;
+    const tables=['school_exam_work','school_exam_works','exam_works','school_records','records'];
+    for(const table of tables){
+      try{
+        let q=await sb.from(table).select('*').eq('school_id',sid).eq('section','exam_works').order('updated_at',{ascending:false}).limit(1);
+        if(!q.error && q.data && q.data[0]) return q.data[0].payload || q.data[0];
+      }catch(e){}
+    }
+    return null;
+  }
+  window.saveAll = async function(alertIt=true){
+    try{ if(typeof syncMainHeaderHijriFromDate==='function' && document.getElementById('mainGregorianDate')) syncMainHeaderHijriFromDate(false); }catch(e){}
+    const payload=collectExamsPayload();
+    localStorage.setItem(getExamsStorageKey(), JSON.stringify(payload));
+    localStorage.setItem('examsSystemMOE', JSON.stringify(payload));
+    if(!alertIt) return true;
+    let cloud=await saveCloud(payload);
+    alert(cloud.ok ? ('تم الحفظ والمزامنة سحابياً بنجاح. جدول: '+cloud.table) : ('تم الحفظ محلياً، وتعذرت المزامنة السحابية: '+cloud.msg));
+    return cloud.ok;
+  };
+  window.loadAll = async function(){
+    let data=safeJsonParse(localStorage.getItem(getExamsStorageKey()),null) || safeJsonParse(localStorage.getItem('examsSystemMOE'),null);
+    if(!data){ data=await loadCloud(); }
+    if(data){ restorePayload(data); alert('تم استرجاع بيانات أعمال الاختبارات.'); }
+    else alert('لا توجد بيانات محفوظة لهذه المدرسة.');
+  };
+  window.exportJSON = function(){
+    const blob=new Blob([JSON.stringify(collectExamsPayload(),null,2)],{type:'application/json;charset=utf-8'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='exams-system-data.json'; a.click();
+  };
+  const oldClear=window.clearAll;
+  window.clearAll=function(){ if(confirm('سيتم تفريغ بيانات أعمال الاختبارات لهذه المدرسة من هذا المتصفح فقط.')){localStorage.removeItem(getExamsStorageKey());localStorage.removeItem('examsSystemMOE');location.reload();} };
+
+  window.examPrintDocument = function(content,title='أعمال الاختبارات'){
+    return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${clean(title)}</title><style>
+    @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap');
+    *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}body{margin:0;background:#eaf3ef;font-family:Tajawal,Arial,sans-serif;color:#11221d}.official-page{width:210mm;min-height:297mm;background:#fff;margin:0 auto 12mm;padding:9mm 10mm;border:1px solid #c9d8d1;box-shadow:0 12px 30px rgba(8,60,42,.13);position:relative;break-after:page;page-break-after:always}.official-page:last-child{break-after:auto;page-break-after:auto}.official-content{border:2px solid #006c35;min-height:279mm;padding:6mm;position:relative}.moe-head{display:grid;grid-template-columns:1.1fr 150px 1.1fr;align-items:center;gap:12px;border-bottom:2px solid #006c35;padding-bottom:9px;margin-bottom:10px}.head-right,.head-left{font-weight:800;line-height:1.7;font-size:13px}.head-right{text-align:center}.head-left{text-align:center}.logo{text-align:center}.moe-logo-img{width:142px;height:88px;object-fit:contain}.head-row{display:flex;gap:8px;justify-content:center}.head-label{font-weight:800}.fill,.val{color:#006c35;font-weight:900;border-bottom:1px dotted #667085;min-width:90px;display:inline-block;text-align:center}.doc-title{background:linear-gradient(90deg,#e8f7ef,#fff,#e8f7ef);border:1px solid #006c35;border-radius:4px;text-align:center;font-size:24px;font-weight:800;color:#006c35;padding:7px 10px;margin:8px 0 12px}.meta-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:6px;margin-bottom:10px}.meta-box{border:1px solid #9fb7ad;background:#fbfffd;border-radius:8px;padding:7px;text-align:center;font-weight:800}.print-table{width:100%;border-collapse:collapse;margin-top:8px;table-layout:fixed}.print-table th{background:#006c35;color:#fff;border:1px solid #006c35;padding:7px;font-size:12px}.print-table td{border:1px solid #9fb7ad;padding:6px;text-align:center;font-size:12px;min-height:30px}.mini-stats{border:1px solid #9fb7ad;border-radius:8px;margin-top:10px;padding:8px}.mini-stats h4{margin:0 0 6px;color:#006c35}.mini-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:6px}.mini{border:1px solid #c7ddd3;background:#f7faf9;border-radius:8px;padding:7px;text-align:center;font-weight:800}.mini b{display:block;color:#006c35;font-size:18px}.sign-area{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px}.sign-area>div{border:1px solid #9fb7ad;min-height:38mm;padding:10px;text-align:center;font-weight:800}.sig-line{display:inline-block;min-width:150px;border-bottom:1px dotted #667085;height:20px}.footer-note{text-align:center;font-size:11px;color:#667085;margin-top:10px}.incident-fields{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid #9fb7ad;margin:8px 0}.field-box{border-left:1px solid #9fb7ad;border-bottom:1px solid #9fb7ad;padding:9px;min-height:38px}.field-box.full{grid-column:1/-1}.field-label{font-weight:900;color:#006c35;margin-bottom:4px}.dash-line{display:block;border-bottom:1px dotted #667085;height:22px;margin:4px 0}.official-preview{border:2px solid #006c35;border-radius:12px;background:#fff;padding:12px;margin:10px 0}.official-preview .doc-title{font-size:18px}.official-preview .moe-head{grid-template-columns:1fr 90px 1fr}.official-preview .moe-logo-img{width:82px;height:56px}@media(max-width:700px){.official-page{width:100%;padding:8px}.official-content{min-height:auto}.moe-head{grid-template-columns:1fr}.sign-area{grid-template-columns:1fr}.incident-fields{grid-template-columns:1fr}}@media print{@page{size:A4 portrait;margin:0}html,body{width:210mm;background:#fff!important}.official-page{width:210mm!important;min-height:297mm!important;margin:0!important;border:0!important;box-shadow:none!important;padding:8mm 9mm!important}.official-content{min-height:281mm!important}.moe-head{grid-template-columns:1.1fr 130px 1.1fr!important}.moe-logo-img{width:124px!important;height:76px!important}.doc-title{font-size:19px!important}.print-table th,.print-table td{font-size:10.5px!important;padding:4px!important}.sign-area>div{min-height:32mm!important}.footer-note{font-size:10px!important}}
+    </style></head><body>${content}</body></html>`;
+  };
+
+  window.printHTML = function(html){
+    const doc=examPrintDocument(html,'أعمال الاختبارات');
+    let w=null;
+    try{w=window.open('','_blank','noopener,noreferrer');}catch(e){}
+    if(w){w.document.open();w.document.write(doc);w.document.close();return;}
+    const iframe=document.createElement('iframe');iframe.style.position='fixed';iframe.style.left='-9999px';iframe.style.width='1px';iframe.style.height='1px';document.body.appendChild(iframe);iframe.contentDocument.open();iframe.contentDocument.write(doc);iframe.contentDocument.close();setTimeout(()=>{try{iframe.contentWindow.focus();iframe.contentWindow.print();}catch(e){} setTimeout(()=>iframe.remove(),2000)},400);
+  };
+  window.openExamTemplateForm = function(type,btn){
+    document.querySelectorAll('.exam-records-sidebar button').forEach(b=>b.classList.remove('active')); if(btn)btn.classList.add('active');
+    const committeeTypes=['committee-list','committee-columns','call-sheet','attendance-sheet','absence-sheet'];
+    const target=committeeTypes.includes(type)?'committeeRecordView':'incidentRecordView'; const el=document.getElementById(target); if(!el)return;
+    const title=(window.EXAM_RECORD_TITLES&&EXAM_RECORD_TITLES[type])||'نموذج'; const studentField=['student-late','student-absence','emergency-case'].includes(type);
+    const form=`<div class="exam-record-title"><h3>${title}</h3><button class="btn" onclick="printExamTemplate('${type}')">طباعة النموذج</button></div><div class="official-preview">${pageHeader(title, officialMeta(['القالب: مطابق لسجلات الوكيل','الطباعة: A4 رسمي'])).replace('<div class="official-page"><div class="official-content">','').replace(pageFooter(),'')}<div class="record-form-note">تظهر هذه المعاينة بنفس هوية سجلات الوكيل، وتتم الطباعة الرسمية من زر طباعة النموذج.</div></div><div class="record-form-grid"><div><label>اللجنة</label><select id="tplRoom">${examRoomOptions()}</select></div><div><label>المادة</label><select id="tplSubject">${examSubjectOptions()}</select></div><div><label>${studentField?'اسم الطالب / الطالبة':'اسم المسؤول / المستلم'}</label><input id="tplPerson" list="${studentField?'studentsList':'teachersList'}" placeholder="اختياري"></div><div><label>وقت البداية / الحضور</label><input id="tplStart" placeholder="مثال: 07:30"></div><div><label>وقت النهاية / الانصراف</label><input id="tplEnd" placeholder="مثال: 09:30"></div><div><label>الفترة</label><input id="tplPeriod" placeholder="الفترة الأولى / الثانية"></div><div style="grid-column:1/-1"><label>الملاحظات / الإجراء</label><textarea id="tplNotes" placeholder="تكتب هنا الملاحظات أو الإجراء المتخذ حسب النموذج"></textarea></div></div><div class="record-form-note">تسحب الترويسة اليوم والتاريخ وبيانات المدرسة تلقائياً، وتسحب بيانات الطلاب واللجان من توزيع أعمال الاختبارات.</div>`;
+    el.innerHTML=form;
+  };
+  window.buildStudentQueryHTML = function(){
+    const data=(typeof getQueryData==='function'?getQueryData():{}); const dataJson=JSON.stringify(data).replace(/<\/script/gi,'<\\/script');
+    return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>استعلام الطالب عن لجنة الاختبار</title><style>:root{--green:#006c4f;--line:#79b39f;--soft:#eefaf5;--ink:#17252f;--danger:#b42318}*{box-sizing:border-box}body{margin:0;font-family:Tahoma,Arial,sans-serif;background:linear-gradient(135deg,#f7fbf9,#e8f5ef);color:var(--ink);min-height:100vh;padding:18px;overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y}.wrap{width:min(760px,100%);margin:auto;background:white;border:3px solid var(--green);border-radius:26px;box-shadow:0 18px 45px #0002;padding:22px}.head{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;border-bottom:3px solid var(--green);padding-bottom:16px;margin-bottom:18px}.right,.left{text-align:center;font-weight:800;line-height:1.9}.moe-logo{width:125px;max-width:100%;height:auto;display:block;margin:auto}.fallback-logo{font-weight:900;color:var(--green);text-align:center}.title{background:linear-gradient(180deg,#fbfffd,#eefaf4);border:2px solid var(--green);border-radius:18px;text-align:center;color:var(--green);font-weight:900;font-size:26px;padding:15px;margin:16px 0}.search{display:grid;grid-template-columns:1fr auto;gap:10px;margin:16px 0}input{border:1.7px solid var(--line);border-radius:14px;padding:15px;font-size:18px;direction:ltr;text-align:center;unicode-bidi:plaintext}button{border:0;border-radius:14px;background:var(--green);color:white;font-weight:900;padding:0 24px;font-size:16px}.card{border:1.5px solid var(--line);border-radius:18px;background:#fbfffd;padding:16px;line-height:2}.card h2{margin:0 0 10px;color:var(--green)}.row{display:grid;grid-template-columns:150px 1fr;border-bottom:1px dashed #c7ded3;padding:7px 0}.label{font-weight:900;color:var(--green)}.notfound{color:var(--danger);font-weight:900;text-align:center;border:1px solid #f5c2c0;background:#fff5f5;border-radius:14px;padding:14px}.lookup-table{width:100%;border-collapse:collapse;margin-top:10px}.lookup-table th,.lookup-table td{border:1px solid #c7ded3;padding:8px;text-align:center}.lookup-table th{background:var(--soft);color:var(--green)}.note{font-size:12px;text-align:center;color:#667085;margin-top:18px}@media(max-width:640px){.head{grid-template-columns:1fr}.search{grid-template-columns:1fr}button{height:52px}.row{grid-template-columns:1fr}.title{font-size:21px}}</style></head><body><main class="wrap"><section class="head"><div class="right"><div>المملكة العربية السعودية</div><div>وزارة التعليم</div><div>${clean(data.settings?.eduDept||'إدارة التعليم')}</div><div>${clean(data.settings?.school||'المدرسة')}</div></div><div><img class="moe-logo" src="${MOE_LOGO}" alt="شعار وزارة التعليم" onerror="this.outerHTML='<div class=&quot;fallback-logo&quot;>وزارة التعليم<br><small>Ministry of Education</small></div>'"></div><div class="left"><div>العام الدراسي : ${clean(data.settings?.year||'')}</div><div>الفصل الدراسي : ${clean(data.settings?.term||'')}</div><div>اليوم : ${clean(data.settings?.day||'')}</div><div>التاريخ : ${clean(data.settings?.date||'')}</div></div></section><div class="title">استعلام الطالب عن لجنة الاختبار</div><div class="search"><input id="q" placeholder="اكتب الاسم أو السجل المدني" autocomplete="off"><button onclick="searchStudent()">استعلام</button></div><div id="result"></div><p class="note">تظهر النتيجة حسب آخر توزيع معتمد من المدرسة.</p></main><script>const DATA=${dataJson};function norm(x){return String(x||'').replace(/[\\u200E\\u200F\\u202A-\\u202E]/g,'').replace(/[٠-٩]/g,function(d){return '٠١٢٣٤٥٦٧٨٩'.indexOf(d)}).replace(/[۰-۹]/g,function(d){return '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)}).replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').trim().replace(/\\s+/g,' ')}function normalizeStageLookup(x){x=String(x||'').trim().replace(/[إأآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/^(الصف|صف|مرحله|المرحله|المستوي|مستوي)\\s+/,'').replace(/\\s+/g,' ');var order='';if(/(^|\\s)(اول|اولي|الاول|الاولى|1|١)(\\s|$)/.test(x))order='أول';else if(/(^|\\s)(ثاني|الثاني|2|٢)(\\s|$)/.test(x))order='ثاني';else if(/(^|\\s)(ثالث|الثالث|3|٣)(\\s|$)/.test(x))order='ثالث';else if(/(^|\\s)(رابع|الرابع|4|٤)(\\s|$)/.test(x))order='رابع';else if(/(^|\\s)(خامس|الخامس|5|٥)(\\s|$)/.test(x))order='خامس';else if(/(^|\\s)(سادس|السادس|6|٦)(\\s|$)/.test(x))order='سادس';var stage='';if(/ابتدائي|الابتدائي|ابتدائيه/.test(x))stage='ابتدائي';else if(/متوسط|المتوسط|متوسطه/.test(x))stage='متوسط';else if(/ثانوي|الثانوي|ثانويه/.test(x))stage='ثانوي';return order&&stage?order+' '+stage:x}function matchStage(a,b){if(!a||!b)return false;if(a===b)return true;var na=normalizeStageLookup(a),nb=normalizeStageLookup(b);return na===nb||(nb==='ثالث ثانوي'&&String(a).indexOf('ثالث ثانوي')===0)}function searchStudent(){var q=norm(document.getElementById('q').value);var box=document.getElementById('result');if(!q){box.innerHTML='<div class="notfound">الرجاء إدخال الاسم أو السجل المدني.</div>';return}var found=(DATA.students||[]).find(function(s){return norm(s.id)===q||norm(s.name).indexOf(q)>-1});if(!found){box.innerHTML='<div class="notfound">لم يتم العثور على الطالب ضمن التوزيع الحالي.</div>';return}var schedule=(DATA.schedule||[]).filter(function(x){return matchStage(x.stage,found.stage)}).sort(function(a,b){return String(a.date||'').localeCompare(String(b.date||''))||String(a.start||'').localeCompare(String(b.start||''))});var sch=schedule.length?'<h2>جدول مواد الاختبار الخاص بالصف</h2><table class="lookup-table"><thead><tr><th>اليوم</th><th>التاريخ</th><th>الزمن</th><th>المادة</th></tr></thead><tbody>'+schedule.map(function(s){return '<tr><td>'+(s.day||'')+'</td><td>'+(s.hijri||s.date||'')+'</td><td>'+(s.start||'')+' - '+(s.end||'')+'</td><td>'+(s.name||'')+'</td></tr>'}).join('')+'</tbody></table>':'<div class="note">لا يوجد جدول مواد مرتبط بهذا الصف حتى الآن.</div>';box.innerHTML='<div class="card"><h2>نتيجة الاستعلام</h2><div class="row"><div class="label">اسم الطالب / الطالبة</div><div>'+found.name+'</div></div><div class="row"><div class="label">اسم اللجنة</div><div>'+(found.committeeName||('اللجنة رقم ('+found.committee+')'))+'</div></div>'+(found.roomName?'<div class="row"><div class="label">القاعة</div><div>'+found.roomName+'</div></div>':'')+'<div class="row"><div class="label">العمود</div><div>'+(found.column||'غير محدد')+'</div></div>'+sch+'</div>'}document.getElementById('q').addEventListener('keydown',function(e){if(e.key==='Enter')searchStudent()});<\/script>
+</body></html>`;
+  };
+  try{ document.addEventListener('DOMContentLoaded', ()=>{applyActiveSchoolSettingsToExams(); const b=[...document.querySelectorAll('button')].find(x=>x.textContent.trim()==='حفظ محلي'); if(b)b.textContent='حفظ ومزامنة'; const h=[...document.querySelectorAll('h2')].find(x=>x.textContent.includes('الأرشيف المحلي')); if(h)h.textContent='الأرشيف والحفظ السحابي'; }); }catch(e){}
+})();
+/* ===== END EXAMS_FINAL_STABLE_PATCH_V1 ===== */
+
+</script>
+<script id="EXAMS_PRINT_FORMS_SAFE_FIX_V2">
+(function(){
+  const MOE_LOGO='https://salogos.b-cdn.net/logos/svg/1774895141785-5zgexuf8.svg';
+  function esc(v){return String(v??'').replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]});}
+  function settings(){try{return typeof getSettings==='function'?getSettings():{}}catch(e){return {}}}
+  function roomByNo(no){try{return (window.rooms||[]).find(r=>String(r.no)===String(no))||{}}catch(e){return {}}}
+  function arrByRoom(no){try{return (window.distribution&&window.distribution[no])?window.distribution[no]:[]}catch(e){return []}}
+  function subjectByVal(v){try{return (typeof subjectByName==='function'?subjectByName(v):((window.subjects||[]).find(s=>s.name==v)||{name:v}))}catch(e){return {name:v}}}
+  window.officialMeta=function(items){return '<div class="meta-row">'+(items||[]).map(x=>'<div class="meta-box">'+esc(x)+'</div>').join('')+'</div>';};
+  window.pageHeader=function(title,meta){
+    const s=settings();
+    return `<div class="official-page"><div class="official-content">
+      <div class="moe-head">
+        <div class="head-right">
+          <div>المملكة العربية السعودية</div>
+          <div>وزارة التعليم</div>
+          <div class="head-row"><span class="head-label">إدارة التعليم</span><span class="fill">${esc(s.eduDept||'')}</span></div>
+          <div class="head-row"><span class="head-label">المدرسة</span><span class="fill">${esc(s.school||'')}</span></div>
+        </div>
+        <div class="logo"><img class="moe-logo-img" alt="شعار وزارة التعليم" src="${MOE_LOGO}"></div>
+        <div class="head-left">
+          <div class="head-row"><span class="head-label">العام الدراسي</span><span class="val">${esc(s.year||'')}</span></div>
+          <div class="head-row"><span class="head-label">الفصل الدراسي</span><span class="val">${esc(s.term||'')}</span></div>
+          <div class="head-row"><span class="head-label">اليوم</span><span class="val">${esc(s.day||'')}</span></div>
+          <div class="head-row"><span class="head-label">التاريخ</span><span class="val">${esc(s.date||'')}</span></div>
+        </div>
+      </div>
+      <div class="doc-title">${esc(title||'نموذج')}</div>${meta||''}`;
+  };
+  window.pageFooter=function(){return '<div class="footer-note">ملاحظة: على الطالب / الطالبة التواجد قبل بدء الاختبار بوقت كافٍ مع الالتزام بالأنظمة والتعليمات.</div></div></div>';};
+  window.examPrintDocument=function(content,title){
+    return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title||'أعمال الاختبارات')}</title><style>
+      @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap');
+      *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}html,body{margin:0;background:#eaf3ef;font-family:Tajawal,Arial,sans-serif;color:#11221d}.official-page{width:210mm;min-height:297mm;background:#fff;margin:0 auto 12mm;padding:9mm 10mm;border:1px solid #c9d8d1;box-shadow:0 12px 30px rgba(8,60,42,.13);break-after:page;page-break-after:always}.official-page:last-child{break-after:auto;page-break-after:auto}.official-content{border:2px solid #006c35;min-height:279mm;padding:6mm;position:relative}.moe-head{display:grid;grid-template-columns:1fr 34mm 1fr;align-items:center;gap:7mm;border-bottom:2px solid #006c35;padding-bottom:6mm;margin-bottom:5mm}.head-right,.head-left{font-weight:800;line-height:1.75;font-size:13.2px;min-width:0}.head-right{text-align:center}.head-left{text-align:right}.head-row{display:grid;grid-template-columns:auto 1fr;gap:5px;align-items:center;margin:1px 0}.head-left .head-row{grid-template-columns:86px 1fr}.head-right .head-row{grid-template-columns:84px 1fr}.head-label{font-weight:900;white-space:nowrap}.fill,.val{display:inline-block;border-bottom:1px dotted #667085;color:#006c35;font-weight:900;text-align:center;min-height:18px;line-height:1.4;padding:0 4px}.logo{text-align:center}.moe-logo-img{width:32mm;height:22mm;object-fit:contain}.doc-title{background:linear-gradient(90deg,#e8f7ef,#fff,#e8f7ef);border:1.5px solid #006c35;border-radius:4px;text-align:center;font-size:22px;font-weight:900;color:#006c35;padding:7px 10px;margin:6mm 0 4mm}.meta-row{display:grid;grid-template-columns:repeat(3,1fr);gap:3mm;margin-bottom:4mm}.meta-box{border:1px solid #9fb7ad;background:#fbfffd;border-radius:2mm;padding:3mm;text-align:center;font-weight:800}.print-table{width:100%;border-collapse:collapse;table-layout:fixed;margin-top:3mm}.print-table th{background:#006c35;color:#fff;border:1px solid #006c35;padding:5px;font-size:11.5px}.print-table td{border:1px solid #9fb7ad;padding:5px;text-align:center;font-size:11.5px;vertical-align:middle}.incident-fields{display:grid;grid-template-columns:1fr 1fr;border:1px solid #9fb7ad;margin:4mm 0}.field-box{border-left:1px solid #9fb7ad;border-bottom:1px solid #9fb7ad;padding:8px;min-height:12mm}.field-box.full{grid-column:1/-1;min-height:22mm}.field-label{font-weight:900;color:#006c35;margin-bottom:3px}.sign-area{display:grid;grid-template-columns:1fr 1fr;gap:10mm;margin-top:8mm;break-inside:avoid;page-break-inside:avoid}.sign-area>div{border:1px solid #9fb7ad;min-height:34mm;padding:8px;text-align:center;font-weight:800}.sig-line{display:inline-block;min-width:45mm;border-bottom:1px dotted #667085;height:20px}.footer-note{text-align:center;font-size:10.5px;color:#667085;border-top:1px solid #006c35;margin-top:8mm;padding-top:3mm}.mini-stats{border:1px solid #9fb7ad;border-radius:3mm;margin-top:4mm;padding:3mm}.mini-stats h4{margin:0 0 2mm;color:#006c35}.mini-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:2mm}.mini{border:1px solid #c7ddd3;background:#f7faf9;border-radius:2mm;padding:2mm;text-align:center;font-weight:800}.mini b{display:block;color:#006c35;font-size:16px}
+      @media print{@page{size:A4 portrait;margin:0}html,body{width:210mm;background:#fff!important}.official-page{width:210mm!important;min-height:297mm!important;margin:0!important;border:0!important;box-shadow:none!important;padding:8mm 9mm!important}.official-content{min-height:281mm!important}.moe-head{grid-template-columns:1fr 30mm 1fr!important;gap:5mm!important}.moe-logo-img{width:29mm!important;height:20mm!important}.doc-title{font-size:19px!important}.print-table th,.print-table td{font-size:10.5px!important;padding:4px!important}.sign-area>div{min-height:30mm!important}}
+    </style></head><body>${content}
+</body></html>`;
+  };
+  window.__examPrintBusy=false;
+  window.printHTML=function(html){
+    if(window.__examPrintBusy) return;
+    window.__examPrintBusy=true;
+    const doc=window.examPrintDocument(html,'أعمال الاختبارات');
+    const iframe=document.createElement('iframe');
+    iframe.style.position='fixed'; iframe.style.left='-10000px'; iframe.style.top='0'; iframe.style.width='1px'; iframe.style.height='1px'; iframe.style.opacity='0';
+    document.body.appendChild(iframe);
+    const finish=function(){setTimeout(function(){try{iframe.contentWindow.focus();iframe.contentWindow.print();}catch(e){} setTimeout(function(){try{iframe.remove();}catch(e){} window.__examPrintBusy=false;},1200);},250);};
+    iframe.onload=finish;
+    iframe.contentDocument.open(); iframe.contentDocument.write(doc); iframe.contentDocument.close();
+  };
+  window.openExamTemplateForm=function(type,btn){
+    document.querySelectorAll('.exam-records-sidebar button').forEach(b=>b.classList.remove('active')); if(btn)btn.classList.add('active');
+    const committeeTypes=['committee-list','committee-columns','call-sheet','attendance-sheet','absence-sheet'];
+    const target=committeeTypes.includes(type)?'committeeRecordView':'incidentRecordView'; const el=document.getElementById(target); if(!el) return;
+    const title=(window.EXAM_RECORD_TITLES&&window.EXAM_RECORD_TITLES[type])||'نموذج'; const studentField=['student-late','student-absence','emergency-case'].includes(type);
+    const previewMeta=officialMeta(['القالب: مطابق لسجلات الوكيل','الطباعة: A4 رسمي','يسحب بيانات المدرسة والتاريخ تلقائياً']);
+    el.innerHTML=`<div class="exam-record-title"><h3>${esc(title)}</h3><button class="btn" onclick="printExamTemplate('${type}')">طباعة النموذج</button></div>
+      <div class="official-preview"><div class="doc-title">${esc(title)}</div>${previewMeta}<div class="record-form-note">هذا النموذج سيُطبع بالترويسة والحاشية الموحدة المطابقة لتنسيق سجلات الوكيل.</div></div>
+      <div class="record-form-grid"><div><label>اللجنة</label><select id="tplRoom">${typeof examRoomOptions==='function'?examRoomOptions():''}</select></div><div><label>المادة</label><select id="tplSubject">${typeof examSubjectOptions==='function'?examSubjectOptions():''}</select></div><div><label>${studentField?'اسم الطالب / الطالبة':'اسم المسؤول / المستلم'}</label><input id="tplPerson" list="${studentField?'studentsList':'teachersList'}" placeholder="اختياري - يسحب من القوائم أو يكتب يدوياً"></div><div><label>وقت البداية / الحضور</label><input id="tplStart" placeholder="مثال: 07:30"></div><div><label>وقت النهاية / الانصراف</label><input id="tplEnd" placeholder="مثال: 09:30"></div><div><label>الفترة</label><input id="tplPeriod" placeholder="الفترة الأولى / الثانية"></div><div style="grid-column:1/-1"><label>الملاحظات / الإجراء</label><textarea id="tplNotes" placeholder="تكتب هنا الملاحظات أو الإجراء المتخذ حسب النموذج"></textarea></div></div>
+      <div class="record-form-note">يتم سحب اليوم والتاريخ الهجري وبيانات المدرسة من ترويسة أعمال الاختبارات، والطلاب من توزيع اللجان المحفوظ.</div>`;
+  };
+  function ensureDistribution(no){try{ if((!window.distribution || !window.distribution[no] || !window.distribution[no].length) && typeof distributeStudents==='function') distributeStudents(); }catch(e){}}
+  window.printCommittee=function(){const no=document.getElementById('printRoom')?.value||'';const sub=document.getElementById('printSubject')?.value||'';ensureDistribution(no); if(typeof committeePage==='function') printHTML(committeePage(no,sub));};
+  window.printAllCommittees=function(){const sub=document.getElementById('printSubject')?.value||'';try{if(!Object.keys(window.distribution||{}).length&&typeof distributeStudents==='function')distributeStudents();}catch(e){} printHTML((window.rooms||[]).map(r=>typeof committeePage==='function'?committeePage(r.no,sub):'').join(''));};
+  window.printCallSheets=function(){const sub=document.getElementById('printSubject')?.value||'';try{if(!Object.keys(window.distribution||{}).length&&typeof distributeStudents==='function')distributeStudents();}catch(e){} printHTML((window.rooms||[]).map(r=>typeof committeePage==='function'?committeePage(r.no,sub):'').join(''));};
+  // لا نعيد تعريف printExamTemplate إذا كان موجوداً، بل سيستخدم pageHeader/printHTML الجديدين تلقائياً.
+})();
+
+
+/* ===== Committee Cards Engine ===== */
+(function(){
+  function el(id){return document.getElementById(id)}
+  function cardSafe(v){try{return typeof examSafe==='function'?examSafe(v):String(v??'').replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}catch(e){return String(v??'')}}
+  function roomLabel(r){return (r&&r.name)||('اللجنة رقم ('+((r&&r.no)||'')+')')}
+  function studentSortForCards(a,b){try{if(typeof committeeSort==='function')return committeeSort(a,b)}catch(e){};let ga=(a.stage||''),gb=(b.stage||'');try{if(typeof gradeIndex==='function'){let d=gradeIndex(ga)-gradeIndex(gb);if(d)return d}}catch(e){};return String(a.name||'').localeCompare(String(b.name||''),'ar')}
+  function getStudentKeySafe(s){try{return typeof studentKey==='function'?studentKey(s):(s.id||s.name)}catch(e){return s.id||s.name}}
+  function assignCardColumns(room, arr){
+    return assignBalancedColumnsByGrade(room||{}, arr||[]);
+  }
+  function getCardsData(){
+    let selected=(el('cardsRoom')&&el('cardsRoom').value)||'all';let out=[];
+    (window.rooms||rooms||[]).forEach(r=>{if(selected!=='all'&&String(r.no)!==String(selected))return;let arr=((window.distribution||distribution||{})[r.no]||[]);let withCols=assignCardColumns(r,arr);withCols.forEach(s=>out.push({student:s,room:r}))});
+    return out;
+  }
+  window.refreshCardRoomOptions=function(){let sel=el('cardsRoom');if(!sel)return;let current=sel.value||'all';sel.innerHTML='<option value="all">جميع اللجان</option>'+((window.rooms||rooms||[]).map(r=>'<option value="'+cardSafe(r.no)+'">'+cardSafe(roomLabel(r))+'</option>').join(''));sel.value=[...sel.options].some(o=>o.value===current)?current:'all'};
+  window.renderCommitteeCards=function(){refreshCardRoomOptions();let data=getCardsData();let box=el('committeeCardsPreview'),sum=el('committeeCardsSummary');if(!box)return;if(!data.length){box.innerHTML='<div class="record-form-note">لا توجد بطاقات للعرض. تأكد من حفظ اللجان وتوزيع الطلاب أولاً.</div>';if(sum)sum.textContent='لا توجد بيانات بطاقات.';return}box.innerHTML=data.map((x,i)=>{let s=x.student,r=x.room;return '<div class="committee-card"><h4>بطاقة لجنة رقم '+(i+1)+'</h4><div class="card-row"><div class="card-label">اسم الطالب</div><div class="card-val">'+cardSafe(s.name)+'</div></div><div class="card-row"><div class="card-label">الصف</div><div class="card-val">'+cardSafe(s.stage||'')+'</div></div><div class="card-row"><div class="card-label">السجل المدني</div><div class="card-val">'+cardSafe(s.id||'')+'</div></div><div class="card-row"><div class="card-label">رقم القاعة</div><div class="card-val">'+cardSafe(r.room||r.no||'')+'</div></div><div class="card-row"><div class="card-label">رقم العمود</div><div class="card-val">'+cardSafe(s.column||'')+'</div></div><div class="card-row"><div class="card-label">اللجنة</div><div class="card-val">'+cardSafe(roomLabel(r))+'</div></div></div>'}).join('');if(sum)sum.textContent='عدد البطاقات المعروضة: '+data.length+' بطاقة.';};
+  window.committeeCardsPrintHTML=function(){let data=getCardsData();if(!data.length)return '';let title='بطاقات اللجان';let s=(typeof getSettings==='function'?getSettings():{});let meta=(typeof officialMeta==='function'?officialMeta(['العام الدراسي : '+(s.year||''),'الفصل الدراسي : '+(s.term||''),'عدد البطاقات : '+data.length]):'');let body='<div class="committee-cards-print-grid">'+data.map((x,i)=>{let st=x.student,r=x.room;return '<div class="committee-card"><h4>بطاقة لجنة</h4><div class="card-row"><div class="card-label">اسم الطالب</div><div class="card-val">'+cardSafe(st.name)+'</div></div><div class="card-row"><div class="card-label">الصف</div><div class="card-val">'+cardSafe(st.stage||'')+'</div></div><div class="card-row"><div class="card-label">السجل المدني</div><div class="card-val">'+cardSafe(st.id||'')+'</div></div><div class="card-row"><div class="card-label">رقم القاعة</div><div class="card-val">'+cardSafe(r.room||r.no||'')+'</div></div><div class="card-row"><div class="card-label">رقم العمود</div><div class="card-val">'+cardSafe(st.column||'')+'</div></div><div class="card-row"><div class="card-label">اللجنة</div><div class="card-val">'+cardSafe(roomLabel(r))+'</div></div></div>'}).join('')+'</div>';try{return pageHeader(title,meta)+body+pageFooter()}catch(e){return body}};
+  window.printCommitteeCards=function(){let html=committeeCardsPrintHTML();if(!html){alert('لا توجد بطاقات للطباعة.');return} if(typeof printHTML==='function')printHTML(html);else{let w=window.open('','_blank');w.document.write('<html dir="rtl"><body>'+html+'</body></html>');w.document.close();w.print()}};
+  window.exportCommitteeCardsCSV=function(){let data=getCardsData();if(!data.length){alert('لا توجد بطاقات للتصدير.');return}let rows=[['اسم الطالب','الصف','السجل المدني','رقم القاعة','رقم العمود','اللجنة']].concat(data.map(x=>[x.student.name||'',x.student.stage||'',x.student.id||'',x.room.room||x.room.no||'',x.student.column||'',roomLabel(x.room)]));let csv='﻿'+rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');let blob=new Blob([csv],{type:'text/csv;charset=utf-8'});let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='بطاقات_اللجان.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};
+  try{let old=window.updateLists||updateLists;window.updateLists=function(){old.apply(this,arguments);refreshCardRoomOptions();};}catch(e){}
+})();
 </script>
 </body>
 </html>

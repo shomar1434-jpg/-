@@ -1,4 +1,101 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>مركز المعلومات المدرسية</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    :root{--teal:#0f766e;--slate:#0f172a;--muted:#64748b;--bg:#f1f5f9;--card:#ffffff;--border:#e2e8f0;--danger:#dc2626;--amber:#d97706;--indigo:#4f46e5;--emerald:#059669}
+    *{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Tahoma,Arial,sans-serif;background:linear-gradient(135deg,#ecfeff,#f8fafc 45%,#ecfdf5);color:var(--slate)}
+    .top{position:sticky;top:0;z-index:10;background:rgba(255,255,255,.92);backdrop-filter:blur(10px);border-bottom:1px solid var(--border);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 10px 24px rgba(15,23,42,.06)}
+    .brand{display:flex;align-items:center;gap:12px}.logo{width:42px;height:42px;object-fit:contain}.title{font-weight:900;font-size:18px}.sub{font-size:12px;color:var(--muted);font-weight:700;margin-top:4px}.btn{border:0;border-radius:16px;padding:12px 18px;font-weight:900;cursor:pointer;background:var(--teal);color:#fff;box-shadow:0 8px 18px rgba(15,118,110,.20)}
+    .btn.secondary{background:#fff;color:var(--teal);border:1px solid #99f6e4;box-shadow:none}.btn.danger{background:var(--danger)}.btn.amber{background:var(--amber)}.btn.indigo{background:var(--indigo)}.btn.small{padding:8px 12px;border-radius:12px;font-size:12px}.wrap{max-width:1280px;margin:auto;padding:22px}.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:16px}.card{grid-column:span 12;background:rgba(255,255,255,.92);border:1px solid rgba(226,232,240,.85);border-radius:28px;padding:20px;box-shadow:0 16px 36px rgba(15,23,42,.08)}
+    .span4{grid-column:span 4}.span5{grid-column:span 5}.span7{grid-column:span 7}.span8{grid-column:span 8}@media(max-width:950px){.span4,.span5,.span7,.span8{grid-column:span 12}.top{align-items:flex-start;flex-direction:column}}
+    h2,h3{margin:0 0 14px} label{display:block;font-size:12px;color:var(--muted);font-weight:900;margin-bottom:6px} input,select{width:100%;border:1px solid var(--border);border-radius:16px;padding:12px 14px;background:#fff;font-weight:800;outline:none} input:focus,select:focus{border-color:#14b8a6;box-shadow:0 0 0 3px rgba(20,184,166,.12)} .row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}@media(max-width:850px){.row{grid-template-columns:1fr}}
+    .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.stat{background:linear-gradient(135deg,#f8fafc,#ecfeff);border:1px solid #ccfbf1;border-radius:22px;padding:16px;text-align:center}.stat b{display:block;font-size:28px;color:var(--teal)}.stat span{font-size:12px;color:var(--muted);font-weight:900}.note{background:#fffbeb;border:1px solid #fde68a;color:#92400e;padding:12px 14px;border-radius:18px;font-size:13px;font-weight:800;line-height:1.8}.ok{background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;padding:12px;border-radius:16px;font-weight:900}.bad{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:12px;border-radius:16px;font-weight:900}.muted{color:var(--muted);font-size:12px;font-weight:800;line-height:1.8}
+    table{width:100%;border-collapse:separate;border-spacing:0;min-width:920px} th,td{border-bottom:1px solid var(--border);padding:11px;text-align:right;font-size:13px;vertical-align:middle} th{background:#f8fafc;color:#334155;font-weight:900;position:sticky;top:0;z-index:1}.tablewrap{max-height:520px;overflow:auto;border:1px solid var(--border);border-radius:22px;background:#fff}.tree{display:flex;flex-direction:column;gap:10px}.treeItem{border:1px solid var(--border);border-radius:18px;padding:12px;background:#fff}.treeHead{display:flex;justify-content:space-between;align-items:center;font-weight:900}.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.chip{border:1px solid #99f6e4;background:#f0fdfa;color:#0f766e;border-radius:999px;padding:8px 11px;font-size:12px;font-weight:900;cursor:pointer}.chip.active{background:#0f766e;color:#fff}.actions{display:flex;gap:8px;flex-wrap:wrap}.preview{max-height:250px;overflow:auto;border:1px solid var(--border);border-radius:18px;background:#fff;margin-top:12px}.hidden{display:none!important}.footerbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:14px}.pill{background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe;border-radius:999px;padding:8px 12px;font-size:12px;font-weight:900}.dangerText{color:#b91c1c}.devbox{background:#fff7ed;border:1px solid #fdba74;border-radius:22px;padding:16px;margin:0 0 16px}.noPrint{}@media print{.noPrint{display:none!important}.card{box-shadow:none;border:1px solid #999}.wrap{padding:0}.top{position:static;box-shadow:none}}
+  </style>
+</head>
+<body>
+  <header class="top noPrint">
+    <div class="brand">
+      <img class="logo" src="https://upload.wikimedia.org/wikipedia/ar/1/17/Saudi_Ministry_of_Education_Logo_2025.png" alt="وزارة التعليم">
+      <div><div class="title">مركز المعلومات المدرسية</div><div class="sub" id="schoolLabel">جارٍ تحديد المدرسة النشطة...</div></div>
+    </div>
+    <div class="actions">
+      <button class="btn secondary" onclick="location.href='manager.html'">العودة لقسم المدير</button>
+      <button class="btn" onclick="loadStudents()">تحديث البيانات</button>
+    </div>
+  </header>
 
+  <main class="wrap">
+    <div id="statusBox" class="note">يعرض هذا المركز بيانات المدرسة النشطة فقط حسب school_id. عند التجربة محليًا يمكن تفعيل وضع التطوير المحلي دون رفع GitHub.</div>
+
+    <section id="devModeBox" class="devbox hidden noPrint">
+      <h3>وضع التجربة المحلية</h3>
+      <p class="muted">لم يتم العثور على مدرسة نشطة من الجلسة. اختر مدرسة من Supabase أو أدخل school_id يدويًا لتجربة الاستيراد والحفظ محليًا.</p>
+      <div class="row">
+        <div><label>اختيار مدرسة من Supabase</label><select id="devSchoolSelect"><option value="">تحميل المدارس...</option></select></div>
+        <div><label>أو إدخال school_id يدويًا</label><input id="devSchoolId" placeholder="مثال: DEV_SCHOOL أو UUID المدرسة"></div>
+        <div><label>اسم المدرسة التجريبية</label><input id="devSchoolName" placeholder="مدرسة تجريبية"></div>
+        <div style="align-self:end"><button class="btn amber" onclick="activateDevSchool()">تفعيل التجربة المحلية</button></div>
+      </div>
+    </section>
+
+    <section class="grid" style="margin-top:16px">
+      <div class="card span8">
+        <h2>استيراد بيانات الطلاب من نور</h2>
+        <p class="muted">الأعمدة المقبولة: المرحلة، الصف، المسار، الشعبة، اسم الطالب، رقم الطالب، رقم الهوية. يقبل النظام أيضًا مسميات قريبة مثل: المرحلة الدراسية، الصف الدراسي، الفصل، رقم الشعبة، الطالب، الاسم، التخصص، الخطة الدراسية.</p>
+        <div class="row">
+          <div><label>ملف Excel من نور</label><input id="excelFile" type="file" accept=".xlsx,.xls,.csv"></div>
+          <div><label>طريقة الحفظ</label><select id="saveMode"><option value="replace" selected>تحديث شامل: تنظيف بيانات العام ثم حفظ الملف الجديد</option><option value="append">إضافة الجديد فقط دون تكرار</option></select></div>
+          <div><label>العام الدراسي</label><input id="academicYear" placeholder="1447" value="1447"></div>
+          <div style="align-self:end"><button class="btn" onclick="readExcel()">معاينة الملف</button></div>
+        </div>
+        <div id="previewBox" class="preview hidden"></div>
+        <div class="footerbar">
+          <span class="pill" id="previewCount">لم تتم قراءة ملف بعد</span>
+          <button id="savePreviewBtn" class="btn hidden" onclick="savePreview()">حفظ/تحديث بيانات مركز المعلومات</button><button class="btn danger" onclick="cleanCurrentYearFromCloud()">تنظيف بيانات العام الحالي من السحابة</button>
+        </div>
+      </div>
+
+      <div class="card span4">
+        <h2>إحصاءات المدرسة النشطة</h2>
+        <div class="stats" style="grid-template-columns:repeat(2,1fr)">
+          <div class="stat"><b id="stStudents">0</b><span>الطلاب</span></div>
+          <div class="stat"><b id="stStages">0</b><span>المراحل</span></div>
+          <div class="stat"><b id="stGrades">0</b><span>الصفوف</span></div>
+          <div class="stat"><b id="stSections">0</b><span>الشعب</span></div>
+        </div>
+        <div class="note" style="margin-top:14px">أي تعديل هنا على المرحلة أو الصف أو المسار أو الشعبة سيصبح هو المصدر الرسمي لاحقًا عند ربط السجلات بمركز المعلومات.</div>
+      </div>
+
+      <div class="card span4">
+        <h2>المراحل والصفوف والمسارات والشعب</h2>
+        <div id="treeBox" class="tree"><div class="muted">لا توجد بيانات بعد.</div></div>
+      </div>
+
+      <div class="card span8">
+        <h2>عرض طلاب الصف والشعبة</h2>
+        <div class="row">
+          <div><label>المرحلة</label><select id="filterStage" onchange="rebuildFilters();renderStudents()"></select></div>
+          <div><label>الصف</label><select id="filterGrade" onchange="rebuildFilters();renderStudents()"></select></div>
+          <div><label>المسار</label><select id="filterTrack" onchange="rebuildFilters();renderStudents()"></select></div>
+          <div><label>الشعبة</label><select id="filterSection" onchange="renderStudents()"></select></div>
+        </div>
+        <div class="row" style="margin-top:12px;grid-template-columns:2fr 1fr 1fr 1fr">
+          <div><label>بحث باسم الطالب</label><input id="searchName" placeholder="اكتب جزءًا من الاسم" oninput="renderStudents()"></div>
+          <div style="align-self:end"><button class="btn secondary" onclick="clearFilters()">إظهار الكل</button></div>
+          <div style="align-self:end"><span class="pill" id="shownCount">0 طالب</span></div>
+        </div>
+        <div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>م</th><th>اسم الطالب</th><th>رقم الطالب</th><th>المرحلة</th><th>الصف</th><th>المسار</th><th>الشعبة</th><th>رقم نور</th><th>الهوية</th><th class="noPrint">إجراءات</th></tr></thead><tbody id="studentsBody"></tbody></table></div>
+      </div>
+    </section>
+  </main>
+
+<script>
 (function(){
   const SUPABASE_URL = localStorage.getItem('smartSchoolSupabaseUrl') || 'https://cijhgvbtrvmmlcssgxht.supabase.co';
   const DEFAULT_SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
@@ -158,6 +255,33 @@
     if(safe(r.national_id)) return ['nid',currentSchool.id,year,safe(r.national_id)].join('|');
     return ['name',currentSchool.id,year,normText(r.student_name),normText(r.stage),normText(r.grade),normText(r.track_name||''),normText(r.section_name)].join('|');
   }
+  function localCenterKeys(year){
+    const sid=safe(currentSchool.id)||'DEV_SCHOOL';
+    return ['schoolInformationCenter:'+sid+':'+year,'school_information_center:'+sid+':'+year,'sic_students:'+sid+':'+year,'school_information_center_students'];
+  }
+  function saveLocalCenterMirror(rows, year, source){
+    try{
+      year=safe(year)||safe($('academicYear').value)||'1447';
+      const cleanRows=(rows||[]).map(r=>cleanStudent(r)).filter(r=>r.student_name);
+      const payload={school_id:currentSchool.id||'DEV_SCHOOL',school_name:currentSchool.name||'',academic_year:year,students:cleanRows,updated_at:new Date().toISOString(),source:source||'school_information_center'};
+      localCenterKeys(year).forEach(k=>localStorage.setItem(k,JSON.stringify(payload)));
+      localStorage.setItem('school_info_academic_year',year);
+      window.dispatchEvent(new StorageEvent('storage',{key:'schoolInformationCenter:'+payload.school_id+':'+year,newValue:JSON.stringify(payload)}));
+      return cleanRows.length;
+    }catch(e){console.warn('تعذر حفظ نسخة مركز المعلومات المحلية',e);return 0;}
+  }
+  function readLocalCenterMirror(year){
+    try{
+      year=safe(year)||safe($('academicYear').value)||'1447';
+      for(const k of localCenterKeys(year)){
+        const raw=localStorage.getItem(k); if(!raw) continue;
+        const d=JSON.parse(raw); const rows=Array.isArray(d)?d:(d.students||d.rows||[]);
+        if(Array.isArray(rows)&&rows.length) return rows.map(r=>cleanStudent(r));
+      }
+    }catch(e){}
+    return [];
+  }
+
   function rowToStudent(row){
     let name=pick(row,['اسم الطالب','الطالب','الاسم','اسم','Student Name','student_name']);
     let stage=pick(row,['المرحلة','المرحلة الدراسية','المرحله الدراسيه','stage']);
@@ -181,6 +305,7 @@
       const seen=new Set(); let duplicates=0; previewRows=[];
       parsed.forEach(r=>{ const k=dedupeKey(r); if(seen.has(k)){duplicates++; return;} seen.add(k); previewRows.push(r); });
       if(!previewRows.length) throw new Error('لم يتم العثور على أسماء طلاب. تأكد من وجود عمود اسم الطالب.');
+      saveLocalCenterMirror(previewRows, safe($('academicYear').value)||'1447', 'preview');
       $('previewCount').textContent='تمت قراءة '+previewRows.length+' طالبًا' + (duplicates ? ' — تم تجاهل '+duplicates+' مكرر في الملف' : ''); $('savePreviewBtn').classList.remove('hidden');
       $('previewBox').classList.remove('hidden');
       $('previewBox').innerHTML='<table><thead><tr><th>م</th><th>المرحلة</th><th>الصف</th><th>المسار</th><th>شعبة نور</th><th>الشعبة</th><th>رقم الطالب</th><th>اسم الطالب</th></tr></thead><tbody>'+previewRows.slice(0,100).map((r,i)=>`<tr><td>${i+1}</td><td>${html(r.stage)}</td><td>${html(r.grade)}</td><td>${html(r.track_name||'')}</td><td>${html(r.noor_section_code)}</td><td>${html(r.section_name)}</td><td>${html(r.student_number||'')}</td><td>${html(r.student_name)}</td></tr>`).join('')+'</tbody></table>';
@@ -192,9 +317,10 @@
       if(!currentSchool.id) detectSchool();
       if(!currentSchool.id) throw new Error('لا توجد مدرسة نشطة أو وضع تجربة محلي مفعل.');
       if(!previewRows.length) throw new Error('لا توجد بيانات للمعاينة.');
-      const client=getClient();
       const mode=$('saveMode').value;
       const year=safe($('academicYear').value)||'1447';
+      let client;
+      try{ client=getClient(); }catch(localOnlyError){ client=null; }
       const clean=previewRows.map(r=>cleanStudent(r)).map(r=>({
         school_id:currentSchool.id,
         student_name:r.student_name,
@@ -208,6 +334,13 @@
         student_status:'نشط',
         academic_year:year
       }));
+      const localSaved=saveLocalCenterMirror(clean, year, 'saved');
+      if(!client){
+        allStudents=clean; rebuildFilters(true); renderTree(); renderStats(); renderStudents();
+        previewRows=[]; $('savePreviewBtn').classList.add('hidden'); $('previewCount').textContent='تم الحفظ محليًا';
+        setStatus('تم حفظ '+localSaved+' طالبًا في مركز المعلومات محليًا. يمكن الآن الاستيراد من قسم أعمال الاختبارات.','ok');
+        return;
+      }
       if(mode==='replace'){
         setStatus('جارٍ تنظيف بيانات العام الحالي من السحابة ثم حفظ الملف الجديد...','note');
         const del=await client.from('students').delete().eq('school_id',currentSchool.id).eq('academic_year',year);
@@ -262,9 +395,9 @@
     try{
       if(!currentSchool.id) detectSchool(); if(!currentSchool.id){ return; }
       const client=getClient(); const year=safe($('academicYear').value)||'1447'; const q=await client.from('students').select('*').eq('school_id',currentSchool.id).eq('academic_year',year).neq('student_status','محذوف').order('stage',{ascending:true}).order('grade',{ascending:true}).order('track_name',{ascending:true}).order('section_name',{ascending:true}).order('student_name',{ascending:true});
-      if(q.error) throw q.error; allStudents=(q.data||[]).map(r=>cleanStudent(r)); rebuildFilters(true); renderTree(); renderStats(); renderStudents();
+      if(q.error) throw q.error; allStudents=(q.data||[]).map(r=>cleanStudent(r)); saveLocalCenterMirror(allStudents, year, 'cloud_load'); rebuildFilters(true); renderTree(); renderStats(); renderStudents();
       setStatus('تم تحميل بيانات المدرسة النشطة: '+allStudents.length+' طالبًا.','ok');
-    }catch(e){setStatus('تعذر تحميل الطلاب: '+(e.message||e),'bad')}
+    }catch(e){const localRows=readLocalCenterMirror(safe($('academicYear').value)||'1447'); if(localRows.length){allStudents=localRows; rebuildFilters(true); renderTree(); renderStats(); renderStudents(); setStatus('تم تحميل '+localRows.length+' طالبًا من النسخة المحلية لمركز المعلومات.','ok');}else{setStatus('تعذر تحميل الطلاب: '+(e.message||e),'bad')}}
   }
   function unique(arr){return [...new Set(arr.map(safe).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ar'))}
   function fill(sel,vals,keep){const old=keep?sel.value:''; sel.innerHTML='<option value="">الكل</option>'+vals.map(v=>`<option>${html(v)}</option>`).join(''); if(old && vals.includes(old)) sel.value=old;}
@@ -315,3 +448,6 @@
   window.addEventListener('focus',()=>{ if(currentSchool.id) loadStudents(); });
   document.addEventListener('visibilitychange',()=>{ if(!document.hidden && currentSchool.id) loadStudents(); });
 })();
+</script>
+</body>
+</html>

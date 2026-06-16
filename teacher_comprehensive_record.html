@@ -106,6 +106,8 @@
                     teacher: 'أستاذ المادة'
                 },
                 centerImportStatus: 'جاهز للاستيراد من مركز المعلومات المدرسية',
+                centerDiscoveredClasses: [],
+                centerSelectedClassKey: '',
 
                 // Temp storage for new class (kept internally for backward compatibility, but UI now uses Center Import only)
                 newClassForm: {
@@ -300,23 +302,27 @@
                 },
 
                 normalizeCenterStudent(raw, idx = 0) {
-                    const name = raw.student_name || raw.studentName || raw.name || raw['اسم الطالب'] || raw['الطالب'] || '';
-                    const studentNumber = raw.student_number || raw.studentNumber || raw['رقم الطالب'] || raw['رقم نور'] || raw.national_id || raw['رقم الهوية'] || '';
+                    const name = raw.student_name || raw.studentName || raw.name || raw.full_name || raw['اسم الطالب'] || raw['الطالب'] || raw['الاسم'] || '';
+                    const studentNumber = raw.student_number || raw.studentNumber || raw.national_id || raw.nationalId || raw.id_number || raw.identity || raw['السجل المدني'] || raw['رقم السجل المدني'] || raw['رقم الهوية'] || raw['رقم الطالب'] || raw['رقم نور'] || raw['الهوية'] || '';
+                    const stageValue = raw.stage || raw.stage_name || raw['المرحلة'] || raw['المرحلة الدراسية'] || raw.level || raw['المرحلة/الصف'] || '';
+                    const gradeValue = raw.grade || raw.grade_name || raw.class_name || raw.class || raw['الصف'] || raw['الصف الدراسي'] || raw['المرحلة/الصف'] || raw['المرحلة'] || '';
                     return {
                         id: raw.id ? `center-${raw.id}` : `center-${studentNumber || Date.now()}-${idx}`,
                         centerStudentId: raw.id || '',
                         student_number: studentNumber,
                         name: (name || '').toString().trim(),
-                        stage: raw.stage || raw['المرحلة'] || '',
-                        grade: raw.grade || raw['الصف'] || '',
-                        track_name: raw.track_name || raw.track || raw['المسار'] || '',
-                        section_name: raw.section_name || raw.section || raw['الشعبة'] || '',
+                        stage: (stageValue || '').toString().trim(),
+                        grade: (gradeValue || '').toString().trim(),
+                        track_name: raw.track_name || raw.track || raw.path || raw['المسار'] || '',
+                        section_name: raw.section_name || raw.section || raw.division || raw.classroom || raw['الشعبة'] || raw['الفصل'] || raw['الصف/الشعبة'] || '',
                         records: raw.records || {},
                         assessments: raw.assessments || this.defaultAssessments()
                     };
                 },
 
                 getCenterStudentsFromLocalSources() {
+                    // ربط محلي موحد مع مركز المعلومات المدرسية دون التأثير على أي قسم آخر.
+                    // يعتمد على نفس مفاتيح التخزين التي أثبتت نجاحها في أعمال الاختبارات.
                     const windowSources = [
                         window.schoolInformationCenterStudents,
                         window.SCHOOL_INFORMATION_CENTER_STUDENTS,
@@ -325,7 +331,24 @@
                     ].filter(Array.isArray);
                     if (windowSources.length) return windowSources[0];
 
+                    const getActiveSchoolId = () => {
+                        try {
+                            const active = (window.ActiveSchoolScope && window.ActiveSchoolScope.get) ? window.ActiveSchoolScope.get() : {};
+                            return active.schoolId || active.id || localStorage.getItem('active_school_id') || localStorage.getItem('school_id') || 'DEV_SCHOOL';
+                        } catch (e) {
+                            return localStorage.getItem('active_school_id') || localStorage.getItem('school_id') || 'DEV_SCHOOL';
+                        }
+                    };
+                    const activeSchoolId = getActiveSchoolId();
+                    const yearRaw = (localStorage.getItem('school_info_academic_year') || this.globalMetadata?.year || localStorage.getItem('school_academic_year') || '1447').toString();
+                    const year = (yearRaw.match(/\d{4}/) || [yearRaw])[0];
                     const keys = [
+                        `schoolInformationCenter:${activeSchoolId}:${year}`,
+                        `school_information_center:${activeSchoolId}:${year}`,
+                        `sic_students:${activeSchoolId}:${year}`,
+                        `school_information_center_students:${activeSchoolId}`,
+                        'school_information_center_students',
+                        'schoolInformationCenterStudents',
                         'school_information_students',
                         'school_center_students',
                         'sic_students_cache',
@@ -338,32 +361,32 @@
                             const value = localStorage.getItem(key);
                             if (!value) continue;
                             const parsed = JSON.parse(value);
-                            if (Array.isArray(parsed)) return parsed;
-                            if (Array.isArray(parsed.students)) return parsed.students;
-                            if (Array.isArray(parsed.data)) return parsed.data;
+                            const rows = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.students) ? parsed.students : (Array.isArray(parsed.data) ? parsed.data : []));
+                            if (rows.length) {
+                                this.centerImportStatus = `تم العثور على ${rows.length} طالب/طالبة في مركز المعلومات المحلي.`;
+                                return rows;
+                            }
                         } catch (e) {}
                     }
                     return [];
                 },
 
                 async fetchStudentsFromSupabaseIfAvailable() {
-                    const form = this.centerImportForm;
-                    const client = window.supabaseClient || window.schoolSupabaseClient || window._supabaseClient || null;
+                    // قراءة واسعة وآمنة من Supabase: لا نفلتر بالمرحلة/الصف قبل معرفة الصفوف؛
+                    // لأن جدول students قد يحفظ stage بصيغة "ثانوي" و grade بصيغة "الأول الثانوي".
+                    // التصفية والتجميع تتم محلياً بعد الجلب حتى يظهر كل صف وشعبة للمعلم.
+                    const client = window.supabaseClient || window.schoolSupabaseClient || window._supabaseClient || window.supabase || null;
                     if (!client || !client.from) return [];
                     try {
                         const active = (window.ActiveSchoolScope && window.ActiveSchoolScope.get) ? window.ActiveSchoolScope.get() : {};
                         const activeSchoolId = active.schoolId || active.id || localStorage.getItem('active_school_id') || localStorage.getItem('school_id') || '';
-                        let query = client.from('students').select('*')
-                            .eq('student_status', 'نشط')
-                            .eq('stage', this.stagesMeta[form.stage]?.label || form.stage)
-                            .eq('grade', form.grade);
+                        let query = client.from('students').select('*');
                         if (activeSchoolId) query = query.eq('school_id', activeSchoolId);
-                        if (this.globalMetadata?.year) query = query.eq('academic_year', String(this.globalMetadata.year).replace(/[^0-9]/g, '') || this.globalMetadata.year);
-                        if (form.track) query = query.eq('track_name', form.track);
-                        if (form.section) query = query.eq('section_name', form.section);
                         const result = await query.order('student_name', { ascending: true });
                         if (result.error) throw result.error;
-                        return result.data || [];
+                        const rows = result.data || [];
+                        if (rows.length) this.centerImportStatus = `تم جلب ${rows.length} طالب/طالبة من مركز المعلومات السحابي.`;
+                        return rows;
                     } catch (e) {
                         console.warn('تعذر جلب الطلاب من Supabase:', e);
                         return [];
@@ -377,25 +400,76 @@
                     return `${form.grade || stageText}${trackText}${sectionText}`.trim();
                 },
 
+                groupCenterStudentsForTeacher(rows) {
+                    const normalized = (rows || []).map((s, idx) => this.normalizeCenterStudent(s, idx)).filter(s => s.name);
+                    const groupsMap = new Map();
+                    const stageKeyFromStudent = (s) => this.stageLabelToKey(s.stage || s.grade || '') || this.centerImportForm.stage || 'middle';
+                    normalized.forEach(s => {
+                        const stage = stageKeyFromStudent(s);
+                        const grade = (s.grade || s.stage || 'صف غير محدد').toString().trim();
+                        const track = (s.track_name || '').toString().trim();
+                        const section = (s.section_name || '').toString().trim();
+                        const key = [stage, grade, track, section].join('||');
+                        if (!groupsMap.has(key)) {
+                            groupsMap.set(key, { key, stage, grade, track, section, count: 0 });
+                        }
+                        groupsMap.get(key).count += 1;
+                    });
+                    return Array.from(groupsMap.values()).sort((a, b) => `${a.stage} ${a.grade} ${a.section}`.localeCompare(`${b.stage} ${b.grade} ${b.section}`, 'ar'));
+                },
+
+                async discoverInformationCenterClasses() {
+                    this.centerImportStatus = 'جاري فتح بيانات مركز المعلومات...';
+                    let rows = await this.fetchStudentsFromSupabaseIfAvailable();
+                    if (!rows.length) rows = this.getCenterStudentsFromLocalSources();
+                    this.centerDiscoveredClasses = this.groupCenterStudentsForTeacher(rows);
+                    if (!this.centerDiscoveredClasses.length) {
+                        this.centerSelectedClassKey = '';
+                        this.centerImportStatus = 'لم يتم العثور على صفوف في مركز المعلومات. تأكد من استيراد الطلاب أولاً في مركز المعلومات.';
+                        this.showAlert('لم يتم العثور على صفوف مستوردة من مركز المعلومات.');
+                        return;
+                    }
+                    this.centerSelectedClassKey = this.centerDiscoveredClasses[0].key;
+                    this.applyCenterDiscoveredClass();
+                    this.centerImportStatus = `تم التعرف على ${this.centerDiscoveredClasses.length} صف/شعبة من مركز المعلومات وتوزيع الطلاب عليها تلقائياً. اختر الصف من القائمة، أدخل اسم المادة، ثم اضغط إنشاء سجل الصف لتظهر بطاقته ويرتبط بالسجلات.`;
+                    this.showNotification('تم التعرف على الصفوف وتوزيع الطلاب حسب الشعب من مركز المعلومات.', 'success');
+                },
+
+                applyCenterDiscoveredClass() {
+                    const group = (this.centerDiscoveredClasses || []).find(g => g.key === this.centerSelectedClassKey);
+                    if (!group) return;
+                    this.centerImportForm.stage = group.stage || this.centerImportForm.stage || 'middle';
+                    this.centerImportForm.grade = group.grade || '';
+                    this.centerImportForm.track = group.track || '';
+                    this.centerImportForm.section = group.section || '';
+                },
+
                 async importClassFromInformationCenter() {
                     if (!this.centerImportForm.grade.trim() || !this.centerImportForm.subject.trim()) {
                         this.showAlert('يرجى تحديد الصف واسم المادة قبل إنشاء سجل المعلم من مركز المعلومات.');
                         return;
                     }
 
-                    this.centerImportStatus = 'جاري جلب الطلاب من مركز المعلومات...';
+                    this.applyCenterDiscoveredClass();
+                    this.centerImportStatus = 'جاري جلب طلاب الصف المختار من مركز المعلومات...';
                     let sourceStudents = await this.fetchStudentsFromSupabaseIfAvailable();
                     if (!sourceStudents.length) sourceStudents = this.getCenterStudentsFromLocalSources();
 
                     const form = this.centerImportForm;
                     const stageLabel = this.stagesMeta[form.stage]?.label || '';
+                    const normalizeText = value => (value || '').toString().replace(/\s+/g, ' ').trim();
+                    const includesMatch = (value, wanted) => {
+                        const a = normalizeText(value);
+                        const b = normalizeText(wanted);
+                        return !b || a === b || a.includes(b) || b.includes(a);
+                    };
                     const filtered = sourceStudents
-                        .filter(s => !s.student_status || s.student_status === 'نشط')
-                        .filter(s => !form.stage || this.stageLabelToKey(s.stage || s['المرحلة']) === form.stage || (s.stage || '').includes(stageLabel.replace('المرحلة ', '')))
-                        .filter(s => !form.grade || (s.grade || s['الصف'] || '').toString().trim() === form.grade.trim())
-                        .filter(s => !form.track || (s.track_name || s.track || s['المسار'] || '').toString().trim() === form.track.trim())
-                        .filter(s => !form.section || (s.section_name || s.section || s['الشعبة'] || '').toString().trim() === form.section.trim())
                         .map((s, idx) => this.normalizeCenterStudent(s, idx))
+                        .filter(s => !s.student_status || ['نشط', 'active', 'فعال', ''].includes(String(s.student_status).trim()))
+                        .filter(s => !form.stage || this.stageLabelToKey(s.stage || s.grade) === form.stage || includesMatch(s.stage || s.grade, stageLabel.replace('المرحلة ', '')))
+                        .filter(s => !form.grade || includesMatch(s.grade || s.stage, form.grade))
+                        .filter(s => !form.track || includesMatch(s.track_name, form.track))
+                        .filter(s => !form.section || includesMatch(s.section_name, form.section))
                         .filter(s => s.name);
 
                     if (!filtered.length) {
@@ -425,6 +499,19 @@
                     this.saveData();
                     this.centerImportStatus = `تم إنشاء سجل للصف واستيراد ${filtered.length} طالباً من مركز المعلومات.`;
                     this.showNotification(this.centerImportStatus, 'success');
+                },
+
+                async handleInformationCenterTopImport() {
+                    // يفتح تبويب إدارة الطلاب والفصول ثم يحمل الصفوف فعلياً من مركز المعلومات.
+                    this.activeTab = 'students';
+                    await this.$nextTick();
+                    const panel = document.getElementById('teacherInformationCenterImportPanel');
+                    if (panel && panel.scrollIntoView) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    await this.discoverInformationCenterClasses();
+                    setTimeout(() => {
+                        const subjectInput = document.getElementById('teacherCenterSubjectInput');
+                        if (subjectInput && subjectInput.focus) subjectInput.focus();
+                    }, 120);
                 },
 
                 clearTeacherRegisterLocalData() {
@@ -1256,7 +1343,7 @@
                     </select>
                 </div>
 
-                <button @click="activeTab = 'students'"
+                <button @click="handleInformationCenterTopImport()"
                         class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-xl text-xs font-bold shadow-md transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap">
                     <span>🔗</span>
                     <span>استيراد من مركز المعلومات</span>
@@ -2123,7 +2210,7 @@
         <div x-show="activeTab === 'students'" class="space-y-8 animate-fadeIn" style="display: none;">
             
             <!-- Information Center Import Panel -->
-            <div class="bg-white p-5 rounded-2xl border border-emerald-100 shadow-sm">
+            <div id="teacherInformationCenterImportPanel" class="bg-white p-5 rounded-2xl border border-emerald-100 shadow-sm">
                 <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-4">
                     <div>
                         <h3 class="font-bold text-slate-800 text-lg">🔗 استيراد الصفوف من مركز المعلومات المدرسية</h3>
@@ -2134,6 +2221,17 @@
                         🧹 تنظيف السجل المحلي
                     </button>
                 </div>
+
+                <template x-if="centerDiscoveredClasses.length > 0">
+                    <div class="mb-4 p-3 rounded-xl bg-blue-50 border border-blue-100">
+                        <label class="block text-[11px] font-black text-blue-900 mb-2">اختر الصف/الشعبة المستوردة من مركز المعلومات</label>
+                        <select x-model="centerSelectedClassKey" @change="applyCenterDiscoveredClass()" class="w-full bg-white border border-blue-200 rounded-lg p-2.5 text-xs font-bold text-blue-950">
+                            <template x-for="grp in centerDiscoveredClasses" :key="grp.key">
+                                <option :value="grp.key" x-text="`${stagesMeta[grp.stage]?.label || grp.stage} - ${grp.grade}${grp.track ? ' - ' + grp.track : ''}${grp.section ? ' - شعبة ' + grp.section : ''} (${grp.count} طالب)`"></option>
+                            </template>
+                        </select>
+                    </div>
+                </template>
 
                 <div class="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
                     <div class="space-y-1">
@@ -2158,7 +2256,7 @@
                     </div>
                     <div class="space-y-1">
                         <label class="text-[10px] font-bold text-slate-500">المادة</label>
-                        <input x-model="centerImportForm.subject" type="text" placeholder="اسم المادة" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs font-bold">
+                        <input id="teacherCenterSubjectInput" x-model="centerImportForm.subject" type="text" placeholder="اسم المادة" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs font-bold">
                     </div>
                     <button @click="importClassFromInformationCenter()"
                             class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs font-black transition shadow-sm">

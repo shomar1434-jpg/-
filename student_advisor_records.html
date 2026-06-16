@@ -779,6 +779,51 @@
                 </div>
             </div>
 
+
+            <!-- تجربة ربط مركز المعلومات مع سجلات الموجه: شريط علوي ثابت لا يؤثر على القائمة الجانبية -->
+            <section id="advisorInformationCenterBridge" class="no-print bg-white rounded-2xl shadow-sm border border-emerald-100 mb-6 overflow-hidden">
+                <div class="bg-gradient-to-l from-emerald-50 to-white px-5 py-4 border-b border-emerald-100 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                    <div>
+                        <h3 class="text-base font-extrabold text-emerald-900">🔗 مركز المعلومات وسجلات الموجه</h3>
+                        <p class="text-xs text-slate-500 mt-1">اختر المرحلة والصف والشعبة والطالب مرة واحدة، ثم افتح السجل المطلوب من التبويبات العلوية.</p>
+                    </div>
+                    <button type="button" onclick="advisorLoadInformationCenter()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-2 px-4 rounded-xl text-xs shadow-sm transition-all">
+                        استيراد من مركز المعلومات
+                    </button>
+                </div>
+                <div class="p-4 grid grid-cols-1 md:grid-cols-4 gap-3">
+                    <div>
+                        <label class="block text-[11px] font-extrabold text-slate-500 mb-1">المرحلة / الصف / الشعبة</label>
+                        <select id="advisorCenterClassSelect" onchange="advisorSelectCenterClass()" class="w-full rounded-xl border-slate-200 text-xs font-bold p-2.5 focus:ring-emerald-500 focus:border-emerald-500">
+                            <option value="">اضغط استيراد من مركز المعلومات</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-extrabold text-slate-500 mb-1">الطالب/ـة</label>
+                        <select id="advisorCenterStudentSelect" onchange="advisorApplySelectedStudent()" class="w-full rounded-xl border-slate-200 text-xs font-bold p-2.5 focus:ring-emerald-500 focus:border-emerald-500">
+                            <option value="">اختر الطالب/ـة</option>
+                        </select>
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="block text-[11px] font-extrabold text-slate-500 mb-1">الحالة</label>
+                        <div id="advisorCenterStatus" class="rounded-xl border border-dashed border-emerald-200 bg-emerald-50/60 text-emerald-800 text-xs font-bold p-2.5 min-h-[42px] flex items-center">
+                            جاهز للقراءة من مركز المعلومات المحلي أو السحابي عند توفره.
+                        </div>
+                    </div>
+                </div>
+                <div class="px-4 pb-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4 bg-slate-50/60">
+                    <button type="button" onclick="advisorOpenRecordTab('care-tab')" class="advisor-top-tab px-3 py-2 rounded-xl bg-white border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 text-xs font-extrabold text-slate-700">📂 السجل الفردي</button>
+                    <button type="button" onclick="advisorOpenRecordTab('case-tab')" class="advisor-top-tab px-3 py-2 rounded-xl bg-white border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 text-xs font-extrabold text-slate-700">🔎 دراسة الحالة</button>
+                    <button type="button" onclick="advisorOpenRecordTab('absence-tab')" class="advisor-top-tab px-3 py-2 rounded-xl bg-white border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 text-xs font-extrabold text-slate-700">❌ متابعة الغياب</button>
+                    <button type="button" onclick="advisorOpenRecordTab('emergency-tab')" class="advisor-top-tab px-3 py-2 rounded-xl bg-white border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 text-xs font-extrabold text-slate-700">🚨 الحالات السلوكية</button>
+                    <button type="button" onclick="advisorOpenRecordTab('care-tab','talented')" class="advisor-top-tab px-3 py-2 rounded-xl bg-white border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 text-xs font-extrabold text-slate-700">⭐ المتفوقون</button>
+                    <button type="button" onclick="advisorOpenRecordTab('care-tab','underachiever')" class="advisor-top-tab px-3 py-2 rounded-xl bg-white border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 text-xs font-extrabold text-slate-700">📉 المتعثرون</button>
+                    <button type="button" onclick="advisorOpenRecordTab('report-tab')" class="advisor-top-tab px-3 py-2 rounded-xl bg-white border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 text-xs font-extrabold text-slate-700">📈 البرامج الإرشادية</button>
+                    <button type="button" onclick="advisorOpenRecordTab('individual-tab')" class="advisor-top-tab px-3 py-2 rounded-xl bg-white border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 text-xs font-extrabold text-slate-700">👤 الاستشارات</button>
+                    <button type="button" onclick="advisorOpenRecordTab('student-affairs-tab')" class="advisor-top-tab px-3 py-2 rounded-xl bg-white border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 text-xs font-extrabold text-slate-700">📄 الإحالات</button>
+                </div>
+            </section>
+
             <!-- حاويات الاستمارات التفاعلية -->
             <form id="system-form" class="space-y-6 pb-20">
 
@@ -2617,8 +2662,148 @@
 })();
 </script>
 
+
+<script>
+(function(){
+  var advisorCenterRows=[];
+  var advisorCenterGroups=[];
+  var advisorActiveClass=null;
+  var advisorActiveStudent=null;
+  function status(msg, type){
+    var el=document.getElementById('advisorCenterStatus');
+    if(!el) return;
+    el.textContent=msg;
+    el.className='rounded-xl border border-dashed text-xs font-bold p-2.5 min-h-[42px] flex items-center ' + (type==='warn'?'border-amber-200 bg-amber-50 text-amber-800':type==='error'?'border-rose-200 bg-rose-50 text-rose-800':'border-emerald-200 bg-emerald-50/60 text-emerald-800');
+  }
+  function activeSchoolId(){
+    try{var a=(window.ActiveSchoolScope&&window.ActiveSchoolScope.get)?window.ActiveSchoolScope.get():{}; return a.schoolId||a.id||localStorage.getItem('active_school_id')||localStorage.getItem('school_id')||'';}catch(e){return localStorage.getItem('active_school_id')||localStorage.getItem('school_id')||'';}
+  }
+  function localRows(){
+    var winSources=[window.schoolInformationCenterStudents,window.SCHOOL_INFORMATION_CENTER_STUDENTS,window.SCHOOL_CENTER_STUDENTS,window.centerStudents];
+    for(var w of winSources){ if(Array.isArray(w)&&w.length) return w; }
+    try{ if(window.parent&&window.parent!==window){
+      var ps=[window.parent.schoolInformationCenterStudents,window.parent.SCHOOL_INFORMATION_CENTER_STUDENTS,window.parent.SCHOOL_CENTER_STUDENTS,window.parent.centerStudents];
+      for(var p of ps){ if(Array.isArray(p)&&p.length) return p; }
+    }}catch(e){}
+    var sid=activeSchoolId()||'DEV_SCHOOL';
+    var yRaw=(localStorage.getItem('school_info_academic_year')||localStorage.getItem('school_academic_year')||'1447').toString();
+    var y=(yRaw.match(/\d{4}/)||[yRaw])[0];
+    var keys=[`schoolInformationCenter:${sid}:${y}`,`school_information_center:${sid}:${y}`,`sic_students:${sid}:${y}`,`school_information_center_students:${sid}`,'school_information_center_students','schoolInformationCenterStudents','school_information_students','school_center_students','sic_students_cache','students_center_cache','teacher_import_students','students'];
+    for(var key of keys){
+      try{var val=localStorage.getItem(key); if(!val) continue; var parsed=JSON.parse(val); var rows=Array.isArray(parsed)?parsed:(Array.isArray(parsed.students)?parsed.students:(Array.isArray(parsed.data)?parsed.data:[])); if(rows.length) return rows;}catch(e){}
+    }
+    return [];
+  }
+  async function supabaseRows(){
+    var clients=[window.supabaseClient,window.schoolSupabaseClient,window._supabaseClient,window.supabase];
+    try{ if(window.parent&&window.parent!==window) clients.push(window.parent.supabaseClient,window.parent.schoolSupabaseClient,window.parent._supabaseClient,window.parent.supabase); }catch(e){}
+    var client=clients.find(function(c){return c&&c.from;});
+    if(!client) return [];
+    try{var sid=activeSchoolId(); var q=client.from('students').select('*'); if(sid) q=q.eq('school_id',sid); var res=await q.order('student_name',{ascending:true}); if(res.error) throw res.error; return res.data||[];}catch(e){console.warn('تعذر جلب طلاب مركز المعلومات السحابي للموجه:',e); return [];}
+  }
+  function norm(v){return (v==null?'':String(v)).replace(/\s+/g,' ').trim();}
+  function normalizeStudent(s,idx){
+    var name=norm(s.student_name||s.name||s.full_name||s.studentName||s['اسم الطالب']||s['اسم الطالب/ـة']);
+    return {id:norm(s.id||s.student_id||s.national_id||s.civil_id||s.student_number)||('advisor-student-'+idx), name:name, national_id:norm(s.national_id||s.civil_id||s.identity||s.student_number||s.studentNumber), stage:norm(s.stage||s.school_stage||s.level||s['المرحلة']), grade:norm(s.grade||s.class_name||s.class||s['الصف']), track:norm(s.track_name||s.track||s.path||s['المسار'])||'عام', section:norm(s.section_name||s.section||s.division||s['الشعبة'])||'غير محدد', raw:s};
+  }
+  function groupRows(rows){
+    var map=new Map();
+    rows.map(normalizeStudent).filter(function(s){return s.name;}).forEach(function(st){
+      var key=[st.stage,st.grade,st.track,st.section].join('||');
+      if(!map.has(key)) map.set(key,{key:key,stage:st.stage||'مرحلة غير محددة',grade:st.grade||'صف غير محدد',track:st.track||'عام',section:st.section||'غير محدد',students:[]});
+      map.get(key).students.push(st);
+    });
+    return Array.from(map.values()).sort(function(a,b){return (a.stage+a.grade+a.section).localeCompare(b.stage+b.grade+b.section,'ar');});
+  }
+  function fillClassSelect(){
+    var sel=document.getElementById('advisorCenterClassSelect'); if(!sel) return;
+    sel.innerHTML='';
+    if(!advisorCenterGroups.length){ sel.innerHTML='<option value="">لا توجد صفوف مستوردة</option>'; return; }
+    advisorCenterGroups.forEach(function(g,i){
+      var opt=document.createElement('option'); opt.value=g.key; opt.textContent=[g.stage,g.grade,g.track,g.section].filter(Boolean).join(' - ')+' ('+g.students.length+' طالب)'; sel.appendChild(opt);
+    });
+    sel.value=advisorCenterGroups[0].key;
+    window.advisorSelectCenterClass();
+  }
+  window.advisorLoadInformationCenter=async function(){
+    status('جاري قراءة الطلاب من مركز المعلومات...', '');
+    var rows=await supabaseRows();
+    if(!rows.length) rows=localRows();
+    advisorCenterRows=rows||[];
+    advisorCenterGroups=groupRows(advisorCenterRows);
+    if(!advisorCenterGroups.length){status('لم يتم العثور على طلاب أو صفوف في مركز المعلومات. تأكد من الاستيراد في مركز المعلومات أولاً.','error'); fillClassSelect(); return;}
+    fillClassSelect();
+    status('تم التعرف على '+advisorCenterGroups.length+' صف/شعبة و '+advisorCenterGroups.reduce(function(t,g){return t+g.students.length;},0)+' طالب/ـة من مركز المعلومات. اختر الطالب ثم افتح السجل المطلوب.','');
+  };
+  window.advisorSelectCenterClass=function(){
+    var val=(document.getElementById('advisorCenterClassSelect')||{}).value;
+    advisorActiveClass=advisorCenterGroups.find(function(g){return g.key===val;})||advisorCenterGroups[0]||null;
+    var st=document.getElementById('advisorCenterStudentSelect'); if(!st) return;
+    st.innerHTML='';
+    if(!advisorActiveClass){ st.innerHTML='<option value="">لا يوجد طلاب</option>'; return; }
+    advisorActiveClass.students.forEach(function(s,i){var opt=document.createElement('option'); opt.value=s.id; opt.textContent=(i+1)+' - '+s.name+(s.national_id?' - '+s.national_id:''); st.appendChild(opt);});
+    if(advisorActiveClass.students.length){ st.value=advisorActiveClass.students[0].id; window.advisorApplySelectedStudent(); }
+  };
+  function setIfEmptyOrForce(selector,value,force){ document.querySelectorAll(selector).forEach(function(el){ if(force||!el.value){ el.value=value; el.dispatchEvent(new Event('input',{bubbles:true})); }}); }
+  window.advisorApplySelectedStudent=function(){
+    var stSel=document.getElementById('advisorCenterStudentSelect'); if(!stSel||!advisorActiveClass) return;
+    advisorActiveStudent=advisorActiveClass.students.find(function(s){return s.id===stSel.value;})||advisorActiveClass.students[0]||null;
+    if(!advisorActiveStudent) return;
+    var cls=[advisorActiveClass.grade,advisorActiveClass.track,advisorActiveClass.section].filter(Boolean).join(' - ');
+    setIfEmptyOrForce('input[name="care_student_name"], input[name="em_student_0"], input[name="delay_student_0"], input[name="absence_student_0"]',advisorActiveStudent.name,true);
+    setIfEmptyOrForce('input[name="care_student_class"], input[name="em_class_date_0"], input[name="delay_class_0"], input[name="absence_class_0"]',cls,true);
+    setIfEmptyOrForce('input[name="case_student_initials"]',advisorActiveStudent.name,true);
+    try{saveToLocalStorage&&saveToLocalStorage();}catch(e){}
+    status('الطالب النشط: '+advisorActiveStudent.name+' | '+cls+'. افتح أي سجل من التبويبات العلوية وسيتم تعبئة البيانات الأساسية تلقائياً.','');
+  };
+  window.advisorOpenRecordTab=function(tabId,mark){
+    if(typeof switchTab==='function') switchTab(tabId);
+    window.advisorApplySelectedStudent();
+    if(mark==='talented'){var x=document.querySelector('input[name="care_type_talented"]'); if(x) x.checked=true;}
+    if(mark==='underachiever'){var y=document.querySelector('input[name="care_type_underachiever"]'); if(y) y.checked=true;}
+    setTimeout(function(){var h=document.getElementById('reusable-main-header'); if(h&&h.scrollIntoView) h.scrollIntoView({behavior:'smooth',block:'start'});},80);
+  };
+  document.addEventListener('DOMContentLoaded',function(){ setTimeout(function(){ var rows=localRows(); if(rows.length){advisorCenterRows=rows; advisorCenterGroups=groupRows(rows); fillClassSelect(); status('تم العثور محلياً على '+rows.length+' طالب/ـة من مركز المعلومات. يمكن اختيار الطالب مباشرة أو الضغط على الاستيراد للتحديث.','');}},200); });
+})();
+</script>
+
+
+
+<script id="advisor-analysis-context-bridge">
+(function(){
+  var KEY='advisor_selected_student_context_v1';
+  function read(){try{return JSON.parse(localStorage.getItem(KEY)||'{}')||{}}catch(e){return {}}}
+  function setVal(selector,value,force){
+    if(!value) return;
+    document.querySelectorAll(selector).forEach(function(el){
+      if(!el) return;
+      if(force || !el.value){ el.value=value; el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); }
+    });
+  }
+  function cls(ctx){return [ctx.stage,ctx.grade,ctx.section].filter(Boolean).join(' - ')}
+  function tabFor(action){return {individual:'care-tab',case:'case-tab',plan:'care-tab',consultation:'individual-tab',referral:'student-affairs-tab',followup:'absence-tab'}[action]||'care-tab'}
+  window.advisorApplyAnalysisContext=function(){
+    var ctx=read(); if(!ctx || !ctx.studentName) return;
+    var classText=cls(ctx);
+    setVal('input[name="care_student_name"],input[name="em_student_0"],input[name="delay_student_0"],input[name="absence_student_0"],input[name="grp_student_name_0"],input[name="ind_student_name"],input[name="pv_student_0"]',ctx.studentName,true);
+    setVal('input[name="care_student_class"],input[name="em_class_date_0"],input[name="delay_class_0"],input[name="absence_class_0"],input[name="grp_student_class_0"],input[name="ind_student_class"]',classText,true);
+    setVal('input[name="case_student_initials"]',ctx.studentName,true);
+    setVal('input[name="care_problem_summary"],textarea[name="care_notes"],textarea[name="ind_notes"]',ctx.plan&&ctx.plan.reason?ctx.plan.reason:'مؤشر متابعة من تحليل بيانات الموجه',false);
+    try{ if(typeof switchTab==='function') switchTab(tabFor(ctx.action)); }catch(e){}
+    if(ctx.action==='plan' || (ctx.plan && ctx.risk>=60)){
+      var u=document.querySelector('input[name="care_type_underachiever"]'); if(u) u.checked=true;
+    }
+    var msg='تم تمرير الطالب من تحليل البيانات: '+ctx.studentName+(classText?' | '+classText:'')+(ctx.risk!=null?' | مؤشر التعثر: '+ctx.risk:'');
+    try{ if(typeof status==='function') status(msg,''); }catch(e){}
+    var box=document.getElementById('advisorCenterStatus'); if(box) box.textContent=msg;
+    try{ if(typeof saveToLocalStorage==='function') saveToLocalStorage(); }catch(e){}
+  };
+  document.addEventListener('DOMContentLoaded',function(){setTimeout(window.advisorApplyAnalysisContext,450);});
+})();
+</script>
+
 <script src="active_school_scope.js" defer></script>
 
-<script src="manual_docking_workspace.js" defer></script>
+<!-- تم تعطيل أزرار التحكم العائمة داخل صفحة سجلات الموجه لأنها تخص الواجهة الخارجية فقط -->
 </body>
 </html>

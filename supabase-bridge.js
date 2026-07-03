@@ -460,8 +460,282 @@
     return true;
   }
 
+
+
+  function getActiveSchoolIdForExternal(){
+    try{ if(window.ActiveSchoolScope && ActiveSchoolScope.get){ const s=ActiveSchoolScope.get(); if(s && (s.schoolId || s.id)) return s.schoolId || s.id; } }catch(e){}
+    try{ const u=JSON.parse(localStorage.getItem('currentSchoolUser')||localStorage.getItem('currentUser')||'{}'); if(u && (u.schoolId || u.school_id)) return u.schoolId || u.school_id; }catch(e){}
+    return localStorage.getItem('active_school_id') || localStorage.getItem('current_school_id') || localStorage.getItem('school_id') || localStorage.getItem('smart_school_id') || null;
+  }
+
+  function getCurrentUserIdForExternal(){
+    try{ const u=JSON.parse(localStorage.getItem('currentSchoolUser')||localStorage.getItem('currentUser')||'{}'); return u.id || u.user_id || null; }catch(e){ return null; }
+  }
+
+  function normalizeExternalVisitPayload(payload){
+    payload = payload || {};
+    const schoolId = payload.school_id || payload.schoolId || getActiveSchoolIdForExternal();
+    const createdBy = payload.created_by || payload.createdBy || getCurrentUserIdForExternal();
+    const formData = payload.form_data || payload.formData || payload;
+    const visit = formData.currentVisit || payload.currentVisit || {};
+    return {schoolId, createdBy, formData, visit};
+  }
+
+  async function saveExternalEvaluationDraft(payload){
+    const sb = getClient();
+    if(!sb) throw new Error('Supabase غير جاهز');
+    const p = normalizeExternalVisitPayload(payload);
+    const visit = p.visit || {};
+    const row = {
+      school_id: p.schoolId,
+      created_by: p.createdBy,
+      draft_number: payload.draft_number || payload.draftNumber || visit.number || null,
+      draft_title: payload.draft_title || payload.draftTitle || 'مسودة زيارة فريق التقويم الخارجي',
+      status: 'draft',
+      form_data: p.formData || {},
+      updated_at: new Date().toISOString()
+    };
+    let q;
+    const id = payload.id || payload.draft_id || payload.draftId || (p.formData && p.formData.supabaseDraftId);
+    if(id){
+      q = await sb.from('external_evaluation_drafts').update(row).eq('id', id).select('*').maybeSingle();
+    }else{
+      q = await sb.from('external_evaluation_drafts').insert(Object.assign({created_at:new Date().toISOString()}, row)).select('*').single();
+    }
+    if(q.error) throw explainSupabaseError(q.error);
+    return q.data;
+  }
+
+  async function saveExternalEvaluationVisit(payload){
+    const sb = getClient();
+    if(!sb) throw new Error('Supabase غير جاهز');
+    const p = normalizeExternalVisitPayload(payload);
+    const visit = p.visit || {};
+    const row = {
+      school_id: p.schoolId,
+      created_by: p.createdBy,
+      team_leader_name: payload.team_leader_name || payload.teamLeaderName || (p.formData && p.formData.teamLeaderName) || '',
+      visit_number: payload.visit_number || payload.visitNumber || visit.number || '',
+      visit_year: String(payload.visit_year || payload.visitYear || visit.year || ''),
+      visit_title: payload.visit_title || payload.visitTitle || 'زيارة فريق التقويم الخارجي',
+      status: payload.status || visit.status || 'draft',
+      form_data: p.formData || {},
+      final_score: Number(payload.final_score || payload.finalScore || (p.formData && p.formData.finalScore) || 0),
+      accreditation_decision: payload.accreditation_decision || payload.accreditationDecision || (p.formData && p.formData.accreditationDecision) || null,
+      updated_at: new Date().toISOString()
+    };
+    let q;
+    const id = payload.id || payload.visit_id || payload.visitId || (visit && visit.supabaseVisitId) || (p.formData && p.formData.supabaseVisitId);
+    if(id){
+      q = await sb.from('external_evaluation_visits').update(row).eq('id', id).select('*').maybeSingle();
+    }else{
+      q = await sb.from('external_evaluation_visits').insert(Object.assign({created_at:new Date().toISOString(), archived_at: visit.archivedAt || null}, row)).select('*').single();
+    }
+    if(q.error) throw explainSupabaseError(q.error);
+    return q.data;
+  }
+
+  async function saveExternalEvaluationDecision(payload){
+    const sb = getClient();
+    if(!sb) throw new Error('Supabase غير جاهز');
+    payload = payload || {};
+    const row = {
+      visit_id: payload.visit_id || payload.visitId || null,
+      final_score: Number(payload.final_score || payload.finalScore || 0),
+      decision: payload.decision || '',
+      strengths: payload.strengths || [],
+      gaps: payload.gaps || [],
+      recommendations: payload.recommendations || [],
+      team_leader_name: payload.team_leader_name || payload.teamLeaderName || '',
+      leader_signature_path: payload.leader_signature_path || payload.leaderSignaturePath || null,
+      approved_at: payload.approved_at || payload.approvedAt || new Date().toISOString()
+    };
+    const q = await sb.from('external_evaluation_decisions').insert(row).select('*').single();
+    if(q.error) throw explainSupabaseError(q.error);
+    return q.data;
+  }
+
+  async function findActiveExternalVisitByToken(schoolId, token){
+    const sb = getClient();
+    if(!sb || !token) return null;
+    let q = sb.from('external_evaluation_visits').select('*').eq('status','active').limit(50);
+    if(schoolId) q = q.eq('school_id', schoolId);
+    const res = await q;
+    if(res.error) throw explainSupabaseError(res.error);
+    const rows = res.data || [];
+    return rows.find(r => {
+      const fd = r.form_data || {};
+      const cv = fd.currentVisit || fd.visit || {};
+      return String(cv.token || fd.visit_token || fd.visitToken || '') === String(token);
+    }) || null;
+  }
+
+  async function listExternalEvaluationDrafts(schoolId){
+    const sb = getClient();
+    if(!sb) throw new Error('Supabase غير جاهز');
+    const sid = schoolId || getActiveSchoolIdForExternal();
+    let q = sb.from('external_evaluation_drafts').select('*').order('updated_at',{ascending:false}).limit(20);
+    if(sid) q = q.eq('school_id', sid);
+    const res = await q;
+    if(res.error) throw explainSupabaseError(res.error);
+    return res.data || [];
+  }
+
+
+
+  const EXTERNAL_EVALUATION_BUCKET = 'external-evaluation-files';
+
+  function safePathPart(value){
+    return String(value || '')
+      .trim()
+      .replace(/[\\/]+/g, '-')
+      .replace(/[^\u0600-\u06FF\w\-.]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '') || 'item';
+  }
+
+  function getFileExtension(fileName, fallback){
+    const name = String(fileName || '');
+    const m = name.match(/\.([a-zA-Z0-9]{1,12})$/);
+    return (m && m[1]) || fallback || 'bin';
+  }
+
+  function dataUrlToBlob(dataUrl){
+    const parts = String(dataUrl || '').split(',');
+    if(parts.length < 2) throw new Error('صيغة الملف غير صحيحة');
+    const meta = parts[0] || '';
+    const mime = (meta.match(/data:([^;]+)/) || [])[1] || 'application/octet-stream';
+    const bin = atob(parts[1]);
+    const arr = new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], {type:mime});
+  }
+
+  function buildExternalEvaluationFilePath(file, options){
+    options = options || {};
+    const schoolId = safePathPart(options.school_id || options.schoolId || getActiveSchoolIdForExternal() || 'unknown-school');
+    const visitNumber = safePathPart(options.visit_number || options.visitNumber || options.draft_number || options.draftNumber || 'draft');
+    const section = safePathPart(options.section_name || options.sectionName || options.section || 'general');
+    const ext = getFileExtension((file && file.name) || options.file_name || options.fileName, 'bin');
+    const baseName = safePathPart(((file && file.name) || options.file_name || options.fileName || ('file.' + ext)).replace(/\.[^.]+$/, ''));
+    const stamp = new Date().toISOString().replace(/[-:.TZ]/g,'').slice(0,14);
+    return `${schoolId}/visits/${visitNumber}/${section}/${stamp}_${baseName}.${ext}`;
+  }
+
+  async function createExternalEvaluationSignedUrl(filePath, expiresIn){
+    const sb = getClient();
+    if(!sb) throw new Error('Supabase غير جاهز');
+    if(!filePath) return null;
+    const res = await sb.storage.from(EXTERNAL_EVALUATION_BUCKET).createSignedUrl(filePath, expiresIn || 60 * 60);
+    if(res.error) throw explainSupabaseError(res.error);
+    return res.data && res.data.signedUrl;
+  }
+
+  async function saveExternalEvaluationFileRecord(meta){
+    const sb = getClient();
+    if(!sb) throw new Error('Supabase غير جاهز');
+    meta = meta || {};
+    const row = {
+      school_id: meta.school_id || meta.schoolId || getActiveSchoolIdForExternal(),
+      visit_id: meta.visit_id || meta.visitId || null,
+      draft_id: meta.draft_id || meta.draftId || null,
+      section_name: meta.section_name || meta.sectionName || meta.section || 'عام',
+      file_name: meta.file_name || meta.fileName || '',
+      file_path: meta.file_path || meta.filePath || '',
+      file_type: meta.file_type || meta.fileType || 'file',
+      uploaded_at: meta.uploaded_at || meta.uploadedAt || new Date().toISOString()
+    };
+    const q = await sb.from('external_evaluation_files').insert(row).select('*').single();
+    if(q.error) throw explainSupabaseError(q.error);
+    return q.data;
+  }
+
+  async function uploadExternalEvaluationFile(file, options){
+    const sb = getClient();
+    if(!sb) throw new Error('Supabase غير جاهز');
+    if(!file) throw new Error('لم يتم تحديد ملف للرفع');
+    options = options || {};
+    const path = options.file_path || options.filePath || buildExternalEvaluationFilePath(file, options);
+    const upload = await sb.storage.from(EXTERNAL_EVALUATION_BUCKET).upload(path, file, {
+      upsert: true,
+      contentType: file.type || options.contentType || 'application/octet-stream'
+    });
+    if(upload.error) throw explainSupabaseError(upload.error);
+    const record = await saveExternalEvaluationFileRecord(Object.assign({}, options, {
+      file_name: options.file_name || options.fileName || file.name || path.split('/').pop(),
+      file_path: upload.data && upload.data.path || path,
+      file_type: options.file_type || options.fileType || file.type || 'file'
+    }));
+    return {
+      bucket: EXTERNAL_EVALUATION_BUCKET,
+      path: upload.data && upload.data.path || path,
+      record,
+      signedUrl: null
+    };
+  }
+
+  async function uploadExternalEvaluationDataUrl(dataUrl, fileName, options){
+    const blob = dataUrlToBlob(dataUrl);
+    const ext = getFileExtension(fileName, (blob.type || '').split('/').pop() || 'png');
+    const file = new File([blob], fileName || ('signature.' + ext), {type: blob.type || 'application/octet-stream'});
+    return uploadExternalEvaluationFile(file, options || {});
+  }
+
+  async function listExternalEvaluationFiles(filters){
+    const sb = getClient();
+    if(!sb) throw new Error('Supabase غير جاهز');
+    filters = filters || {};
+    let q = sb.from('external_evaluation_files').select('*').order('uploaded_at', {ascending:false});
+    const schoolId = filters.school_id || filters.schoolId || getActiveSchoolIdForExternal();
+    if(schoolId) q = q.eq('school_id', schoolId);
+    if(filters.visit_id || filters.visitId) q = q.eq('visit_id', filters.visit_id || filters.visitId);
+    if(filters.draft_id || filters.draftId) q = q.eq('draft_id', filters.draft_id || filters.draftId);
+    if(filters.section_name || filters.sectionName) q = q.eq('section_name', filters.section_name || filters.sectionName);
+    const res = await q;
+    if(res.error) throw explainSupabaseError(res.error);
+    return res.data || [];
+  }
+
+
+  async function verifyExternalEvaluationStorage(options){
+    const sb = getClient();
+    if(!sb) throw new Error('Supabase غير جاهز');
+    options = options || {};
+    const schoolId = safePathPart(options.school_id || options.schoolId || getActiveSchoolIdForExternal() || 'unknown-school');
+    const stamp = new Date().toISOString().replace(/[-:.TZ]/g,'').slice(0,14);
+    const path = `${schoolId}/_diagnostics/${stamp}_storage_test.txt`;
+    const blob = new Blob(['Smart School external evaluation storage test - ' + new Date().toISOString()], {type:'text/plain;charset=utf-8'});
+    const upload = await sb.storage.from(EXTERNAL_EVALUATION_BUCKET).upload(path, blob, {
+      upsert: true,
+      contentType: 'text/plain;charset=utf-8'
+    });
+    if(upload.error) throw explainSupabaseError(upload.error);
+    const signedUrl = await createExternalEvaluationSignedUrl(upload.data && upload.data.path || path, 60 * 5);
+    let removed = null;
+    if(options.cleanup !== false){
+      removed = await sb.storage.from(EXTERNAL_EVALUATION_BUCKET).remove([upload.data && upload.data.path || path]);
+      if(removed.error) console.warn('تم الرفع والقراءة لكن تعذر حذف ملف الاختبار:', removed.error.message || removed.error);
+    }
+    return {ok:true, bucket: EXTERNAL_EVALUATION_BUCKET, path: upload.data && upload.data.path || path, signedUrl, cleanup: options.cleanup !== false, removed};
+  }
+
+
   window.SmartSchoolSupabase = {
     getClient,
+
+    getActiveSchoolIdForExternal,
+    getCurrentUserIdForExternal,
+    saveExternalEvaluationDraft,
+    saveExternalEvaluationVisit,
+    saveExternalEvaluationDecision,
+    findActiveExternalVisitByToken,
+    listExternalEvaluationDrafts,
+    uploadExternalEvaluationFile,
+    uploadExternalEvaluationDataUrl,
+    saveExternalEvaluationFileRecord,
+    listExternalEvaluationFiles,
+    createExternalEvaluationSignedUrl,
+    verifyExternalEvaluationStorage,
     appRoleToDb,
     dbRoleToApp,
     normalizeSchool,
@@ -481,6 +755,21 @@
     login: loginSchoolUser,
     signIn: loginSchoolUser,
     schoolLogin: loginSchoolUser
+  };
+
+
+  window.smartSupabaseClient = getClient;
+  window.SmartSchoolExternalEvaluation = {
+    saveDraft: saveExternalEvaluationDraft,
+    saveVisit: saveExternalEvaluationVisit,
+    saveDecision: saveExternalEvaluationDecision,
+    findActiveVisitByToken: findActiveExternalVisitByToken,
+    listDrafts: listExternalEvaluationDrafts,
+    uploadFile: uploadExternalEvaluationFile,
+    uploadDataUrl: uploadExternalEvaluationDataUrl,
+    listFiles: listExternalEvaluationFiles,
+    createSignedUrl: createExternalEvaluationSignedUrl,
+    verifyStorage: verifyExternalEvaluationStorage
   };
 
   window.addEventListener('DOMContentLoaded', function(){

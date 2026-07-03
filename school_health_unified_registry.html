@@ -1,0 +1,1629 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>الملف الموحد لسجلات التوجيه الصحي</title>
+    <!-- Tailwind CSS for modern layout -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts for professional Arabic typography (Tajawal) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800&display=swap" rel="stylesheet">
+    <!-- Font Awesome for medical and school icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Tajawal', 'sans-serif'],
+                    },
+                    colors: {
+                        saudi: {
+                            green: '#006C35',
+                            lightgreen: '#E8F5E9',
+                            gold: '#D4AF37',
+                            dark: '#1B3B2B',
+                            accent: '#00A859'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Tajawal', sans-serif;
+            background-color: #f4f6f8;
+        }
+        /* Custom scrollbar for premium feel */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #006C35;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #004d26;
+        }
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+            .print-card {
+                border: 1px solid #ddd !important;
+                box-shadow: none !important;
+                background: white !important;
+            }
+        }
+    </style>
+</head>
+<body class="text-slate-800 antialiased min-h-screen flex flex-col">
+
+    <!-- Official Header Banner -->
+    <header class="bg-gradient-to-r from-saudi-dark via-saudi-green to-saudi-dark text-white shadow-lg no-print">
+        <div class="container mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
+            <!-- Right side: Ministry info and School identity -->
+            <div class="flex items-center gap-4">
+                <div class="bg-white p-2 rounded-lg shadow-inner flex items-center justify-center">
+                    <!-- Conceptual Health SVG Logo -->
+                    <svg class="w-12 h-12 text-saudi-green" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
+                    </svg>
+                </div>
+                <div>
+                    <div class="text-xs text-saudi-gold font-bold tracking-widest">المملكة العربية السعودية • وزارة التعليم</div>
+                    <h1 class="text-xl md:text-2xl font-bold">الملف الموحد لسجلات التوجيه الصحي</h1>
+                    <p class="text-xs text-emerald-100 opacity-90 mt-0.5">نموذج موحد لأعمال الموجه الصحي: السجل الصحي الشامل، البرامج الصحية، البيئة الصحية المدرسية، التحويلات الطبية، وأرشيف السجلات الصحية</p>
+                </div>
+            </div>
+
+            <!-- School metadata inputs (Editable) -->
+            <div class="flex flex-wrap gap-2 text-xs text-white/90 bg-black/20 p-3 rounded-lg border border-white/10">
+                <div class="flex flex-col">
+                    <span class="text-saudi-gold text-[10px] font-bold">المدرسة:</span>
+                    <input type="text" id="meta-school" value="ابتدائية الفلاح النموذجية" class="bg-transparent border-b border-white/30 focus:border-saudi-gold focus:outline-none py-0.5 w-36">
+                </div>
+                <div class="flex flex-col">
+                    <span class="text-saudi-gold text-[10px] font-bold">الموجه الصحي:</span>
+                    <input type="text" id="meta-counselor" value="أ. أحمد بن عبد الله الحربي" class="bg-transparent border-b border-white/30 focus:border-saudi-gold focus:outline-none py-0.5 w-40">
+                </div>
+                <div class="flex flex-col">
+                    <span class="text-saudi-gold text-[10px] font-bold">العام الدراسي:</span>
+                    <input type="text" id="meta-year" value="1447 - 1448 هـ" class="bg-transparent border-b border-white/30 focus:border-saudi-gold focus:outline-none py-0.5 w-24">
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Navigation Tabs Bar -->
+    <nav class="bg-white border-b border-slate-200 shadow-sm sticky top-0 z-30 no-print">
+        <div class="container mx-auto px-4 overflow-x-auto flex items-center gap-3">
+        <button onclick="history.back()" class="bg-white text-saudi-green border border-saudi-green px-3 py-2 rounded-lg text-xs font-bold shadow-sm hover:bg-emerald-50 no-print">رجوع لمكتبة التكليفات</button>
+
+            <div class="flex whitespace-nowrap space-x-reverse space-x-1 md:space-x-4 py-2">
+                <button onclick="switchTab('dashboard')" id="tab-dashboard" class="tab-btn active px-4 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all duration-200 bg-saudi-green text-white">
+                    <i class="fa-solid fa-chart-pie text-base"></i>
+                    الرئيسية
+                </button>
+                <button onclick="switchTab('clinic')" id="tab-clinic" class="tab-btn px-4 py-2.5 rounded-lg text-sm font-bold text-slate-600 hover:bg-slate-50 flex items-center gap-2 transition-all duration-200">
+                    <i class="fa-solid fa-stethoscope text-base"></i>
+                    السجل الصحي الشامل
+                </button>
+                <button onclick="switchTab('chronic')" id="tab-chronic" class="tab-btn px-4 py-2.5 rounded-lg text-sm font-bold text-slate-600 hover:bg-slate-50 flex items-center gap-2 transition-all duration-200">
+                    <i class="fa-solid fa-heart-pulse text-base"></i>
+                    الحالات المزمنة والمعدية
+                </button>
+                <button onclick="switchTab('environment')" id="tab-environment" class="tab-btn px-4 py-2.5 rounded-lg text-sm font-bold text-slate-600 hover:bg-slate-50 flex items-center gap-2 transition-all duration-200">
+                    <i class="fa-solid fa-apple-whole text-base"></i>
+                    البيئة الصحية المدرسية
+                </button>
+                <button onclick="switchTab('programs')" id="tab-programs" class="tab-btn px-4 py-2.5 rounded-lg text-sm font-bold text-slate-600 hover:bg-slate-50 flex items-center gap-2 transition-all duration-200">
+                    <i class="fa-solid fa-calendar-check text-base"></i>
+                    البرامج الصحية
+                </button>
+                <button onclick="switchTab('transfers')" id="tab-transfers" class="tab-btn px-4 py-2.5 rounded-lg text-sm font-bold text-slate-600 hover:bg-slate-50 flex items-center gap-2 transition-all duration-200">
+                    <i class="fa-solid fa-truck-medical text-base"></i>
+                    التحويلات الطبية والطوارئ
+                </button>
+                <button onclick="switchTab('export')" id="tab-export" class="tab-btn px-4 py-2.5 rounded-lg text-sm font-bold text-slate-600 hover:bg-slate-50 flex items-center gap-2 transition-all duration-200">
+                    <i class="fa-solid fa-floppy-disk text-base"></i>
+                    أرشيف السجلات الصحية
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="flex-grow container mx-auto px-4 py-6">
+
+        <!-- Tab 1: Dashboard -->
+        <section id="sect-dashboard" class="tab-content block space-y-6">
+            <!-- Welcome Banner & Quick Note -->
+            <div class="bg-gradient-to-r from-emerald-50 to-teal-50 border-r-4 border-saudi-green p-5 rounded-l-xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-xl font-bold text-saudi-dark flex items-center gap-2">
+                         لوحة التحكم للملف الصحي الموحد
+                    </h2>
+                    <p class="text-sm text-slate-600 mt-1">يمكنك متابعة السجل الصحي الشامل والبرامج الصحية والبيئة المدرسية والتحويلات الطبية من نموذج موحد.</p>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="openModal('modal-visit')" class="bg-saudi-green hover:bg-saudi-dark text-white text-sm font-bold px-4 py-2 rounded-lg shadow transition flex items-center gap-2">
+                        <i class="fa-solid fa-plus"></i> إضافة حالة صحية/زيارة
+                    </button>
+                    <button onclick="openModal('modal-chronic')" class="bg-saudi-gold hover:bg-amber-600 text-white text-sm font-bold px-4 py-2 rounded-lg shadow transition flex items-center gap-2">
+                        <i class="fa-solid fa-user-plus"></i> إضافة حالة مزمنة/معدية/طارئة
+                    </button>
+                    <button onclick="openModal('modal-transfer')" class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold px-4 py-2 rounded-lg shadow transition flex items-center gap-2">
+                        <i class="fa-solid fa-truck-medical"></i> تحويل طبي
+                    </button>
+                </div>
+            </div>
+
+            <!-- Stats Grid -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <!-- Stat 1 -->
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between">
+                    <div>
+                        <span class="text-xs font-bold text-slate-500 block">إجمالي السجل الصحي الشامل</span>
+                        <span class="text-3xl font-extrabold text-saudi-green" id="stat-total-visits">0</span>
+                        <span class="text-[11px] text-slate-400 block mt-1">خلال العام الدراسي الحالي</span>
+                    </div>
+                    <div class="p-3 bg-emerald-50 text-saudi-green rounded-full">
+                        <i class="fa-solid fa-user-doctor text-2xl"></i>
+                    </div>
+                </div>
+                <!-- Stat 2 -->
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between">
+                    <div>
+                        <span class="text-xs font-bold text-slate-500 block">الطلاب ذوي الحالات المزمنة والمعدية</span>
+                        <span class="text-3xl font-extrabold text-amber-600" id="stat-chronic-cases">0</span>
+                        <span class="text-[11px] text-slate-400 block mt-1">حالات مسجلة ومتابعة بانتظام</span>
+                    </div>
+                    <div class="p-3 bg-amber-50 text-amber-600 rounded-full">
+                        <i class="fa-solid fa-clipboard-list text-2xl"></i>
+                    </div>
+                </div>
+                <!-- Stat 3 -->
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between">
+                    <div>
+                        <span class="text-xs font-bold text-slate-500 block">آخر تقييم للبيئة الصحية</span>
+                        <span class="text-2xl font-extrabold text-blue-600" id="stat-canteen-score">--</span>
+                        <span class="text-[11px] text-slate-400 block mt-1">تاريخ آخر تقييم بيئي معتمد</span>
+                    </div>
+                    <div class="p-3 bg-blue-50 text-blue-600 rounded-full">
+                        <i class="fa-solid fa-shield-halved text-2xl"></i>
+                    </div>
+                </div>
+                <!-- Stat 4 -->
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between">
+                    <div>
+                        <span class="text-xs font-bold text-slate-500 block">البرامج الصحية المنفذة</span>
+                        <span class="text-3xl font-extrabold text-purple-600" id="stat-programs">0</span>
+                        <span class="text-[11px] text-slate-400 block mt-1">حملات وأيام توعوية تم تفعيلها</span>
+                    </div>
+                    <div class="p-3 bg-purple-50 text-purple-600 rounded-full">
+                        <i class="fa-solid fa-bullhorn text-2xl"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dashboard Analytics & Dynamic Tables preview -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Daily Clinic Recent Feed -->
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-100 lg:col-span-2">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="font-bold text-slate-700 flex items-center gap-2">
+                            <i class="fa-solid fa-clock-rotate-left text-saudi-green"></i> آخر الحالات والزيارات الصحية المسجلة
+                        </h3>
+                        <button onclick="switchTab('clinic')" class="text-xs text-saudi-green font-bold hover:underline">عرض الجميع ←</button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-right">
+                            <thead class="bg-slate-50 text-slate-500 font-medium">
+                                <tr>
+                                    <th class="p-3 rounded-r-lg">الاسم</th>
+                                    <th class="p-3">الصف</th>
+                                    <th class="p-3">الأعراض/الشكوى</th>
+                                    <th class="p-3">الإجراء المتخذ</th>
+                                    <th class="p-3 rounded-l-lg">الحالة</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recent-clinic-tbody" class="divide-y divide-slate-100">
+                                <!-- Loaded dynamically via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Emergency Contact Widget -->
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-100 space-y-4">
+                    <h3 class="font-bold text-slate-700 flex items-center gap-2 border-b pb-3 border-slate-100">
+                        <i class="fa-solid fa-phone-volume text-red-500 animate-pulse"></i> أرقام طوارئ ومتابعة سريعة
+                    </h3>
+                    <div class="space-y-3">
+                        <div class="p-3 bg-rose-50 rounded-lg flex items-center justify-between">
+                            <div>
+                                <span class="text-xs text-rose-800 font-semibold block">الإسعاف والهلال الأحمر</span>
+                                <span class="text-base font-bold text-rose-900 font-mono">997</span>
+                            </div>
+                            <span class="text-xs bg-rose-600 text-white px-2.5 py-1 rounded font-bold">طوارئ</span>
+                        </div>
+                        <div class="p-3 bg-teal-50 rounded-lg flex items-center justify-between">
+                            <div>
+                                <span class="text-xs text-teal-800 font-semibold block">مركز اتصال الصحة (الاستشارات)</span>
+                                <span class="text-base font-bold text-teal-900 font-mono">937</span>
+                            </div>
+                            <span class="text-xs bg-teal-600 text-white px-2.5 py-1 rounded font-bold font-sans">استشارة</span>
+                        </div>
+                        <div class="p-3 bg-amber-50 rounded-lg flex items-center justify-between">
+                            <div>
+                                <span class="text-xs text-amber-800 font-semibold block">رقم الصحة المدرسية (الوزارة)</span>
+                                <span class="text-base font-bold text-amber-900 font-mono">19996</span>
+                            </div>
+                            <span class="text-xs bg-amber-600 text-white px-2.5 py-1 rounded font-bold">دعم</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab 2: Daily Clinic Log -->
+        <section id="sect-clinic" class="tab-content hidden space-y-4">
+            <!-- Header & Filter controls -->
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <i class="fa-solid fa-folder-open text-saudi-green"></i> السجل الصحي الشامل للمتعلمين
+                    </h2>
+                    <p class="text-xs text-slate-500">يجمع الحالات الصحية، الزيارات، الإسعافات الأولية، الحالات الطارئة، والأمراض المعدية في سجل واحد.</p>
+                </div>
+                <div class="flex flex-wrap gap-2 w-full md:w-auto">
+                    <input type="text" id="clinic-search" placeholder="ابحث باسم الطالب..." class="px-3 py-2 border rounded-lg text-sm focus:outline-saudi-green text-right w-full md:w-48" onkeyup="renderClinicTable()">
+                    <button onclick="openModal('modal-visit')" class="bg-saudi-green hover:bg-saudi-dark text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow w-full md:w-auto justify-center">
+                        <i class="fa-solid fa-plus"></i> إضافة حالة/زيارة صحية
+                    </button>
+                </div>
+            </div>
+
+            <!-- Table Card -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-right">
+                        <thead class="bg-slate-50 text-slate-600 font-semibold border-b border-slate-100">
+                            <tr>
+                                <th class="p-4">التاريخ والوقت</th>
+                                <th class="p-4">اسم الطالب</th>
+                                <th class="p-4">الصف / الفصل</th>
+                                <th class="p-4">الأعراض والشكوى</th>
+                                <th class="p-4">الإجراء المتخذ</th>
+                                <th class="p-4">الحالة والنتيجة</th>
+                                <th class="p-4">ملاحظات إضافية</th>
+                                <th class="p-4 text-center no-print">خيارات</th>
+                            </tr>
+                        </thead>
+                        <tbody id="clinic-tbody" class="divide-y divide-slate-100">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab 3: Chronic Diseases Register -->
+        <section id="sect-chronic" class="tab-content hidden space-y-4">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <i class="fa-solid fa-hand-holding-medical text-saudi-green"></i> سجل الحالات المزمنة والمعدية والطارئة
+                    </h2>
+                    <p class="text-xs text-slate-500">حصر ومتابعة الحالات المزمنة والمعدية والحالات التي تتطلب بروتوكول متابعة أو عزل أو تواصل مع ولي الأمر.</p>
+                </div>
+                <div class="flex flex-wrap gap-2 w-full md:w-auto">
+                    <input type="text" id="chronic-search" placeholder="ابحث باسم الطالب أو المرض..." class="px-3 py-2 border rounded-lg text-sm focus:outline-saudi-green text-right w-full md:w-56" onkeyup="renderChronicTable()">
+                    <button onclick="openModal('modal-chronic')" class="bg-saudi-green hover:bg-saudi-dark text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow w-full md:w-auto justify-center">
+                        <i class="fa-solid fa-user-plus"></i> إضافة حالة صحية خاصة
+                    </button>
+                </div>
+            </div>
+
+            <!-- Cards / Grid View for Student Chronic Profiles -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="chronic-grid">
+                <!-- Dynamically Rendered -->
+            </div>
+        </section>
+
+        <!-- Tab 4: School Environment & Canteen -->
+        <section id="sect-environment" class="tab-content hidden space-y-6">
+            <!-- Top Controls and New Inspection -->
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <i class="fa-solid fa-clipboard-check text-saudi-green"></i> سجل البيئة الصحية المدرسية
+                    </h2>
+                    <p class="text-xs text-slate-500">متابعة المقصف صحيًا، المياه، المرافق، النظافة العامة، ودورات المياه في سجل موحد.</p>
+                </div>
+                <button onclick="openModal('modal-env')" class="bg-saudi-green hover:bg-saudi-dark text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow transition">
+                    <i class="fa-solid fa-file-signature"></i> إضافة متابعة بيئية صحية
+                </button>
+            </div>
+
+            <!-- Two Column Layout: Historical inspection table + Quick Checklist -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Left: Historical Table -->
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-100 lg:col-span-2 space-y-4">
+                    <h3 class="font-bold text-slate-700">سجل المتابعة الصحية للبيئة المدرسية</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-right">
+                            <thead class="bg-slate-50 text-slate-600 font-semibold border-b">
+                                <tr>
+                                    <th class="p-3">التاريخ</th>
+                                    <th class="p-3">نظافة المدرسة</th>
+                                    <th class="p-3">متابعة المقصف صحيًا</th>
+                                    <th class="p-3">خزانات المياه</th>
+                                    <th class="p-3 text-center">التقييم العام</th>
+                                    <th class="p-3 no-print">حذف</th>
+                                </tr>
+                            </thead>
+                            <tbody id="env-tbody" class="divide-y divide-slate-100">
+                                <!-- Loaded dynamically via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Right: Official Standards Reminder -->
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-100 space-y-4">
+                    <h3 class="font-bold text-saudi-green flex items-center gap-2 pb-2 border-b">
+                        <i class="fa-solid fa-scale-balanced"></i> إرشادات البيئة الصحية المدرسية
+                    </h3>
+                    <div class="space-y-3 text-xs leading-relaxed text-slate-600">
+                        <div class="flex gap-2 items-start">
+                            <i class="fa-solid fa-circle-check text-emerald-600 mt-1"></i>
+                            <p><strong>العاملون بالمقصف:</strong> الالتزام بالبطاقات الصحية السارية، القفازات، غطاء الرأس والمظهر اللائق.</p>
+                        </div>
+                        <div class="flex gap-2 items-start">
+                            <i class="fa-solid fa-circle-check text-emerald-600 mt-1"></i>
+                            <p><strong>سلامة الأغذية:</strong> يمنع منعاً باتاً بيع المشروبات الغازية، رقائق البطاطس المقلية، أو الأغذية المجهولة المصدر.</p>
+                        </div>
+                        <div class="flex gap-2 items-start">
+                            <i class="fa-solid fa-circle-check text-emerald-600 mt-1"></i>
+                            <p><strong>مياه الشرب:</strong> المتابعة الدورية لنظافة خزانات وفلاتر مياه الشرب والتوثيق كل فصل دراسي.</p>
+                        </div>
+                        <div class="flex gap-2 items-start">
+                            <i class="fa-solid fa-circle-check text-emerald-600 mt-1"></i>
+                            <p><strong>المرافق الصحية:</strong> صيانة يومية وتأكيد توفر الصابون وأدوات التطهير المناسبة للطلاب.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab 5: Health Awareness Programs -->
+        <section id="sect-programs" class="tab-content hidden space-y-4">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <i class="fa-solid fa-bullhorn text-saudi-green"></i> خطة وسجل البرامج الصحية والوقائية
+                    </h2>
+                    <p class="text-xs text-slate-500">توثيق البرامج الصحية والمبادرات التوعوية والشراكات الصحية والشواهد المرتبطة بها.</p>
+                </div>
+                <button onclick="openModal('modal-program')" class="bg-saudi-green hover:bg-saudi-dark text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow transition">
+                    <i class="fa-solid fa-plus"></i> إضافة برنامج/مبادرة صحية
+                </button>
+            </div>
+
+            <!-- Campaign Cards Layout -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="programs-grid">
+                <!-- Dynamically Populated -->
+            </div>
+        </section>
+
+        <!-- Tab 6: Medical Transfers and Emergency Follow-up -->
+        <section id="sect-transfers" class="tab-content hidden space-y-4">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <i class="fa-solid fa-truck-medical text-saudi-green"></i> سجل التحويلات الطبية والطوارئ
+                    </h2>
+                    <p class="text-xs text-slate-500">توثيق التحويلات للمركز الصحي/المستشفى والحالات الطارئة ونتيجة المتابعة حتى الإغلاق.</p>
+                </div>
+                <div class="flex flex-wrap gap-2 w-full md:w-auto">
+                    <input type="text" id="transfer-search" placeholder="ابحث باسم الطالب أو الجهة..." class="px-3 py-2 border rounded-lg text-sm focus:outline-saudi-green text-right w-full md:w-56" onkeyup="renderTransfersTable()">
+                    <button onclick="openModal('modal-transfer')" class="bg-saudi-green hover:bg-saudi-dark text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow w-full md:w-auto justify-center">
+                        <i class="fa-solid fa-plus"></i> إضافة تحويل/حالة طارئة
+                    </button>
+                </div>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-right">
+                        <thead class="bg-slate-50 text-slate-600 font-semibold border-b border-slate-100">
+                            <tr>
+                                <th class="p-4">التاريخ</th>
+                                <th class="p-4">اسم الطالب</th>
+                                <th class="p-4">الصف / الشعبة</th>
+                                <th class="p-4">نوع الحالة</th>
+                                <th class="p-4">الجهة المحول إليها</th>
+                                <th class="p-4">الإجراء والمتابعة</th>
+                                <th class="p-4">حالة الإغلاق</th>
+                                <th class="p-4 text-center no-print">خيارات</th>
+                            </tr>
+                        </thead>
+                        <tbody id="transfers-tbody" class="divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab 6: Reports & Backups -->
+        <section id="sect-export" class="tab-content hidden space-y-6">
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-100 space-y-4">
+                <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                    <i class="fa-solid fa-database text-saudi-green"></i> أرشيف السجلات الصحية والتقارير
+                </h2>
+                <p class="text-sm text-slate-500">
+                    يضم أرشيف السجلات الصحية، التقارير، النسخ الاحتياطية، والشواهد الختامية المرتبطة بالتوجيه الصحي.
+                </p>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
+                    <!-- Backup Export Button -->
+                    <div class="border p-5 rounded-xl space-y-3 bg-slate-50">
+                        <div class="text-saudi-green text-3xl"><i class="fa-solid fa-download"></i></div>
+                        <h3 class="font-bold text-slate-700">تصدير أرشيف السجلات الصحية</h3>
+                        <p class="text-xs text-slate-500">تحميل نسخة احتياطية من جميع السجلات على هيئة ملف JSON محلي لتتمكن من استيراده لاحقاً.</p>
+                        <button onclick="exportData()" class="w-full bg-saudi-green text-white py-2 rounded-lg font-bold text-sm hover:bg-saudi-dark transition flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-file-export"></i> تصدير البيانات الآن
+                        </button>
+                    </div>
+
+                    <!-- Import Button -->
+                    <div class="border p-5 rounded-xl space-y-3 bg-slate-50">
+                        <div class="text-amber-600 text-3xl"><i class="fa-solid fa-upload"></i></div>
+                        <h3 class="font-bold text-slate-700">استيراد أرشيف السجلات الصحية</h3>
+                        <p class="text-xs text-slate-500">رفع ملف نسخة احتياطية محفوظ مسبقاً لاسترجاع كافة البيانات والسجلات المدرسية.</p>
+                        <label class="w-full bg-amber-600 text-white py-2 rounded-lg font-bold text-sm hover:bg-amber-700 transition flex items-center justify-center gap-2 cursor-pointer text-center">
+                            <i class="fa-solid fa-file-import"></i> اختر ملف النسخة الاحتياطية
+                            <input type="file" id="import-file" accept=".json" class="hidden" onchange="importData(event)">
+                        </label>
+                    </div>
+
+                    <!-- Print Reports Panel -->
+                    <div class="border p-5 rounded-xl space-y-3 bg-slate-50">
+                        <div class="text-blue-600 text-3xl"><i class="fa-solid fa-print"></i></div>
+                        <h3 class="font-bold text-slate-700">طباعة التقرير الصحي الموحد</h3>
+                        <p class="text-xs text-slate-500">يمكنك طباعة السجل النشط مباشرة في تصميم أنيق ورسمي لتقديمه لإدارة المدرسة أو المشرف الصحي.</p>
+                        <button onclick="printReport()" class="w-full bg-blue-600 text-white py-2 rounded-lg font-bold text-sm hover:bg-blue-700 transition flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-print"></i> طباعة السجل/التقرير الحالي
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pre-filled Sample Data Section to help first-time users -->
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-100 space-y-4">
+                <h3 class="font-bold text-slate-700">بيانات تجريبية إرشادية</h3>
+                <p class="text-xs text-slate-500">إذا كنت تستخدم النظام للمرة الأولى، يمكنك تعبئة سجلاتك ببيانات افتراضية كأمثلة لمشاهدة كيف تظهر وتعمل لوحة التحكم والسجلات.</p>
+                <button onclick="loadDemoData()" class="border border-saudi-green text-saudi-green hover:bg-saudi-green hover:text-white px-4 py-2 rounded-lg text-xs font-bold transition">
+                     تحميل بيانات افتراضية للتجربة
+                </button>
+                <button onclick="resetSystem()" class="text-rose-600 hover:text-rose-800 px-4 py-2 rounded-lg text-xs font-bold transition">
+                    <i class="fa-solid fa-trash-can"></i> مسح جميع السجلات الحالية
+                </button>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- MODALS SECTION -->
+    
+    <!-- Modal 1: Add Visit (Clinic) -->
+    <div id="modal-visit" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-lg rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="bg-saudi-green text-white p-4 flex justify-between items-center">
+                <h3 class="font-bold text-lg"><i class="fa-solid fa-stethoscope"></i> إضافة حالة/زيارة صحية للعيادة</h3>
+                <button onclick="closeModal('modal-visit')" class="text-white hover:opacity-75"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <form onsubmit="saveNewVisit(event)" class="p-6 space-y-4 overflow-y-auto">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">تاريخ الزيارة</label>
+                        <input type="date" id="vis-date" required class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">الوقت</label>
+                        <input type="time" id="vis-time" required class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1">اسم الطالب رباعي</label>
+                    <input type="text" id="vis-name" required placeholder="مثال: خالد بن محمد العمري" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">الصف الدراسي</label>
+                        <select id="vis-grade" required class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                            <option value="الأول">الأول</option>
+                            <option value="الثاني">الثاني</option>
+                            <option value="الثالث">الثالث</option>
+                            <option value="الرابع">الرابع</option>
+                            <option value="الخامس">الخامس</option>
+                            <option value="السادس">السادس</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">الفصل</label>
+                        <input type="text" id="vis-class" required placeholder="مثال: أ أو 1" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1">الأعراض والشكوى الصحية</label>
+                    <input type="text" id="vis-symptoms" required placeholder="مثال: صداع وارتفاع حرارة طفيف" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1">الإجراء المتخذ (الإسعافات)</label>
+                    <input type="text" id="vis-action" required placeholder="مثال: إعطاء خافض حرارة والتواصل مع ولي الأمر" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">النتيجة والمآل</label>
+                        <select id="vis-status" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                            <option value="عاد للصف">عاد للصف الدراسي</option>
+                            <option value="انصراف للمنزل">انصراف مع ولي الأمر</option>
+                            <option value="تحويل للمركز الصحي">تحويل للمركز الصحي (طوارئ)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">هاتف ولي الأمر للتنسيق</label>
+                        <input type="tel" id="vis-phone" placeholder="05xxxxxxxx" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1">ملاحظات إضافية</label>
+                    <textarea id="vis-notes" rows="2" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green"></textarea>
+                </div>
+                <div class="pt-2 flex justify-end gap-2">
+                    <button type="button" onclick="closeModal('modal-visit')" class="px-4 py-2 border rounded-lg text-sm font-semibold hover:bg-slate-50">إلغاء</button>
+                    <button type="submit" class="px-5 py-2 bg-saudi-green hover:bg-saudi-dark text-white rounded-lg text-sm font-bold">حفظ الحالة الصحية</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal 2: Add Student with Chronic Disease -->
+    <div id="modal-chronic" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-lg rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="bg-saudi-green text-white p-4 flex justify-between items-center">
+                <h3 class="font-bold text-lg"><i class="fa-solid fa-user-plus"></i> تسجيل حالة مزمنة أو معدية</h3>
+                <button onclick="closeModal('modal-chronic')" class="text-white hover:opacity-75"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <form onsubmit="saveNewChronic(event)" class="p-6 space-y-4 overflow-y-auto">
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1">اسم الطالب رباعي</label>
+                    <input type="text" id="chr-name" required placeholder="مثال: ريان بن فيصل القرني" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">الصف</label>
+                        <select id="chr-grade" required class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                            <option value="الأول">الأول</option>
+                            <option value="الثاني">الثاني</option>
+                            <option value="الثالث">الثالث</option>
+                            <option value="الرابع">الرابع</option>
+                            <option value="الخامس">الخامس</option>
+                            <option value="السادس">السادس</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">الفصل</label>
+                        <input type="text" id="chr-class" required placeholder="أ" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">نوع الحالة / التشخيص</label>
+                        <select id="chr-disease" required class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green" onchange="toggleCustomDisease(this.value)">
+                            <option value="سكري (النوع الأول)">سكري (النوع الأول)</option>
+                            <option value="ربو شعبي">ربو شعبي (حساسية صدر)</option>
+                            <option value="حساسية أغذية مفرطة">حساسية أغذية مفرطة</option>
+                            <option value="صرع تشنجي">صرع تشنجي</option>
+                            <option value="مرض معدٍ يحتاج عزل/متابعة">مرض معدٍ يحتاج عزل/متابعة</option>
+                            <option value="حالة طارئة - إغماء">حالة طارئة - إغماء</option>
+                            <option value="حالة طارئة - إصابة/كسر">حالة طارئة - إصابة/كسر</option>
+                            <option value="حالة طارئة - حساسية حادة/اختناق">حالة طارئة - حساسية حادة/اختناق</option>
+                            <option value="أخرى">أخرى (اذكرها بالتفاصيل)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">اسم الدواء المستخدم بالمدرسة</label>
+                        <input type="text" id="chr-med" required placeholder="مثال: بخاخ فنتولين / قلم إنسولين" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                    </div>
+                </div>
+                <div id="custom-disease-container" class="hidden">
+                    <label class="block text-xs font-bold text-slate-600 mb-1">اكتب المرض بالتفصيل</label>
+                    <input type="text" id="chr-disease-custom" placeholder="اكتب التشخيص الإضافي هنا" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">اسم ولي الأمر</label>
+                        <input type="text" id="chr-parent" required placeholder="مثال: فيصل بن سعد القرني" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">رقم هاتف الطوارئ</label>
+                        <input type="tel" id="chr-phone" required placeholder="05xxxxxxxx" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1">بروتوكول التعامل في الحالات الطارئة</label>
+                    <textarea id="chr-protocol" rows="2" placeholder="أهم الخطوات السريعة لحماية الطالب في الأزمات..." class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green"></textarea>
+                </div>
+                <div class="pt-2 flex justify-end gap-2">
+                    <button type="button" onclick="closeModal('modal-chronic')" class="px-4 py-2 border rounded-lg text-sm font-semibold hover:bg-slate-50">إلغاء</button>
+                    <button type="submit" class="px-5 py-2 bg-saudi-green hover:bg-saudi-dark text-white rounded-lg text-sm font-bold">تسجيل الطالب</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal 3: Environmental and Canteen Inspection -->
+    <div id="modal-env" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-lg rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="bg-saudi-green text-white p-4 flex justify-between items-center">
+                <h3 class="font-bold text-lg"><i class="fa-solid fa-clipboard-check"></i> متابعة بيئية صحية جديدة</h3>
+                <button onclick="closeModal('modal-env')" class="text-white hover:opacity-75"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <form onsubmit="saveNewEnv(event)" class="p-6 space-y-4 overflow-y-auto">
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1">تاريخ الجولة الميدانية</label>
+                    <input type="date" id="env-date" required class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">مستوى نظافة الفصول والممرات</label>
+                        <select id="env-clean" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                            <option value="ممتاز 🟢">ممتاز 🟢</option>
+                            <option value="جيد جداً 🟡">جيد جداً 🟡</option>
+                            <option value="يحتاج لمتابعة 🔴">يحتاج لمتابعة 🔴</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">تقييم الاشتراطات بالمقصف</label>
+                        <select id="env-canteen" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                            <option value="مطابق للشروط 🟢">مطابق للشروط 🟢</option>
+                            <option value="مخالفات طفيفة 🟡">مخالفات طفيفة 🟡</option>
+                            <option value="مخالف للشروط 🔴">مخالف للشروط 🔴</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">فحص برادات ومصادر المياه</label>
+                        <select id="env-water" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                            <option value="نظيفة وصالحة 🟢">نظيفة وصالحة 🟢</option>
+                            <option value="توجد مروحة تالفة/عطل 🟡">توجد مروحة تالفة/عطل 🟡</option>
+                            <option value="غير صالحة/متسخة 🔴">غير صالحة/متسخة 🔴</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">حالة دورات المياه والتهوية</label>
+                        <select id="env-toilet" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                            <option value="ممتاز ومعقمة 🟢">ممتاز ومعقمة 🟢</option>
+                            <option value="نظافة متوسطة 🟡">نظافة متوسطة 🟡</option>
+                            <option value="سيئة وتحتاج صيانة 🔴">سيئة وتحتاج صيانة 🔴</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1">التوجيهات والقرارات الصادرة</label>
+                    <textarea id="env-notes" rows="2" placeholder="مثال: توجيه إنذار لمتعهد المقصف بسبب سوء الحفظ، أو مخاطبة الصيانة لتعقيم الخزانات..." class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green"></textarea>
+                </div>
+                <div class="pt-2 flex justify-end gap-2">
+                    <button type="button" onclick="closeModal('modal-env')" class="px-4 py-2 border rounded-lg text-sm font-semibold hover:bg-slate-50">إلغاء</button>
+                    <button type="submit" class="px-5 py-2 bg-saudi-green hover:bg-saudi-dark text-white rounded-lg text-sm font-bold">توثيق الجولة</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal 4: Health Program / Campaign -->
+    <div id="modal-program" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-lg rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="bg-saudi-green text-white p-4 flex justify-between items-center">
+                <h3 class="font-bold text-lg"><i class="fa-solid fa-bullhorn"></i> إضافة برنامج أو مبادرة صحية</h3>
+                <button onclick="closeModal('modal-program')" class="text-white hover:opacity-75"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <form onsubmit="saveNewProgram(event)" class="p-6 space-y-4 overflow-y-auto">
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1">اسم الفعالية / اليوم العالمي</label>
+                    <input type="text" id="prog-title" required placeholder="مثال: اليوم العالمي للسكري أو حملة الأسنان" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">تاريخ التنفيذ</label>
+                        <input type="date" id="prog-date" required class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">المجموعة المستهدفة</label>
+                        <select id="prog-target" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                            <option value="جميع الطلاب">جميع الطلاب</option>
+                            <option value="طلاب الصفوف الأولية">الصف الأول والثاني والثالث</option>
+                            <option value="طلاب الصفوف العليا">الرابع والخامس والسادس</option>
+                            <option value="المعلمين وأولياء الأمور">المعلمين وأولياء الأمور</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">حالة الفعالية</label>
+                        <select id="prog-status" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                            <option value="قيد التخطيط">مخطط لها</option>
+                            <option value="منفذ">تم التنفيذ بنجاح</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">الجهة المساندة (إن وجد)</label>
+                        <input type="text" id="prog-partner" placeholder="مثال: مركز صحي الرعاية الأولية" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1">أبرز الأنشطة والوسائل المستخدمة</label>
+                    <textarea id="prog-desc" rows="3" placeholder="توزيع منشورات، فحص الضغط، إقامة محاضرة إذاعية، وغيرها..." class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green" required></textarea>
+                </div>
+                <div class="pt-2 flex justify-end gap-2">
+                    <button type="button" onclick="closeModal('modal-program')" class="px-4 py-2 border rounded-lg text-sm font-semibold hover:bg-slate-50">إلغاء</button>
+                    <button type="submit" class="px-5 py-2 bg-saudi-green hover:bg-saudi-dark text-white rounded-lg text-sm font-bold">تسجيل الفعالية</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal 5: Medical Transfer / Emergency Case -->
+    <div id="modal-transfer" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-lg rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="bg-saudi-green text-white p-4 flex justify-between items-center">
+                <h3 class="font-bold text-lg"><i class="fa-solid fa-truck-medical"></i> إضافة تحويل طبي / حالة طارئة</h3>
+                <button onclick="closeModal('modal-transfer')" class="text-white hover:opacity-75"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <form onsubmit="saveNewTransfer(event)" class="p-6 space-y-4 overflow-y-auto">
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1">تاريخ الحالة / التحويل</label>
+                    <input type="date" id="tr-date" required class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1">اسم الطالب رباعي</label>
+                    <input type="text" id="tr-name" required placeholder="مثال: خالد بن محمد العمري" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">الصف الدراسي</label>
+                        <input type="text" id="tr-grade" required placeholder="مثال: الخامس" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">الشعبة</label>
+                        <input type="text" id="tr-class" required placeholder="أ" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">نوع الحالة</label>
+                        <select id="tr-type" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                            <option value="تحويل للمركز الصحي">تحويل للمركز الصحي</option>
+                            <option value="تحويل للمستشفى">تحويل للمستشفى</option>
+                            <option value="حالة إسعافية طارئة">حالة إسعافية طارئة</option>
+                            <option value="متابعة بعد عودة الطالب">متابعة بعد عودة الطالب</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">الجهة المحول إليها</label>
+                        <input type="text" id="tr-destination" required placeholder="المركز الصحي / المستشفى" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1">سبب التحويل / وصف الحالة</label>
+                    <textarea id="tr-reason" rows="2" required class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green"></textarea>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1">الإجراء والمتابعة</label>
+                    <textarea id="tr-followup" rows="2" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green" placeholder="تم التواصل مع ولي الأمر / الهلال الأحمر / نتيجة المراجعة..."></textarea>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1">حالة الإغلاق</label>
+                    <select id="tr-status" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-saudi-green">
+                        <option value="قيد المتابعة">قيد المتابعة</option>
+                        <option value="مغلق بعد المتابعة">مغلق بعد المتابعة</option>
+                        <option value="يحتاج إجراء إضافي">يحتاج إجراء إضافي</option>
+                    </select>
+                </div>
+                <div class="pt-2 flex justify-end gap-2">
+                    <button type="button" onclick="closeModal('modal-transfer')" class="px-4 py-2 border rounded-lg text-sm font-semibold hover:bg-slate-50">إلغاء</button>
+                    <button type="submit" class="px-5 py-2 bg-saudi-green hover:bg-saudi-dark text-white rounded-lg text-sm font-bold">حفظ التحويل</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Alert / Toast Notification Container -->
+    <div id="toast" class="fixed bottom-5 left-5 bg-slate-900 text-white px-5 py-3 rounded-xl shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 z-50 flex items-center gap-3">
+        <i class="fa-solid fa-circle-check text-emerald-400 text-lg" id="toast-icon"></i>
+        <span class="text-xs font-bold" id="toast-msg">تمت العملية بنجاح</span>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-saudi-dark text-slate-300 py-6 mt-12 border-t border-saudi-green/20 no-print">
+        <div class="container mx-auto px-4 text-center space-y-2">
+            <p class="text-sm font-bold">الملف التفاعلي الموحد للتوجيه الصحي المدرسي</p>
+            <p class="text-[11px] text-slate-400">جميع الحقوق محفوظة ومتاحة للاستخدام الإداري المدرسي في المدارس السعودية © 2026</p>
+            <div class="flex justify-center gap-4 text-xs text-saudi-gold mt-2">
+                <span>تخزين مشفر ومحلي 100%</span>
+                <span>•</span>
+                <span>متوافق مع أدلة الإدارة المدرسية المحدثة</span>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        /* HEALTH GUIDANCE UNIFIED FILE - canonical identifiers */
+        window.HEALTH_GUIDANCE_REGISTRY = {
+            assignmentKey: 'health_guidance',
+            title: 'الملف الموحد لسجلات التوجيه الصحي',
+            sections: [
+                { id: 'clinic', label: 'السجل الصحي الشامل' },
+                { id: 'programs', label: 'البرامج الصحية' },
+                { id: 'environment', label: 'البيئة الصحية المدرسية' },
+                { id: 'transfers', label: 'التحويلات الطبية والطوارئ' },
+                { id: 'export', label: 'أرشيف السجلات الصحية' }
+            ]
+        };
+
+        /* STATE STORES */
+        let clinicVisits = [];
+        let chronicCases = [];
+        let envInspections = [];
+        let healthPrograms = [];
+        let medicalTransfers = [];
+
+        // Load data on page init
+        window.onload = function() {
+            initSystem();
+            
+            // Auto fill current dates in modals
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('vis-date').value = today;
+            document.getElementById('env-date').value = today;
+            document.getElementById('prog-date').value = today;
+            if (document.getElementById('tr-date')) document.getElementById('tr-date').value = today;
+            
+            // Set auto current time
+            const now = new Date();
+            const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+            document.getElementById('vis-time').value = timeStr;
+        }
+
+        function initSystem() {
+            try {
+                if (localStorage.getItem('sh_clinicVisits')) {
+                    clinicVisits = JSON.parse(localStorage.getItem('sh_clinicVisits'));
+                }
+                if (localStorage.getItem('sh_chronicCases')) {
+                    chronicCases = JSON.parse(localStorage.getItem('sh_chronicCases'));
+                }
+                if (localStorage.getItem('sh_envInspections')) {
+                    envInspections = JSON.parse(localStorage.getItem('sh_envInspections'));
+                }
+                if (localStorage.getItem('sh_healthPrograms')) {
+                    healthPrograms = JSON.parse(localStorage.getItem('sh_healthPrograms'));
+                }
+                if (localStorage.getItem('sh_medicalTransfers')) {
+                    medicalTransfers = JSON.parse(localStorage.getItem('sh_medicalTransfers'));
+                }
+                
+                // If there is metadata in localStorage, apply it
+                ['school', 'counselor', 'year'].forEach(field => {
+                    const saved = localStorage.getItem('sh_meta_' + field);
+                    if (saved) {
+                        document.getElementById('meta-' + field).value = saved;
+                    }
+                    // Auto-save metadata change
+                    document.getElementById('meta-' + field).addEventListener('input', (e) => {
+                        localStorage.setItem('sh_meta_' + field, e.target.value);
+                    });
+                });
+
+                // Update UI elements
+                updateDashboardStats();
+                renderAllTables();
+            } catch(e) {
+                console.error("خطأ أثناء استعادة البيانات:", e);
+                showToast("حدث خطأ عند تحميل قاعدة البيانات", "fa-triangle-exclamation");
+            }
+        }
+
+        // Save entire state
+        function persistState() {
+            localStorage.setItem('sh_clinicVisits', JSON.stringify(clinicVisits));
+            localStorage.setItem('sh_chronicCases', JSON.stringify(chronicCases));
+            localStorage.setItem('sh_envInspections', JSON.stringify(envInspections));
+            localStorage.setItem('sh_healthPrograms', JSON.stringify(healthPrograms));
+            localStorage.setItem('sh_medicalTransfers', JSON.stringify(medicalTransfers));
+            
+            updateDashboardStats();
+            renderAllTables();
+        }
+
+        function switchTab(tabId) {
+            // Hide all contents
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('block'));
+            
+            // Remove active classes from tab buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('bg-saudi-green', 'text-white');
+                btn.classList.add('text-slate-600', 'hover:bg-slate-50');
+            });
+
+            // Show current active content
+            document.getElementById('sect-' + tabId).classList.remove('hidden');
+            document.getElementById('sect-' + tabId).classList.add('block');
+
+            // Style active button
+            const activeBtn = document.getElementById('tab-' + tabId);
+            activeBtn.classList.remove('text-slate-600', 'hover:bg-slate-50');
+            activeBtn.classList.add('bg-saudi-green', 'text-white');
+        }
+
+        function openModal(id) {
+            document.getElementById(id).classList.remove('hidden');
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+
+        function showToast(message, iconClass = "fa-circle-check") {
+            const toast = document.getElementById('toast');
+            document.getElementById('toast-msg').innerText = message;
+            document.getElementById('toast-icon').className = `fa-solid ${iconClass} text-emerald-400 text-lg`;
+            
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            toast.classList.add('translate-y-0', 'opacity-100');
+
+            setTimeout(() => {
+                toast.classList.remove('translate-y-0', 'opacity-100');
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+
+        function toggleCustomDisease(value) {
+            const extraInput = document.getElementById('custom-disease-container');
+            if (value === 'أخرى') {
+                extraInput.classList.remove('hidden');
+                document.getElementById('chr-disease-custom').setAttribute('required', 'true');
+            } else {
+                extraInput.classList.add('hidden');
+                document.getElementById('chr-disease-custom').removeAttribute('required');
+            }
+        }
+
+        
+        // Save Visit
+        function saveNewVisit(e) {
+            e.preventDefault();
+            const newVisit = {
+                id: 'v_' + Date.now(),
+                date: document.getElementById('vis-date').value,
+                time: document.getElementById('vis-time').value,
+                name: document.getElementById('vis-name').value,
+                grade: document.getElementById('vis-grade').value,
+                class: document.getElementById('vis-class').value,
+                symptoms: document.getElementById('vis-symptoms').value,
+                action: document.getElementById('vis-action').value,
+                status: document.getElementById('vis-status').value,
+                phone: document.getElementById('vis-phone').value || "غير مسجل",
+                notes: document.getElementById('vis-notes').value || "لا توجد"
+            };
+
+            clinicVisits.unshift(newVisit); // Add new to start
+            persistState();
+            closeModal('modal-visit');
+            e.target.reset();
+            showToast("تم حفظ الحالة الصحية بنجاح ⚕️");
+        }
+
+        // Save Chronic disease
+        function saveNewChronic(e) {
+            e.preventDefault();
+            let finalDisease = document.getElementById('chr-disease').value;
+            if (finalDisease === 'أخرى') {
+                finalDisease = document.getElementById('chr-disease-custom').value;
+            }
+
+            const newChronic = {
+                id: 'c_' + Date.now(),
+                name: document.getElementById('chr-name').value,
+                grade: document.getElementById('chr-grade').value,
+                class: document.getElementById('chr-class').value,
+                disease: finalDisease,
+                medication: document.getElementById('chr-med').value,
+                parent: document.getElementById('chr-parent').value,
+                phone: document.getElementById('chr-phone').value,
+                protocol: document.getElementById('chr-protocol').value || "الاتصال بالطوارئ وولي الأمر فوراً"
+            };
+
+            chronicCases.unshift(newChronic);
+            persistState();
+            closeModal('modal-chronic');
+            e.target.reset();
+            document.getElementById('custom-disease-container').classList.add('hidden');
+            showToast("تم حصر الحالة الصحية الخاصة وحفظها بنجاح 📋");
+        }
+
+        // Save Inspection
+        function saveNewEnv(e) {
+            e.preventDefault();
+            const newEnv = {
+                id: 'e_' + Date.now(),
+                date: document.getElementById('env-date').value,
+                cleanliness: document.getElementById('env-clean').value,
+                canteen: document.getElementById('env-canteen').value,
+                water: document.getElementById('env-water').value,
+                toilet: document.getElementById('env-toilet').value,
+                notes: document.getElementById('env-notes').value || "الوضع العام مطمئن ومطابق للاشتراطات."
+            };
+
+            envInspections.unshift(newEnv);
+            persistState();
+            closeModal('modal-env');
+            e.target.reset();
+            showToast("تم توثيق متابعة البيئة الصحية المدرسية 🍏");
+        }
+
+        // Save Program
+        function saveNewProgram(e) {
+            e.preventDefault();
+            const newProg = {
+                id: 'p_' + Date.now(),
+                title: document.getElementById('prog-title').value,
+                date: document.getElementById('prog-date').value,
+                target: document.getElementById('prog-target').value,
+                status: document.getElementById('prog-status').value,
+                partner: document.getElementById('prog-partner').value || "الموجه الصحي واللجنة المدرسية",
+                desc: document.getElementById('prog-desc').value
+            };
+
+            healthPrograms.unshift(newProg);
+            persistState();
+            closeModal('modal-program');
+            e.target.reset();
+            showToast("تم تسجيل البرنامج الصحي وحفظه 📢");
+        }
+
+        function saveNewTransfer(e) {
+            e.preventDefault();
+            const newTransfer = {
+                id: 't_' + Date.now(),
+                date: document.getElementById('tr-date').value,
+                name: document.getElementById('tr-name').value,
+                grade: document.getElementById('tr-grade').value,
+                class: document.getElementById('tr-class').value,
+                type: document.getElementById('tr-type').value,
+                destination: document.getElementById('tr-destination').value,
+                reason: document.getElementById('tr-reason').value,
+                followup: document.getElementById('tr-followup').value || 'لم تسجل متابعة بعد',
+                status: document.getElementById('tr-status').value
+            };
+            medicalTransfers.unshift(newTransfer);
+            persistState();
+            closeModal('modal-transfer');
+            e.target.reset();
+            showToast("تم حفظ التحويل الطبي/الحالة الطارئة 🚑");
+        }
+
+        function deleteRecord(arrayName, id, text = "العنصر") {
+            const confirmBox = confirm(`هل أنت متأكد من رغبتك في حذف ${text} نهائياً؟`);
+            if (!confirmBox) return;
+
+            if (arrayName === 'clinic') {
+                clinicVisits = clinicVisits.filter(item => item.id !== id);
+            } else if (arrayName === 'chronic') {
+                chronicCases = chronicCases.filter(item => item.id !== id);
+            } else if (arrayName === 'env') {
+                envInspections = envInspections.filter(item => item.id !== id);
+            } else if (arrayName === 'program') {
+                healthPrograms = healthPrograms.filter(item => item.id !== id);
+            } else if (arrayName === 'transfer') {
+                medicalTransfers = medicalTransfers.filter(item => item.id !== id);
+            }
+
+            persistState();
+            showToast("تم الحذف بنجاح");
+        }
+
+        function updateDashboardStats() {
+            document.getElementById('stat-total-visits').innerText = clinicVisits.length;
+            document.getElementById('stat-chronic-cases').innerText = chronicCases.length;
+            
+            // Latest inspection score calculation/indicator
+            if (envInspections.length > 0) {
+                const lastEnv = envInspections[0];
+                let scoreText = "ممتاز";
+                if (lastEnv.cleanliness.includes('🔴') || lastEnv.canteen.includes('🔴') || lastEnv.water.includes('🔴')) {
+                    scoreText = "إنذار عاجل";
+                } else if (lastEnv.cleanliness.includes('🟡') || lastEnv.canteen.includes('🟡')) {
+                    scoreText = "ملاحظات متوسطة";
+                }
+                document.getElementById('stat-canteen-score').innerText = scoreText;
+            } else {
+                document.getElementById('stat-canteen-score').innerText = "لم تقيم";
+            }
+
+            // Completed Programs
+            const completedCount = healthPrograms.filter(p => p.status === 'منفذ').length;
+            document.getElementById('stat-programs').innerText = completedCount;
+
+            // Render Recent Visits Feed on Dashboard
+            const recentTbody = document.getElementById('recent-clinic-tbody');
+            recentTbody.innerHTML = '';
+            
+            const listToRender = clinicVisits.slice(0, 4); // top 4 visits
+            if (listToRender.length === 0) {
+                recentTbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-400">لا توجد زيارات مسجلة مؤخراً</td></tr>`;
+            } else {
+                listToRender.forEach(v => {
+                    let badgeClass = "bg-green-100 text-green-800";
+                    if (v.status.includes("انصراف")) badgeClass = "bg-amber-100 text-amber-800";
+                    if (v.status.includes("تحويل")) badgeClass = "bg-red-100 text-red-800";
+
+                    recentTbody.innerHTML += `
+                        <tr class="hover:bg-slate-50 transition">
+                            <td class="p-3 font-semibold text-slate-800">${v.name}</td>
+                            <td class="p-3 text-xs">${v.grade} / ${v.class}</td>
+                            <td class="p-3 text-xs">${v.symptoms}</td>
+                            <td class="p-3 text-xs max-w-xs truncate">${v.action}</td>
+                            <td class="p-3 text-xs">
+                                <span class="px-2 py-1 rounded text-[10px] font-bold ${badgeClass}">${v.status}</span>
+                            </td>
+                        </tr>
+                    `;
+                });
+            }
+        }
+
+        function renderAllTables() {
+            renderClinicTable();
+            renderChronicTable();
+            renderEnvTable();
+            renderProgramsTable();
+            renderTransfersTable();
+        }
+
+        // Render Clinic Log
+        function renderClinicTable() {
+            const tbody = document.getElementById('clinic-tbody');
+            const searchVal = document.getElementById('clinic-search').value.toLowerCase();
+            tbody.innerHTML = '';
+
+            const filtered = clinicVisits.filter(v => v.name.toLowerCase().includes(searchVal));
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-slate-400">لا توجد سجلات مطابقة للبحث</td></tr>`;
+                return;
+            }
+
+            filtered.forEach(v => {
+                tbody.innerHTML += `
+                    <tr class="hover:bg-slate-50 transition border-b border-slate-100">
+                        <td class="p-4 text-xs font-semibold text-slate-700">${v.date}<br><span class="text-[10px] text-slate-400 font-normal">${v.time}</span></td>
+                        <td class="p-4 font-bold text-slate-900">${v.name}</td>
+                        <td class="p-4 text-xs text-slate-600">${v.grade} / ف ${v.class}</td>
+                        <td class="p-4 text-xs text-slate-800">${v.symptoms}</td>
+                        <td class="p-4 text-xs text-slate-800">${v.action}</td>
+                        <td class="p-4 text-xs">
+                            <span class="inline-block px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-800">${v.status}</span>
+                        </td>
+                        <td class="p-4 text-xs text-slate-500 max-w-xs truncate" title="${v.notes}">${v.notes}</td>
+                        <td class="p-4 text-center no-print">
+                            <button onclick="deleteRecord('clinic', '${v.id}', 'سجل الزيارة')" class="text-rose-500 hover:text-rose-700 p-1 transition">
+                                <i class="fa-regular fa-trash-can text-base"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        // Render Chronic Disease Profiles
+        function renderChronicTable() {
+            const grid = document.getElementById('chronic-grid');
+            const searchVal = document.getElementById('chronic-search').value.toLowerCase();
+            grid.innerHTML = '';
+
+            const filtered = chronicCases.filter(c => c.name.toLowerCase().includes(searchVal) || c.disease.toLowerCase().includes(searchVal));
+
+            if (filtered.length === 0) {
+                grid.innerHTML = `<div class="col-span-full p-6 text-center text-slate-400 bg-white rounded-xl">لا توجد حالات مزمنة/معدية/طارئة مطابقة للبحث</div>`;
+                return;
+            }
+
+            filtered.forEach(c => {
+                let badgeColor = "bg-rose-50 text-rose-700 border-rose-100";
+                if (c.disease.includes("سكري")) badgeColor = "bg-amber-50 text-amber-700 border-amber-100";
+                if (c.disease.includes("ربو")) badgeColor = "bg-blue-50 text-blue-700 border-blue-100";
+
+                grid.innerHTML += `
+                    <div class="bg-white border border-slate-100 rounded-2xl shadow-sm p-5 space-y-4 hover:shadow transition relative flex flex-col justify-between">
+                        <div class="space-y-2">
+                            <div class="flex justify-between items-start">
+                                <div class="bg-slate-100 text-slate-700 font-bold px-3 py-1 rounded text-xs">
+                                    الصف ${c.grade} / فصل ${c.class}
+                                </div>
+                                <button onclick="deleteRecord('chronic', '${c.id}', 'سجل الحالة المزمنة للطالب')" class="text-rose-400 hover:text-rose-600 no-print">
+                                    <i class="fa-regular fa-trash-can"></i>
+                                </button>
+                            </div>
+                            
+                            <h4 class="font-extrabold text-slate-950 text-base leading-tight">${c.name}</h4>
+                            
+                            <div class="inline-block border px-2.5 py-0.5 rounded-full text-xs font-bold ${badgeColor}">
+                                <i class="fa-solid fa-virus-covid text-[10px] ml-1"></i> ${c.disease}
+                            </div>
+                            
+                            <div class="text-xs bg-slate-50 p-2.5 rounded-lg border space-y-1">
+                                <span class="text-slate-500 block text-[10px] font-bold">العلاج الموصى به بالمدرسة:</span>
+                                <span class="font-bold text-slate-800"><i class="fa-solid fa-pills text-slate-400 ml-1"></i> ${c.medication}</span>
+                            </div>
+
+                            <div class="text-xs space-y-1 bg-red-50/50 p-2.5 rounded-lg border border-red-100">
+                                <span class="text-red-700 block text-[10px] font-bold">بروتوكول الطوارئ العاجل:</span>
+                                <span class="text-slate-700 font-medium leading-relaxed">${c.protocol}</span>
+                            </div>
+                        </div>
+
+                        <!-- Contact Details Footer -->
+                        <div class="border-t pt-3 flex justify-between items-center text-xs mt-2">
+                            <div class="flex flex-col">
+                                <span class="text-[10px] text-slate-400">ولي الأمر: ${c.parent}</span>
+                                <a href="tel:${c.phone}" class="text-emerald-700 font-bold font-mono hover:underline flex items-center gap-1">
+                                    <i class="fa-solid fa-phone text-[9px]"></i> ${c.phone}
+                                </a>
+                            </div>
+                            <span class="text-[9px] bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded border border-emerald-100 font-bold">حالة متابعة</span>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        // Render Canteen Environment Records
+        function renderEnvTable() {
+            const tbody = document.getElementById('env-tbody');
+            tbody.innerHTML = '';
+
+            if (envInspections.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-slate-400">لا توجد جولات مرصودة حتى الآن</td></tr>`;
+                return;
+            }
+
+            envInspections.forEach(e => {
+                tbody.innerHTML += `
+                    <tr class="hover:bg-slate-50 transition border-b">
+                        <td class="p-3 text-xs font-bold text-slate-700">${e.date}</td>
+                        <td class="p-3 text-xs">${e.cleanliness}</td>
+                        <td class="p-3 text-xs">${e.canteen}</td>
+                        <td class="p-3 text-xs">${e.water}</td>
+                        <td class="p-3 text-xs text-slate-600 max-w-xs truncate" title="${e.notes}">${e.notes}</td>
+                        <td class="p-3 text-center no-print">
+                            <button onclick="deleteRecord('env', '${e.id}', 'سجل الجولة التفتيشية')" class="text-rose-500 hover:text-rose-700">
+                                <i class="fa-regular fa-trash-can"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        // Render Awareness Campaigns & Programs List
+        function renderProgramsTable() {
+            const grid = document.getElementById('programs-grid');
+            grid.innerHTML = '';
+
+            if (healthPrograms.length === 0) {
+                grid.innerHTML = `<div class="col-span-full p-6 text-center text-slate-400 bg-white rounded-xl">لا توجد حملات مسجلة بعد</div>`;
+                return;
+            }
+
+            healthPrograms.forEach(p => {
+                const isExecuted = p.status === 'منفذ';
+                const statusBadge = isExecuted 
+                    ? `<span class="bg-emerald-100 text-emerald-800 text-xs px-2.5 py-1 rounded-full font-bold">تم التنفيذ ✔️</span>`
+                    : `<span class="bg-amber-100 text-amber-800 text-xs px-2.5 py-1 rounded-full font-bold">قيد التخطيط ⏳</span>`;
+
+                grid.innerHTML += `
+                    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4 hover:shadow transition flex flex-col justify-between">
+                        <div class="space-y-3">
+                            <div class="flex justify-between items-start">
+                                <span class="text-xs font-bold text-slate-400 flex items-center gap-1">
+                                    <i class="fa-regular fa-calendar"></i> ${p.date}
+                                </span>
+                                ${statusBadge}
+                            </div>
+                            
+                            <h4 class="font-extrabold text-slate-950 text-base">${p.title}</h4>
+                            
+                            <p class="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-lg border">
+                                ${p.desc}
+                            </p>
+                        </div>
+
+                        <div class="border-t pt-3 mt-4 space-y-2 text-xs">
+                            <div class="flex justify-between text-slate-500 text-[11px]">
+                                <span>الفئة المستهدفة: <strong>${p.target}</strong></span>
+                                <span>الداعم: <strong>${p.partner}</strong></span>
+                            </div>
+                            <div class="flex justify-end no-print pt-1">
+                                <button onclick="deleteRecord('program', '${p.id}', 'سجل البرنامج التوعوي')" class="text-xs text-rose-500 hover:text-rose-700 font-bold flex items-center gap-1">
+                                    <i class="fa-solid fa-trash-can text-[10px]"></i> حذف الفعالية
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        
+        function renderTransfersTable() {
+            const tbody = document.getElementById('transfers-tbody');
+            if (!tbody) return;
+            const searchInput = document.getElementById('transfer-search');
+            const searchVal = searchInput ? searchInput.value.toLowerCase() : '';
+            tbody.innerHTML = '';
+            const filtered = medicalTransfers.filter(t =>
+                t.name.toLowerCase().includes(searchVal) ||
+                t.destination.toLowerCase().includes(searchVal) ||
+                t.type.toLowerCase().includes(searchVal)
+            );
+            if (filtered.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-slate-400">لا توجد تحويلات طبية أو حالات طارئة مسجلة</td></tr>`;
+                return;
+            }
+            filtered.forEach(t => {
+                const statusClass = t.status.includes('مغلق') ? 'bg-green-100 text-green-800' : (t.status.includes('إضافي') ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800');
+                tbody.innerHTML += `
+                    <tr class="hover:bg-slate-50 transition border-b border-slate-100">
+                        <td class="p-4 text-xs font-semibold text-slate-700">${t.date}</td>
+                        <td class="p-4 font-bold text-slate-900">${t.name}</td>
+                        <td class="p-4 text-xs text-slate-600">${t.grade} / ${t.class}</td>
+                        <td class="p-4 text-xs text-slate-800">${t.type}<br><span class="text-[10px] text-slate-400">${t.reason}</span></td>
+                        <td class="p-4 text-xs text-slate-800">${t.destination}</td>
+                        <td class="p-4 text-xs text-slate-600 max-w-xs truncate" title="${t.followup}">${t.followup}</td>
+                        <td class="p-4 text-xs"><span class="px-2 py-1 rounded-full text-[10px] font-bold ${statusClass}">${t.status}</span></td>
+                        <td class="p-4 text-center no-print">
+                            <button onclick="deleteRecord('transfer', '${t.id}', 'سجل التحويل الطبي')" class="text-rose-500 hover:text-rose-700 p-1 transition"><i class="fa-regular fa-trash-can text-base"></i></button>
+                        </td>
+                    </tr>`;
+            });
+        }
+
+        // Export data to local JSON file
+        function exportData() {
+            const dataToExport = {
+                clinicVisits,
+                chronicCases,
+                envInspections,
+                healthPrograms,
+                medicalTransfers,
+                schoolName: document.getElementById('meta-school').value,
+                counselorName: document.getElementById('meta-counselor').value,
+                academicYear: document.getElementById('meta-year').value
+            };
+
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(dataToExport, null, 2));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", `سجلات_الموجه_الصحي_${Date.now()}.json`);
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+            showToast("تم تحميل ملف النسخة الاحتياطية بنجاح 💾");
+        }
+
+        // Import data from saved local JSON file
+        function importData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const parsed = JSON.parse(e.target.result);
+                    
+                    if (parsed.clinicVisits) clinicVisits = parsed.clinicVisits;
+                    if (parsed.chronicCases) chronicCases = parsed.chronicCases;
+                    if (parsed.envInspections) envInspections = parsed.envInspections;
+                    if (parsed.healthPrograms) healthPrograms = parsed.healthPrograms;
+                    if (parsed.medicalTransfers) medicalTransfers = parsed.medicalTransfers;
+                    
+                    if (parsed.schoolName) {
+                        document.getElementById('meta-school').value = parsed.schoolName;
+                        localStorage.setItem('sh_meta_school', parsed.schoolName);
+                    }
+                    if (parsed.counselorName) {
+                        document.getElementById('meta-counselor').value = parsed.counselorName;
+                        localStorage.setItem('sh_meta_counselor', parsed.counselorName);
+                    }
+                    if (parsed.academicYear) {
+                        document.getElementById('meta-year').value = parsed.academicYear;
+                        localStorage.setItem('sh_meta_year', parsed.academicYear);
+                    }
+
+                    persistState();
+                    showToast("تم استيراد كافة السجلات والبيانات بنجاح ✅");
+                } catch (err) {
+                    showToast("حدث خطأ في قراءة ملف البيانات المستورد", "fa-triangle-exclamation");
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        // Reset System data entirely
+        function resetSystem() {
+            const conf = confirm("تنبيه هام! هل تريد بالتأكيد تصفير جميع السجلات والبدء بصفحة جديدة فارغة؟ سيتم حذف كافة بيانات الطلاب بشكل لا يمكن استرجاعه!");
+            if (!conf) return;
+
+            clinicVisits = [];
+            chronicCases = [];
+            envInspections = [];
+            healthPrograms = [];
+            medicalTransfers = [];
+            
+            persistState();
+            showToast("تم تفريغ السجلات وتصفير النظام بالكامل");
+        }
+
+        // Print active layout nicely
+        function printReport() {
+            window.print();
+        }
+
+        function loadDemoData() {
+            // Sample visits
+            clinicVisits = [
+                {
+                    id: "v_demo_1",
+                    date: "2026-10-12",
+                    time: "09:30",
+                    name: "عبد الله بن أحمد الشهراني",
+                    grade: "الرابع",
+                    class: "ب",
+                    symptoms: "صداع وهبوط حاد نتيجة عدم تناول وجبة الإفطار",
+                    action: "إعطاء عصير محلى وبعض البسكويت، مع إبقائه في العيادة لمدة نصف ساعة للمراقبة والراحة.",
+                    status: "عاد للصف",
+                    phone: "0554321987",
+                    notes: "تم لفت انتباه ولي أمره لأهمية تناول وجبة الإفطار الصباحي بالمنزل."
+                },
+                {
+                    id: "v_demo_2",
+                    date: "2026-10-11",
+                    time: "11:15",
+                    name: "يزيد بن معاذ السبيعي",
+                    grade: "الثاني",
+                    class: "أ",
+                    symptoms: "ضيق شديد بالتنفس وأعراض أزمة ربوية حادة أثناء حصة التربية البدنية",
+                    action: "مساعدة الطالب على استخدام البخاخ الإسعافي (فنتولين) الخاص به، مع تدريب المعلم على الطريقة الصحيحة للملاحظة.",
+                    status: "عاد للصف",
+                    phone: "0509876543",
+                    notes: "تم استدعاء والده واستلامه والتوصية بالمتابعة الطبية."
+                },
+                {
+                    id: "v_demo_3",
+                    date: "2026-10-09",
+                    time: "10:00",
+                    name: "فارس بن تركي المالكي",
+                    grade: "السادس",
+                    class: "ج",
+                    symptoms: "اشتباه كسر بالرسغ الأيمن إثر سقوطه في ملعب المدرسة",
+                    action: "عمل جبيرة كرتونية مؤقتة لتثبيت الذراع وتطبيق كمادات باردة لمنع التورم والاتصال بالهلال الأحمر فوراً.",
+                    status: "تحويل للمركز الصحي",
+                    phone: "0531234567",
+                    notes: "تم نقله للمركز الصحي برفقة والده ومتابعة الحالة تبين وجود التواء خفيف بدون كسر."
+                }
+            ];
+
+            // Sample chronic cases
+            chronicCases = [
+                {
+                    id: "c_demo_1",
+                    name: "سعود بن عبد العزيز الشهري",
+                    grade: "الخامس",
+                    class: "أ",
+                    disease: "سكري (النوع الأول)",
+                    medication: "إبر إنسولين سريعة المفعول (قلم)",
+                    parent: "عبد العزيز الشهري",
+                    phone: "0567891234",
+                    protocol: "في حال ظهور دوخة أو تعرق مفرط، يعطى فوراً نصف كوب عصير محلى أو ملعقة عسل ويمنع من إبرة الإنسولين، ثم قياس مستوى السكر والاتصال بالهلال الأحمر إن لم يستجب."
+                },
+                {
+                    id: "c_demo_2",
+                    name: "يوسف بن بندر القحطاني",
+                    grade: "الثالث",
+                    class: "ب",
+                    disease: "ربو شعبي",
+                    medication: "بخاخ الفنتولين (عند الحاجة)",
+                    parent: "بندر القحطاني",
+                    phone: "0545678901",
+                    protocol: "عند حدوث نوبة الربو، يتم إبعاد الطالب عن الأتربة والغبار وإجلاسه بوضعية شبه قائمة وإعطائه بختين من البخاخ الإسعافي مع تهيئة جو هادئ وتوصيل الأكسجين إن توفر."
+                }
+            ];
+
+            // Sample Inspections
+            envInspections = [
+                {
+                    id: "e_demo_1",
+                    date: "2026-10-10",
+                    cleanliness: "ممتاز 🟢",
+                    canteen: "مطابق للشروط 🟢",
+                    water: "نظيفة وصالحة 🟢",
+                    toilet: "ممتاز ومعقمة 🟢",
+                    notes: "تمت الجولة بنجاح، والنظافة العامة في الفصول والمقصف ممتازة جداً وتم التوجيه بالاستمرار."
+                },
+                {
+                    id: "e_demo_2",
+                    date: "2026-10-03",
+                    cleanliness: "جيد جداً 🟡",
+                    canteen: "مخالفات طفيفة 🟡",
+                    water: "توجد مروحة تالفة/عطل 🟡",
+                    toilet: "نظافة متوسطة 🟡",
+                    notes: "لوحظ تكدس بعض الطلاب بالمقصف دون تنظيم، وتم توجيه متعهد المقصف لوضع حواجز تنظم الطابور، ومخاطبة صيانة المدرسة لإصلاح برادة ممر الصفوف الأولية."
+                }
+            ];
+
+            // Sample programs
+            healthPrograms = [
+                {
+                    id: "p_demo_1",
+                    title: "البرنامج الوطني لتوعية بداء السكري",
+                    date: "2026-11-14",
+                    target: "جميع الطلاب",
+                    status: "منفذ",
+                    partner: "مركز رعاية الأسرة والطفل الصحي بالحي",
+                    desc: "إقامة ندوة مبسطة ومسابقات تفاعلية للطلاب حول الغذاء الصحي والرياضة، وفحص السكر العشوائي للراغبين من منسوبي المدرسة من معلمين وإداريين."
+                },
+                {
+                    id: "p_demo_2",
+                    title: "حملة مكافحة تسوس الأسنان لدى الأطفال",
+                    date: "2026-12-05",
+                    target: "طلاب الصفوف الأولية",
+                    status: "قيد التخطيط",
+                    partner: "مستشفى الملك فهد لطب الأسنان",
+                    desc: "توزيع معجون وفرشاة لكل طالب، وتقديم عرض مسرحي مرئي حول أهمية تفريش الأسنان والطريقة الصحيحة للعناية بالفم."
+                }
+            ];
+
+            medicalTransfers = [
+                {
+                    id: "t_demo_1",
+                    date: "2026-10-09",
+                    name: "فارس بن تركي المالكي",
+                    grade: "السادس",
+                    class: "ج",
+                    type: "تحويل للمركز الصحي",
+                    destination: "مركز صحي الحي",
+                    reason: "اشتباه إصابة بالرسغ إثر سقوط في الملعب",
+                    followup: "تم التواصل مع ولي الأمر ومتابعة نتيجة الفحص، الحالة مستقرة.",
+                    status: "مغلق بعد المتابعة"
+                }
+            ];
+
+            persistState();
+            showToast("تم استدعاء وتعبئة البيانات التجريبية بنجاح بنسق متكامل!");
+        }
+    </script>
+</body>
+</html>

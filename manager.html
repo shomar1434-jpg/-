@@ -6,6 +6,48 @@
 <style id="safe-activation-bypass-style">
 #activation-overlay{display:none!important;visibility:hidden!important;pointer-events:none!important;}
 .safe-hidden-deactivate{display:none!important;}
+
+
+/* === إصلاح آمن لعرض سجلات التقويم الذاتي: تمرير واحد فقط ومنع تداخل الأيقونات === */
+#portfolio-view{
+  overflow:hidden !important;
+  padding-bottom:0 !important;
+}
+#portfolio-view .content-overlay{
+  height:100vh !important;
+  min-height:100vh !important;
+  max-height:100vh !important;
+  display:flex !important;
+  flex-direction:column !important;
+  overflow:hidden !important;
+}
+#portfolio-view header{
+  flex:0 0 auto !important;
+}
+#portfolio-view .self-eval-iframe-wrap{
+  flex:1 1 auto !important;
+  height:auto !important;
+  min-height:0 !important;
+  max-height:none !important;
+  overflow:hidden !important;
+  padding-bottom:0 !important;
+}
+#self-evaluation-records-frame{
+  width:100% !important;
+  height:100% !important;
+  min-height:0 !important;
+  border:0 !important;
+  display:block !important;
+  background:#fff !important;
+}
+body.portfolio-open #topAiCenterIcon,
+body.portfolio-open #studentAdvisorAiCenterBtn,
+body.portfolio-open #aiCenterBtn,
+body.portfolio-open .ai-center-floating,
+body.portfolio-open .ai-center-trigger{
+  display:none !important;
+}
+
 </style>
 <script id="safe-activation-bypass-head">
 (function(){try{
@@ -1217,68 +1259,21 @@ body{overflow-x:hidden}
 }
 </style>
 <script id="gender-neutral-labels-safe">
+/* Hotfix: نظام تسميات خفيف بدون مراقبة مستمرة أو فحص شامل للصفحة.
+   التسميات المحايدة تم تثبيتها داخل النصوص، وهذا السكربت يوفّر قاموسًا فقط للاستخدامات المستقبلية. */
 (function(){
-  if (window.__GENDER_NEUTRAL_LABELS_SAFE__) return;
-  window.__GENDER_NEUTRAL_LABELS_SAFE__ = true;
-  const pairs = [
-    ['مدير المدرسة','المدير/المديرة'],
-    ['مديرة المدرسة','المدير/المديرة'],
-    ['مدير/ة المدرسة','المدير/المديرة'],
-    ['قائد المدرسة','المدير/المديرة'],
-    ['قائدة المدرسة','المدير/المديرة'],
-    ['وكيل المدرسة','الوكيل/الوكيلة'],
-    ['وكيلة المدرسة','الوكيل/الوكيلة'],
-    ['معلم المادة','معلم/معلمة المادة'],
-    ['معلمة المادة','معلم/معلمة المادة'],
-    ['الموجه الطلابي','الموجه/الموجهة الطلابية'],
-    ['الموجهة الطلابية','الموجه/الموجهة الطلابية'],
-    ['رائد النشاط','رائد/رائدة النشاط'],
-    ['رائدة النشاط','رائد/رائدة النشاط'],
-    ['الموظف الإداري','الموظف/الموظفة الإدارية'],
-    ['الموظفة الإدارية','الموظف/الموظفة الإدارية'],
-    ['اسم الطالب','اسم الطالب/الطالبة'],
-    ['اسم الموظف','اسم الموظف/الموظفة']
-  ];
-  const skipTags = new Set(['SCRIPT','STYLE','TEXTAREA','CODE','PRE','OPTION']);
-  function neutralizeText(t){
-    if (!t || typeof t !== 'string') return t;
-    let out = t;
-    for (const [from,to] of pairs){
-      if (out.includes(to)) continue;
-      out = out.split(from).join(to);
-    }
-    return out;
-  }
-  function walk(root){
-    if (!root || skipTags.has(root.nodeName)) return;
-    const tw = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-      acceptNode(node){
-        const p = node.parentElement;
-        if (!p || skipTags.has(p.tagName)) return NodeFilter.FILTER_REJECT;
-        if (p.closest && p.closest('[data-no-gender-neutralize]')) return NodeFilter.FILTER_REJECT;
-        return NodeFilter.FILTER_ACCEPT;
-      }
-    });
-    const nodes=[]; let n;
-    while((n=tw.nextNode())) nodes.push(n);
-    for (const node of nodes){
-      const v = neutralizeText(node.nodeValue);
-      if (v !== node.nodeValue) node.nodeValue = v;
-    }
-    if (root.querySelectorAll){
-      root.querySelectorAll('[placeholder],[title],[aria-label],[alt],[data-title],[data-label]').forEach(el=>{
-        if (el.closest && el.closest('[data-no-gender-neutralize]')) return;
-        ['placeholder','title','aria-label','alt','data-title','data-label'].forEach(a=>{
-          const v = el.getAttribute(a);
-          if (v){ const nv = neutralizeText(v); if (nv !== v) el.setAttribute(a,nv); }
-        });
-      });
-    }
-  }
-  function run(){ try { walk(document.body || document.documentElement); } catch(e){} }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run, {once:true}); else run();
+  window.roleLabels = window.roleLabels || {
+    manager: 'المدير/المديرة',
+    deputy: 'الوكيل/الوكيلة',
+    teacher: 'المعلم/المعلمة',
+    supervisor: 'الموجه/الموجهة',
+    activityLeader: 'رائد/رائدة النشاط',
+    adminEmployee: 'الموظف/الموظفة الإدارية',
+    student: 'الطالب/الطالبة'
+  };
 })();
 </script>
+
 <style id="MANAGER_DASHBOARD_CARD_ALIGNMENT_FIX">
 #welcome-dashboard main > .grid:first-of-type > div:not(#school-performance-card){min-height:176px!important;justify-content:center!important;}
 #welcome-dashboard main > .grid:first-of-type > div:not(#school-performance-card) h3{text-align:center!important;line-height:1.35!important;}
@@ -1367,9 +1362,21 @@ body{overflow-x:hidden}
 <h3 class="font-black text-xl text-slate-800">مركز المعلومات المدرسية</h3>
 <p class="text-[11px] text-slate-400 font-bold mt-2">مستودع بيانات الطلاب الرسمي للمدرسة النشطة حسب نور</p>
 </div>
+</div><div class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-teal-500 cursor-pointer transition-all flex flex-col items-center gap-4 group manager-section-card" onclick="window.location.href='central_task_center.html?role=manager'">
+<div class="w-20 h-20 bg-gradient-to-br from-teal-600 to-slate-800 text-white rounded-[26px] flex items-center justify-center shadow-xl text-3xl">🧭</div>
+<div class="text-center">
+<h3 class="font-black text-xl text-slate-800">مركز التكليفات</h3>
+<p class="text-[11px] text-slate-400 font-bold mt-2">إنشاء، نقل، سحب، اعتماد، رفض وأرشفة التكليفات المدرسية</p>
+</div>
 </div><div class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-amber-400 cursor-pointer transition-all flex flex-col items-center gap-4 group manager-section-card" onclick="window.location.href='admin_employee_management.html?supervisor=manager'">
 <div class="w-14 h-14 bg-gradient-to-br from-amber-500 to-emerald-700 text-white rounded-2xl flex items-center justify-center shadow-lg text-2xl">👤</div>
-<h3 class="font-bold text-lg text-slate-700">ملف الأداء الوظيفي</h3>
+<h3 class="font-bold text-lg text-slate-700">الموظف الإداري</h3>
+</div><div class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-teal-400 cursor-pointer transition-all flex flex-col items-center gap-4 group manager-section-card" onclick="openUserFollowupManagement()">
+<div class="w-20 h-20 bg-gradient-to-br from-teal-600 to-blue-700 text-white rounded-[26px] flex items-center justify-center shadow-xl text-3xl">👥</div>
+<div class="text-center">
+<h3 class="font-black text-xl text-slate-800">المتابعة وإدارة المستخدمين</h3>
+<p class="text-[11px] text-slate-400 font-bold mt-2">دخول المدير لوضع المتابعة وإدارة تفعيل وتعطيل حسابات المدرسة</p>
+</div>
 </div><div class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-cyan-400 cursor-pointer transition-all flex flex-col items-center gap-4 group manager-section-card" onclick="window.location.href='manager_exams_management.html'">
 <div class="w-20 h-20 bg-gradient-to-br from-cyan-600 to-emerald-700 text-white rounded-[26px] flex items-center justify-center shadow-xl text-3xl">📝</div>
 <div class="text-center">
@@ -1385,8 +1392,8 @@ body{overflow-x:hidden}
 </div><div class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-rose-400 cursor-pointer transition-all flex flex-col items-center gap-4 group manager-section-card" onclick="window.open('external_evaluation_archive.html','_blank')">
 <div class="w-20 h-20 bg-gradient-to-br from-rose-600 to-slate-800 text-white rounded-[26px] flex items-center justify-center shadow-xl text-3xl">🏫</div>
 <div class="text-center">
-<h3 class="font-black text-xl text-slate-800">التقويم الخارجي والأرشيف المؤسسي</h3>
-<p class="text-[11px] text-slate-400 font-bold mt-2">عرض المدرسة للجنة التقويم الخارجي، حفظ ملف الإنجاز السنوي، وأرشفة الأعوام بلا حد زمني</p>
+<h3 class="font-black text-xl text-slate-800">مركز التقويم الخارجي المؤسسي الذكي</h3>
+<p class="text-[11px] text-slate-400 font-bold mt-2">الأرشيف المؤسسي، إعداد الزيارة، بوابة الفريق الزائر، وبطاقة الفريق الذكية</p>
 </div>
 </div><div class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-emerald-400 cursor-pointer transition-all flex flex-col items-center gap-4 group manager-section-card" onclick="openManagerRecordsView()">
 <div class="w-14 h-14 bg-emerald-600 text-white rounded-2xl flex items-center justify-center shadow-lg text-2xl">📚</div>
@@ -1461,7 +1468,7 @@ body{overflow-x:hidden}
 <button class="bg-teal-50 text-teal-700 px-3 py-1 rounded-xl text-[10px] font-bold border border-teal-100" onclick="reloadSelfEvaluationRecords()">تحديث السجلات</button>
 </div>
 </header>
-<div class="w-full h-[calc(100vh-82px)] bg-white">
+<div class="w-full h-[calc(100vh-82px)] bg-white self-eval-iframe-wrap">
 <iframe id="self-evaluation-records-frame" src="self_evaluation_records.html" style="width:100%;height:100%;border:0;display:block;background:white" title="سجلات متابعة التقويم الذاتي"></iframe>
 </div>
 </div>
@@ -2028,12 +2035,13 @@ body{overflow-x:hidden}
         function closeStatsView() { document.getElementById('stats-view').style.display='none'; document.getElementById('welcome-dashboard').style.display='block'; }
 
         function openPortfolioView() {
+            document.body.classList.add('portfolio-open');
             document.getElementById('welcome-dashboard').style.display='none';
             document.getElementById('portfolio-view').style.display='block';
             renderPortfolio();
         }
 
-        function closePortfolioView() { document.getElementById('portfolio-view').style.display='none'; document.getElementById('welcome-dashboard').style.display='block'; }
+        function closePortfolioView() { document.body.classList.remove('portfolio-open'); document.getElementById('portfolio-view').style.display='none'; document.getElementById('welcome-dashboard').style.display='block'; }
 
         function openGoalSettingModal(catId) {
             currentSettingCatId = catId;
@@ -3401,7 +3409,7 @@ body{overflow-x:hidden}
   .ss-final-panel{width:min(920px,96vw);max-height:88vh;overflow:auto;background:#fff;color:#0f172a;border-radius:24px;box-shadow:0 30px 80px rgba(0,0,0,.38);padding:20px;text-align:right}
   .ss-final-head{display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid #e5e7eb;padding-bottom:12px;margin-bottom:14px}
   .ss-final-title{font-size:18px;font-weight:900;color:#0f766e}.ss-final-close{border:0;background:#ef4444;color:#fff;border-radius:999px;padding:8px 15px;font-weight:900;cursor:pointer}
-  .ss-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}.ss-field{display:grid;gap:5px;margin-bottom:10px}.ss-field label{font-weight:900;color:#334155;font-size:12px}.ss-field input,.ss-field textarea,.ss-field select{width:100%;border:1px solid #cbd5e1;border-radius:12px;padding:10px;color:#0f172a;background:#fff;font-family:'Cairo',Arial,sans-serif}.ss-field textarea{min-height:90px;resize:vertical}.ss-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.ss-action{border:0;background:#0f766e;color:white;border-radius:12px;padding:9px 13px;font-weight:900;cursor:pointer}.ss-action.secondary{background:#475569}.ss-action.blue{background:#2563eb}.ss-action.red{background:#ef4444}.ss-action.gold{background:#d97706}.ss-card{border:1px solid #e2e8f0;border-radius:16px;background:#f8fafc;padding:12px;margin-bottom:10px}.ss-card.red{border-color:#fecaca;background:#fff7f7}.ss-card.blue{border-color:#bfdbfe;background:#eff6ff}.ss-card.meeting{border-color:#fed7aa;background:#fff7ed}.ss-muted{color:#64748b;font-size:12px;line-height:1.7}.ss-empty{text-align:center;color:#64748b;border:1px dashed #cbd5e1;border-radius:16px;padding:24px;background:#f8fafc;font-weight:800}.ss-counter{font-size:12px;color:#64748b;text-align:left}.ss-att-list{max-height:160px;overflow:auto;border:1px solid #e2e8f0;border-radius:12px;padding:8px;background:#fff}.ss-att-list label{display:flex;gap:7px;align-items:center;padding:5px;font-size:13px}.ss-two{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:900px){.ss-final-bar{left:10px;right:10px;top:56px}.ss-final-btn{width:35px;height:35px;font-size:15px}.ss-final-btn .ss-tip{top:42px}.ss-two{grid-template-columns:1fr}}@media print{.ss-final-bar,.ss-final-backdrop{display:none!important}}
+  .ss-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}.ss-field{display:grid;gap:5px;margin-bottom:10px}.ss-field label{font-weight:900;color:#334155;font-size:12px}.ss-field input,.ss-field textarea,.ss-field select{width:100%;border:1px solid #cbd5e1;border-radius:12px;padding:10px;color:#0f172a;background:#fff;font-family:'Cairo',Arial,sans-serif}.ss-field textarea{min-height:90px;resize:vertical}.ss-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.ss-action{border:0;background:#0f766e;color:white;border-radius:12px;padding:9px 13px;font-weight:900;cursor:pointer}.ss-action.secondary{background:#475569}.ss-action.blue{background:#2563eb}.ss-action.red{background:#ef4444}.ss-action.gold{background:#d97706}.ss-card{border:1px solid #e2e8f0;border-radius:16px;background:#f8fafc;padding:12px;margin-bottom:10px}.ss-card.red{border-color:#fecaca;background:#fff7f7}.ss-card.blue{border-color:#bfdbfe;background:#eff6ff}.ss-card.meeting{border-color:#fed7aa;background:#fff7ed}.ss-muted{color:#64748b;font-size:12px;line-height:1.7}.ss-empty{text-align:center;color:#64748b;border:1px dashed #cbd5e1;border-radius:16px;padding:24px;background:#f8fafc;font-weight:800}.ss-counter{font-size:12px;color:#64748b;text-align:left}.ss-att-list{max-height:160px;overflow:auto;border:1px solid #e2e8f0;border-radius:12px;padding:8px;background:#fff}.ss-att-list label{display:flex;gap:7px;align-items:center;padding:5px;font-size:13px}.ss-two{display:grid;grid-template-columns:1fr 1fr;gap:10px}.ss-follow-hub{display:grid;gap:14px}.ss-follow-hero{border:1px solid #bfdbfe;background:linear-gradient(135deg,#eff6ff,#f0fdfa);border-radius:20px;padding:16px}.ss-follow-hero b{display:block;color:#0f766e;font-size:18px;margin-bottom:5px}.ss-follow-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}.ss-follow-role{border:1px solid #e2e8f0;background:#fff;border-radius:18px;padding:13px}.ss-follow-role strong{display:block;color:#0f172a;margin-bottom:4px}.ss-follow-role .ss-actions{margin-top:12px}@media(max-width:900px){.ss-final-bar{left:10px;right:10px;top:56px}.ss-final-btn{width:35px;height:35px;font-size:15px}.ss-final-btn .ss-tip{top:42px}.ss-two{grid-template-columns:1fr}}@media print{.ss-final-bar,.ss-final-backdrop{display:none!important}}
 </style>
 <div class="ss-final-bar" id="ssFinalBar"></div>
 <div class="ss-final-backdrop" id="ssFinalBackdrop"><div class="ss-final-panel"><div class="ss-final-head"><div class="ss-final-title" id="ssFinalTitle"></div><button class="ss-final-close" id="ssFinalClose" type="button">إغلاق</button></div><div id="ssFinalBody"></div></div></div>
@@ -3436,7 +3444,46 @@ body{overflow-x:hidden}
     return {school:school, schoolId:sid, schoolCode:scode, schoolName:sname, registrationCode:(school&&(school.registrationCode||school.registration_code))||localStorage.getItem(NS+'_reg_token')||''};
   }
   function dbRoleToLocal(r){r=String(r||''); if(r==='manager'||r==='leadership')return 'manager'; if(r==='agent'||r==='agency')return 'agent'; if(r==='student_advisor')return 'student_advisor'; if(r==='activity_leader')return 'activity_leader'; if(r==='teacher'||r==='performance')return 'teacher'; return r||'teacher'}
-  function normalizeSchoolUser(u){return {id:u.id||uid('user'),name:u.name||u.fullName||u.full_name||'',email:u.email||'',password:u.password||'',role:dbRoleToLocal(u.dbRole||u.role),status:u.status||((u.active||u.isActive)?'active':'pending'),active:u.active||u.isActive||u.status==='active',isActive:u.active||u.isActive||u.status==='active',schoolId:u.schoolId||u.school_id||currentSchoolId(),schoolName:u.schoolName||currentSchoolName(),isPrimaryManager:!!(u.isPrimaryManager||u.is_primary_manager),permissions:u.permissions||[]}}
+  function vpAgencyOptions(){return {educational:'وكيل/وكيلة الشؤون التعليمية',school_affairs:'وكيل/وكيلة الشؤون المدرسية',student_affairs:'وكيل/وكيلة شؤون الطلاب'}}
+  function agencyStoreKey(){return NS+'_vp_agency_map_'+(currentSchoolId()||'default')}
+  function agencyMap(){return read(agencyStoreKey(),{})||{}}
+  function agencyKey(u){return String((u&&u.id)||'') || String((u&&u.email)||'').toLowerCase()}
+  function normalizeAgencyList(v){
+    if(Array.isArray(v)) return v.map(String).map(function(x){return x.trim()}).filter(Boolean).filter(function(x){return x!=='general'});
+    v=String(v||'').trim(); if(!v || v==='general') return [];
+    if(v.charAt(0)==='['){try{return normalizeAgencyList(JSON.parse(v));}catch(e){}}
+    return v.split(/[،,|]/).map(function(x){return x.trim()}).filter(Boolean).filter(function(x){return x!=='general'});
+  }
+  function agencyListByUser(u){var m=agencyMap(); var id=String((u&&u.id)||''); var email=String((u&&u.email)||'').toLowerCase(); var raw=(id&&m[id]) || (email&&m[email]) || u.agent_categories || u.agency_categories || u.agency_types || u.agency_type || u.agencyType || u.vice_agency_type || u.viceAgencyType || ''; return normalizeAgencyList(raw)}
+  function agencyByUser(u){return agencyListByUser(u).join(',')}
+  function saveAgencyForUser(u,agency){var list=normalizeAgencyList(agency); var m=agencyMap(); var id=String((u&&u.id)||''); var email=String((u&&u.email)||'').toLowerCase(); if(id)m[id]=list; if(email)m[email]=list; write(agencyStoreKey(),m)}
+  function agencyLabel(v){var list=normalizeAgencyList(v); if(!list.length) return 'لم يحدد بعد'; var opts=vpAgencyOptions(); return list.map(function(x){return opts[x]||x}).join(' + ')}
+  function agencyCheckboxes(prefix,selected){var opts=vpAgencyOptions(); var list=normalizeAgencyList(selected); return '<div class="ss-agency-checks" style="display:grid;gap:8px;margin-top:6px">'+Object.entries(opts).map(function(p){return '<label style="display:flex;gap:8px;align-items:center;font-weight:800"><input type="checkbox" id="'+prefix+'_'+p[0]+'" value="'+p[0]+'" '+(list.indexOf(p[0])>-1?'checked':'')+'> '+p[1]+'</label>'}).join('')+'</div>';}
+  function selectedAgencyList(prefix){return Object.keys(vpAgencyOptions()).filter(function(k){var e=document.getElementById(prefix+'_'+k); return e&&e.checked;});}
+
+  /* Teacher Additional Roles Engine v1 */
+  function teacherExtraRoleOptions(){return {
+    health_guidance:'التوجيه الصحي',
+    gifted_coordinator:'منسق/ة الموهوبين',
+    quality_coordinator:'منسق/ة الجودة',
+    madrasati_coordinator:'منسق/ة منصة مدرستي'
+  }}
+  function teacherRoleCode(x){x=String(x||'').trim();var map={'التوجيه الصحي':'health_guidance','موجه صحي':'health_guidance','الموجه الصحي':'health_guidance','health':'health_guidance','health_guidance':'health_guidance','منسق الموهوبين':'gifted_coordinator','منسق/ة الموهوبين':'gifted_coordinator','الجودة':'quality_coordinator','منسق الجودة':'quality_coordinator','منسق/ة الجودة':'quality_coordinator','منصة مدرستي':'madrasati_coordinator','منسق منصة مدرستي':'madrasati_coordinator'};return map[x]||x}
+  function normalizeTeacherExtraRoles(v){
+    if(Array.isArray(v)) return v.map(teacherRoleCode).filter(Boolean);
+    if(typeof v==='string') return v.split(/[،,|]+/).map(function(x){return teacherRoleCode(x.trim())}).filter(Boolean);
+    return [];
+  }
+  function teacherExtraRolesLabel(v){var list=normalizeTeacherExtraRoles(v); if(!list.length) return ''; var opts=teacherExtraRoleOptions(); return list.map(function(x){return opts[x]||x}).join(' + ')}
+  function teacherExtraRoleCheckboxes(prefix,selected){var opts=teacherExtraRoleOptions(); var list=normalizeTeacherExtraRoles(selected); return '<div class="ss-teacher-extra-checks" style="display:grid;gap:8px;margin-top:6px">'+Object.entries(opts).map(function(p){return '<label style="display:flex;gap:8px;align-items:center;font-weight:800"><input type="checkbox" id="'+prefix+'_'+p[0]+'" value="'+p[0]+'" '+(list.indexOf(p[0])>-1?'checked':'')+'> '+p[1]+'</label>'}).join('')+'</div>';}
+  function selectedTeacherExtraRoles(prefix){return Object.keys(teacherExtraRoleOptions()).filter(function(k){var e=document.getElementById(prefix+'_'+k); return e&&e.checked;});}
+  function teacherExtraRoleMapKey(){return (typeof NS!=='undefined'?NS:'smart_school')+'_teacher_extra_roles_map'}
+  function readTeacherExtraRoleMap(){try{return JSON.parse(localStorage.getItem(teacherExtraRoleMapKey())||localStorage.getItem('smart_school_teacher_extra_roles_map')||'{}')}catch(e){return {}}}
+  function writeTeacherExtraRoleMap(map){try{localStorage.setItem(teacherExtraRoleMapKey(),JSON.stringify(map||{}));localStorage.setItem('smart_school_teacher_extra_roles_map',JSON.stringify(map||{}));}catch(e){}}
+  function saveTeacherExtraRolesForUser(user,roles){roles=normalizeTeacherExtraRoles(roles); var map=readTeacherExtraRoleMap(); if(user){ if(user.id) map['id:'+user.id]=roles; if(user.email) map['email:'+String(user.email).trim().toLowerCase()]=roles; } writeTeacherExtraRoleMap(map); }
+  function getTeacherExtraRolesForUser(user){var map=readTeacherExtraRoleMap(); var roles=[]; if(user){ roles=normalizeTeacherExtraRoles(user.teacher_extra_roles||user.additional_assignments||user.extra_roles||user.extraRoles); if(!roles.length && user.id) roles=normalizeTeacherExtraRoles(map['id:'+user.id]); if(!roles.length && user.email) roles=normalizeTeacherExtraRoles(map['email:'+String(user.email).trim().toLowerCase()]); } return roles; }
+
+  function normalizeSchoolUser(u){var role=dbRoleToLocal(u.dbRole||u.role); var obj={id:u.id||uid('user'),name:u.name||u.fullName||u.full_name||'',email:u.email||'',password:u.password||'',role:role,status:u.status||((u.active||u.isActive)?'active':'pending'),active:u.active||u.isActive||u.status==='active',isActive:u.active||u.isActive||u.status==='active',schoolId:u.schoolId||u.school_id||currentSchoolId(),schoolName:u.schoolName||currentSchoolName(),isPrimaryManager:!!(u.isPrimaryManager||u.is_primary_manager),permissions:u.permissions||[]}; obj.agent_categories=role==='agent'?agencyListByUser(Object.assign({},u,obj)):[]; obj.agency_categories=obj.agent_categories; obj.agency_types=obj.agent_categories; obj.agency_type=obj.agent_categories.join(','); obj.agencyType=obj.agency_type; var teacherRoles=role==='teacher'?normalizeTeacherExtraRoles(u.teacher_extra_roles||u.additional_assignments||u.extra_roles||u.extraRoles):[]; if(role==='teacher' && !teacherRoles.length) teacherRoles=getTeacherExtraRolesForUser(Object.assign({},u,obj)); obj.teacher_extra_roles=role==='teacher'?teacherRoles:[]; obj.additional_assignments=role==='teacher'?teacherRoles:[]; obj.extra_roles=role==='teacher'?teacherRoles:[]; return obj}
   function users(){var u=read(NS+'_users',[]).filter(function(x){return x&&x.status!=='deleted'}).map(normalizeSchoolUser); var sid=currentSchoolId(); if(sid) u=u.filter(function(x){return !x.schoolId || String(x.schoolId)===String(sid) || x.isPrimaryManager}); return u}
   function saveUsers(u){write(NS+'_users',(u||[]).map(normalizeSchoolUser))}
   async function hydrateUsersFromSupabase(){try{var sid=currentSchoolId(); if(!sid||!window.SmartSchoolSupabase) return users(); var remote=await window.SmartSchoolSupabase.listUsersBySchool(sid); if(remote&&remote.length){saveUsers(remote.map(normalizeSchoolUser)); return users();}}catch(e){console.warn('تعذر تحديث مستخدمي المدرسة من Supabase',e)} return users()}
@@ -3450,11 +3497,6 @@ body{overflow-x:hidden}
   function renderBar(){var b=document.getElementById('ssFinalBar'), html='';
     html+=btn('ssBack','🏠','العودة للقائمة','gray');
     if(ROLE==='manager'){
-      html+=btn('ssTeachers','👨‍🏫','الدخول على المعلمين','');
-      html+=btn('ssStudentAdvisors','🧭','الدخول على الموجهين','');
-      html+=btn('ssActivityLeaders','🏃','الدخول على رائد/ة النشاط','');
-      html+=btn('ssAgents','👥','الدخول على الوكلاء','');
-      html+=btn('ssActivate','✅','تنشيط المستخدمين وإدارة الصلاحيات','gold');
       html+=btn('ssRegLink','🔗','إرسال رابط التسجيل','blue');
       html+=btn('ssAlert','📣','إرسال التنبيهات','');
       html+=btn('ssMeetWallet','📁','محفظة الاجتماعات','');
@@ -3478,33 +3520,63 @@ body{overflow-x:hidden}
     b.innerHTML=html;
   }
   function attach(){var q=function(id){return document.getElementById(id)}; q('ssBack')&&q('ssBack').addEventListener('click',function(){location.href='index.html'}); q('ssExit')&&q('ssExit').addEventListener('click',function(){location.href='index.html'}); q('ssTeachers')&&q('ssTeachers').addEventListener('click',function(){showUsers('teacher')}); q('ssStudentAdvisors')&&q('ssStudentAdvisors').addEventListener('click',function(){showUsers('student_advisor')}); q('ssActivityLeaders')&&q('ssActivityLeaders').addEventListener('click',function(){showUsers('activity_leader')}); q('ssAgents')&&q('ssAgents').addEventListener('click',function(){showUsers('agent')}); q('ssActivate')&&q('ssActivate').addEventListener('click',showActivation); q('ssRegLink')&&q('ssRegLink').addEventListener('click',showRegLink); q('ssAlert')&&q('ssAlert').addEventListener('click',showAlert); q('ssInbox')&&q('ssInbox').addEventListener('click',showInbox); q('ssMeetWallet')&&q('ssMeetWallet').addEventListener('click',showWallet); q('ssMeetingRoom')&&q('ssMeetingRoom').addEventListener('click',showMeetingRoom); q('ssCloud')&&q('ssCloud').addEventListener('click',showCloud); }
+  function followRoleConfig(){
+    var base=[
+      {role:'agent',label:'الوكلاء/الوكيلات',icon:'👥',file:'agent.html'},
+      {role:'teacher',label:'المعلمون/المعلمات',icon:'👨‍🏫',file:'teacher.html'},
+      {role:'student_advisor',label:'الموجهون/الموجهات الطلابيون',icon:'🧭',file:'student_advisor.html'},
+      {role:'activity_leader',label:'رواد/رائدات النشاط',icon:'🏃',file:'activity_leader.html'}
+    ];
+    var seen={}; base.forEach(function(x){seen[x.role]=true});
+    users().forEach(function(u){if(u.role&&!seen[u.role]&&!/manager|owner/.test(u.role)){seen[u.role]=true;base.push({role:u.role,label:u.role,icon:'👤',file:''});}});
+    return base;
+  }
+  function roleLabelById(role){var r=followRoleConfig().find(function(x){return x.role===role}); return r?r.label:(role||'المستخدمون');}
+  function openUserFollowupManagement(){
+    var all=users();
+    var cards=followRoleConfig().map(function(r){
+      var active=all.filter(function(u){return u.role===r.role&&u.status==='active'}).length;
+      var total=all.filter(function(u){return u.role===r.role&&u.status!=='deleted'}).length;
+      var hint=r.future&&!total?'جاهز عند إضافة القسم':'إجمالي الحسابات: '+total+' — المفعلة: '+active;
+      return '<div class="ss-follow-role"><strong>'+r.icon+' '+esc(r.label)+'</strong><div class="ss-muted">'+esc(hint)+'</div><div class="ss-actions"><button class="ss-action blue" onclick="showUsers(\''+r.role+'\')">دخول المتابعة</button><button class="ss-action secondary" onclick="showActivation()">إدارة الحسابات</button></div></div>';
+    }).join('');
+    panel('المتابعة وإدارة المستخدمين','<div class="ss-follow-hub"><div class="ss-follow-hero"><b>لوحة مركزية لمتابعة المستخدمين</b><div class="ss-muted">تم نقل أزرار دخول المدير لوضع المتابعة وتفعيل/تعطيل الحسابات من الأيقونات العلوية إلى هذه الواجهة، مع إبقاء نفس آلية الدخول السابقة دون تغيير.</div></div><div class="ss-follow-grid">'+cards+'</div><div class="ss-actions"><button class="ss-action gold" onclick="showActivation()">فتح إدارة الحسابات كاملة</button></div></div>');
+  }
+  window.openUserFollowupManagement=openUserFollowupManagement;
+
   function showUsers(role){
     var list=users().filter(function(u){return u.role===role && u.status==='active'});
-    var title=role==='teacher'?'المعلمون/المعلمات':(role==='student_advisor'?'الموجهون/ات الطلابيون/ات':(role==='activity_leader'?'رواد/رائدات النشاط':'الوكلاء/الوكيلات'));
+    var title=roleLabelById(role);
     panel(title, list.length?list.map(function(u){
       return '<div class="ss-card"><b class="ss-follow-name" style="cursor:pointer" onclick="ssOpenFollow(\''+u.id+'\',\''+role+'\')">'+esc(u.name||'مستخدم')+'</b><div class="ss-muted">'+esc(u.email||'')+' — مفعل</div><div class="ss-actions"><button class="ss-action blue" onclick="ssOpenFollow(\''+u.id+'\',\''+role+'\')">الدخول للمتابعة</button></div></div>';
     }).join(''):'<div class="ss-empty">لا توجد حسابات مفعلة.</div>')
   }
+  window.showUsers=showUsers;
 
   function ssOpenFollow(userId, role){
     var selected=(users()||[]).find(function(u){return String(u.id)===String(userId)})||{};
     var email=String(selected.email||'').trim().toLowerCase();
     if(!email){alert('لا يمكن الدخول للمتابعة لأن هذا الحساب لا يحتوي على بريد منصة مدرستي.');return;}
     try{sessionStorage.setItem(NS+'_last_follow_target',JSON.stringify(selected));}catch(e){}
-    var file = role==='agent' ? 'agent.html' : (role==='student_advisor' ? 'student_advisor.html' : (role==='activity_leader' ? 'activity_leader.html' : 'teacher.html'));
-    var __qp=new URLSearchParams(location.search||''); var __sid=__qp.get('schoolId')||__qp.get('school_id')||''; var params = '?follow=1&readonly=1&mode=supervisor_readonly&viewer='+encodeURIComponent(ROLE||'manager')+'&viewerRole='+encodeURIComponent(ROLE||'manager')+'&returnRole='+encodeURIComponent(ROLE||'manager')+'&targetRole='+encodeURIComponent(role)+'&followEmail='+encodeURIComponent(email)+'&targetEmail='+encodeURIComponent(email)+'&targetUser='+encodeURIComponent(userId)+'&followUserId='+encodeURIComponent(userId)+'&userId='+encodeURIComponent(userId)+'&uid='+encodeURIComponent(userId)+'&schoolId='+encodeURIComponent(__sid)+'&schoolMode=independent&independent=true&loginMode=direct&direct=1&blockNewReport=true&archiveReadOnly=true';
+    var cfg=(typeof followRoleConfig==='function'?followRoleConfig().find(function(x){return x.role===role;}):null);
+    var file = (cfg&&cfg.file) ? cfg.file : (role==='agent' ? 'agent.html' : (role==='student_advisor' ? 'student_advisor.html' : (role==='activity_leader' ? 'activity_leader.html' : (role==='teacher'?'teacher.html':''))));
+    if(!file){alert('لم يتم ربط ملف هذا القسم بعد.');return;}
+    var __qp=new URLSearchParams(location.search||''); var __sid=__qp.get('schoolId')||__qp.get('school_id')||''; var params = '?follow=1&readonly=1&mode=supervisor_readonly&viewer='+encodeURIComponent(ROLE||'manager')+'&viewerRole='+encodeURIComponent(ROLE||'manager')+'&returnRole='+encodeURIComponent(ROLE||'manager')+'&targetRole='+encodeURIComponent(role)+'&followEmail='+encodeURIComponent(email)+'&targetEmail='+encodeURIComponent(email)+'&targetUser='+encodeURIComponent(userId)+'&followUserId='+encodeURIComponent(userId)+'&userId='+encodeURIComponent(userId)+'&uid='+encodeURIComponent(userId)+'&schoolId='+encodeURIComponent(__sid)+'&schoolMode=independent&independent=true&loginMode=direct&direct=1&blockNewReport=true&archiveReadOnly=true&agency_type='+encodeURIComponent((selected.agent_categories||selected.agency_categories||selected.agency_type||selected.agencyType||[]));
     window.location.href = file + params;
   }
   window.ssOpenFollow = ssOpenFollow;
-  async function showActivation(){await resolveManagerSchoolContext(); var u=users(); panel('تنشيط المستخدمين وإدارة الصلاحيات','<div class="ss-grid"><div class="ss-field"><label>الاسم</label><input id="uName" placeholder="اسم المستخدم"></div><div class="ss-field"><label>البريد</label><input id="uEmail" placeholder="بريد منصة مدرستي"></div><div class="ss-field"><label>الرقم السري</label><input id="uPass" placeholder="الرقم السري"></div><div class="ss-field"><label>الدور</label><select id="uRole"><option value="agent">وكيل</option><option value="student_advisor">موجه طلابي</option><option value="teacher">معلم</option><option value="activity_leader">رائد/ة النشاط</option></select></div><div class="ss-field"><label>الحالة</label><select id="uStatus"><option value="pending">بانتظار التفعيل</option><option value="active">مفعل</option></select></div></div><div class="ss-field"><label>الصلاحيات</label><input id="uPerm" placeholder="مثال: alerts, meetings, archive-view"></div><div class="ss-actions"><button class="ss-action" id="addUser">إضافة/حفظ مستخدم</button><button class="ss-action blue" id="refreshUsers">تحديث المستخدمين من السحابة</button></div><hr style="margin:14px 0;border:0;border-top:1px solid #e5e7eb"><div id="userList">'+renderUserList(u)+'</div>');
+  async function showActivation(){await resolveManagerSchoolContext(); var u=users(); panel('تنشيط المستخدمين وإدارة الصلاحيات','<div class="ss-grid"><div class="ss-field"><label>الاسم</label><input id="uName" placeholder="اسم المستخدم"></div><div class="ss-field"><label>البريد</label><input id="uEmail" placeholder="بريد منصة مدرستي"></div><div class="ss-field"><label>الرقم السري</label><input id="uPass" placeholder="الرقم السري"></div><div class="ss-field"><label>الدور</label><select id="uRole"><option value="agent">وكيل/وكيلة</option><option value="student_advisor">موجه/ة طلابي/ة</option><option value="teacher">معلم/ة</option><option value="activity_leader">رائد/ة النشاط</option></select></div><div class="ss-field" id="uAgencyField"><label>تصنيفات الوكيل/الوكيلة</label>'+agencyCheckboxes('uAgency',[])+'<div class="ss-muted">يمكن اختيار أكثر من تصنيف؛ وتظهر سجلات الوكيل وأرشيفه حسب التصنيفات المحددة.</div></div><div class="ss-field" id="uTeacherExtraField"><label>التكليفات الإضافية للمعلم/المعلمة</label>'+teacherExtraRoleCheckboxes('uTeacherExtra',[])+'<div class="ss-muted">تظهر المجلدات والسجلات المرتبطة داخل مكتبة قسم المعلم/المعلمة عند تفعيل التكليف.</div></div><div class="ss-field"><label>الحالة</label><select id="uStatus"><option value="pending">بانتظار التفعيل</option><option value="active">مفعل</option></select></div></div><div class="ss-field"><label>الصلاحيات</label><input id="uPerm" placeholder="مثال: alerts, meetings, archive-view"></div><div class="ss-actions"><button class="ss-action" id="addUser">إضافة/حفظ مستخدم</button><button class="ss-action blue" id="refreshUsers">تحديث المستخدمين من السحابة</button></div><hr style="margin:14px 0;border:0;border-top:1px solid #e5e7eb"><div id="userList">'+renderUserList(u)+'</div>');
+    function syncAgencyVisibility(){var f=document.getElementById('uAgencyField'); if(f) f.style.display=val('uRole')==='agent'?'grid':'none'; var tf=document.getElementById('uTeacherExtraField'); if(tf) tf.style.display=val('uRole')==='teacher'?'grid':'none';}
+    document.getElementById('uRole').onchange=syncAgencyVisibility; syncAgencyVisibility();
     hydrateUsersFromSupabase().then(function(list){var box=document.getElementById('userList'); if(box) box.innerHTML=renderUserList(list);});
     document.getElementById('refreshUsers').onclick=function(){hydrateUsersFromSupabase().then(function(list){document.getElementById('userList').innerHTML=renderUserList(list);});};
-    document.getElementById('addUser').onclick=async function(){var nu={id:uid('user'),name:val('uName'),email:val('uEmail'),password:val('uPass')||'123456',role:val('uRole'),status:val('uStatus'),schoolId:currentSchoolId(),schoolName:currentSchoolName(),permissions:val('uPerm').split(',').map(function(x){return x.trim()}).filter(Boolean)}; if(!nu.name||!nu.email){alert('أدخل الاسم والبريد');return;} try{if(window.SmartSchoolSupabase&&nu.schoolId){await window.SmartSchoolSupabase.upsertSchoolUser(nu); await hydrateUsersFromSupabase();}else{var arr=users(); arr.unshift(nu); saveUsers(arr);} showActivation();}catch(e){alert(e.message||e);}}}
-  function renderUserList(arr){return arr.filter(function(u){return u.status!=='deleted'}).map(function(u){var protectedAccount=(u.isOwner||u.isPrimaryManager||u.role==='owner'||u.role==='manager'||u.id==='manager' || u.id==='owner'); var roleLabel=(u.role==='agent'?'وكيل':(u.role==='student_advisor'?'موجه طلابي':(u.role==='activity_leader'?'رائد/ة النشاط':(u.role==='teacher'?'معلم':'مدير')))); var statusLabel=(u.status==='active'?'مفعل':(u.status==='disabled'?'معطل':'بانتظار التفعيل')); return '<div class="ss-card"><b>'+esc(u.name||'مستخدم')+'</b><div class="ss-muted">'+esc(u.email||'')+' — '+roleLabel+' — '+statusLabel+'</div><div class="ss-actions"><button class="ss-action blue" onclick="ssFinalActivate(\''+u.id+'\')">تفعيل</button>'+(!protectedAccount?'<button class="ss-action secondary" onclick="ssFinalDisableUser(\''+u.id+'\')">تعطيل</button>':'')+'<button class="ss-action secondary" onclick="ssFinalEditUser(\''+u.id+'\')">تعديل</button>'+(!protectedAccount?'<button class="ss-action red" title="حذف الحساب" onclick="ssFinalDeleteUser(\''+u.id+'\')">🗑️ حذف</button>':'')+'</div></div>'}).join('')||'<div class="ss-empty">لا توجد حسابات.</div>'}
+    document.getElementById('addUser').onclick=async function(){var cats=selectedAgencyList('uAgency'); var teacherExtra=selectedTeacherExtraRoles('uTeacherExtra'); var nu={id:uid('user'),name:val('uName'),email:val('uEmail'),password:val('uPass')||'123456',role:val('uRole'),status:val('uStatus'),schoolId:currentSchoolId(),schoolName:currentSchoolName(),permissions:val('uPerm').split(',').map(function(x){return x.trim()}).filter(Boolean),agent_categories:val('uRole')==='agent'?cats:[],agency_categories:val('uRole')==='agent'?cats:[],agency_types:val('uRole')==='agent'?cats:[],agency_type:val('uRole')==='agent'?cats.join(','):'',teacher_extra_roles:val('uRole')==='teacher'?teacherExtra:[],additional_assignments:val('uRole')==='teacher'?teacherExtra:[],extra_roles:val('uRole')==='teacher'?teacherExtra:[]}; if(!nu.name||!nu.email){alert('أدخل الاسم والبريد');return;} try{if(nu.role==='agent') saveAgencyForUser(nu,cats); if(nu.role==='teacher') saveTeacherExtraRolesForUser(nu,teacherExtra); if(window.SmartSchoolSupabase&&nu.schoolId){await window.SmartSchoolSupabase.upsertSchoolUser(nu); var arr=users(); arr=arr.filter(function(x){return String(x.id)!==String(nu.id)&&String(x.email||'').toLowerCase()!==String(nu.email||'').toLowerCase()}); arr.unshift(nu); saveUsers(arr); await hydrateUsersFromSupabase();}else{var arr=users(); arr.unshift(nu); saveUsers(arr);} showActivation();}catch(e){alert(e.message||e);}}}
+  window.showActivation=showActivation;
+  function renderUserList(arr){return arr.filter(function(u){return u.status!=='deleted'}).map(function(u){var protectedAccount=(u.isOwner||u.isPrimaryManager||u.role==='owner'||u.role==='manager'||u.id==='manager' || u.id==='owner'); var roleLabel=(u.role==='agent'?'وكيل':(u.role==='student_advisor'?'موجه طلابي':(u.role==='activity_leader'?'رائد/ة النشاط':(u.role==='teacher'?'معلم':'مدير')))); var statusLabel=(u.status==='active'?'مفعل':(u.status==='disabled'?'معطل':'بانتظار التفعيل')); var agencyInfo=u.role==='agent'?' — <b style="color:#0f766e">'+esc(agencyLabel(u.agent_categories||u.agency_categories||u.agency_type))+'</b>':''; var tRoles=getTeacherExtraRolesForUser(u); var teacherInfo=u.role==='teacher'&&tRoles.length?' — <b style="color:#7c3aed">'+esc(teacherExtraRolesLabel(tRoles))+'</b>':''; return '<div class="ss-card"><b>'+esc(u.name||'مستخدم')+'</b><div class="ss-muted">'+esc(u.email||'')+' — '+roleLabel+agencyInfo+teacherInfo+' — '+statusLabel+'</div><div class="ss-actions"><button class="ss-action blue" onclick="ssFinalActivate(\''+u.id+'\')">تفعيل</button>'+(!protectedAccount?'<button class="ss-action secondary" onclick="ssFinalDisableUser(\''+u.id+'\')">تعطيل</button>':'')+'<button class="ss-action secondary" onclick="ssFinalEditUser(\''+u.id+'\')">تعديل</button>'+(!protectedAccount?'<button class="ss-action red" title="حذف الحساب" onclick="ssFinalDeleteUser(\''+u.id+'\')">🗑️ حذف</button>':'')+'</div></div>'}).join('')||'<div class="ss-empty">لا توجد حسابات.</div>'}
   window.ssFinalActivate=async function(id){var a=users().map(function(u){if(u.id===id){u.status='active';u.active=true;u.isActive=true;}return u});saveUsers(a);try{if(window.SmartSchoolSupabase && id && !String(id).startsWith('reg_') && !String(id).startsWith('user_')) await window.SmartSchoolSupabase.updateUserStatus(id,'active');}catch(e){console.warn('تعذر تفعيل المستخدم في Supabase',e)}showActivation();}
   window.ssFinalDisableUser=async function(id){var a=users(); var u=a.find(function(x){return x.id===id}); if(!u)return; if(u.isOwner||u.isPrimaryManager||u.role==='owner'||u.role==='manager'||u.id==='manager'||u.id==='owner'){alert('لا يمكن تعطيل حساب المالك أو المدير الرئيسي.');return;} if(!confirm('هل تريد تعطيل حساب '+(u.name||'هذا المستخدم')+'؟'))return; a=a.map(function(x){if(x.id===id){x.status='disabled';x.active=false;x.isActive=false;}return x});saveUsers(a);try{if(window.SmartSchoolSupabase && id && !String(id).startsWith('reg_') && !String(id).startsWith('user_')) await window.SmartSchoolSupabase.updateUserStatus(id,'disabled');}catch(e){console.warn('تعذر تعطيل المستخدم في Supabase',e)}showActivation();}
   window.ssFinalDeleteUser=async function(id){var a=users(); var u=a.find(function(x){return x.id===id}); if(!u)return; if(u.isOwner||u.isPrimaryManager||u.role==='owner'||u.role==='manager'||u.id==='manager'||u.id==='owner'){alert('لا يمكن حذف حساب المالك أو المدير الرئيسي.');return;} if(!confirm('هل تريد حذف حساب '+(u.name||'هذا المستخدم')+'؟\nسيتم حذفه من قائمة مستخدمي المدرسة وتعطيل دخوله.'))return; a=a.map(function(x){if(x.id===id){x.status='deleted'; x.deletedAt=new Date().toISOString(); x.active=false; x.isActive=false;} return x}); saveUsers(a); try{if(window.SmartSchoolSupabase && id && !String(id).startsWith('reg_') && !String(id).startsWith('user_')){if(window.SmartSchoolSupabase.deleteUser){await window.SmartSchoolSupabase.deleteUser(id);}else{await window.SmartSchoolSupabase.updateUserStatus(id,'deleted');}}}catch(e){console.warn('تعذر حذف المستخدم في Supabase، تم إخفاؤه محلياً فقط',e)} showActivation();}
-  window.ssFinalEditUser=function(id){var u=users().find(function(x){return x.id===id}); if(!u)return; panel('تعديل المستخدم','<div class="ss-field"><label>الاسم</label><input id="eName" value="'+esc(u.name)+'"></div><div class="ss-field"><label>الدور</label><select id="eRole"><option value="agent">وكيل</option><option value="student_advisor">موجه طلابي</option><option value="teacher">معلم</option><option value="activity_leader">رائد/ة النشاط</option></select></div><div class="ss-field"><label>الحالة</label><select id="eStatus"><option value="pending">بانتظار التفعيل</option><option value="active">مفعل</option></select></div><div class="ss-field"><label>الصلاحيات</label><input id="ePerm" value="'+esc((u.permissions||[]).join(', '))+'"></div><button class="ss-action" id="saveEdit">حفظ التعديل</button>'); document.getElementById('eRole').value=u.role; document.getElementById('eStatus').value=u.status; document.getElementById('saveEdit').onclick=function(){var a=users().map(function(x){if(x.id===id){x.name=val('eName');x.role=val('eRole');x.status=val('eStatus');x.permissions=val('ePerm').split(',').map(function(p){return p.trim()}).filter(Boolean)}return x});saveUsers(a);showActivation();}}
+  window.ssFinalEditUser=function(id){var u=users().find(function(x){return x.id===id}); if(!u)return; panel('تعديل المستخدم','<div class="ss-field"><label>الاسم</label><input id="eName" value="'+esc(u.name)+'"></div><div class="ss-field"><label>الدور</label><select id="eRole"><option value="agent">وكيل/وكيلة</option><option value="student_advisor">موجه/ة طلابي/ة</option><option value="teacher">معلم/ة</option><option value="activity_leader">رائد/ة النشاط</option></select></div><div class="ss-field" id="eAgencyField"><label>تصنيفات الوكيل/الوكيلة</label>'+agencyCheckboxes('eAgency',u.agent_categories||u.agency_categories||u.agency_type||u.agencyType)+'<div class="ss-muted">يحدد السجلات والأرشيف الذي يظهر لهذا الوكيل، ويمكن اختيار أكثر من تصنيف.</div></div><div class="ss-field" id="eTeacherExtraField"><label>التكليفات الإضافية للمعلم/المعلمة</label>'+teacherExtraRoleCheckboxes('eTeacherExtra',getTeacherExtraRolesForUser(u))+'<div class="ss-muted">عند تفعيل التوجيه الصحي يظهر مجلد وسجلات التوجيه الصحي داخل مكتبة المعلم/المعلمة.</div></div><div class="ss-field"><label>الحالة</label><select id="eStatus"><option value="pending">بانتظار التفعيل</option><option value="active">مفعل</option></select></div><div class="ss-field"><label>الصلاحيات</label><input id="ePerm" value="'+esc((u.permissions||[]).join(', '))+'"></div><button class="ss-action" id="saveEdit">حفظ التعديل</button>'); document.getElementById('eRole').value=u.role; document.getElementById('eStatus').value=u.status; function sync(){document.getElementById('eAgencyField').style.display=val('eRole')==='agent'?'grid':'none'; var tf=document.getElementById('eTeacherExtraField'); if(tf) tf.style.display=val('eRole')==='teacher'?'grid':'none'} document.getElementById('eRole').onchange=sync; sync(); document.getElementById('saveEdit').onclick=function(){var nextCats=val('eRole')==='agent'?selectedAgencyList('eAgency'):[]; var nextTeacherExtra=val('eRole')==='teacher'?selectedTeacherExtraRoles('eTeacherExtra'):[]; var a=users().map(function(x){if(x.id===id){x.name=val('eName');x.role=val('eRole');x.status=val('eStatus');x.permissions=val('ePerm').split(',').map(function(p){return p.trim()}).filter(Boolean);x.agent_categories=nextCats;x.agency_categories=nextCats;x.agency_types=nextCats;x.agency_type=nextCats.join(',');x.agencyType=x.agency_type;x.teacher_extra_roles=nextTeacherExtra;x.additional_assignments=nextTeacherExtra;x.extra_roles=nextTeacherExtra; saveAgencyForUser(x,nextCats); saveTeacherExtraRolesForUser(x,nextTeacherExtra)}return x});saveUsers(a);showActivation();}}
   function val(id){var e=document.getElementById(id); return e?e.value:''}
   async function showRegLink(){
     var ctx=await resolveManagerSchoolContext();
@@ -4381,14 +4453,15 @@ document.addEventListener("click", function(e){
 
     if(managerCurrentRecordKind === 'word'){
       record.editedHtml = editor.innerHTML;
-      const htmlDoc = '<!DOCTYPE html><html><head><meta charset="UTF-8"><style id="ss-code-flash-guard">body{overflow-x:hidden}.safe-hidden-deactivate{display:none!important}</style>
+      const htmlDoc = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style id="ss-code-flash-guard">body{overflow-x:hidden}.safe-hidden-deactivate{display:none!important}</style>
 <style id="MANAGER_DASHBOARD_CARD_ALIGNMENT_FIX">
 #welcome-dashboard main > .grid:first-of-type > div:not(#school-performance-card){min-height:176px!important;justify-content:center!important;}
 #welcome-dashboard main > .grid:first-of-type > div:not(#school-performance-card) h3{text-align:center!important;line-height:1.35!important;}
 #welcome-dashboard #school-performance-card{min-height:190px!important;}
 @media(min-width:768px){#welcome-dashboard main > .grid:first-of-type{align-items:stretch!important;}#welcome-dashboard main > .grid:first-of-type > div{height:auto!important;}}
 </style>
-</head><body>' + editor.innerHTML + '\n</body></html>';
+</head><body>${editor.innerHTML}\n
+</body></html>`;
       record.file = new Blob([htmlDoc], {type:'application/msword'});
       if(!/\.doc$/i.test(record.name)) record.name = record.name.replace(/\.(docx|doc)$/i,'') + '_معدل.doc';
       record.size = record.file.size;
@@ -4453,14 +4526,15 @@ document.addEventListener("click", function(e){
     }
     if(editor && editor.style.display !== 'none'){
       const w = window.open('', '_blank');
-      w.document.write('<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>طباعة</title><style>body{font-family:Cairo,Tajawal,Arial;padding:20px}</style><style id="ss-code-flash-guard">body{overflow-x:hidden}.safe-hidden-deactivate{display:none!important}</style>
+      w.document.write(`<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>طباعة</title><style>body{font-family:Cairo,Tajawal,Arial;padding:20px}</style><style id="ss-code-flash-guard">body{overflow-x:hidden}.safe-hidden-deactivate{display:none!important}</style>
 <style id="MANAGER_DASHBOARD_CARD_ALIGNMENT_FIX">
 #welcome-dashboard main > .grid:first-of-type > div:not(#school-performance-card){min-height:176px!important;justify-content:center!important;}
 #welcome-dashboard main > .grid:first-of-type > div:not(#school-performance-card) h3{text-align:center!important;line-height:1.35!important;}
 #welcome-dashboard #school-performance-card{min-height:190px!important;}
 @media(min-width:768px){#welcome-dashboard main > .grid:first-of-type{align-items:stretch!important;}#welcome-dashboard main > .grid:first-of-type > div{height:auto!important;}}
 </style>
-</head><body>' + editor.innerHTML + '</body></html>');
+</head><body>${editor.innerHTML}
+</body></html>`);
       w.document.close();
       setTimeout(() => w.print(), 400);
       return;
@@ -4693,14 +4767,15 @@ function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
       else if(k==='excel'&&window.XLSX){const wb=record.editedWorkbookBase64?XLSX.read(record.editedWorkbookBase64,{type:'base64'}):XLSX.read(await record.file.arrayBuffer(),{type:'array'}); const sh=wb.SheetNames[0]; const rows=XLSX.utils.sheet_to_json(wb.Sheets[sh],{header:1,defval:''}); html='<table style="width:100%;border-collapse:collapse">'+rows.map(row=>'<tr>'+row.map(c=>'<td style="border:1px solid #333;padding:6px">'+esc(c)+'</td>').join('')+'</tr>').join('')+'</table>';}
       else {html='<div style="font-family:Arial;text-align:center;padding:50px"><h2>'+title+'</h2><p>هذا النوع محفوظ داخل المكتبة، وقد لا يدعم المتصفح طباعته مباشرة. استخدم المعاينة أو افتحه من الجهاز للطباعة.</p></div>';}
     }catch(e){html='<div style="font-family:Arial;text-align:center;padding:50px"><h2>'+title+'</h2><p>تعذرت المعاينة الطباعية لهذا الملف.</p></div>';}
-    w.document.open(); w.document.write('<!doctype html><html dir="rtl"><head><meta charset="utf-8"><title>'+title+'</title><style>@page{size:A4;margin:10mm}body{font-family:Arial,Tahoma,sans-serif}</style><style id="ss-code-flash-guard">body{overflow-x:hidden}.safe-hidden-deactivate{display:none!important}</style>
+    w.document.open(); w.document.write(`<!doctype html><html dir="rtl"><head><meta charset="utf-8"><title>${title}</title><style>@page{size:A4;margin:10mm}body{font-family:Arial,Tahoma,sans-serif}</style><style id="ss-code-flash-guard">body{overflow-x:hidden}.safe-hidden-deactivate{display:none!important}</style>
 <style id="MANAGER_DASHBOARD_CARD_ALIGNMENT_FIX">
 #welcome-dashboard main > .grid:first-of-type > div:not(#school-performance-card){min-height:176px!important;justify-content:center!important;}
 #welcome-dashboard main > .grid:first-of-type > div:not(#school-performance-card) h3{text-align:center!important;line-height:1.35!important;}
 #welcome-dashboard #school-performance-card{min-height:190px!important;}
 @media(min-width:768px){#welcome-dashboard main > .grid:first-of-type{align-items:stretch!important;}#welcome-dashboard main > .grid:first-of-type > div{height:auto!important;}}
 </style>
-</head><body>'+html+'<script>setTimeout(function(){window.focus();window.print()},600)<\/script></body></html>'); w.document.close();
+</head><body>${html}<script>setTimeout(function(){window.focus();window.print()},600)<\/script>
+</body></html>`); w.document.close();
   };
 
 
@@ -4866,17 +4941,21 @@ function esc(v){return String(v||'').replace(/[&<>"']/g,function(ch){return {'&'
   function item(id){return getArchive().find(r=>String(r.id)===String(id));}
   function docFor(r,autoPrint){
     if(!r) return ''; let doc=r.htmlContent||'';
-    if(!doc) doc='<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>'+esc(r.title||'سجل')+'</title><style>body{font-family:Arial;padding:24px;direction:rtl}</style>
+    if(!doc) doc=`<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>${esc(r.title||'سجل')}</title><style>body{font-family:Arial;padding:24px;direction:rtl}</style>
 <style id="MANAGER_DASHBOARD_CARD_ALIGNMENT_FIX">
 #welcome-dashboard main > .grid:first-of-type > div:not(#school-performance-card){min-height:176px!important;justify-content:center!important;}
 #welcome-dashboard main > .grid:first-of-type > div:not(#school-performance-card) h3{text-align:center!important;line-height:1.35!important;}
 #welcome-dashboard #school-performance-card{min-height:190px!important;}
 @media(min-width:768px){#welcome-dashboard main > .grid:first-of-type{align-items:stretch!important;}#welcome-dashboard main > .grid:first-of-type > div{height:auto!important;}}
 </style>
-</head><body><h2>'+esc(r.title||'سجل')+'</h2></body></html>';
+</head><body><h2>${esc(r.title||'سجل')}</h2>
+</body></html>`;
     const valuesScript='<script>(function(){var values='+JSON.stringify(r.values||{}).replace(/</g,'\\u003c')+';function fill(){Object.keys(values).forEach(function(k){var el=document.querySelector("[data-k=\""+CSS.escape(k)+"\"]"); if(el){el.value=values[k]||""; el.setAttribute("value",values[k]||""); el.textContent=el.tagName==="TEXTAREA"?(values[k]||""):el.textContent;}}); var ap=document.getElementById("archivePanel"); if(ap) ap.style.display="none";} if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",fill);else fill();})();<\/script>';
     const printScript=autoPrint?'<script>window.addEventListener("load",function(){setTimeout(function(){window.print()},700)});<\/script>':'';
-    if(doc.indexOf('</body>')!==-1) doc=doc.replace('</body>', valuesScript+printScript+'</body>'); else doc+=valuesScript+printScript;
+    if(doc.indexOf('
+</body>')!==-1) doc=doc.replace('
+</body>', valuesScript+printScript+'
+</body>'); else doc+=valuesScript+printScript;
     return doc;
   }
   window.previewManagerRecordArchiveItem=function(id){const r=item(id); if(!r) return; const w=window.open('','_blank'); w.document.open(); w.document.write(docFor(r,false)); w.document.close();};
@@ -4890,7 +4969,7 @@ function esc(v){return String(v||'').replace(/[&<>"']/g,function(ch){return {'&'
  if(window.__SELF_EVALUATION_ARCHIVE_ENGINE_CLEAN__) return;
  window.__SELF_EVALUATION_ARCHIVE_ENGINE_CLEAN__=true;
  const ARCHIVE_KEY='manager_self_evaluation_archive_v1';
- const FOLDERS=[{"id": "selfEval_01", "name": "تشكيل فريق التقويم الذاتي"}, {"id": "selfEval_02", "name": "نشر ثقافة التقويم الذاتي"}, {"id": "selfEval_03", "name": "الخطة الإجرائية للتقويم الذاتي"}, {"id": "selfEval_04", "name": "محاضر اجتماعات فريق التقويم"}, {"id": "selfEval_05", "name": "توزيع مهام أعضاء الفريق"}, {"id": "selfEval_06", "name": "بيانات عامة عن المدرسة"}, {"id": "selfEval_07", "name": "سجل مؤشرات الأداء المدرسي"}, {"id": "selfEval_08", "name": "الخطة التشغيلية ومتابعة التنفيذ"}, {"id": "selfEval_09", "name": "الشراكات المجتمعية"}, {"id": "selfEval_10", "name": "التطوير المهني"}, {"id": "selfEval_11", "name": "حقوق المتعلم وحمايته"}, {"id": "selfEval_12", "name": "التقرير الختامي للتقويم الذاتي"}, {"id": "selfEval_13", "name": "خطة التحسين ومتابعة التنفيذ"}, {"id": "selfEval_14", "name": "الزيارات الصفية"}, {"id": "selfEval_15", "name": "تحليل الممارسات الصفية"}, {"id": "selfEval_16", "name": "متابعة تنفيذ المنهج"}, {"id": "selfEval_17", "name": "التخطيط للدروس ونواتج التعلم"}, {"id": "selfEval_18", "name": "أدوات التقويم المتنوعة"}, {"id": "selfEval_19", "name": "تحليل نتائج التقويم الصفي"}, {"id": "selfEval_20", "name": "البرامج العلاجية"}, {"id": "selfEval_21", "name": "البرامج الإثرائية"}, {"id": "selfEval_22", "name": "دعم الفروق الفردية"}, {"id": "selfEval_23", "name": "المجتمعات المهنية التعليمية"}, {"id": "selfEval_24", "name": "توظيف التقنية والتعلم الإلكتروني"}, {"id": "selfEval_25", "name": "مقابلات المعلمين والمتعلمين"}, {"id": "selfEval_26", "name": "الشواهد الصفية الرقمية"}, {"id": "selfEval_27", "name": "التحصيل الدراسي العام"}, {"id": "selfEval_28", "name": "تحليل نتائج الاختبارات"}, {"id": "selfEval_29", "name": "نتائج نافس والاختبارات الوطنية"}, {"id": "selfEval_30", "name": "القدرات والتحصيلي للمرحلة الثانوية"}, {"id": "selfEval_31", "name": "المهارات الأساسية"}, {"id": "selfEval_32", "name": "الطلاب المتفوقون"}, {"id": "selfEval_33", "name": "الطلاب المتعثرون وخطط الدعم"}, {"id": "selfEval_34", "name": "الانضباط والمواظبة"}, {"id": "selfEval_35", "name": "السلوك والقيم والمواطنة"}, {"id": "selfEval_36", "name": "الصحة المدرسية والنمو الشخصي"}, {"id": "selfEval_37", "name": "المشاركات والإنجازات الطلابية"}, {"id": "selfEval_38", "name": "قياس أثر البرامج العلاجية والإثرائية"}, {"id": "selfEval_39", "name": "مقارنة التحسن بين الفترات"}, {"id": "selfEval_40", "name": "بيانات البيئة المدرسية"}, {"id": "selfEval_41", "name": "جاهزية المبنى والفصول"}, {"id": "selfEval_42", "name": "الأمن والسلامة"}, {"id": "selfEval_43", "name": "خطط الإخلاء والطوارئ"}, {"id": "selfEval_44", "name": "تنفيذ فرضيات الإخلاء"}, {"id": "selfEval_45", "name": "الصيانة والبلاغات"}, {"id": "selfEval_46", "name": "المختبرات ومصادر التعلم"}, {"id": "selfEval_47", "name": "التجهيزات والتقنيات"}, {"id": "selfEval_48", "name": "النظافة والبيئة الجاذبة"}, {"id": "selfEval_49", "name": "الصحة المدرسية"}, {"id": "selfEval_50", "name": "المقصف المدرسي"}, {"id": "selfEval_51", "name": "المخاطر ومعالجتها"}, {"id": "selfEval_52", "name": "رضا المستفيدين عن البيئة المدرسية"}];
+ const FOLDERS=[{"id": "selfEval_01", "name": "تشكيل فريق التقويم الذاتي"}, {"id": "selfEval_02", "name": "نشر ثقافة التقويم الذاتي"}, {"id": "selfEval_03", "name": "الخطة الإجرائية للتقويم الذاتي"}, {"id": "selfEval_04", "name": "محاضر اجتماعات فريق التقويم"}, {"id": "selfEval_05", "name": "توزيع مهام أعضاء الفريق"}, {"id": "selfEval_06", "name": "بيانات عامة عن المدرسة"}, {"id": "selfEval_07", "name": "سجل مؤشرات الأداء المدرسي"}, {"id": "selfEval_08", "name": "الخطة التشغيلية ومتابعة التنفيذ"}, {"id": "selfEval_09", "name": "الشراكات المجتمعية"}, {"id": "selfEval_10", "name": "التطوير المهني"}, {"id": "selfEval_11", "name": "حقوق المتعلم وحمايته"}, {"id": "selfEval_12", "name": "التقرير الختامي للتقويم الذاتي"}, {"id": "selfEval_13", "name": "خطة التحسين ومتابعة التنفيذ"}, {"id": "selfEval_14", "name": "الزيارات الصفية"}, {"id": "selfEval_15", "name": "تحليل الممارسات الصفية"}, {"id": "selfEval_16", "name": "متابعة تنفيذ المنهج"}, {"id": "selfEval_17", "name": "التخطيط للدروس ونواتج التعلم"}, {"id": "selfEval_18", "name": "أدوات التقويم المتنوعة"}, {"id": "selfEval_19", "name": "تحليل نتائج التقويم الصفي"}, {"id": "selfEval_20", "name": "البرامج العلاجية"}, {"id": "selfEval_21", "name": "البرامج الإثرائية"}, {"id": "selfEval_22", "name": "دعم الفروق الفردية"}, {"id": "selfEval_23", "name": "المجتمعات المهنية التعليمية"}, {"id": "selfEval_24", "name": "توظيف التقنية والتعلم الإلكتروني"}, {"id": "selfEval_25", "name": "مقابلات المعلمين والمتعلمين"}, {"id": "selfEval_26", "name": "الشواهد الصفية الرقمية"}, {"id": "selfEval_27", "name": "التحصيل الدراسي العام"}, {"id": "selfEval_28", "name": "تحليل نتائج الاختبارات"}, {"id": "selfEval_29", "name": "نتائج نافس والاختبارات الوطنية"}, {"id": "selfEval_30", "name": "القدرات والتحصيلي للمرحلة الثانوية"}, {"id": "selfEval_31", "name": "المهارات الأساسية"}, {"id": "selfEval_32", "name": "الطلاب المتفوقون"}, {"id": "selfEval_33", "name": "الطلاب المتعثرون وخطط الدعم"}, {"id": "selfEval_34", "name": "الانضباط والمواظبة"}, {"id": "selfEval_35", "name": "السلوك والقيم والمواطنة"}, {"id": "selfEval_36", "name": "الصحة المدرسية والنمو الشخصي"}, {"id": "selfEval_37", "name": "المشاركات والإنجازات الطلابية"}, {"id": "selfEval_38", "name": "قياس أثر البرامج العلاجية والإثرائية"}, {"id": "selfEval_39", "name": "مقارنة التحسن بين الفترات"}, {"id": "selfEval_40", "name": "بيانات البيئة المدرسية"}, {"id": "selfEval_41", "name": "جاهزية المبنى والفصول"}, {"id": "selfEval_42", "name": "الأمن والسلامة"}, {"id": "selfEval_43", "name": "خطط الإخلاء والطوارئ"}, {"id": "selfEval_44", "name": "تنفيذ فرضيات الإخلاء"}, {"id": "selfEval_45", "name": "الصيانة والبلاغات"}, {"id": "selfEval_46", "name": "المختبرات ومصادر التعلم"}, {"id": "selfEval_47", "name": "التجهيزات والتقنيات"}, {"id": "selfEval_48", "name": "النظافة والبيئة الجاذبة"}, {"id": "selfEval_49", "name": "الصحة المدرسية"}, {"id": "selfEval_50", "name": "المقصف المدرسي"}, {"id": "selfEval_51", "name": "المخاطر ومعالجتها"}, {"id": "selfEval_52", "name": "رضا المستفيدين عن البيئة المدرسية"}, {"id": "selfEval_53", "name": "الخطة التشغيلية"}, {"id": "selfEval_54", "name": "قرارات اللجان والفرق"}, {"id": "selfEval_55", "name": "اجتماعات اللجان والفرق"}];
  let currentFolder=null;
  
 
@@ -4932,21 +5011,25 @@ function esc(v){return String(v||'').replace(/[&<>"']/g,function(ch){return {'&'
  function hideViews(){['welcome-dashboard','main-report-app','archive-view','stats-view','portfolio-view','manager-records-view','manager-records-archive-view','self-evaluation-archive-view','school-performance-dashboard-view'].forEach(function(id){const el=document.getElementById(id); if(el){el.style.display='none'; if(el.classList) el.classList.add('hidden');}});}
  function showDashboard(){const d=document.getElementById('welcome-dashboard'); if(d){d.style.display='block'; if(d.classList) d.classList.remove('hidden');}}
  window.reloadSelfEvaluationRecords=function(){const f=document.getElementById('self-evaluation-records-frame'); if(f) f.src=(f.getAttribute('src')||'self_evaluation_records.html').split('?')[0]+'?v='+Date.now();};
- window.openPortfolioView=function(){hideViews(); const v=document.getElementById('portfolio-view'); if(v){v.style.display='block'; if(v.classList) v.classList.remove('hidden');} const f=document.getElementById('self-evaluation-records-frame'); if(f && !f.getAttribute('src')) f.src='self_evaluation_records.html';};
- window.closePortfolioView=function(){const v=document.getElementById('portfolio-view'); if(v){v.style.display='none'; if(v.classList) v.classList.add('hidden');} showDashboard();};
+ window.openPortfolioView=function(){document.body.classList.add('portfolio-open'); hideViews(); const v=document.getElementById('portfolio-view'); if(v){v.style.display='block'; if(v.classList) v.classList.remove('hidden');} const f=document.getElementById('self-evaluation-records-frame'); if(f && !f.getAttribute('src')) f.src='self_evaluation_records.html';};
+ window.closePortfolioView=function(){document.body.classList.remove('portfolio-open'); const v=document.getElementById('portfolio-view'); if(v){v.style.display='none'; if(v.classList) v.classList.add('hidden');} showDashboard();};
  window.openSelfEvaluationArchiveView=function(){hideViews(); const v=document.getElementById('self-evaluation-archive-view'); if(!v) return alert('واجهة أرشيف التقويم الذاتي غير موجودة.'); v.style.display='block'; if(v.classList) v.classList.remove('hidden'); renderSelfEvaluationArchiveFolders();};
  window.closeSelfEvaluationArchiveView=function(){const v=document.getElementById('self-evaluation-archive-view'); if(v){v.style.display='none'; if(v.classList) v.classList.add('hidden');} showDashboard();};
  window.renderSelfEvaluationArchiveFolders=function(){currentFolder=null; const c=document.getElementById('self-evaluation-archive-content'); const b=document.getElementById('self-eval-back-to-folders'); if(b)b.classList.add('hidden'); if(!c)return; const archive=getArchive(); const counts={}; archive.forEach(function(r){const f=folderByName(r.recordName||r.folderName||r.title||''); const fid=(r.folderId)||(f&&f.id)||''; counts[fid]=(counts[fid]||0)+1;}); c.innerHTML='<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">'+FOLDERS.map(function(f){const count=counts[f.id]||0; return '<div onclick="openSelfEvaluationArchiveFolder(&quot;'+esc(f.id)+'&quot;)" class="bg-white/90 p-8 rounded-[35px] shadow-lg border border-indigo-100 hover:border-indigo-400 cursor-pointer transition-all flex flex-col gap-4"><div class="flex items-center justify-between"><div class="text-4xl">📂</div><span class="bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full text-xs font-bold">'+count+' سجل</span></div><h3 class="font-bold text-slate-800 text-lg">'+esc(f.name)+'</h3><p class="text-[11px] text-slate-400 font-bold">مجلد مطابق لسجل التقويم الذاتي، ويحفظ النسخ المكررة دون حذف السابق.</p></div>';}).join('')+'</div>';};
  window.openSelfEvaluationArchiveFolder=function(folderId){currentFolder=folderId; const c=document.getElementById('self-evaluation-archive-content'); const b=document.getElementById('self-eval-back-to-folders'); if(b)b.classList.remove('hidden'); if(!c)return; const folder=folderById(folderId); const rows=getArchive().filter(function(r){const f=folderByName(r.recordName||r.folderName||r.title||''); return r.folderId===folderId || (f&&f.id===folderId) || r.folderName===folder.name || r.recordName===folder.name;}); c.innerHTML='<section class="space-y-4"><div class="bg-white/90 border border-indigo-100 rounded-[30px] p-5 flex justify-between items-center gap-3"><div><h3 class="font-black text-indigo-800 text-xl">📂 '+esc(folder.name)+'</h3><p class="text-xs text-slate-400 font-bold mt-1">عدد السجلات: '+rows.length+'</p></div><button onclick="renderSelfEvaluationArchiveFolders()" class="bg-slate-100 text-slate-600 px-4 py-2 rounded-xl text-xs font-bold">رجوع</button></div>'+(rows.length?rows.map(function(r){return '<div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex justify-between items-center gap-3 flex-wrap"><div><h4 class="font-bold text-slate-800">'+esc(r.displayName||r.title||folder.name)+'</h4><p class="text-[10px] text-slate-400 font-bold mt-1">'+esc(r.title||folder.name)+' — '+esc(r.createdAt||'')+'</p></div><div class="flex gap-2 flex-wrap"><button onclick="previewSelfEvaluationArchiveItem('+Number(r.id)+')" class="bg-teal-600 text-white px-4 py-2 rounded-xl text-[10px] font-bold">عرض</button><button onclick="printSelfEvaluationArchiveItem('+Number(r.id)+')" class="bg-slate-700 text-white px-4 py-2 rounded-xl text-[10px] font-bold">طباعة</button><button onclick="deleteSelfEvaluationArchiveItem('+Number(r.id)+')" class="bg-red-50 text-red-500 px-4 py-2 rounded-xl text-[10px] font-bold">حذف</button></div></div>';}).join(''):'<div class="bg-white border border-dashed border-slate-200 rounded-[30px] p-10 text-center text-slate-400 font-bold">لا توجد سجلات محفوظة داخل هذا المجلد.</div>')+'</section>';};
  function item(id){return getArchive().find(r=>String(r.id)===String(id));}
- function docFor(r,autoPrint){if(!r)return ''; let doc=r.htmlContent||'<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>'+esc(r.title||'سجل')+'</title>
+ function docFor(r,autoPrint){if(!r)return ''; let doc=r.htmlContent||`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${esc(r.title||'سجل')}</title>
 <style id="MANAGER_DASHBOARD_CARD_ALIGNMENT_FIX">
 #welcome-dashboard main > .grid:first-of-type > div:not(#school-performance-card){min-height:176px!important;justify-content:center!important;}
 #welcome-dashboard main > .grid:first-of-type > div:not(#school-performance-card) h3{text-align:center!important;line-height:1.35!important;}
 #welcome-dashboard #school-performance-card{min-height:190px!important;}
 @media(min-width:768px){#welcome-dashboard main > .grid:first-of-type{align-items:stretch!important;}#welcome-dashboard main > .grid:first-of-type > div{height:auto!important;}}
 </style>
-</head><body><h2>'+esc(r.title||'سجل')+'</h2></body></html>'; const ps=autoPrint?'<script>window.addEventListener("load",function(){setTimeout(function(){window.print()},700)});<\/script>':''; return doc.indexOf('</body>')>-1?doc.replace('</body>',ps+'</body>'):doc+ps;}
+</head><body><h2>${esc(r.title||'سجل')}</h2>
+</body></html>`; const ps=autoPrint?'<script>window.addEventListener("load",function(){setTimeout(function(){window.print()},700)});<\/script>':''; return doc.indexOf('
+</body>')>-1?doc.replace('
+</body>',ps+'
+</body>'):doc+ps;}
  window.previewSelfEvaluationArchiveItem=function(id){const r=item(id); if(!r)return; const w=window.open('','_blank'); w.document.open(); w.document.write(docFor(r,false)); w.document.close();};
  window.printSelfEvaluationArchiveItem=function(id){const r=item(id); if(!r)return; const w=window.open('','_blank'); w.document.open(); w.document.write(docFor(r,true)); w.document.close();};
  window.deleteSelfEvaluationArchiveItem=function(id){if(!confirm('هل تريد حذف هذا السجل؟'))return; setArchive(getArchive().filter(r=>String(r.id)!==String(id))); currentFolder?openSelfEvaluationArchiveFolder(currentFolder):renderSelfEvaluationArchiveFolders();};
@@ -5122,5 +5205,183 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
 <style id="LEADERSHIP_CENTER_OVERRIDE_STYLE">
 #school-performance-dashboard-view .content-overlay{background:linear-gradient(135deg,#eef6ff,#f8fafc 48%,#f2fff8)!important}.lc-wrap{font-family:Tajawal,Cairo,Arial,sans-serif;color:#0f172a}.lc-hero{display:flex;align-items:center;justify-content:space-between;gap:20px;background:linear-gradient(135deg,#0f766e,#1d4ed8);color:white;border-radius:34px;padding:28px;box-shadow:0 24px 60px rgba(15,118,110,.18);margin-bottom:18px}.lc-hero h1{font-size:32px;font-weight:900;margin:0}.lc-hero p{font-size:13px;font-weight:800;opacity:.86;margin-top:8px}.lc-hero button,.lc-tabs button{border:0;border-radius:18px;padding:12px 18px;font-weight:900;cursor:pointer}.lc-hero button{background:white;color:#0f766e}.lc-tabs{display:flex;gap:10px;flex-wrap:wrap;background:white;border:1px solid #dbeafe;border-radius:26px;padding:10px;margin-bottom:18px}.lc-tabs button{background:#f8fafc;color:#334155;border:1px solid #e2e8f0}.lc-tabs button.active{background:#2563eb;color:white;border-color:#2563eb}.lc-tab-pane{min-height:520px}.lc-grid-main{display:grid;grid-template-columns:310px 1fr;gap:18px}.lc-health{background:white;border-radius:34px;padding:24px;text-align:center;box-shadow:0 18px 45px rgba(15,23,42,.08);border:1px solid #dbeafe;position:relative;overflow:hidden}.lc-health span{font-weight:900;color:#64748b}.lc-health b{display:block;font-size:64px;font-weight:900;color:#0f172a;margin:12px 0}.lc-health small{font-weight:900;color:#0f766e}.lc-ring{--p:0;width:150px;height:150px;border-radius:50%;margin:20px auto 0;background:conic-gradient(#16a34a calc(var(--p)*1%),#e2e8f0 0);box-shadow:inset 0 0 0 18px white}.lc-ring.warn{background:conic-gradient(#f59e0b calc(var(--p)*1%),#e2e8f0 0)}.lc-ring.risk{background:conic-gradient(#ef4444 calc(var(--p)*1%),#e2e8f0 0)}.lc-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.lc-kpi{background:white;border-radius:28px;padding:18px;border:1px solid #e2e8f0;box-shadow:0 18px 42px rgba(15,23,42,.07);min-height:150px}.lc-kpi .lc-icon{font-size:28px}.lc-kpi small{display:block;margin-top:10px;color:#64748b;font-weight:900}.lc-kpi b{display:block;font-size:34px;font-weight:900;margin:8px 0;color:#0f172a}.lc-kpi em{font-style:normal;font-size:11px;font-weight:900;color:#64748b}.lc-kpi.good{border-bottom:6px solid #16a34a}.lc-kpi.warn{border-bottom:6px solid #f59e0b}.lc-kpi.risk{border-bottom:6px solid #ef4444}.lc-section{background:white;border:1px solid #dbeafe;border-radius:34px;padding:22px;margin-top:18px;box-shadow:0 18px 42px rgba(15,23,42,.06)}.lc-section h3{font-size:22px;font-weight:900;color:#0f766e;margin:0 0 16px}.lc-depts,.lc-analytics{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}.lc-analytics{grid-template-columns:repeat(3,minmax(0,1fr))}.lc-dept,.lc-analytics article,.lc-decisions article{border:1px solid #e2e8f0;border-radius:24px;padding:16px;background:#f8fafc}.lc-dept span{font-size:26px}.lc-dept b{display:block;font-weight:900;margin:8px 0}.lc-dept small{display:block;font-weight:800;color:#64748b;min-height:34px}.lc-dept div{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.lc-dept em{font-style:normal;background:white;border-radius:999px;padding:6px 9px;font-size:10px;font-weight:900;color:#2563eb}.lc-bars>div{display:grid;grid-template-columns:74px 1fr 45px;gap:8px;align-items:center;margin:10px 0}.lc-bars label,.lc-bars b{font-size:12px;font-weight:900}.lc-bars span{height:14px;background:#e2e8f0;border-radius:999px;overflow:hidden}.lc-bars i{display:block;height:100%;background:linear-gradient(90deg,#0f766e,#2563eb);border-radius:999px}.lc-heat table{width:100%;border-collapse:separate;border-spacing:8px}.lc-heat th,.lc-heat td{text-align:center;border-radius:16px;padding:18px;font-weight:900;background:#f8fafc}.lc-heat td.good{background:#dcfce7;color:#166534}.lc-heat td.warn{background:#fef3c7;color:#92400e}.lc-heat td.risk{background:#fee2e2;color:#991b1b}.lc-note{font-weight:800;color:#64748b;font-size:12px}.lc-empty-box,.lc-empty-mini{background:#f8fafc;border:1px dashed #cbd5e1;border-radius:22px;padding:24px;text-align:center;color:#64748b;font-weight:900;line-height:1.8}.lc-empty-mini{padding:18px;font-size:12px}.lc-decisions{display:grid;gap:14px}.lc-decisions strong{color:#2563eb}.lc-decisions p{font-weight:900;font-size:17px}.lc-decisions em{font-style:normal;color:#0f766e;font-weight:900}.spd-screen-mode .lc-wrap{padding:20px}.spd-screen-mode header,.spd-screen-mode .no-print{display:none!important}@media(max-width:1050px){.lc-grid-main{grid-template-columns:1fr}.lc-kpis,.lc-depts,.lc-analytics{grid-template-columns:1fr 1fr}}@media(max-width:700px){.lc-kpis,.lc-depts,.lc-analytics{grid-template-columns:1fr}.lc-hero{flex-direction:column;align-items:flex-start}.lc-hero h1{font-size:24px}}
 </style>
+
+
+<script id="LEADERSHIP_CENTER_AGENT_FOLLOWUP_C5_SAFE">
+(function(){
+  if(window.__LC_AGENT_FOLLOWUP_C5_SAFE__) return;
+  window.__LC_AGENT_FOLLOWUP_C5_SAFE__ = true;
+  function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function parse(raw, fallback){try{var v=JSON.parse(raw||''); return v==null?fallback:v;}catch(e){return fallback;}}
+  function sid(){try{var s=parse(localStorage.getItem('activeSchool'),{})||parse(localStorage.getItem('currentSchool'),{})||parse(localStorage.getItem('smartSchool.currentSchool'),{})||{};var u=parse(localStorage.getItem('currentSchoolUser'),{})||parse(localStorage.getItem('currentUser'),{})||{};return String(localStorage.getItem('active_school_id')||localStorage.getItem('current_school_id')||s.id||s.school_id||s.schoolId||u.schoolId||'').trim();}catch(e){return '';}}
+  function readByPrefix(prefix){var id=sid(), keys=[];try{keys=Object.keys(localStorage).filter(function(k){return k.indexOf(prefix)===0;});}catch(e){} if(id&&keys.indexOf(prefix+id)>=0)keys=[prefix+id].concat(keys.filter(function(k){return k!==prefix+id;})); var best=[];keys.forEach(function(k){var a=parse(localStorage.getItem(k),[]);if(Array.isArray(a)&&a.length>best.length)best=a;});return best;}
+  function archives(){return readByPrefix('deputyWeeklyFollowupArchive:').sort(function(a,b){return String(b.closed_at||'').localeCompare(String(a.closed_at||''));});}
+  function activeWeek(){var w=readByPrefix('deputyWeeklyFollowupWeeks:');return w.find(function(x){return x&&x.status==='نشط';})||w[0]||null;}
+  function fmt(n,s){return Math.round(Number(n)||0)+(s||'');}
+  function badge(t,c){return '<span class="lc-follow-badge '+(c||'')+'">'+esc(t)+'</span>';}
+  function kpi(t,v,n,i,c){return '<article class="lc-kpi '+(c||'')+'"><div class="lc-icon">'+i+'</div><small>'+esc(t)+'</small><b>'+esc(v)+'</b><em>'+esc(n||'')+'</em></article>';}
+  function delta(v){v=Number(v)||0;return '<span class="lc-follow-delta '+(v<0?'down':v>0?'up':'')+'">'+(v>0?'+':'')+Math.round(v)+'%</span>';}
+  function tabHtml(){var a=archives(), last=a[0]||null, m=(last&&last.metrics)||{}, c=m.counts||{}, al=m.alerts||{}, aw=activeWeek(), aal=(aw&&aw.c3Alerts)||[];var critical=(al.critical||0)||aal.filter(function(x){return x.priority==='critical'&&x.status!=='processed';}).length;var disc=m.disciplineAvg||0, exec=m.executiveAvg||m.avg||0, risk=c.risk||0, follow=c.follow||0;var avg=a.length?Math.round(a.reduce(function(s,x){var mm=x.metrics||{};return s+(mm.executiveAvg||mm.avg||0);},0)/a.length):exec;var comp=(last&&last.comparison&&last.comparison.hasPrevious)?last.comparison:null;
+    var html='<section class="lc-section lc-follow-section"><h3>متابعة الوكيل الذكية</h3><p class="lc-note">ملخص قيادي مختصر لنتائج متابعة أعمال المعلمين كما تظهر من قسم الوكيل، دون تعديل بيانات الوكيل أو المعلمين.</p><div class="lc-kpis lc-follow-kpis">'+kpi('متوسط الانضباط المدرسي',fmt(disc,'%'),'من آخر أسبوع معتمد','🟢',disc>=85?'good':disc>=70?'warn':'risk')+kpi('متوسط الإنجاز التنفيذي',fmt(exec,'%'),'لا يشمل الحضور والاصطفاف','📌',exec>=85?'good':exec>=70?'warn':'risk')+kpi('المعلمون المتعثرون',risk,'بحسب التصنيف الذكي','🔴',risk?'risk':'good')+kpi('تنبيهات حرجة',critical,'من تنبيهات الأربعاء','🚨',critical?'risk':'good')+kpi('آخر أسبوع معتمد',last?('الأسبوع '+(last.week_number||'—')):'—','من أرشيف متابعة الوكيل','📚',last?'good':'')+kpi('متوسط الإنجاز التراكمي',fmt(avg,'%'),'متوسط الأسابيع المؤرشفة','📈',avg>=85?'good':avg>=70?'warn':'risk')+'</div>';
+    html+='<div class="lc-follow-grid"><section class="lc-follow-card"><h4>المقارنة المختصرة</h4>'+(comp?'<div class="lc-follow-compare"><div><span>فرق الانضباط</span><b>'+delta(comp.disciplineDelta)+'</b></div><div><span>فرق الإنجاز</span><b>'+delta(comp.executiveDelta)+'</b></div><div><span>فرق المتعثرين</span><b>'+esc(comp.riskDelta||0)+'</b></div><div><span>فرق يحتاجون متابعة</span><b>'+esc(comp.followDelta||0)+'</b></div></div><p class="lc-note">المقارنة مع الأسبوع '+esc(comp.previous_week||'السابق')+'.</p>':'<div class="lc-empty-mini">تظهر المقارنة بعد اعتماد أسبوعين على الأقل من متابعة الوكيل.</div>')+'</section>';
+    var alerts=[];if(critical>0)alerts.push(['حرج','يوجد '+critical+' تنبيه حرج يحتاج مراجعة من الوكيل.','risk']);if(risk>0)alerts.push(['حرج','يوجد '+risk+' معلم/معلمة ضمن تصنيف متعثر.','risk']);if(follow>0)alerts.push(['متوسط','يوجد '+follow+' معلم/معلمة يحتاجون متابعة.','warn']);if(!alerts.length)alerts.push(['مستقر','لا توجد تنبيهات حرجة في آخر قراءة متاحة.','good']);
+    html+='<section class="lc-follow-card"><h4>التنبيهات الحرجة للمدير</h4><div class="lc-follow-alerts">'+alerts.map(function(x){return '<article class="'+x[2]+'"><strong>'+esc(x[0])+'</strong><p>'+esc(x[1])+'</p></article>';}).join('')+'</div></section></div>';
+    var rows=a.slice(0,6).map(function(x,i){var mm=x.metrics||{}, cc=mm.counts||{}, aa=mm.alerts||{};return '<tr><td>'+(i+1)+'</td><td>الأسبوع '+esc(x.week_number||'—')+'</td><td>'+fmt(mm.disciplineAvg,'%')+'</td><td>'+fmt(mm.executiveAvg||mm.avg,'%')+'</td><td>'+badge('متعثر '+(cc.risk||0),'risk')+' '+badge('متابعة '+(cc.follow||0),'warn')+'</td><td>'+badge('حرجة '+(aa.critical||0),'risk')+'</td><td>'+esc(x.closed_at?new Date(x.closed_at).toLocaleDateString('ar-SA'):'—')+'</td></tr>';}).join('')||'<tr><td colspan="7"><div class="lc-empty-box">لم يتم اعتماد أسابيع من متابعة الوكيل حتى الآن. ستظهر هنا النتائج بعد اعتماد أول أسبوع.</div></td></tr>';
+    html+='<section class="lc-follow-card"><h4>آخر الأسابيع المعتمدة</h4><div class="lc-follow-table"><table><thead><tr><th>م</th><th>الأسبوع</th><th>الانضباط</th><th>الإنجاز التنفيذي</th><th>التصنيف</th><th>التنبيهات</th><th>تاريخ الاعتماد</th></tr></thead><tbody>'+rows+'</tbody></table></div></section></section>';return html;}
+  function inject(){var root=document.getElementById('school-performance-dashboard-content'); if(!root)return;var nav=root.querySelector('.lc-tabs'); if(!nav)return;if(!nav.querySelector('[data-lc-tab="agent_follow"]')){var b=document.createElement('button');b.type='button';b.dataset.lcTab='agent_follow';b.textContent='متابعة الوكيل الذكية';b.onclick=function(){window.switchLeadershipCenterTab('agent_follow')};nav.appendChild(b);} if(window.__LC_TAB__==='agent_follow'){nav.querySelectorAll('button').forEach(function(x){x.classList.remove('active')});var bb=nav.querySelector('[data-lc-tab="agent_follow"]');if(bb)bb.classList.add('active');var pane=root.querySelector('.lc-tab-pane');if(pane)pane.innerHTML=tabHtml();}}
+  var oldSwitch=window.switchLeadershipCenterTab;window.switchLeadershipCenterTab=function(t){if(t==='agent_follow'){window.__LC_TAB__='agent_follow';inject();return;} if(typeof oldSwitch==='function')oldSwitch(t);setTimeout(inject,0);};
+  var oldOpen=window.openSchoolPerformanceDashboardView;window.openSchoolPerformanceDashboardView=function(){if(typeof oldOpen==='function')oldOpen.apply(this,arguments);setTimeout(inject,80);};
+  var oldRefresh=window.refreshSchoolPerformanceDashboard;window.refreshSchoolPerformanceDashboard=function(){if(typeof oldRefresh==='function')oldRefresh.apply(this,arguments);setTimeout(inject,100);};
+  document.addEventListener('DOMContentLoaded',function(){setTimeout(inject,140)});
+})();
+</script>
+<style id="LEADERSHIP_CENTER_AGENT_FOLLOWUP_C5_STYLE">
+#school-performance-dashboard-content .lc-follow-kpis{grid-template-columns:repeat(6,minmax(0,1fr));margin:14px 0}.lc-follow-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}.lc-follow-card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:24px;padding:16px;margin-top:14px}.lc-follow-card h4{margin:0 0 12px;font-weight:900;color:#0f172a}.lc-follow-compare{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.lc-follow-compare>div{background:white;border:1px solid #e2e8f0;border-radius:18px;padding:12px;text-align:center}.lc-follow-compare span{display:block;font-size:11px;font-weight:900;color:#64748b}.lc-follow-delta{display:inline-flex;border-radius:999px;padding:4px 9px;background:#f8fafc;color:#475569;border:1px solid #e2e8f0}.lc-follow-delta.up{background:#dcfce7;color:#166534;border-color:#bbf7d0}.lc-follow-delta.down{background:#fee2e2;color:#991b1b;border-color:#fecaca}.lc-follow-alerts{display:grid;gap:10px}.lc-follow-alerts article{border-radius:18px;padding:12px;border:1px solid #e2e8f0;background:white}.lc-follow-alerts article.risk{background:#fef2f2;border-color:#fecaca}.lc-follow-alerts article.warn{background:#fffbeb;border-color:#fde68a}.lc-follow-alerts article.good{background:#f0fdf4;border-color:#bbf7d0}.lc-follow-alerts p{margin:6px 0 0;font-weight:900;color:#334155}.lc-follow-table{overflow:auto;border:1px solid #e2e8f0;border-radius:18px;background:white}.lc-follow-table table{width:100%;border-collapse:collapse;min-width:820px}.lc-follow-table th,.lc-follow-table td{padding:11px 12px;border-bottom:1px solid #eef2f7;text-align:right;font-weight:900}.lc-follow-table th{background:#f8fafc;color:#334155}.lc-follow-badge{display:inline-flex;border-radius:999px;padding:4px 8px;font-size:11px;font-weight:900;border:1px solid #e2e8f0;background:#fff;color:#475569}.lc-follow-badge.risk{background:#fef2f2;color:#991b1b;border-color:#fecaca}.lc-follow-badge.warn{background:#fffbeb;color:#92400e;border-color:#fde68a}@media(max-width:1100px){#school-performance-dashboard-content .lc-follow-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.lc-follow-grid,.lc-follow-compare{grid-template-columns:1fr}}
+</style>
+
+
+
+<!-- إصلاح فتح أرشيف التقويم الذاتي وأرشيف السجلات في قسم المدير -->
+<script id="manager-archives-open-fix-20260625">
+(function(){
+  'use strict';
+  if(window.__MANAGER_ARCHIVES_OPEN_FIX_20260625__) return;
+  window.__MANAGER_ARCHIVES_OPEN_FIX_20260625__ = true;
+
+  var managerFolders = [
+    {id:'schoolProfile',name:'البيانات الأساسية والحوكمة المدرسية'},
+    {id:'orgStructure',name:'سجل الهيكل التنظيمي وتوزيع المسؤوليات'},
+    {id:'operationalPlan',name:'سجل الخطة التشغيلية ومؤشرات التنفيذ'},
+    {id:'committees',name:'سجل اللجان والمجالس المدرسية'},
+    {id:'meetings',name:'سجل الاجتماعات القيادية والمدرسية'},
+    {id:'powers',name:'سجل متابعة الصلاحيات والقرارات المدرسية'},
+    {id:'correspondence',name:'سجل الوارد والصادر والتعاميم'},
+    {id:'supportSupervisor',name:'سجل زيارات المشرف المساند'},
+    {id:'internalAudit',name:'سجل التدقيق الداخلي والامتثال'},
+    {id:'riskGovernance',name:'سجل المخاطر والحوكمة المدرسية'},
+    {id:'partnerships',name:'سجل الشراكات والمجتمع المدرسي'},
+    {id:'classVisits',name:'سجل الزيارات الصفية ودعم التدريس'},
+    {id:'teacherPerformance',name:'سجل الأداء الوظيفي والنمو المهني'},
+    {id:'curriculum',name:'سجل تنفيذ الخطط الدراسية والمناهج'},
+    {id:'lessonPlanning',name:'سجل التخطيط للدروس وتحسين الممارسات'},
+    {id:'plc',name:'سجل المجتمعات المهنية والتعلم التعاوني'},
+    {id:'remedialEnrichment',name:'سجل الخطط العلاجية والإثرائية'},
+    {id:'learningResources',name:'سجل مصادر التعلم والتقنيات التعليمية'},
+    {id:'specialGifted',name:'سجل رعاية الموهوبين وذوي الاحتياجات التعليمية'},
+    {id:'safety',name:'سجل الأمن والسلامة والطوارئ'},
+    {id:'discipline',name:'سجل الانضباط المدرسي والسلوك'},
+    {id:'studentCases',name:'سجل الحالات الطلابية والدعم المساند'},
+    {id:'health',name:'سجل الصحة المدرسية والبيئة الآمنة'},
+    {id:'maintenance',name:'سجل الصيانة والمرافق والتجهيزات'},
+    {id:'custody',name:'سجل العهد والجرد والمستودعات'},
+    {id:'transport',name:'سجل النقل المدرسي والحركة اليومية'},
+    {id:'activities',name:'سجل الأنشطة والبرامج المدرسية'},
+    {id:'digital',name:'سجل التحول الرقمي والخدمات الإلكترونية'},
+    {id:'achievement',name:'سجل التحصيل الدراسي وتحليل النتائج'},
+    {id:'kpis',name:'سجل مؤشرات الأداء المدرسي'},
+    {id:'nationalTests',name:'سجل الاختبارات الوطنية والمركزية'},
+    {id:'skills',name:'سجل المهارات الأساسية والفجوات التعليمية'},
+    {id:'improvementPlan',name:'سجل خطط التحسين وقياس الأثر'},
+    {id:'attendanceImpact',name:'سجل أثر الانضباط على نواتج التعلم'},
+    {id:'excellence',name:'سجل التميز والتكريم والإنجازات'},
+    {id:'closingReports',name:'سجل التقارير الختامية ورفع التوصيات'}
+  ];
+  var selfFolders = [
+    {id:'selfEval_01',name:'تشكيل فريق التقويم الذاتي'}, {id:'selfEval_02',name:'نشر ثقافة التقويم الذاتي'},
+    {id:'selfEval_03',name:'الخطة الإجرائية للتقويم الذاتي'}, {id:'selfEval_04',name:'محاضر اجتماعات فريق التقويم'},
+    {id:'selfEval_05',name:'توزيع مهام أعضاء الفريق'}, {id:'selfEval_06',name:'بيانات عامة عن المدرسة'},
+    {id:'selfEval_07',name:'سجل مؤشرات الأداء المدرسي'}, {id:'selfEval_08',name:'الخطة التشغيلية ومتابعة التنفيذ'},
+    {id:'selfEval_09',name:'الشراكات المجتمعية'}, {id:'selfEval_10',name:'التطوير المهني'},
+    {id:'selfEval_11',name:'حقوق المتعلم وحمايته'}, {id:'selfEval_12',name:'التقرير الختامي للتقويم الذاتي'},
+    {id:'selfEval_13',name:'خطة التحسين ومتابعة التنفيذ'}, {id:'selfEval_14',name:'الزيارات الصفية'},
+    {id:'selfEval_15',name:'تحليل الممارسات الصفية'}, {id:'selfEval_16',name:'متابعة تنفيذ المنهج'},
+    {id:'selfEval_17',name:'التخطيط للدروس ونواتج التعلم'}, {id:'selfEval_18',name:'أدوات التقويم المتنوعة'},
+    {id:'selfEval_19',name:'تحليل نتائج التقويم الصفي'}, {id:'selfEval_20',name:'البرامج العلاجية'},
+    {id:'selfEval_21',name:'البرامج الإثرائية'}, {id:'selfEval_22',name:'دعم الفروق الفردية'},
+    {id:'selfEval_23',name:'المجتمعات المهنية التعليمية'}, {id:'selfEval_24',name:'توظيف التقنية والتعلم الإلكتروني'},
+    {id:'selfEval_25',name:'مقابلات المعلمين والمتعلمين'}, {id:'selfEval_26',name:'الشواهد الصفية الرقمية'},
+    {id:'selfEval_27',name:'التحصيل الدراسي العام'}, {id:'selfEval_28',name:'تحليل نتائج الاختبارات'},
+    {id:'selfEval_29',name:'نتائج نافس والاختبارات الوطنية'}, {id:'selfEval_30',name:'القدرات والتحصيلي للمرحلة الثانوية'},
+    {id:'selfEval_31',name:'المهارات الأساسية'}, {id:'selfEval_32',name:'الطلاب المتفوقون'},
+    {id:'selfEval_33',name:'الطلاب المتعثرون وخطط الدعم'}, {id:'selfEval_34',name:'الانضباط والمواظبة'},
+    {id:'selfEval_35',name:'السلوك والقيم والمواطنة'}, {id:'selfEval_36',name:'الصحة المدرسية والنمو الشخصي'},
+    {id:'selfEval_37',name:'المشاركات والإنجازات الطلابية'}, {id:'selfEval_38',name:'قياس أثر البرامج العلاجية والإثرائية'},
+    {id:'selfEval_39',name:'مقارنة التحسن بين الفترات'}, {id:'selfEval_40',name:'بيانات البيئة المدرسية'},
+    {id:'selfEval_41',name:'جاهزية المبنى والفصول'}, {id:'selfEval_42',name:'الأمن والسلامة'},
+    {id:'selfEval_43',name:'خطط الإخلاء والطوارئ'}, {id:'selfEval_44',name:'تنفيذ فرضيات الإخلاء'},
+    {id:'selfEval_45',name:'الصيانة والبلاغات'}, {id:'selfEval_46',name:'المختبرات ومصادر التعلم'},
+    {id:'selfEval_47',name:'التجهيزات والتقنيات'}, {id:'selfEval_48',name:'النظافة والبيئة الجاذبة'},
+    {id:'selfEval_49',name:'الصحة المدرسية'}, {id:'selfEval_50',name:'المقصف المدرسي'},
+    {id:'selfEval_51',name:'المخاطر ومعالجتها'}, {id:'selfEval_52',name:'رضا المستفيدين عن البيئة المدرسية'},
+    {id:'selfEval_53',name:'الخطة التشغيلية'}, {id:'selfEval_54',name:'قرارات اللجان والفرق'},
+    {id:'selfEval_55',name:'اجتماعات اللجان والفرق'}
+  ];
+  var currentArchiveFolder = null;
+  function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(ch){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];});}
+  function readArray(keys){for(var i=0;i<keys.length;i++){try{var a=JSON.parse(localStorage.getItem(keys[i])||'[]'); if(Array.isArray(a)) return a;}catch(e){}} return [];}
+  function writeArray(key,a){try{localStorage.setItem(key, JSON.stringify(a||[]));}catch(e){}}
+  function folderById(list,id){return (list||[]).find(function(f){return String(f.id)===String(id);}) || (list&&list[0]) || {id:'other',name:'أخرى'};}
+  function folderByName(list,name){return (list||[]).find(function(f){return String(f.name)===String(name);}) || null;}
+  function showOnly(id){
+    ['welcome-dashboard','main-report-app','archive-view','stats-view','portfolio-view','manager-records-view','manager-records-archive-view','self-evaluation-archive-view','school-performance-dashboard-view'].forEach(function(x){var el=document.getElementById(x); if(el){el.style.display='none'; el.classList&&el.classList.add('hidden');}});
+    var v=document.getElementById(id); if(v){v.style.display='block'; v.classList&&v.classList.remove('hidden');}
+  }
+  function showDashboard(){var d=document.getElementById('welcome-dashboard'); if(d){d.style.display='block'; d.classList&&d.classList.remove('hidden');}}
+  function renderFolders(kind){
+    var list=kind==='self'?selfFolders:managerFolders;
+    var contentId=kind==='self'?'self-evaluation-archive-content':'manager-records-archive-content';
+    var backId=kind==='self'?'self-eval-back-to-folders':'manager-records-back-to-folders';
+    var keys=kind==='self'?['manager_self_evaluation_archive_v1','self_evaluation_archive_v1','self_evaluation_archive']:['school_manager_records_archive_v1','manager_records_archive_v1','manager_records_archive'];
+    currentArchiveFolder=null;
+    var c=document.getElementById(contentId), b=document.getElementById(backId); if(b)b.classList.add('hidden'); if(!c)return;
+    var archive=readArray(keys), counts={};
+    archive.forEach(function(r){var f=folderByName(list,r.recordName||r.folderName||r.title||''); var fid=r.folderId||r.recordId||(f&&f.id)||''; counts[fid]=(counts[fid]||0)+1;});
+    var accent=kind==='self'?'indigo':'emerald';
+    c.innerHTML='<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">'+list.map(function(f){var count=counts[f.id]||0; return '<div data-archive-folder="'+esc(f.id)+'" data-archive-kind="'+kind+'" class="bg-white/90 p-8 rounded-[35px] shadow-lg border border-'+accent+'-100 hover:border-'+accent+'-400 cursor-pointer transition-all flex flex-col gap-4"><div class="flex items-center justify-between"><div class="text-4xl">📂</div><span class="bg-'+accent+'-50 text-'+accent+'-700 px-3 py-1 rounded-full text-xs font-bold">'+count+' سجل</span></div><h3 class="font-bold text-slate-800 text-lg">'+esc(f.name)+'</h3><p class="text-[11px] text-slate-400 font-bold">يعرض هذا المجلد السجلات المحفوظة دون حذف النسخ السابقة.</p></div>';}).join('')+'</div>';
+    c.querySelectorAll('[data-archive-folder]').forEach(function(card){card.addEventListener('click',function(){openArchiveFolder(this.getAttribute('data-archive-kind'), this.getAttribute('data-archive-folder'));});});
+  }
+  function rowsFor(kind,folderId){
+    var list=kind==='self'?selfFolders:managerFolders;
+    var keys=kind==='self'?['manager_self_evaluation_archive_v1','self_evaluation_archive_v1','self_evaluation_archive']:['school_manager_records_archive_v1','manager_records_archive_v1','manager_records_archive'];
+    var folder=folderById(list,folderId), archive=readArray(keys);
+    return archive.filter(function(r){var f=folderByName(list,r.recordName||r.folderName||r.title||''); return String(r.folderId)===String(folderId)||String(r.recordId)===String(folderId)||(f&&String(f.id)===String(folderId))||r.folderName===folder.name||r.recordName===folder.name;});
+  }
+  function openArchiveFolder(kind,folderId){
+    currentArchiveFolder={kind:kind,id:folderId};
+    var list=kind==='self'?selfFolders:managerFolders;
+    var contentId=kind==='self'?'self-evaluation-archive-content':'manager-records-archive-content';
+    var backId=kind==='self'?'self-eval-back-to-folders':'manager-records-back-to-folders';
+    var c=document.getElementById(contentId), b=document.getElementById(backId); if(b)b.classList.remove('hidden'); if(!c)return;
+    var folder=folderById(list,folderId), rows=rowsFor(kind,folderId), accent=kind==='self'?'indigo':'emerald';
+    c.innerHTML='<section class="space-y-4"><div class="bg-white/90 border border-'+accent+'-100 rounded-[30px] p-5 flex justify-between items-center gap-3"><div><h3 class="font-black text-'+accent+'-800 text-xl">📂 '+esc(folder.name)+'</h3><p class="text-xs text-slate-400 font-bold mt-1">عدد السجلات: '+rows.length+'</p></div><button data-back-folders="'+kind+'" class="bg-slate-100 text-slate-600 px-4 py-2 rounded-xl text-xs font-bold">رجوع</button></div>'+
+      (rows.length?rows.map(function(r){return '<div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex justify-between items-center gap-3 flex-wrap"><div><h4 class="font-bold text-slate-800">'+esc(r.displayName||r.title||folder.name)+'</h4><p class="text-[10px] text-slate-400 font-bold mt-1">'+esc(r.title||folder.name)+' — '+esc(r.createdAt||r.uploadedAt||'')+'</p></div><div class="flex gap-2 flex-wrap"><button data-preview="'+esc(kind)+'" data-id="'+esc(r.id)+'" class="bg-teal-600 text-white px-4 py-2 rounded-xl text-[10px] font-bold">عرض</button><button data-print="'+esc(kind)+'" data-id="'+esc(r.id)+'" class="bg-slate-700 text-white px-4 py-2 rounded-xl text-[10px] font-bold">طباعة</button><button data-delete="'+esc(kind)+'" data-id="'+esc(r.id)+'" class="bg-red-50 text-red-500 px-4 py-2 rounded-xl text-[10px] font-bold">حذف</button></div></div>';}).join(''):'<div class="bg-white border border-dashed border-slate-200 rounded-[30px] p-10 text-center text-slate-400 font-bold">لا توجد سجلات محفوظة داخل هذا المجلد.</div>')+'</section>';
+    c.querySelectorAll('[data-back-folders]').forEach(function(x){x.onclick=function(){renderFolders(this.getAttribute('data-back-folders'));};});
+    c.querySelectorAll('[data-preview]').forEach(function(x){x.onclick=function(){previewItem(this.getAttribute('data-preview'),this.getAttribute('data-id'),false);};});
+    c.querySelectorAll('[data-print]').forEach(function(x){x.onclick=function(){previewItem(this.getAttribute('data-print'),this.getAttribute('data-id'),true);};});
+    c.querySelectorAll('[data-delete]').forEach(function(x){x.onclick=function(){deleteItem(this.getAttribute('data-delete'),this.getAttribute('data-id'));};});
+  }
+  function item(kind,id){var keys=kind==='self'?['manager_self_evaluation_archive_v1','self_evaluation_archive_v1','self_evaluation_archive']:['school_manager_records_archive_v1','manager_records_archive_v1','manager_records_archive']; return readArray(keys).find(function(r){return String(r.id)===String(id);});}
+  function docFor(r,autoPrint){var html=(r&&(r.htmlContent||r.pdfHtml||r.officialHtml||r.templateHtml))||('<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>'+esc((r&&r.title)||'سجل')+'</title></head><body style="font-family:Tajawal,Arial;padding:30px"><h2>'+esc((r&&r.title)||'سجل')+'</h2><div>'+esc((r&&r.notes)||'لا يوجد محتوى محفوظ لهذا السجل.')+'</div></body></html>'); var ps=autoPrint?'<script>window.addEventListener("load",function(){setTimeout(function(){window.print()},500)});<\/script>':''; return html.indexOf('</body>')>-1?html.replace('</body>',ps+'</body>'):html+ps;}
+  function previewItem(kind,id,autoPrint){var r=item(kind,id); if(!r){alert('تعذر العثور على السجل.');return;} var w=window.open('','_blank'); if(!w){alert('يرجى السماح بالنوافذ المنبثقة.');return;} w.document.open(); w.document.write(docFor(r,autoPrint)); w.document.close();}
+  function deleteItem(kind,id){if(!confirm('هل تريد حذف هذا السجل؟'))return; var key=kind==='self'?'manager_self_evaluation_archive_v1':'school_manager_records_archive_v1'; var arr=readArray([key]).filter(function(r){return String(r.id)!==String(id);}); writeArray(key,arr); if(currentArchiveFolder&&currentArchiveFolder.kind===kind) openArchiveFolder(kind,currentArchiveFolder.id); else renderFolders(kind);}
+
+  window.openManagerRecordsArchiveView=function(){var v=document.getElementById('manager-records-archive-view'); if(!v){alert('واجهة أرشيف السجلات غير موجودة.');return;} showOnly('manager-records-archive-view'); renderFolders('manager');};
+  window.closeManagerRecordsArchiveView=function(){var v=document.getElementById('manager-records-archive-view'); if(v){v.style.display='none'; v.classList&&v.classList.add('hidden');} showDashboard();};
+  window.renderManagerRecordsArchiveFolders=function(){renderFolders('manager');};
+  window.openManagerRecordsArchiveFolder=function(id){openArchiveFolder('manager',id);};
+
+  window.openSelfEvaluationArchiveView=function(){var v=document.getElementById('self-evaluation-archive-view'); if(!v){alert('واجهة أرشيف التقويم الذاتي غير موجودة.');return;} showOnly('self-evaluation-archive-view'); renderFolders('self');};
+  window.closeSelfEvaluationArchiveView=function(){var v=document.getElementById('self-evaluation-archive-view'); if(v){v.style.display='none'; v.classList&&v.classList.add('hidden');} showDashboard();};
+  window.renderSelfEvaluationArchiveFolders=function(){renderFolders('self');};
+  window.openSelfEvaluationArchiveFolder=function(id){openArchiveFolder('self',id);};
+
+  function bindArchiveCards(){
+    try{
+      document.querySelectorAll('.manager-section-card').forEach(function(card){var txt=(card.textContent||'').replace(/\s+/g,' ').trim(); if(txt.indexOf('أرشيف التقويم الذاتي')>-1){card.onclick=function(e){e.preventDefault(); window.openSelfEvaluationArchiveView();};} if(txt.indexOf('أرشيف السجلات')>-1){card.onclick=function(e){e.preventDefault(); window.openManagerRecordsArchiveView();};}});
+    }catch(e){}
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',bindArchiveCards); else bindArchiveCards();
+})();
+</script>
 </body>
 </html>

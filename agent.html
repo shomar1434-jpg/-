@@ -40,6 +40,11 @@
   var last=parse(sessionStorage.getItem(NS+'_last_follow_target'),{});
   var wantedEmail=normEmail(targetEmail || last.email || '');
   var profile=users.find(function(u){return wantedEmail && normEmail(u.email)===wantedEmail}) || users.find(function(u){return String(u.id)===String(targetUser)}) || last || {id:targetUser,role:targetRole,name:'مستخدم',email:targetEmail};
+  function normalizeAgencyList(v){if(Array.isArray(v)) return v.map(String).map(function(x){return x.trim()}).filter(Boolean).filter(function(x){return x!=='general'}); v=String(v||'').trim(); if(!v||v==='general') return []; if(v.charAt(0)==='['){try{return normalizeAgencyList(JSON.parse(v));}catch(e){}} return v.split(/[،,|]/).map(function(x){return x.trim()}).filter(Boolean).filter(function(x){return x!=='general'});}
+  var qAgency=qs.get('agency_type')||qs.get('agency_types')||qs.get('agent_categories')||'';
+  var agencyCats=normalizeAgencyList(qAgency || profile.agent_categories || profile.agency_categories || profile.agency_types || profile.agency_type || profile.agencyType || '');
+  if(agencyCats.length){profile.agent_categories=agencyCats; profile.agency_categories=agencyCats; profile.agency_types=agencyCats; profile.agency_type=agencyCats.join(','); profile.agencyType=profile.agency_type;}
+  try{rawSet('currentSchoolUser',JSON.stringify(profile)); rawSet('currentUser',JSON.stringify(profile)); rawSet('smart_school_current_session',JSON.stringify(profile));}catch(e){}
   var accountEmail=normEmail(profile.email || targetEmail || '');
   var accountIdentity=accountEmail || String(profile.id || targetUser || 'unknown');
   window.FOLLOW_TARGET_USER=profile;
@@ -1372,68 +1377,21 @@ body{overflow-x:hidden}
 </style>
 
 <script id="gender-neutral-labels-safe">
+/* Hotfix: نظام تسميات خفيف بدون مراقبة مستمرة أو فحص شامل للصفحة.
+   التسميات المحايدة تم تثبيتها داخل النصوص، وهذا السكربت يوفّر قاموسًا فقط للاستخدامات المستقبلية. */
 (function(){
-  if (window.__GENDER_NEUTRAL_LABELS_SAFE__) return;
-  window.__GENDER_NEUTRAL_LABELS_SAFE__ = true;
-  const pairs = [
-    ['مدير المدرسة','المدير/المديرة'],
-    ['مديرة المدرسة','المدير/المديرة'],
-    ['مدير/ة المدرسة','المدير/المديرة'],
-    ['قائد المدرسة','المدير/المديرة'],
-    ['قائدة المدرسة','المدير/المديرة'],
-    ['وكيل المدرسة','الوكيل/الوكيلة'],
-    ['وكيلة المدرسة','الوكيل/الوكيلة'],
-    ['معلم المادة','معلم/معلمة المادة'],
-    ['معلمة المادة','معلم/معلمة المادة'],
-    ['الموجه الطلابي','الموجه/الموجهة الطلابية'],
-    ['الموجهة الطلابية','الموجه/الموجهة الطلابية'],
-    ['رائد النشاط','رائد/رائدة النشاط'],
-    ['رائدة النشاط','رائد/رائدة النشاط'],
-    ['الموظف الإداري','الموظف/الموظفة الإدارية'],
-    ['الموظفة الإدارية','الموظف/الموظفة الإدارية'],
-    ['اسم الطالب','اسم الطالب/الطالبة'],
-    ['اسم الموظف','اسم الموظف/الموظفة']
-  ];
-  const skipTags = new Set(['SCRIPT','STYLE','TEXTAREA','CODE','PRE','OPTION']);
-  function neutralizeText(t){
-    if (!t || typeof t !== 'string') return t;
-    let out = t;
-    for (const [from,to] of pairs){
-      if (out.includes(to)) continue;
-      out = out.split(from).join(to);
-    }
-    return out;
-  }
-  function walk(root){
-    if (!root || skipTags.has(root.nodeName)) return;
-    const tw = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-      acceptNode(node){
-        const p = node.parentElement;
-        if (!p || skipTags.has(p.tagName)) return NodeFilter.FILTER_REJECT;
-        if (p.closest && p.closest('[data-no-gender-neutralize]')) return NodeFilter.FILTER_REJECT;
-        return NodeFilter.FILTER_ACCEPT;
-      }
-    });
-    const nodes=[]; let n;
-    while((n=tw.nextNode())) nodes.push(n);
-    for (const node of nodes){
-      const v = neutralizeText(node.nodeValue);
-      if (v !== node.nodeValue) node.nodeValue = v;
-    }
-    if (root.querySelectorAll){
-      root.querySelectorAll('[placeholder],[title],[aria-label],[alt],[data-title],[data-label]').forEach(el=>{
-        if (el.closest && el.closest('[data-no-gender-neutralize]')) return;
-        ['placeholder','title','aria-label','alt','data-title','data-label'].forEach(a=>{
-          const v = el.getAttribute(a);
-          if (v){ const nv = neutralizeText(v); if (nv !== v) el.setAttribute(a,nv); }
-        });
-      });
-    }
-  }
-  function run(){ try { walk(document.body || document.documentElement); } catch(e){} }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run, {once:true}); else run();
+  window.roleLabels = window.roleLabels || {
+    manager: 'المدير/المديرة',
+    deputy: 'الوكيل/الوكيلة',
+    teacher: 'المعلم/المعلمة',
+    supervisor: 'الموجه/الموجهة',
+    activityLeader: 'رائد/رائدة النشاط',
+    adminEmployee: 'الموظف/الموظفة الإدارية',
+    student: 'الطالب/الطالبة'
+  };
 })();
 </script>
+
 
 </head>
 <body class="global-app-bg" data-ss-role="agent">
@@ -1492,7 +1450,13 @@ body{overflow-x:hidden}
 <div class="w-14 h-14 bg-teal-600 text-white rounded-2xl flex items-center justify-center shadow-lg"><svg class="w-8 h-8" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M12 4v16m8-8H4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg></div>
 <h3 class="font-bold text-lg text-slate-700 flex items-center gap-2">➕ تقرير جديد</h3>
 </div>
-<div class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-emerald-400 cursor-pointer transition-all flex flex-col items-center gap-4 group" onclick="openAgentRecordsView()">
+<div class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-teal-500 cursor-pointer transition-all flex flex-col items-center gap-4 group min-h-[220px]" onclick="window.location.href='central_task_center.html?role=agent'">
+<div class="w-16 h-16 bg-gradient-to-br from-teal-600 to-slate-800 text-white rounded-[24px] flex items-center justify-center shadow-xl text-3xl">🧭</div>
+<div class="text-center">
+<h3 class="font-black text-lg text-slate-800">مركز التكليفات</h3>
+<p class="text-[11px] text-slate-400 font-bold mt-2">إنشاء، نقل، سحب، اعتماد، رفض وأرشفة التكليفات المرتبطة بسجلات الوكالة</p>
+</div>
+</div><div class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-emerald-400 cursor-pointer transition-all flex flex-col items-center gap-4 group" onclick="openAgentRecordsView()">
 <div class="w-14 h-14 bg-emerald-600 text-white rounded-2xl flex items-center justify-center shadow-lg text-2xl">📚</div>
 <h3 class="font-bold text-lg text-slate-700 flex items-center gap-2">سجلات الوكيل</h3>
 </div>
@@ -1529,6 +1493,14 @@ body{overflow-x:hidden}
 </div>
 </div>
 
+
+<div class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-teal-400 cursor-pointer transition-all flex flex-col items-center gap-4 group min-h-[220px]" onclick="window.location.href='deputy_weekly_teacher_followup.html'">
+<div class="w-16 h-16 bg-gradient-to-br from-teal-600 to-sky-600 text-white rounded-[24px] flex items-center justify-center shadow-xl text-3xl">📋</div>
+<div class="text-center">
+<h3 class="font-black text-lg text-slate-800">متابعة أعمال المعلمين الأسبوعية</h3>
+<p class="text-[11px] text-slate-400 font-bold mt-2">استقبال بيانات المعلمين من مركز المعلومات، إنشاء أسبوع المتابعة، التكليفات، والمهام الإضافية</p>
+</div>
+</div>
 <div class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-cyan-400 cursor-pointer transition-all flex flex-col items-center gap-4 group min-h-[220px]" onclick="window.location.href='agent_exams_management.html'">
 <div class="w-16 h-16 bg-gradient-to-br from-cyan-600 to-emerald-700 text-white rounded-[24px] flex items-center justify-center shadow-xl text-3xl">📝</div>
 <div class="text-center">
@@ -5581,7 +5553,10 @@ bWw+
 
   const RECORDS_KEY = 'wakil_records_pdf_archive_v3';
   const LEGACY_KEYS = ['agent_records_archive', 'wakil_records_archive_v1', 'wakil_records_pdf_archive_v2'];
-  const RECORD_FOLDERS = [{"id": "student-referral", "name": "تحويل طالب للوكيل", "kind": "student"}, {"id": "repeated-absence-referral", "name": "تحويل طالب متكرر الغياب", "kind": "student"}, {"id": "daily-duty-report", "name": "تقرير المناوبة اليومي", "kind": "table"}, {"id": "late-leave-warning", "name": "تنبيه عن تأخر أو انصراف", "kind": "notice"}, {"id": "class-visits-plan", "name": "خطة الزيارات الصفية", "kind": "visits"}, {"id": "student-permission", "name": "سجل استئذان الطلاب", "kind": "permission"}, {"id": "staff-permission", "name": "سجل استئذان الموظفين", "kind": "permission"}, {"id": "waiting-register", "name": "سجل الانتظار", "kind": "waiting"}, {"id": "daily-supervision", "name": "سجل المناوبة والإشراف اليومي", "kind": "supervision"}, {"id": "deduction-late-leave", "name": "قرار حسم تأخر وخروج", "kind": "decision"}, {"id": "deduction-absence", "name": "قرار حسم غياب", "kind": "decision"}, {"id": "late-students-list", "name": "كشف بأسماء الطلاب المتأخرين", "kind": "late-list"}, {"id": "absence-inquiry", "name": "مساءلة غياب", "kind": "inquiry"}];
+  const RECORD_FOLDERS = [{"id": "school-timetables", "name": "الجداول المدرسية", "kind": "table", "category": "educational"}, {"id": "waiting-register", "name": "حصص الانتظار", "kind": "waiting", "category": "educational"}, {"id": "daily-supervision", "name": "المناوبة والإشراف اليومي", "kind": "supervision", "category": "educational"}, {"id": "daily-duty-report", "name": "تقرير المناوبة اليومي", "kind": "table", "category": "educational"}, {"id": "study-plans", "name": "الخطط الدراسية", "kind": "table", "category": "educational"}, {"id": "teaching-staff-development", "name": "دعم وتطوير الهيئة التعليمية", "kind": "table", "category": "educational"}, {"id": "teacher-admin-followup", "name": "متابعة أعمال المعلمين والإداريين", "kind": "table", "category": "educational"}, {"id": "achievement-learning-loss", "name": "التحصيل الدراسي والفاقد التعليمي", "kind": "table", "category": "educational"}, {"id": "general-exams-file", "name": "ملف الاختبار العام", "kind": "table", "category": "educational"}, {"id": "international-tests-file", "name": "ملف الاختبارات الدولية", "kind": "table", "category": "educational"}, {"id": "madrasati-platform", "name": "منصة مدرستي", "kind": "table", "category": "educational"}, {"id": "professional-growth", "name": "النمو المهني", "kind": "table", "category": "educational"}, {"id": "gifted-file", "name": "ملف الموهوبين / الموهوبات", "kind": "table", "category": "educational"}, {"id": "special-education", "name": "التربية الخاصة", "kind": "table", "category": "educational"}, {"id": "official-work-register", "name": "سجل العمل الرسمي", "kind": "table", "category": "school_affairs"}, {"id": "staff-permission", "name": "استئذان الموظفين", "kind": "permission", "category": "school_affairs"}, {"id": "staff-absence-inventory", "name": "حصر غياب الموظفين", "kind": "table", "category": "school_affairs"}, {"id": "delay-minutes-inventory", "name": "حصر دقائق التأخير", "kind": "table", "category": "school_affairs"}, {"id": "referrals", "name": "التحويلات", "kind": "table", "category": "school_affairs"}, {"id": "custody-warehouses-archive", "name": "العهد والمستودعات والأرشفة", "kind": "table", "category": "school_affairs"}, {"id": "maintenance-cleaning", "name": "الصيانة والنظافة", "kind": "table", "category": "school_affairs"}, {"id": "school-transport", "name": "النقل المدرسي", "kind": "table", "category": "school_affairs"}, {"id": "school-canteen", "name": "المقصف المدرسي", "kind": "table", "category": "school_affairs"}, {"id": "facilities", "name": "المرافق", "kind": "table", "category": "school_affairs"}, {"id": "labs-sources", "name": "المعامل والمختبرات ومصادر التعلم", "kind": "table", "category": "school_affairs"}, {"id": "admin-teacher-followup", "name": "متابعة الإداريين والمعلمين", "kind": "table", "category": "school_affairs"}, {"id": "visitors-register", "name": "سجل الزائرين", "kind": "table", "category": "school_affairs"}, {"id": "noor-leaves-followup", "name": "متابعة إدخال الإجازات في نظام نور", "kind": "table", "category": "school_affairs"}, {"id": "fares-entry-followup", "name": "متابعة الإدخال في نظام فارس", "kind": "table", "category": "school_affairs"}, {"id": "summary-print", "name": "طباعة الخلاصة", "kind": "table", "category": "school_affairs"}, {"id": "student-referral", "name": "تحويل طالب للوكيل", "kind": "student", "category": "shared"}, {"id": "repeated-absence-referral", "name": "تحويل طالب متكرر الغياب", "kind": "student", "category": "shared"}, {"id": "student-permission", "name": "سجل استئذان الطلاب", "kind": "permission", "category": "shared"}, {"id": "late-students-list", "name": "كشف بأسماء الطلاب المتأخرين", "kind": "late-list", "category": "shared"}, {"id": "late-leave-warning", "name": "تنبيه عن تأخر أو انصراف", "kind": "notice", "category": "shared"}, {"id": "deduction-late-leave", "name": "قرار حسم تأخر وخروج", "kind": "decision", "category": "shared"}, {"id": "deduction-absence", "name": "قرار حسم غياب", "kind": "decision", "category": "shared"}, {"id": "absence-inquiry", "name": "مساءلة غياب", "kind": "inquiry", "category": "shared"}];
+  const WAKIL_RECORD_CATEGORY_LABELS = {educational:'أرشيف الشؤون التعليمية', school_affairs:'أرشيف الشؤون المدرسية', shared:'الأرشيف المشترك'};
+  const WAKIL_RECORD_CATEGORY_ORDER = ['educational','school_affairs','shared'];
+  function recordCategoryLabel(cat){ return WAKIL_RECORD_CATEGORY_LABELS[cat] || 'أرشيف آخر'; }
   const DIGITAL_ARCHIVE_FOLDERS = [{"id": "1", "name": "أداء الواجبات الوظيفية"}, {"id": "2", "name": "التفاعل مع المجتمع المهني"}, {"id": "3", "name": "التفاعل مع أولياء الأمور"}, {"id": "4", "name": "مرن وقادر على تنفيذ أعماله"}, {"id": "5", "name": "يدعم ويشارك في المبادرات النوعية"}, {"id": "6", "name": "يتخذ إجراءات تربوية تحقق الانضباط المدرسي"}, {"id": "7", "name": "يدير الموارد في المدرسة بكفاءة"}, {"id": "8", "name": "يشارك في إعداد خطة للتطوير المهني"}, {"id": "9", "name": "يقدم التغذية الراجعة ويتابع تحقق مؤشرات الأداء"}, {"id": "10", "name": "يدعم تنفيذ برامج التطوير المهني"}, {"id": "11", "name": "يقيم أداء منسوبي المدرسة"}, {"id": "12", "name": "ينفذ إجراءات علمية لتحسين نتائج التعلم"}, {"id": "13", "name": "يسهم في تحسين مستوى أداء المدرسة"}, {"id": "14", "name": "يشارك في إعداد الخطط المدرسية اللازمة"}, {"id": "15", "name": "يتابع تنفيذ الخطط المدرسية بمختلف أنواعها"}, {"id": "16", "name": "يهيئ الفرص والإمكانات لمشاركة الطلاب في الأنشطة"}, {"id": "17", "name": "يوظف المنصات الرقمية وتطبيقاتها المعتمدة"}, {"id": "18", "name": "يتابع تعزيز السلوك الإيجابي للطلاب"}, {"id": "19", "name": "يهيئ بيئة مدرسية آمنة ومحفزة على التعلم"}];
   let currentRecordsFolder = null;
 
@@ -5675,18 +5650,28 @@ bWw+
       }
     });
 
-    c.innerHTML = '<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">' +
-      RECORD_FOLDERS.map(function(f){
-        const count = counts[f.id] || 0;
-        return '<div onclick="openRecordsArchiveFolder(\'' + esc(f.id) + '\')" class="bg-white/90 p-8 rounded-[35px] shadow-lg border border-emerald-100 hover:border-emerald-400 cursor-pointer transition-all flex flex-col gap-4">'
-          + '<div class="flex items-center justify-between">'
-          + '<div class="text-4xl">📂</div>'
-          + '<span class="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold">' + count + ' سجل</span>'
-          + '</div>'
-          + '<h3 class="font-bold text-slate-800 text-lg">' + esc(f.name) + '</h3>'
-          + '<p class="text-[11px] text-slate-400 font-bold">تظهر هنا النسخ المحفوظة من هذا السجل.</p>'
-          + '</div>';
-      }).join('') + '</div>';
+    c.innerHTML = WAKIL_RECORD_CATEGORY_ORDER.map(function(cat){
+      const group = RECORD_FOLDERS.filter(function(f){ return (f.category || 'shared') === cat; });
+      if(!group.length) return '';
+      return '<section class="mb-8">'
+        + '<div class="mb-4 bg-white/80 border border-emerald-100 rounded-[24px] p-4 flex items-center justify-between">'
+        + '<h2 class="font-black text-emerald-800 text-xl">' + esc(recordCategoryLabel(cat)) + '</h2>'
+        + '<span class="text-[11px] font-bold text-slate-400">' + group.length + ' مجلد</span>'
+        + '</div>'
+        + '<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">'
+        + group.map(function(f){
+          const count = counts[f.id] || 0;
+          return '<div onclick="openRecordsArchiveFolder(\'' + esc(f.id) + '\')" class="bg-white/90 p-8 rounded-[35px] shadow-lg border border-emerald-100 hover:border-emerald-400 cursor-pointer transition-all flex flex-col gap-4">'
+            + '<div class="flex items-center justify-between">'
+            + '<div class="text-4xl">📂</div>'
+            + '<span class="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold">' + count + ' سجل</span>'
+            + '</div>'
+            + '<h3 class="font-bold text-slate-800 text-lg">' + esc(f.name) + '</h3>'
+            + '<p class="text-[11px] text-slate-400 font-bold">' + esc(recordCategoryLabel(f.category || 'shared')) + '</p>'
+            + '<p class="text-[11px] text-slate-400 font-bold">تظهر هنا النسخ المحفوظة من هذا السجل.</p>'
+            + '</div>';
+        }).join('') + '</div></section>';
+    }).join('');
   };
 
   window.openRecordsArchiveFolder = function(folderId){
@@ -5828,6 +5813,9 @@ bWw+
     archive.push({
       id: Date.now(),
       folderId: folderId,
+      category: p.category || folderById(folderId).category || 'shared',
+      categoryLabel: p.categoryLabel || recordCategoryLabel(p.category || folderById(folderId).category || 'shared'),
+      folderName: p.folderName || folderById(folderId).name,
       title: p.title || folderById(folderId).name,
       personName: name,
       displayName: duplicateNo > 1 ? name + ' (' + duplicateNo + ')' : name,

@@ -52,6 +52,41 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
     if(role === 'teacher') return 'performance';
     return role || 'performance';
   }
+  function readJsonSafe(key, fallback){ try{return JSON.parse(localStorage.getItem(key)||JSON.stringify(fallback||{}));}catch(e){return fallback||{};} }
+  function currentLoginSchoolId(){ const q=new URLSearchParams(location.search||''); return targetSchoolId || q.get('schoolId') || q.get('school_id') || localStorage.getItem('current_school_id') || localStorage.getItem('school_id') || 'default'; }
+
+  function teacherRoleCode(x){x=String(x||'').trim();var map={'التوجيه الصحي':'health_guidance','موجه صحي':'health_guidance','الموجه الصحي':'health_guidance','health':'health_guidance','health_guidance':'health_guidance','منسق الموهوبين':'gifted_coordinator','منسق/ة الموهوبين':'gifted_coordinator','الجودة':'quality_coordinator','منسق الجودة':'quality_coordinator','منسق/ة الجودة':'quality_coordinator','منصة مدرستي':'madrasati_coordinator','منسق منصة مدرستي':'madrasati_coordinator'};return map[x]||x}
+  function normalizeTeacherExtraRoles(v){
+    if(Array.isArray(v)) return v.map(teacherRoleCode).filter(Boolean);
+    if(typeof v==='string') return v.split(/[،,|]+/).map(x=>teacherRoleCode(x.trim())).filter(Boolean);
+    return [];
+  }
+  function readTeacherExtraRoleMap(){try{return JSON.parse(localStorage.getItem('smart_school_teacher_extra_roles_map')||'{}')}catch(e){return {}}}
+  function teacherExtraRolesForLoginUser(user){
+    const map=readTeacherExtraRoleMap();
+    let roles=normalizeTeacherExtraRoles(user && (user.teacher_extra_roles||user.additional_assignments||user.extra_roles||user.extraRoles));
+    if(!roles.length && user && user.id) roles=normalizeTeacherExtraRoles(map['id:'+user.id]);
+    if(!roles.length && user && user.email) roles=normalizeTeacherExtraRoles(map['email:'+String(user.email).trim().toLowerCase()]);
+    return roles;
+  }
+
+  function normalizeAgencyList(v){
+    if(Array.isArray(v)) return v.map(String).map(x=>x.trim()).filter(Boolean).filter(x=>x!=='general');
+    v=String(v||'').trim(); if(!v || v==='general') return [];
+    if(v.charAt(0)==='['){try{return normalizeAgencyList(JSON.parse(v));}catch(e){}}
+    return v.split(/[،,|]/).map(x=>x.trim()).filter(Boolean).filter(x=>x!=='general');
+  }
+  function mergeViceAgency(user){
+    if(!user) return user;
+    const sid = user.schoolId || currentLoginSchoolId() || 'default';
+    const map = readJsonSafe('smartSchoolUnifiedOpsV2_vp_agency_map_'+sid, {});
+    const id = String(user.id||'');
+    const email = String(user.email||'').trim().toLowerCase();
+    const agencyRaw = user.agent_categories || user.agency_categories || user.agency_types || user.agency_type || user.agencyType || user.vice_agency_type || user.viceAgencyType || (id&&map[id]) || (email&&map[email]) || '';
+    const agencyList = normalizeAgencyList(agencyRaw);
+    if(agencyList.length){ user.agent_categories = agencyList; user.agency_categories = agencyList; user.agency_types = agencyList; user.agency_type = agencyList.join(','); user.agencyType = user.agency_type; }
+    return user;
+  }
   function normalizeUser(row, school){
     if(!row) return null;
     const appRole = dbRoleToApp(row.role);
@@ -72,7 +107,15 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
       isPrimaryManager: !!row.is_primary_manager,
       is_primary_manager: !!row.is_primary_manager,
       mustChangePassword: !!row.must_change_password,
-      createdAt: row.created_at || ''
+      createdAt: row.created_at || '',
+      agent_categories: normalizeAgencyList(row.agent_categories || row.agency_categories || row.agency_types || row.agency_type || row.agencyType || row.vice_agency_type || row.viceAgencyType || ''),
+      agency_categories: normalizeAgencyList(row.agent_categories || row.agency_categories || row.agency_types || row.agency_type || row.agencyType || row.vice_agency_type || row.viceAgencyType || ''),
+      agency_types: normalizeAgencyList(row.agent_categories || row.agency_categories || row.agency_types || row.agency_type || row.agencyType || row.vice_agency_type || row.viceAgencyType || ''),
+      agency_type: normalizeAgencyList(row.agent_categories || row.agency_categories || row.agency_types || row.agency_type || row.agencyType || row.vice_agency_type || row.viceAgencyType || '').join(','),
+      agencyType: normalizeAgencyList(row.agent_categories || row.agency_categories || row.agency_types || row.agency_type || row.agencyType || row.vice_agency_type || row.viceAgencyType || '').join(','),
+      teacher_extra_roles: normalizeTeacherExtraRoles(row.teacher_extra_roles || row.additional_assignments || row.extra_roles || row.extraRoles || ''),
+      additional_assignments: normalizeTeacherExtraRoles(row.teacher_extra_roles || row.additional_assignments || row.extra_roles || row.extraRoles || ''),
+      extra_roles: normalizeTeacherExtraRoles(row.teacher_extra_roles || row.additional_assignments || row.extra_roles || row.extraRoles || '')
     };
   }
   function normalizeSchool(row){
@@ -445,6 +488,22 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
 @media print{.teams-ai-hall-btn{display:none!important}}
 </style>
 <script src="school_isolation_guard.js?v=nonblock20260614"></script>
+<script id="gender-neutral-labels-safe">
+/* Hotfix: نظام تسميات خفيف بدون مراقبة مستمرة أو فحص شامل للصفحة.
+   التسميات المحايدة تم تثبيتها داخل النصوص، وهذا السكربت يوفّر قاموسًا فقط للاستخدامات المستقبلية. */
+(function(){
+  window.roleLabels = window.roleLabels || {
+    manager: 'المدير/المديرة',
+    deputy: 'الوكيل/الوكيلة',
+    teacher: 'المعلم/المعلمة',
+    supervisor: 'الموجه/الموجهة',
+    activityLeader: 'رائد/رائدة النشاط',
+    adminEmployee: 'الموظف/الموظفة الإدارية',
+    student: 'الطالب/الطالبة'
+  };
+})();
+</script>
+
 </head>
 <body>
     <script src="./openai-engine.js" defer data-openai-engine="true"></script>
@@ -455,9 +514,9 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
     <h1 class="text-2xl font-black mb-2">بوابة المدرسة المستقلة</h1>
     <p id="school-title" class="text-teal-200 text-xs font-bold mb-8">تسجيل دخول مدير/ة المدرسة ومنسوبيها</p>
     <div class="space-y-4 text-right">
-      <input id="login-email" type="email" placeholder="بريد منصة مدرستي" class="w-full p-3 rounded-xl bg-white/10 border border-white/20 text-white text-center outline-none focus:border-teal-300" dir="ltr" data-email-field="true">
+      <input id="login-email" type="text" placeholder="البريد أو اسم المستخدم" class="w-full p-3 rounded-xl bg-white/10 border border-white/20 text-white text-center outline-none focus:border-teal-300" dir="ltr" data-email-field="true">
       <input id="login-password" type="password" placeholder="الرقم السري" class="w-full p-3 rounded-xl bg-white/10 border border-white/20 text-white text-center outline-none focus:border-teal-300">
-      <button onclick="schoolLogin()" class="w-full bg-teal-600 hover:bg-teal-500 text-white py-3 rounded-xl font-black shadow-lg">دخول</button>
+      <button id="school-login-btn" type="button" onclick="schoolLogin(event)" class="w-full bg-teal-600 hover:bg-teal-500 text-white py-3 rounded-xl font-black shadow-lg">دخول</button>
       <p id="login-msg" class="text-center text-xs text-rose-200 min-h-[1rem]"></p>
     </div>
   </main>
@@ -563,12 +622,14 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
       if(title) title.textContent = 'تسجيل دخول: ' + (school.schoolName || 'المدرسة');
     }
   })();
-  async function schoolLogin(){
-    const email = document.getElementById('login-email').value.trim().toLowerCase();
+  async function schoolLogin(event){
+    if(event && typeof event.preventDefault === 'function') event.preventDefault();
+    const loginId = document.getElementById('login-email').value.trim().toLowerCase();
+    const email = loginId;
     const password = document.getElementById('login-password').value.trim();
     const msg = document.getElementById('login-msg');
     msg.textContent = '';
-    if(!email || !password){ msg.textContent = 'يرجى إدخال البريد والرقم السري'; return; }
+    if(!loginId || !password){ msg.textContent = 'يرجى إدخال البريد/اسم المستخدم والرقم السري'; return; }
     const school = await resolveActiveSchool();
     let user = null;
     try{
@@ -578,9 +639,13 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
     }catch(e){ console.warn('Supabase login failed, fallback to local', e); }
     if(!user){
       const users = readUsers();
-      user = users.find(u => String(u.email || '').toLowerCase() === email && String(u.password || '') === password && u.isDeleted !== true);
+      user = users.find(u => {
+        const identifiers = [u.email, u.username, u.userName, u.loginName, u.name, u.nationalId, u.id].map(v => String(v || '').toLowerCase());
+        return identifiers.includes(loginId) && String(u.password || '') === password && u.isDeleted !== true;
+      });
     }
     if(!user){ msg.textContent = 'بيانات الدخول غير صحيحة'; return; }
+    user = mergeViceAgency(user);
     const isActiveAccount = (user.status === 'active' || user.isActive === true || user.active === true);
     if(!isActiveAccount){ msg.textContent = 'الحساب غير مفعل بعد'; return; }
     if(targetSchoolId && user.schoolId && String(user.schoolId) !== String(targetSchoolId)){ msg.textContent = 'هذا الحساب غير مرتبط بهذه المدرسة'; return; }
@@ -602,11 +667,33 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
     if(user.schoolId || targetSchoolId){ localStorage.setItem('current_school_id', user.schoolId || targetSchoolId); localStorage.setItem('school_id', user.schoolId || targetSchoolId); }
     if(user.schoolName){ localStorage.setItem('current_school_name', user.schoolName); localStorage.setItem('school_name', user.schoolName); localStorage.setItem('persist_school', user.schoolName); }
     if(school) cacheActiveSchool(school);
-    localStorage.setItem('smart_school_current_session', JSON.stringify({ id:user.id, name:user.name, email:user.email, role, schoolId:user.schoolId || targetSchoolId, schoolName:user.schoolName || (school && school.schoolName) || '', loginAt:new Date().toISOString(), independentSchool:true, loginMode:'direct' }));
+    const agencyCats = normalizeAgencyList(user.agent_categories || user.agency_categories || user.agency_types || user.agency_type || user.agencyType || '');
+    const teacherExtraRoles = teacherExtraRolesForLoginUser(user);
+    user.agent_categories = agencyCats; user.agency_categories = agencyCats; user.agency_types = agencyCats; user.agency_type = agencyCats.join(','); user.agencyType = user.agency_type;
+    user.teacher_extra_roles = teacherExtraRoles; user.additional_assignments = teacherExtraRoles; user.extra_roles = teacherExtraRoles;
+    localStorage.setItem('currentSchoolUser', JSON.stringify(user));
+    localStorage.setItem('currentUser', JSON.stringify(user));
+    localStorage.setItem('smart_school_current_session', JSON.stringify({ id:user.id, name:user.name, email:user.email, role, agent_categories:agencyCats, agency_categories:agencyCats, agency_types:agencyCats, agency_type:user.agency_type||'', agencyType:user.agency_type||'', teacher_extra_roles:teacherExtraRoles, additional_assignments:teacherExtraRoles, extra_roles:teacherExtraRoles, schoolId:user.schoolId || targetSchoolId, schoolName:user.schoolName || (school && school.schoolName) || '', loginAt:new Date().toISOString(), independentSchool:true, loginMode:'direct' }));
     const target = fileForRole(role);
-    const q = new URLSearchParams({ role, uid:user.id || '', email:user.email || '', schoolId:user.schoolId || targetSchoolId, school_name:user.schoolName || (school && school.schoolName) || '', schoolMode:'independent', independent:'true', loginMode:'direct', direct:'1' });
+    const q = new URLSearchParams({ role, uid:user.id || '', email:user.email || '', schoolId:user.schoolId || targetSchoolId, school_name:user.schoolName || (school && school.schoolName) || '', schoolMode:'independent', independent:'true', loginMode:'direct', direct:'1', agency_type:user.agency_type||'', teacher_extra_roles:teacherExtraRoles.join(',') });
     location.href = target + '?' + q.toString();
   }
+  window.schoolLogin = schoolLogin;
+  document.addEventListener('DOMContentLoaded', function(){
+    const btn = document.getElementById('school-login-btn');
+    if(btn){
+      btn.addEventListener('click', schoolLogin);
+      btn.style.pointerEvents = 'auto';
+      btn.style.position = 'relative';
+      btn.style.zIndex = '20';
+    }
+    ['login-email','login-password'].forEach(function(id){
+      const el = document.getElementById(id);
+      if(el){
+        el.addEventListener('keydown', function(e){ if(e.key === 'Enter') schoolLogin(e); });
+      }
+    });
+  });
 </script>
 <script>
 

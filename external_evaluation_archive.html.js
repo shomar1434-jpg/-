@@ -1,161 +1,70 @@
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>مركز التقويم الخارجي المؤسسي الذكي</title>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;700;900&display=swap" rel="stylesheet">
-<style>
-:root{--primary:#0f766e;--dark:#0f172a;--muted:#64748b;--line:#e2e8f0;--bg:#f8fafc;--gold:#b45309;--green:#16a34a;--red:#dc2626;--blue:#2563eb}*{box-sizing:border-box}body{margin:0;font-family:'Noto Sans Arabic',Arial,sans-serif;background:linear-gradient(135deg,#eefaf7,#f8fafc 45%,#fff7ed);color:var(--dark)}.top{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.94);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);padding:14px 22px;display:flex;gap:12px;align-items:center;justify-content:space-between}.brand{display:flex;align-items:center;gap:12px}.logo{width:54px;height:54px;border-radius:18px;background:linear-gradient(135deg,#0f766e,#0ea5e9);color:white;display:grid;place-items:center;font-size:26px;box-shadow:0 12px 24px rgba(15,118,110,.18)}h1{font-size:20px;margin:0;font-weight:900}.sub{margin:4px 0 0;color:var(--muted);font-size:12px;font-weight:800}.actions{display:flex;gap:8px;flex-wrap:wrap}.btn{border:0;border-radius:14px;padding:10px 14px;font-weight:900;cursor:pointer;background:var(--primary);color:#fff;font-family:inherit}.btn.gray{background:#475569}.btn.gold{background:#b45309}.btn.blue{background:#2563eb}.btn.red{background:#dc2626}.wrap{max-width:1240px;margin:0 auto;padding:22px}.hero{display:grid;grid-template-columns:1.4fr .9fr;gap:16px;margin-bottom:16px}.card{background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:26px;padding:18px;box-shadow:0 16px 36px rgba(15,23,42,.07)}.card h2,.card h3{margin:0 0 12px;font-weight:900}.school-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.field{display:grid;gap:6px}.field label{font-size:12px;font-weight:900;color:#334155}.field input,.field select,.field textarea{border:1px solid #cbd5e1;border-radius:14px;padding:10px;background:#fff;font-family:inherit;font-weight:800;color:#0f172a}.field textarea{min-height:88px;resize:vertical}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.kpi{background:linear-gradient(135deg,#fff,#ecfeff);border:1px solid #ccfbf1;border-radius:22px;padding:14px}.kpi span{font-size:12px;color:var(--muted);font-weight:900}.kpi b{display:block;font-size:26px;margin-top:8px}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}.tab{border:1px solid var(--line);background:white;color:#0f172a;border-radius:999px;padding:10px 14px;font-weight:900;cursor:pointer}.tab.active{background:#0f766e;color:white;border-color:#0f766e}.panel{display:none}.panel.active{display:block}.domains{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.domain{border:1px solid var(--line);border-radius:22px;padding:14px;background:white}.domain h3{font-size:16px}.meter{height:14px;background:#e2e8f0;border-radius:999px;overflow:hidden;margin:8px 0}.meter i{display:block;height:100%;background:linear-gradient(90deg,#16a34a,#22c55e);border-radius:999px}.timeline{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.term{background:white;border:1px solid var(--line);border-radius:22px;padding:14px}.months{display:grid;gap:8px}.month{display:flex;justify-content:space-between;align-items:center;background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:9px 10px;font-size:12px;font-weight:900}.archive-layout{display:grid;grid-template-columns:260px 1fr;gap:14px}.years{background:white;border:1px solid var(--line);border-radius:22px;padding:12px;max-height:600px;overflow:auto}.year-btn{width:100%;border:1px solid #e2e8f0;background:#f8fafc;border-radius:14px;padding:10px;margin-bottom:8px;font-weight:900;text-align:right;cursor:pointer}.year-btn.active{background:#0f766e;color:white}.folders{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.folder{background:white;border:1px solid var(--line);border-radius:20px;padding:14px;min-height:92px}.folder b{display:block}.folder small{color:var(--muted);font-weight:800}.eval-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.score{background:white;border:1px solid var(--line);border-radius:18px;padding:12px}.score input{width:100%;margin-top:8px}.result{font-size:42px;font-weight:900;color:#0f766e}.print-area{background:white;border:2px solid #0f766e;border-radius:30px;padding:20px}.visit-setup-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}.access-card{background:white;border:1px solid var(--line);border-radius:22px;padding:14px}.access-card h3{display:flex;align-items:center;justify-content:space-between;gap:8px}.access-list{display:grid;gap:8px;margin-top:10px}.access-item{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #e2e8f0;background:#f8fafc;border-radius:14px;padding:10px 12px;font-weight:900;font-size:12px}.access-item input{width:18px;height:18px;accent-color:#0f766e}.portal-list{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.portal-card{border:1px solid #dbeafe;background:linear-gradient(135deg,#fff,#eff6ff);border-radius:20px;padding:16px}.smart-card-frame{width:100%;min-height:860px;border:0;border-radius:26px;background:white;box-shadow:0 10px 25px rgba(15,23,42,.08)}.hidden{display:none!important}
-.visit-status-box{display:grid;grid-template-columns:1.2fr .8fr;gap:14px;margin-top:14px}.visit-control-card{background:linear-gradient(135deg,#fff,#f0fdfa);border:1px solid #ccfbf1;border-radius:22px;padding:16px}.visit-code-card{background:#fff;border:1px solid #dbeafe;border-radius:22px;padding:16px;text-align:center}.status-pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:7px 12px;font-size:12px;font-weight:900}.status-draft{background:#fef3c7;color:#92400e}.status-active{background:#dcfce7;color:#166534}.status-closed{background:#fee2e2;color:#991b1b}.visit-link-box{direction:ltr;text-align:left;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:14px;padding:10px;font-size:12px;font-weight:800;word-break:break-all;margin-top:10px}.qr-img{width:170px;height:170px;border-radius:18px;border:1px solid #e2e8f0;background:#fff;padding:8px;object-fit:contain}.portal-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.portal-card.disabled{opacity:.55;filter:grayscale(.4)}.visitor-mode .top .actions,.visitor-mode .tabs .tab:not([data-tab="visitorPortal"]):not([data-tab="smartCard"]){display:none!important}.visitor-mode .hero,.visitor-mode #visitSetup,.visitor-mode #archive,.visitor-mode #annual,.visitor-mode #evidence,.visitor-mode #impact,.visitor-mode #overview{display:none!important}
-@media(max-width:950px){.hero,.archive-layout,.visit-setup-grid{grid-template-columns:1fr}.domains,.timeline,.folders,.eval-grid,.kpis,.school-grid,.portal-list{grid-template-columns:1fr}}@media print{.top,.tabs,.no-print,.actions{display:none!important}body{background:white}.wrap{padding:0}.panel{display:block!important;break-after:page}.card{box-shadow:none;border:1px solid #111}.panel:not(.active){display:none!important}}
-</style>
-<script id="gender-neutral-labels-safe">
-/* Hotfix: نظام تسميات خفيف بدون مراقبة مستمرة أو فحص شامل للصفحة.
-   التسميات المحايدة تم تثبيتها داخل النصوص، وهذا السكربت يوفّر قاموسًا فقط للاستخدامات المستقبلية. */
+
 (function(){
-  window.roleLabels = window.roleLabels || {
-    manager: 'المدير/المديرة',
-    deputy: 'الوكيل/الوكيلة',
-    teacher: 'المعلم/المعلمة',
-    supervisor: 'الموجه/الموجهة',
-    activityLeader: 'رائد/رائدة النشاط',
-    adminEmployee: 'الموظف/الموظفة الإدارية',
-    student: 'الطالب/الطالبة'
-  };
+  if (window.__GENDER_NEUTRAL_LABELS_SAFE__) return;
+  window.__GENDER_NEUTRAL_LABELS_SAFE__ = true;
+  const pairs = [
+    ['مدير المدرسة','المدير/المديرة'],
+    ['مديرة المدرسة','المدير/المديرة'],
+    ['مدير/ة المدرسة','المدير/المديرة'],
+    ['قائد المدرسة','المدير/المديرة'],
+    ['قائدة المدرسة','المدير/المديرة'],
+    ['وكيل المدرسة','الوكيل/الوكيلة'],
+    ['وكيلة المدرسة','الوكيل/الوكيلة'],
+    ['معلم المادة','معلم/معلمة المادة'],
+    ['معلمة المادة','معلم/معلمة المادة'],
+    ['الموجه الطلابي','الموجه/الموجهة الطلابية'],
+    ['الموجهة الطلابية','الموجه/الموجهة الطلابية'],
+    ['رائد النشاط','رائد/رائدة النشاط'],
+    ['رائدة النشاط','رائد/رائدة النشاط'],
+    ['الموظف الإداري','الموظف/الموظفة الإدارية'],
+    ['الموظفة الإدارية','الموظف/الموظفة الإدارية'],
+    ['اسم الطالب','اسم الطالب/الطالبة'],
+    ['اسم الموظف','اسم الموظف/الموظفة']
+  ];
+  const skipTags = new Set(['SCRIPT','STYLE','TEXTAREA','CODE','PRE','OPTION']);
+  function neutralizeText(t){
+    if (!t || typeof t !== 'string') return t;
+    let out = t;
+    for (const [from,to] of pairs){
+      if (out.includes(to)) continue;
+      out = out.split(from).join(to);
+    }
+    return out;
+  }
+  function walk(root){
+    if (!root || skipTags.has(root.nodeName)) return;
+    const tw = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode(node){
+        const p = node.parentElement;
+        if (!p || skipTags.has(p.tagName)) return NodeFilter.FILTER_REJECT;
+        if (p.closest && p.closest('[data-no-gender-neutralize]')) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    });
+    const nodes=[]; let n;
+    while((n=tw.nextNode())) nodes.push(n);
+    for (const node of nodes){
+      const v = neutralizeText(node.nodeValue);
+      if (v !== node.nodeValue) node.nodeValue = v;
+    }
+    if (root.querySelectorAll){
+      root.querySelectorAll('[placeholder],[title],[aria-label],[alt],[data-title],[data-label]').forEach(el=>{
+        if (el.closest && el.closest('[data-no-gender-neutralize]')) return;
+        ['placeholder','title','aria-label','alt','data-title','data-label'].forEach(a=>{
+          const v = el.getAttribute(a);
+          if (v){ const nv = neutralizeText(v); if (nv !== v) el.setAttribute(a,nv); }
+        });
+      });
+    }
+  }
+  function run(){ try { walk(document.body || document.documentElement); } catch(e){} }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run, {once:true}); else run();
 })();
-</script>
 
 
-<script src="school_isolation_guard.js?v=nonblock20260614"></script>
-</head>
-<body>
-<header class="top">
-  <div class="brand"><div class="logo">🏫</div><div><h1>مركز التقويم الخارجي المؤسسي الذكي</h1><p class="sub">الأرشيف المؤسسي، إعداد زيارة الفريق الزائر، وبطاقة التقويم الخارجي الذكية في واجهة واحدة</p></div></div>
-  <div class="actions"><button class="btn blue" onclick="printCurrent()">طباعة العرض</button><button class="btn gold" onclick="rolloverYear()">ترحيل العام الدراسي</button><button class="btn gray" onclick="exportArchive()">تصدير الأرشيف</button></div>
-</header>
-<div class="wrap">
-  <section class="hero">
-    <div class="card">
-      <h2>بطاقة تعريف المدرسة</h2>
-      <div class="school-grid">
-        <div class="field"><label>اسم المدرسة</label><input id="schoolName" placeholder="اسم المدرسة"></div>
-        <div class="field"><label>المرحلة</label><input id="stage" placeholder="ابتدائي / متوسط / ثانوي"></div>
-        <div class="field"><label>العام الدراسي</label><select id="currentYear"></select></div>
-        <div class="field"><label>عدد الطلاب</label><input id="studentsCount" type="number" min="0" value="0"></div>
-        <div class="field"><label>عدد المعلمين</label><input id="teachersCount" type="number" min="0" value="0"></div>
-        <div class="field"><label>عدد الإداريين</label><input id="adminsCount" type="number" min="0" value="0"></div>
-      </div>
-    </div>
-    <div class="card">
-      <h2>جاهزية العرض للجنة</h2>
-      <div class="result" id="readiness">0%</div>
-      <p class="sub">تتغير النسبة حسب اكتمال بيانات التعريف ومحفظة الشواهد وإعداد الزيارة.</p>
-      <button class="btn" onclick="saveAll()">حفظ البيانات</button>
-    </div>
-  </section>
-
-  <div class="tabs no-print">
-    <button class="tab active" data-tab="overview">الصورة العامة</button>
-    <button class="tab" data-tab="evidence">محفظة الشواهد</button>
-    <button class="tab" data-tab="visitSetup">إعداد الزيارة</button>
-    <button class="tab" data-tab="visitorPortal">بوابة الفريق الزائر</button>
-    <button class="tab" data-tab="smartCard">بطاقة الفريق الذكية</button>
-    <button class="tab" data-tab="archive">الأرشيف التاريخي</button>
-    <button class="tab" data-tab="annual">ملف الإنجاز السنوي</button>
-    <button class="tab" data-tab="impact">نتائج قياس الأثر</button>
-  </div>
-
-  <section id="overview" class="panel active">
-    <div class="card print-area">
-      <h2>الصورة العامة للمدرسة</h2>
-      <div class="kpis">
-        <div class="kpi"><span>نسبة الانضباط</span><b><input id="discipline" type="number" min="0" max="100" value="0" style="width:75px;border:0;background:transparent;font-size:26px;font-weight:900">%</b></div>
-        <div class="kpi"><span>نسبة الإتقان</span><b><input id="mastery" type="number" min="0" max="100" value="0" style="width:75px;border:0;background:transparent;font-size:26px;font-weight:900">%</b></div>
-        <div class="kpi"><span>البرامج المنفذة</span><b><input id="programs" type="number" min="0" value="0" style="width:75px;border:0;background:transparent;font-size:26px;font-weight:900"></b></div>
-        <div class="kpi"><span>المبادرات</span><b><input id="initiatives" type="number" min="0" value="0" style="width:75px;border:0;background:transparent;font-size:26px;font-weight:900"></b></div>
-      </div>
-      <h3 style="margin-top:18px">شريط زمني للعام الدراسي</h3>
-      <div class="timeline" id="timeline"></div>
-    </div>
-  </section>
-
-  <section id="evidence" class="panel">
-    <div class="card">
-      <h2>محفظة الشواهد الذكية</h2>
-      <div class="domains" id="evidenceDomains"></div>
-    </div>
-  </section>
-
-  <section id="visitSetup" class="panel">
-    <div class="card">
-      <h2>إعداد زيارة فريق التقويم الخارجي</h2>
-      <p class="sub">اختر العناصر التي ستظهر للفريق الزائر من أقسام المنصة. تظهر العناصر المحددة في بوابة الفريق الزائر بصلاحية عرض فقط دون إضافة أو حذف أو تعديل.</p>
-      <div class="visit-setup-grid" id="visitAccessGrid" style="margin-top:14px"></div>
-      <div class="actions no-print" style="margin-top:16px">
-        <button class="btn" onclick="saveVisitAccessSettings()">حفظ إعداد الزيارة</button>
-        <button class="btn gray" onclick="renderVisitorPortal()">معاينة بوابة الفريق</button>
-      </div>
-    </div>
-  </section>
-
-  <section id="visitorPortal" class="panel">
-    <div class="card">
-      <h2>بوابة الفريق الزائر</h2>
-      <p class="sub">تعرض هذه البوابة فقط العناصر التي اختارها المدير/المديرة من أقسام المنصة، بصلاحية قراءة فقط، لتسهيل الاطلاع على الشواهد أثناء الزيارة.</p>
-      <div id="visitStatusPanel" class="visit-status-box"></div>
-      <div id="visitorPortalContent" class="portal-list" style="margin-top:16px"></div>
-    </div>
-  </section>
-
-  <section id="smartCard" class="panel">
-    <div class="card">
-      <h2>بطاقة فريق التقويم الخارجي الذكية</h2>
-      <p class="sub">نموذج ذكي لإدارة الزيارة، يشمل أدوات التقييم والاستبانات والتحليل الذكي وقرار الاعتماد.</p>
-      <iframe class="smart-card-frame" src="external_team_smart_card.html" title="بطاقة فريق التقويم الخارجي الذكية"></iframe>
-    </div>
-  </section>
-
-  <section id="archive" class="panel">
-    <div class="card">
-      <h2>الأرشيف التاريخي للأعوام الدراسية</h2>
-      <div class="archive-layout"><div class="years" id="yearsList"></div><div><div class="actions no-print" style="margin-bottom:10px"><button class="btn" onclick="addYear()">إضافة عام</button><button class="btn gray" onclick="createYearFolders()">إنشاء مجلدات العام</button></div><h3 id="selectedYearTitle"></h3><div class="folders" id="folders"></div></div></div>
-    </div>
-  </section>
 
 
-  <section id="impact" class="panel">
-    <div class="card">
-      <h2>نتائج قياس الأثر</h2>
-      <p class="sub">تظهر هنا نماذج قياس الأثر المحولة تلقائياً من أقسام المنصة، وتُعرض حسب القسم لتكوين صورة واضحة أمام لجنة التقويم الخارجي.</p>
-      <div class="kpis" style="margin-top:14px">
-        <div class="kpi"><span>إجمالي النماذج</span><b id="impactTotal" style="font-size:26px">0</b></div>
-        <div class="kpi"><span>متوسط التحسن</span><b id="impactAvg" style="font-size:26px">0%</b></div>
-        <div class="kpi"><span>أعلى أثر</span><b id="impactBest" style="font-size:26px">0%</b></div>
-        <div class="kpi"><span>عدد الأقسام</span><b id="impactRoles" style="font-size:26px">0</b></div>
-      </div>
-      <div class="actions no-print" style="margin-top:14px">
-        <button class="btn" onclick="window.location.href='impact_bank.html'">فتح بنك قياس الأثر</button>
-        <button class="btn gray" onclick="window.location.href='impact_assessment.html?role=manager'">إضافة نموذج قياس أثر</button>
-        <button class="btn gray" onclick="renderImpactResults()">تحديث النتائج</button>
-      </div>
-      <div id="impactResults" style="margin-top:18px"></div>
-    </div>
-  </section>
 
-  <section id="annual" class="panel">
-    <div class="card print-area">
-      <h2>ملف الإنجاز المدرسي السنوي</h2>
-      <div class="field"><label>ملخص إنجازات العام</label><textarea id="annualSummary" placeholder="نبذة مختصرة عن إنجازات العام الدراسي..."></textarea></div>
-      <div class="field"><label>أبرز الجوائز والمشاركات</label><textarea id="awards" placeholder="الجوائز والمشاركات..."></textarea></div>
-      <div class="field"><label>خطط تحسين مقترحة للعام القادم</label><textarea id="nextPlans" placeholder="خطط التحسين..."></textarea></div>
-      <button class="btn" onclick="saveAnnualFile()">حفظ ملف الإنجاز</button>
-    </div>
-  </section>
-</div>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="supabase-bridge.js"></script>
-<script>
 const LS='ss_external_evaluation_archive_v1';
 const domains=['القيادة المدرسية','التعليم والتعلم','التوجيه والإرشاد','النشاط الطلابي','البيئة المدرسية','الشراكة المجتمعية'];
 const folders=['تقارير المدير','تقارير الوكيل','تقارير المعلمين','سجلات الموجه الطلابي','سجلات رائد النشاط','السجلات','الخطط','الأداء الوظيفي','الاجتماعات','التقويم الذاتي','التقويم الخارجي','الشواهد','ملف الإنجاز المدرسي'];
@@ -427,6 +336,3 @@ renderImpactResults();
 const __visitParams=new URLSearchParams(location.search);
 if(__visitParams.get('view')==='externalVisit'||__visitParams.get('visit_token')||__visitParams.get('visitToken')){document.body.classList.add('visitor-mode');activateTab('visitorPortal');renderVisitorPortal();}
 else if(location.hash==="#impact"){activateTab('impact');}
-</script>
-</body>
-</html>

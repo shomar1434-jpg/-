@@ -1907,68 +1907,21 @@ body[data-ss-role="activity-leader"] [aria-label*="تحليل البيانات"]
 </style>
 
 <script id="gender-neutral-labels-safe">
+/* Hotfix: نظام تسميات خفيف بدون مراقبة مستمرة أو فحص شامل للصفحة.
+   التسميات المحايدة تم تثبيتها داخل النصوص، وهذا السكربت يوفّر قاموسًا فقط للاستخدامات المستقبلية. */
 (function(){
-  if (window.__GENDER_NEUTRAL_LABELS_SAFE__) return;
-  window.__GENDER_NEUTRAL_LABELS_SAFE__ = true;
-  const pairs = [
-    ['مدير المدرسة','المدير/المديرة'],
-    ['مديرة المدرسة','المدير/المديرة'],
-    ['مدير/ة المدرسة','المدير/المديرة'],
-    ['قائد المدرسة','المدير/المديرة'],
-    ['قائدة المدرسة','المدير/المديرة'],
-    ['وكيل المدرسة','الوكيل/الوكيلة'],
-    ['وكيلة المدرسة','الوكيل/الوكيلة'],
-    ['معلم المادة','معلم/معلمة المادة'],
-    ['معلمة المادة','معلم/معلمة المادة'],
-    ['الموجه الطلابي','الموجه/الموجهة الطلابية'],
-    ['الموجهة الطلابية','الموجه/الموجهة الطلابية'],
-    ['رائد النشاط','رائد/رائدة النشاط'],
-    ['رائدة النشاط','رائد/رائدة النشاط'],
-    ['الموظف الإداري','الموظف/الموظفة الإدارية'],
-    ['الموظفة الإدارية','الموظف/الموظفة الإدارية'],
-    ['اسم الطالب','اسم الطالب/الطالبة'],
-    ['اسم الموظف','اسم الموظف/الموظفة']
-  ];
-  const skipTags = new Set(['SCRIPT','STYLE','TEXTAREA','CODE','PRE','OPTION']);
-  function neutralizeText(t){
-    if (!t || typeof t !== 'string') return t;
-    let out = t;
-    for (const [from,to] of pairs){
-      if (out.includes(to)) continue;
-      out = out.split(from).join(to);
-    }
-    return out;
-  }
-  function walk(root){
-    if (!root || skipTags.has(root.nodeName)) return;
-    const tw = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-      acceptNode(node){
-        const p = node.parentElement;
-        if (!p || skipTags.has(p.tagName)) return NodeFilter.FILTER_REJECT;
-        if (p.closest && p.closest('[data-no-gender-neutralize]')) return NodeFilter.FILTER_REJECT;
-        return NodeFilter.FILTER_ACCEPT;
-      }
-    });
-    const nodes=[]; let n;
-    while((n=tw.nextNode())) nodes.push(n);
-    for (const node of nodes){
-      const v = neutralizeText(node.nodeValue);
-      if (v !== node.nodeValue) node.nodeValue = v;
-    }
-    if (root.querySelectorAll){
-      root.querySelectorAll('[placeholder],[title],[aria-label],[alt],[data-title],[data-label]').forEach(el=>{
-        if (el.closest && el.closest('[data-no-gender-neutralize]')) return;
-        ['placeholder','title','aria-label','alt','data-title','data-label'].forEach(a=>{
-          const v = el.getAttribute(a);
-          if (v){ const nv = neutralizeText(v); if (nv !== v) el.setAttribute(a,nv); }
-        });
-      });
-    }
-  }
-  function run(){ try { walk(document.body || document.documentElement); } catch(e){} }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run, {once:true}); else run();
+  window.roleLabels = window.roleLabels || {
+    manager: 'المدير/المديرة',
+    deputy: 'الوكيل/الوكيلة',
+    teacher: 'المعلم/المعلمة',
+    supervisor: 'الموجه/الموجهة',
+    activityLeader: 'رائد/رائدة النشاط',
+    adminEmployee: 'الموظف/الموظفة الإدارية',
+    student: 'الطالب/الطالبة'
+  };
 })();
 </script>
+
 
 </head>
 <body class="global-app-bg" data-ss-role="activity-leader">

@@ -38,7 +38,7 @@
     return client;
   }
   function appRoleToDb(role){
-    if(['leadership','manager','مدير'].includes(role)) return 'manager';
+    if(['leadership','manager','school_manager','principal','admin','مدير','مديرة','مدير المدرسة','مديرة المدرسة'].includes(role)) return 'manager';
     if(['agency','agent','وكيل'].includes(role)) return 'agent';
     if(['activity_leader','activity','activity-leader','leader','activities_leader','مسؤول النشاط','مسؤولة النشاط','مسؤول/ة النشاط','رائد النشاط','رائدة النشاط','رائد/ة النشاط'].includes(role)) return 'activity_leader';
     if(['administrative_employee','admin_employee','employee_admin','موظف إداري','موظفة إدارية','الموظف الإداري','الموظفة الإدارية'].includes(role)) return 'administrative_employee';
@@ -48,7 +48,7 @@
     return role || 'teacher';
   }
   function dbRoleToApp(role){
-    if(role === 'manager' || role === 'owner') return 'leadership';
+    if(['manager','owner','school_manager','principal','admin','مدير','مديرة','مدير المدرسة','مديرة المدرسة'].includes(role)) return 'leadership';
     if(role === 'agent') return 'agency';
     if(role === 'administrative_employee') return 'administrative_employee';
     if(role === 'student_advisor') return 'student_advisor';
@@ -56,7 +56,7 @@
     return role || 'performance';
   }
   function readJsonSafe(key, fallback){ try{return JSON.parse(localStorage.getItem(key)||JSON.stringify(fallback||{}));}catch(e){return fallback||{};} }
-  function currentLoginSchoolId(){ const q=new URLSearchParams(location.search||''); return targetSchoolId || q.get('schoolId') || q.get('school_id') || localStorage.getItem('current_school_id') || localStorage.getItem('school_id') || 'default'; }
+  function currentLoginSchoolId(){ const q=new URLSearchParams(location.search||''); return q.get('schoolId') || q.get('school_id') || q.get('id') || q.get('school') || q.get('schoolCode') || q.get('school_code') || localStorage.getItem('current_school_id') || localStorage.getItem('school_id') || 'default'; }
 
   function teacherRoleCode(x){x=String(x||'').trim();var map={'التوجيه الصحي':'health_guidance','موجه صحي':'health_guidance','الموجه الصحي':'health_guidance','health':'health_guidance','health_guidance':'health_guidance','منسق الموهوبين':'gifted_coordinator','منسق/ة الموهوبين':'gifted_coordinator','الجودة':'quality_coordinator','منسق الجودة':'quality_coordinator','منسق/ة الجودة':'quality_coordinator','منصة مدرستي':'madrasati_coordinator','منسق منصة مدرستي':'madrasati_coordinator'};return map[x]||x}
   function normalizeTeacherExtraRoles(v){
@@ -283,46 +283,195 @@
     const data = payload.id ? await updateUserCompat(row, payload.id) : await insertUserCompat(row);
     return normalizeUser(data);
   }
+  function normText(v){ return String(v == null ? '' : v).trim(); }
+  function normEmail(v){ return normText(v).toLowerCase(); }
+  function activeStatusOk(v){
+    const s = normText(v).toLowerCase();
+    return !['deleted','disabled','blocked','inactive','محذوف','معطل','موقوف'].includes(s);
+  }
+  function passwordMatches(row, password){
+    const p = normText(password);
+    if(!row) return false;
+    const fields = ['password','pass','manager_password','school_password','login_password','temp_password','default_password','pin','code','access_code','secret'];
+    for(const f of fields){ if(row[f] != null && normText(row[f]) === p) return true; }
+    return false;
+  }
+  function emailMatches(row, email){
+    const e = normEmail(email);
+    const fields = ['email','user_email','manager_email','principal_email','admin_email','owner_email','login_email','username','userName','loginName'];
+    return fields.some(f => normEmail(row && row[f]) === e);
+  }
+  function schoolIdOf(row){ return normText(row && (row.school_id || row.schoolId || row.school || row.id)); }
+  async function fetchSchoolById(sb, sid){
+    if(!sid) return null;
+    try{ const q = await sb.from('schools').select('*').eq('id',sid).maybeSingle(); return q && !q.error ? q.data : null; }catch(e){ return null; }
+  }
+  async function fetchSchoolByRef(sb, ref){
+    ref = normText(ref);
+    if(!ref) return null;
+    const cols = ['id','school_code','registration_code'];
+    for(const col of cols){
+      try{ const q = await sb.from('schools').select('*').eq(col, ref).maybeSingle(); if(q && !q.error && q.data) return q.data; }catch(e){}
+    }
+    try{
+      const q = await sb.from('schools').select('*').or(`login_link.ilike.%${ref}%,registration_link.ilike.%${ref}%`).limit(1);
+      if(q && !q.error && q.data && q.data[0]) return q.data[0];
+    }catch(e){}
+    return null;
+  }
+  async function findSchoolByManagerEmail(sb, email, wantedSchool){
+    const e = normEmail(email);
+    if(!e) return null;
+    let wantedRealId = '';
+    let wantedRefs = [];
+    if(wantedSchool){
+      const wantedRow = await fetchSchoolByRef(sb, wantedSchool);
+      if(!wantedRow) return null;
+      wantedRealId = normText(wantedRow.id);
+      wantedRefs = [wantedRow.id, wantedRow.school_code, wantedRow.registration_code, wantedSchool].map(normText).filter(Boolean);
+    }
+    const cols = ['manager_email','email','principal_email','admin_email','owner_email'];
+    for(const col of cols){
+      try{
+        let res = await sb.from('schools').select('*').ilike(col,e).limit(50);
+        let rows = (res && !res.error && res.data) ? res.data : [];
+        if(!rows.length){
+          res = await sb.from('schools').select('*').eq(col,e).limit(50);
+          rows = (res && !res.error && res.data) ? res.data : [];
+        }
+        const filtered = wantedSchool ? rows.filter(r => {
+          const refs = [r.id, r.school_code, r.registration_code].map(normText).filter(Boolean);
+          return (wantedRealId && normText(r.id) === wantedRealId) || refs.some(x => wantedRefs.includes(x));
+        }) : rows;
+        if(filtered.length) return filtered[0];
+      }catch(err){}
+    }
+    return null;
+  }
+  function emailBelongsToSchoolRow(email, school){
+    const e = normEmail(email);
+    if(!e || !school) return false;
+    return ['manager_email','email','principal_email','admin_email','owner_email'].some(f => normEmail(school[f]) === e);
+  }
+  async function findMembership(sb, email, userId, wantedSchool){
+    if(!wantedSchool) return null;
+    const e = normEmail(email);
+    try{
+      const parts = [`email.eq.${e}`];
+      if(userId) parts.push(`user_id.eq.${userId}`);
+      const res = await sb.from('school_members').select('*').eq('school_id',wantedSchool).or(parts.join(',')).limit(1);
+      return res && !res.error && res.data && res.data[0] ? res.data[0] : null;
+    }catch(err){ return null; }
+  }
+  async function signInAuth(sb, email, password){
+    if(!sb.auth || !sb.auth.signInWithPassword) return null;
+    try{
+      const r = await sb.auth.signInWithPassword({email:normEmail(email), password:normText(password)});
+      return r && !r.error && r.data && r.data.user ? r.data.user : null;
+    }catch(e){ return null; }
+  }
   async function login(email,password,schoolId){
     const sb = getClient(); if(!sb) throw new Error('Supabase غير جاهز');
-    email = String(email || '').trim().toLowerCase();
-    const wantedSchool = String(schoolId || '').trim();
+    email = normEmail(email);
+    const wantedSchool = normText(schoolId);
+    const p = normText(password);
+    const wantedSchoolRow = wantedSchool ? await fetchSchoolByRef(sb, wantedSchool) : null;
+    if(wantedSchool && !wantedSchoolRow) return null;
+    const wantedSchoolId = wantedSchoolRow ? normText(wantedSchoolRow.id) : wantedSchool;
 
-    let query = sb.from('users').select('*').eq('email',email).eq('password',password).neq('status','deleted');
-    const {data,error} = await query;
-    if(error) throw error;
-    let rows = data || [];
+    let authUser = await signInAuth(sb, email, p);
+    let rows = [];
 
+    // 1) الحسابات القديمة والجديدة داخل جدول users: نقرأ بالبريد ثم نطابق كلمة المرور محلياً عبر أكثر من حقل.
+    try{
+      const q = await sb.from('users').select('*').eq('email',email).limit(20);
+      if(q.error) throw q.error;
+      rows = (q.data || []).filter(u => activeStatusOk(u.status));
+    }catch(e){ rows = []; }
+
+    // 2) إن كان الحساب موثقًا عبر Supabase Auth فلا نشترط وجود كلمة المرور داخل جدول users.
+    // الحسابات القديمة كانت فعالة على Supabase Auth بينما جدول users قد لا يحتوي password،
+    // وكان ذلك يؤدي إلى حذف الصف المطابق بعد التحقق الناجح.
+    if(authUser){
+      try{
+        let q = await sb.from('users').select('*').eq('email',email).limit(20);
+        if(q && !q.error && q.data && q.data.length) rows = q.data.filter(u => activeStatusOk(u.status));
+      }catch(e){}
+      if(!rows.length){
+        rows = [{
+          id: authUser.id,
+          email,
+          full_name: authUser.user_metadata && (authUser.user_metadata.full_name || authUser.user_metadata.name) || email,
+          role: 'manager',
+          status: 'active'
+        }];
+      }
+    }else{
+      rows = rows.filter(u => passwordMatches(u,p));
+    }
+
+    // 3) ضبط نطاق المدرسة للحسابات القديمة التي كانت مرتبطة عبر school_members أو manager_email دون school_id مباشر.
     if(wantedSchool){
-      let scoped = rows.filter(u => String(u.school_id || '') === wantedSchool);
+      let scoped = rows.filter(u => {
+        const usid = normText(u.school_id || u.schoolId);
+        return usid === wantedSchool || usid === wantedSchoolId || (wantedSchoolRow && [wantedSchoolRow.school_code, wantedSchoolRow.registration_code].map(normText).includes(usid));
+      });
       if(!scoped.length){
-        const managerCandidate = rows.find(u => String(u.role||'') === 'manager');
-        if(managerCandidate){
-          let allowed = false, schoolByEmail = null;
-          try{
-            const ms = await sb.from('school_members').select('*').eq('school_id',wantedSchool).or(`email.eq.${email},user_id.eq.${managerCandidate.id}`).maybeSingle();
-            if(ms && ms.data) allowed = true;
-          }catch(e){}
-          try{
-            const schByEmail = await sb.from('schools').select('*').eq('id',wantedSchool).eq('manager_email',email).maybeSingle();
-            if(schByEmail && schByEmail.data){ allowed = true; schoolByEmail = schByEmail.data; }
-          }catch(e){}
-          if(allowed) scoped = [Object.assign({}, managerCandidate, {school_id:wantedSchool, __schoolOverride:schoolByEmail})];
+        for(const candidate of rows){
+          const member = await findMembership(sb, email, candidate.id, wantedSchoolId);
+          if(member){ scoped.push(Object.assign({}, candidate, {school_id:wantedSchoolId, __membership:member, __schoolOverride:wantedSchoolRow || null})); break; }
+          const schByEmail = await findSchoolByManagerEmail(sb, email, wantedSchool);
+          if(schByEmail){ scoped.push(Object.assign({}, candidate, {school_id:schByEmail.id, __schoolOverride:schByEmail, role:candidate.role || 'manager'})); break; }
         }
       }
       rows = scoped;
     }
 
-    const row = rows[0] || null;
+    let row = rows[0] || null;
+
+    // 4) دعم حسابات المدارس التي كانت تحفظ بيانات المدير داخل جدول schools فقط.
+    if(!row){
+      const sch = await findSchoolByManagerEmail(sb, email, wantedSchool || wantedSchoolId);
+      if(sch && activeStatusOk(sch.status)){
+        const hasPassField = ['manager_password','password','school_password','login_password','temp_password','default_password','pin','code','access_code'].some(f => sch[f] != null && normText(sch[f]) !== '');
+        if(authUser || !hasPassField || passwordMatches(sch,p)){
+          row = {id:'manager-'+sch.id, email, full_name:sch.manager_name || sch.principal_name || sch.school_name || 'مدير/ة المدرسة', role:'manager', status:'active', school_id:sch.id, __schoolOverride:sch};
+        }
+      }
+    }
+
     if(!row) return null;
     let school = row.__schoolOverride || null;
-    if(row.school_id && !school){
-      const sch = await sb.from('schools').select('*').eq('id',row.school_id).maybeSingle();
-      if(!sch.error) school = sch.data;
+    let sid = normText(row.school_id || row.schoolId) || wantedSchool;
+    if(sid && !school) school = await fetchSchoolByRef(sb, sid);
+    // إذا كان الحساب موثقًا في Supabase Auth أو موجودًا في users دون school_id،
+    // نربطه بمدرسته من جدول schools عبر بريد المدير قبل إنشاء الجلسة.
+    if(!school){
+      const byManagerEmail = await findSchoolByManagerEmail(sb, email, wantedSchool || '');
+      if(byManagerEmail){
+        school = byManagerEmail;
+        sid = normText(byManagerEmail.id) || sid;
+        if(!row.school_id) row.school_id = sid;
+        if(!row.role) row.role = 'manager';
+      }
+    }
+    if(wantedSchool){
+      const finalSchoolId = normText(school && school.id);
+      const finalRefs = [finalSchoolId, school && school.school_code, school && school.registration_code].map(normText).filter(Boolean);
+      const userSchoolRef = normText(row.school_id || row.schoolId);
+      const member = row.__membership || await findMembership(sb, email, row.id, wantedSchoolId);
+      const isSchoolManager = emailBelongsToSchoolRow(email, school);
+      const sameSchool = userSchoolRef && (userSchoolRef === wantedSchoolId || finalRefs.includes(userSchoolRef));
+      if(!sameSchool && !member && !isSchoolManager) return null;
+      if(finalSchoolId && finalSchoolId !== wantedSchoolId) return null;
     }
     const normalized = normalizeUser(row, school);
-    normalized.schoolId = (school && school.id) || row.school_id || wantedSchool || normalized.schoolId;
-    normalized.schoolName = (school && (school.school_name || school.schoolName)) || normalized.schoolName || '';
+    normalized.schoolId = (school && school.id) || sid || normalized.schoolId;
+    normalized.schoolName = (school && (school.school_name || school.schoolName)) || normalized.schoolName || row.schoolName || '';
+    normalized.role = dbRoleToApp(row.role || normalized.dbRole || normalized.role || 'manager');
+    normalized.status = row.status || 'active';
+    normalized.active = true;
+    normalized.isActive = true;
     return normalized;
   }
   window.SmartSchoolSupabase = { getClient, appRoleToDb, dbRoleToApp, normalizeUser, normalizeSchool, listSchools, createSchoolWithManager, updateSchoolStatus, registerSchoolUser, listUsersBySchool, updateUserStatus, upsertSchoolUser, login };
@@ -333,7 +482,8 @@
 <body>
   <main class="login-card" aria-label="بوابة المدرسة المستقلة">
     <img src="https://upload.wikimedia.org/wikipedia/ar/1/17/Saudi_Ministry_of_Education_Logo_2025.png" alt="وزارة التعليم" style="width:96px;margin:0 auto 18px;display:block">
-    <h1 style="font-size:clamp(28px,6vw,42px);font-weight:900;margin:0 0 8px">بوابة المدرسة المستقلة</h1>
+    <h1 id="school-main-title" style="font-size:clamp(28px,6vw,42px);font-weight:900;margin:0 0 8px">بوابة المدرسة المستقلة</h1>
+    <div id="school-link-badge" style="display:none;margin:0 auto 14px;padding:10px 12px;border-radius:16px;background:rgba(20,184,166,.16);border:1px solid rgba(94,234,212,.22);color:#ccfbf1;font-size:13px;font-weight:900;line-height:1.8"></div>
     <p id="school-title" style="color:#99f6e4;font-size:15px;font-weight:900;margin:0 0 28px">تسجيل دخول مدير/ة المدرسة ومنسوبيها</p>
     <form id="school-login-form" autocomplete="on" novalidate>
       <div style="display:grid;gap:16px;text-align:right">
@@ -357,10 +507,59 @@
   }catch(e){}
 
   const params = new URLSearchParams(location.search || '');
-  let targetSchoolId = params.get('schoolId') || params.get('school_id') || params.get('id') || localStorage.getItem('current_school_id') || localStorage.getItem('school_id') || '';
-  const targetSchoolCode = params.get('school') || params.get('schoolCode') || params.get('school_code') || localStorage.getItem('active_school_code') || '';
+  function pathSchoolRef(){
+    const parts = location.pathname.split('/').filter(Boolean);
+    const last = parts[parts.length-1] || '';
+    return (/^SCH-|^REG-/i.test(last) || /^[A-Za-z0-9_-]{6,}$/i.test(last) && !/\.html?$/i.test(last)) ? last : '';
+  }
+  function firstParam(names){
+    for(const n of names){ const v = params.get(n); if(v) return v; }
+    return '';
+  }
+  function decodeParam(v){ try{return decodeURIComponent(String(v||'').replace(/\+/g,' '));}catch(e){return String(v||'');} }
+  function rawParam(names){
+    const raw = String(location.search || '').replace(/^\?/, '');
+    for(const name of names){
+      const re = new RegExp('(?:^|&)'+name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'=([^&]*)','i');
+      const m = raw.match(re);
+      if(m) return m[1];
+    }
+    return '';
+  }
+  const explicitSchoolName = decodeParam(firstParam(['schoolName','school_name','sname','schoolTitle','title']) || rawParam(['schoolName','school_name','sname','schoolTitle','title']));
+  const explicitManagerEmail = decodeParam(firstParam(['managerEmail','manager_email','memail','email','adminEmail']) || rawParam(['managerEmail','manager_email','memail','email','adminEmail'])).toLowerCase();
+  let targetSchoolId = firstParam(['schoolId','school_id','id','sid']) || rawParam(['schoolId','school_id','id','sid']) || pathSchoolRef() || '';
+  const targetSchoolCode = firstParam(['school','schoolCode','school_code','scode','code','registrationCode','registration_code','ref']) || rawParam(['school','schoolCode','school_code','scode','code','registrationCode','registration_code','ref']) || ''; // لا نعتمد على localStorage هنا حتى لا تتداخل المدارس المستقلة
   let activeSchool = null;
+  function provisionalSchoolFromLink(){
+    if(!explicitSchoolName && !targetSchoolId && !targetSchoolCode && !explicitManagerEmail) return null;
+    return {
+      id: targetSchoolId || targetSchoolCode || '',
+      schoolId: targetSchoolId || targetSchoolCode || '',
+      schoolCode: targetSchoolCode || targetSchoolId || '',
+      schoolName: explicitSchoolName || '',
+      school_name: explicitSchoolName || '',
+      managerEmail: explicitManagerEmail || '',
+      manager_email: explicitManagerEmail || ''
+    };
+  }
+  function updateSchoolTitle(school){
+    const title = document.getElementById('school-title');
+    if(title && school){
+      const name = school.schoolName || school.school_name || school.name || explicitSchoolName || '';
+      title.textContent = name ? ('تسجيل دخول: ' + name) : 'تسجيل دخول مدير/ة المدرسة ومنسوبيها';
+      const h1 = document.getElementById('school-main-title');
+      if(h1 && name) h1.textContent = name;
+      const badge = document.getElementById('school-link-badge');
+      if(badge){
+        // واجهة رابط المدرسة بوابة عامة لجميع منسوبي المدرسة، لذلك لا يظهر بريد المدير أو أي بريد إداري هنا.
+        badge.innerHTML = name ? ('<b>مدرسة مستقلة مرتبطة</b><br><span>'+escapeHtml(name)+'</span>') : '';
+        badge.style.display = name ? 'block' : 'none';
+      }
+    }
+  }
 
+  function escapeHtml(v){return String(v||'').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
   function setMsg(text, kind){
     const msg = document.getElementById('login-msg');
     if(!msg) return;
@@ -385,11 +584,25 @@
     const arr = readArrayKeys(['smart_school_schools','schools','school_list']);
     const one = safeJson(localStorage.getItem('smartSchool.currentSchool'), null);
     if(one) arr.push(one);
-    return arr;
+    try{
+      for(let i=0;i<localStorage.length;i++){
+        const k = localStorage.key(i) || '';
+        if(k.indexOf('smart_school_login_contract_') === 0){
+          const v = safeJson(localStorage.getItem(k), null);
+          if(v && typeof v === 'object') arr.push(v);
+        }
+      }
+    }catch(e){}
+    const seen = new Set();
+    return arr.filter(s=>{
+      if(!s || typeof s !== 'object') return false;
+      const key = String(s.id||s.school_id||s.schoolId||s.school_code||s.schoolCode||s.registration_code||s.registrationCode||'');
+      if(!key || seen.has(key)) return false; seen.add(key); return true;
+    });
   }
   function normalizeRole(role){
     role = String(role || '').trim();
-    if(['manager','leadership','مدير','مديرة','owner'].includes(role)) return 'leadership';
+    if(['manager','leadership','school_manager','principal','admin','مدير','مديرة','مدير المدرسة','مديرة المدرسة','owner'].includes(role)) return 'leadership';
     if(['agent','agency','وكيل','وكيلة'].includes(role)) return 'agency';
     if(['activity_leader','activity','activity-leader','leader','activities_leader','مسؤول النشاط','مسؤولة النشاط','مسؤول/ة النشاط','رائد النشاط','رائدة النشاط','رائد/ة النشاط'].includes(role)) return 'activity_leader';
     if(['administrative_employee','admin_employee','employee_admin','موظف إداري','موظفة إدارية','الموظف الإداري','الموظفة الإدارية'].includes(role)) return 'administrative_employee';
@@ -414,30 +627,61 @@
       localStorage.setItem('smartSchool.currentSchool', JSON.stringify(school));
     }catch(e){}
   }
+  function findCachedSchoolByLink(){
+    const localSchools = readSchools();
+    const refs = [targetSchoolId, targetSchoolCode].map(v=>String(v||'')).filter(Boolean);
+    if(!refs.length) return null;
+    return localSchools.find(s => [s.schoolId,s.id,s.school_id,s.schoolCode,s.school_code,s.registration_code,s.registrationCode]
+      .map(v=>String(v||'')).some(v=>refs.includes(v))) || null;
+  }
   async function resolveActiveSchool(){
     if(activeSchool) return activeSchool;
     const localSchools = readSchools();
-    let school = null;
-    if(targetSchoolId) school = localSchools.find(s => String(s.schoolId || s.id || s.school_id || '') === String(targetSchoolId));
-    if(!school && targetSchoolCode) school = localSchools.find(s => String(s.schoolCode || s.school_code || s.registration_code || s.id || '') === String(targetSchoolCode));
+    let school = findCachedSchoolByLink();
+    const refs = [targetSchoolId, targetSchoolCode].filter(Boolean);
+
+    for(const ref of refs){
+      if(school) break;
+      school = localSchools.find(s => [s.schoolId,s.id,s.school_id,s.schoolCode,s.school_code,s.registration_code,s.registrationCode].map(v=>String(v||'')).includes(String(ref)));
+    }
+    const currentTypedEmail = String((document.getElementById('login-email') && document.getElementById('login-email').value) || '').trim().toLowerCase();
+    const managerEmailToResolve = explicitManagerEmail || currentTypedEmail;
+    if(!school && managerEmailToResolve){
+      school = localSchools.find(s => String(s.managerEmail || s.manager_email || s.email || s.principal_email || s.admin_email || s.owner_email || '').trim().toLowerCase() === managerEmailToResolve);
+    }
+
     try{
       if(!school && window.SmartSchoolSupabase){
         const sb = window.SmartSchoolSupabase.getClient && window.SmartSchoolSupabase.getClient();
         if(sb){
-          if(targetSchoolId){
-            const q = await sb.from('schools').select('*').eq('id',targetSchoolId).maybeSingle();
-            if(q && q.data) school = window.SmartSchoolSupabase.normalizeSchool ? window.SmartSchoolSupabase.normalizeSchool(q.data) : q.data;
+          for(const ref of refs){
+            if(school) break;
+            for(const col of ['id','school_code','registration_code']){
+              if(school) break;
+              const q = await sb.from('schools').select('*').eq(col,ref).maybeSingle();
+              if(q && q.data) school = window.SmartSchoolSupabase.normalizeSchool ? window.SmartSchoolSupabase.normalizeSchool(q.data) : q.data;
+            }
           }
-          if(!school && targetSchoolCode){
-            let q = await sb.from('schools').select('*').eq('school_code',targetSchoolCode).maybeSingle();
-            if(q && q.data) school = window.SmartSchoolSupabase.normalizeSchool ? window.SmartSchoolSupabase.normalizeSchool(q.data) : q.data;
-            if(!school){ q = await sb.from('schools').select('*').eq('registration_code',targetSchoolCode).maybeSingle(); if(q && q.data) school = window.SmartSchoolSupabase.normalizeSchool ? window.SmartSchoolSupabase.normalizeSchool(q.data) : q.data; }
+          if(!school && managerEmailToResolve){
+            for(const col of ['manager_email','email','principal_email','admin_email','owner_email']){
+              if(school) break;
+              const q = await sb.from('schools').select('*').ilike(col, managerEmailToResolve).limit(1);
+              if(q && !q.error && q.data && q.data[0]) school = window.SmartSchoolSupabase.normalizeSchool ? window.SmartSchoolSupabase.normalizeSchool(q.data[0]) : q.data[0];
+            }
+          }
+          if(!school){
+            const currentUrl = location.href;
+            const q = await sb.from('schools').select('*').or(`login_link.ilike.%${encodeURIComponent(targetSchoolId||targetSchoolCode)}%,registration_link.ilike.%${encodeURIComponent(targetSchoolId||targetSchoolCode)}%`).limit(1);
+            if(q && !q.error && q.data && q.data[0]) school = window.SmartSchoolSupabase.normalizeSchool ? window.SmartSchoolSupabase.normalizeSchool(q.data[0]) : q.data[0];
           }
         }
       }
     }catch(e){ console.warn('school resolve fallback', e); }
-    if(school) cacheActiveSchool(school);
-    return school;
+
+    // لا نستخدم بيانات الاسم/البريد القادمة من الرابط كحقيقة تشغيلية.
+    // إن لم نجد المدرسة في Supabase أو التخزين المحلي، نوقف الدخول بدل عرض واجهة شكلية.
+    if(school){ cacheActiveSchool(school); updateSchoolTitle(school); }
+    return school || null;
   }
   function readUsers(){
     const rows=[];
@@ -455,7 +699,7 @@
   }
   function isActiveAccount(user){
     const status = String(user.status || '').toLowerCase();
-    return status === 'active' || status === 'activated' || user.isActive === true || user.active === true || status === '' || status === 'مفعل';
+    return !['deleted','disabled','blocked','inactive','محذوف','معطل','موقوف'].includes(status) && (status === 'active' || status === 'activated' || status === 'approved' || status === 'مفعل' || status === 'نشط' || status === '' || user.isActive === true || user.active === true || user.is_primary_manager === true || user.isPrimaryManager === true);
   }
   function normalizeLocalUser(u, school){
     if(!u) return null;
@@ -470,42 +714,83 @@
   async function loginFromSupabase(loginId, password){
     if(!window.SmartSchoolSupabase) return null;
     try{
-      const user = await window.SmartSchoolSupabase.login(loginId, password, targetSchoolId || '');
+      const schoolRef = (activeSchool && (activeSchool.schoolId || activeSchool.id || activeSchool.school_id || activeSchool.schoolCode || activeSchool.school_code || activeSchool.registration_code)) || targetSchoolId || targetSchoolCode || '';
+      const user = await window.SmartSchoolSupabase.login(loginId, password, schoolRef);
       if(user) return user;
-    }catch(e){ console.warn('Supabase login method failed', e); }
-    try{
-      const sb = window.SmartSchoolSupabase.getClient && window.SmartSchoolSupabase.getClient();
-      if(!sb) return null;
-      const email = String(loginId||'').trim().toLowerCase();
-      let q = await sb.from('users').select('*').eq('email',email).eq('password',password);
-      if(q.error) throw q.error;
-      let rows = (q.data || []).filter(u => String(u.status||'') !== 'deleted');
-      if(targetSchoolId){
-        const scoped = rows.filter(u => String(u.school_id || '') === String(targetSchoolId));
-        if(scoped.length) rows = scoped;
-      }
-      let row = rows[0];
-      if(!row){
-        const sch = await sb.from('schools').select('*').eq('manager_email',email).maybeSingle();
-        if(sch && sch.data && (String(sch.data.manager_password || sch.data.password || '') === password || !sch.data.manager_password)){
-          cacheActiveSchool(window.SmartSchoolSupabase.normalizeSchool ? window.SmartSchoolSupabase.normalizeSchool(sch.data) : sch.data);
-          row = {id:'manager-'+sch.data.id, email, full_name:sch.data.manager_name || 'مدير/ة المدرسة', role:'manager', status:'active', school_id:sch.data.id};
-        }
-      }
-      if(!row) return null;
-      let school = null;
-      if(row.school_id){ const sq = await sb.from('schools').select('*').eq('id',row.school_id).maybeSingle(); if(sq && sq.data) school=sq.data; }
-      return window.SmartSchoolSupabase.normalizeUser ? window.SmartSchoolSupabase.normalizeUser(row, school) : normalizeLocalUser(row, school);
-    }catch(e){ console.warn('Supabase fallback failed', e); return null; }
+    }catch(e){ console.warn('Supabase login failed', e); }
+    return null;
+  }
+  function norm(v){ return String(v || '').trim(); }
+  function normLower(v){ return norm(v).toLowerCase(); }
+  function schoolRefsOf(s){
+    if(!s) return [];
+    return [s.schoolId,s.id,s.school_id,s.schoolCode,s.school_code,s.registrationCode,s.registration_code,s.code]
+      .map(norm).filter(Boolean);
+  }
+  function schoolNamesOf(s){
+    if(!s) return [];
+    return [s.schoolName,s.school_name,s.name].map(norm).filter(Boolean);
+  }
+  function managerEmailsOf(s){
+    if(!s) return [];
+    return [s.managerEmail,s.manager_email,s.email,s.principal_email,s.admin_email,s.owner_email].map(normLower).filter(Boolean);
+  }
+  function passwordFieldsOf(obj){
+    return [obj && obj.password, obj && obj.pass, obj && obj.manager_password, obj && obj.school_password, obj && obj.login_password, obj && obj.temp_password, obj && obj.default_password, obj && obj.pin, obj && obj.code, obj && obj.access_code]
+      .map(norm).filter(Boolean);
+  }
+  function sameLocalSchool(u, school){
+    const linkRefs = schoolRefsOf(school).concat([targetSchoolId,targetSchoolCode].map(norm).filter(Boolean));
+    if(!linkRefs.length) return true;
+    const userRefs = [u.schoolId,u.school_id,u.activeSchoolId,u.smart_school_id,u.schoolCode,u.school_code,u.registrationCode,u.registration_code]
+      .map(norm).filter(Boolean);
+    if(userRefs.some(v => linkRefs.includes(v))) return true;
+    const uSchoolName = norm(u.schoolName || u.school_name);
+    if(uSchoolName && schoolNamesOf(school).includes(uSchoolName)) return true;
+    const email = normLower(u.email || u.user_email || u.manager_email || u.username || u.loginName);
+    if(email && managerEmailsOf(school).includes(email) && ['manager','leadership','school_manager','principal','admin','owner','مدير','مديرة','مدير المدرسة','مديرة المدرسة'].includes(String(u.role||'').trim())) return true;
+    if(u.isPrimaryManager || u.is_primary_manager){
+      if(email && managerEmailsOf(school).includes(email)) return true;
+    }
+    return false;
+  }
+  function localManagerFromSchool(loginId,password,school){
+    if(!school) return null;
+    const id = normLower(loginId);
+    const managerEmails = managerEmailsOf(school);
+    const identifiers = managerEmails.concat([school.managerName, school.manager_name, school.principal_name].map(normLower).filter(Boolean));
+    if(!identifiers.includes(id)) return null;
+    const passList = passwordFieldsOf(school);
+    // في النسخ المحلية القديمة قد يكون المدير التجريبي محفوظًا في سجل المدرسة فقط.
+    // نقبل الدخول محليًا إذا وجدت كلمة مرور مطابقة، ولا نسمح بتجاوز كلمة المرور عند وجودها.
+    if(passList.length && !passList.includes(norm(password))) return null;
+    if(!passList.length) return null;
+    return normalizeLocalUser({
+      id: 'local-manager-' + (school.schoolId || school.id || school.schoolCode || 'school'),
+      name: school.managerName || school.manager_name || school.principal_name || school.schoolName || school.school_name || 'مدير/ة المدرسة',
+      full_name: school.managerName || school.manager_name || school.principal_name || school.schoolName || school.school_name || 'مدير/ة المدرسة',
+      email: managerEmails[0] || id,
+      password: norm(password),
+      role: 'leadership',
+      status: 'active',
+      active: true,
+      isActive: true,
+      isPrimaryManager: true,
+      is_primary_manager: true,
+      schoolId: school.schoolId || school.id || school.school_id || targetSchoolId || targetSchoolCode || '',
+      schoolName: school.schoolName || school.school_name || school.name || ''
+    }, school);
   }
   function loginFromLocal(loginId,password,school){
-    const id = String(loginId || '').trim().toLowerCase();
-    return normalizeLocalUser(readUsers().find(u => {
-      const identifiers = [u.email,u.username,u.userName,u.loginName,u.name,u.full_name,u.nationalId,u.id].map(v => String(v || '').trim().toLowerCase());
-      const passOk = String(u.password || u.pass || '').trim() === String(password || '').trim();
-      const del = u.isDeleted === true || String(u.status||'').toLowerCase() === 'deleted';
-      return !del && passOk && identifiers.includes(id);
-    }), school);
+    const id = normLower(loginId);
+    const found = readUsers().find(u => {
+      const identifiers = [u.email,u.user_email,u.manager_email,u.username,u.userName,u.loginName,u.name,u.full_name,u.nationalId,u.id].map(normLower);
+      const passList = passwordFieldsOf(u);
+      const passOk = passList.includes(norm(password));
+      const del = u.isDeleted === true || ['deleted','disabled','blocked','inactive','محذوف','معطل','موقوف'].includes(normLower(u.status));
+      return !del && passOk && identifiers.includes(id) && sameLocalSchool(u, school);
+    });
+    return normalizeLocalUser(found, school) || localManagerFromSchool(loginId,password,school);
   }
   function normalizeAgencyList(v){
     if(Array.isArray(v)) return v.map(String).map(x=>x.trim()).filter(Boolean).filter(x=>x!=='general');
@@ -533,6 +818,7 @@
       const password = String(passEl && passEl.value || '').trim();
       if(!loginId || !password){ setMsg('يرجى إدخال البريد/اسم المستخدم والرقم السري'); return; }
       const school = await resolveActiveSchool();
+      if((targetSchoolId || targetSchoolCode) && !school){ setMsg('رابط المدرسة غير مرتبط بسجل مدرسة صحيح.'); return; }
       let user = await loginFromSupabase(loginId,password);
       if(!user) user = loginFromLocal(loginId,password,school);
       if(!user){ setMsg('بيانات الدخول غير صحيحة أو الحساب غير موجود في هذه المدرسة'); return; }
@@ -583,13 +869,28 @@
       if(el && !el.dataset.bound){ el.dataset.bound='1'; el.addEventListener('keydown', function(e){ if(e.key === 'Enter') schoolLogin(e); }); }
     });
   }
-  document.addEventListener('DOMContentLoaded', async function(){
+
+  let __schoolLoginInitDone = false;
+  async function initSchoolLoginPage(){
+    if(__schoolLoginInitDone) return;
+    __schoolLoginInitDone = true;
     bindLogin();
+    const hasSchoolLink = !!(targetSchoolId || targetSchoolCode);
+    if(hasSchoolLink){
+      const cached = findCachedSchoolByLink();
+      if(cached){ updateSchoolTitle(cached); }
+      else {
+        const title = document.getElementById('school-title');
+        if(title) title.textContent = 'جارٍ التحقق من رابط المدرسة المستقلة...';
+      }
+    }
     const school = await resolveActiveSchool();
-    const title = document.getElementById('school-title');
-    if(title && school) title.textContent = 'تسجيل دخول: ' + (school.schoolName || school.school_name || school.name || 'المدرسة');
-  });
-  if(document.readyState !== 'loading') bindLogin();
+    if(!school && hasSchoolLink){
+      setMsg('رابط المدرسة لم يطابق سجل مدرسة في Supabase أو العقد المحلي. لا يتم السماح بالدخول من رابط عام. أعد نسخ رابط الدخول من إدارة المدارس بعد تحديث النسخة.');
+    }
+  }
+  document.addEventListener('DOMContentLoaded', initSchoolLoginPage);
+  if(document.readyState !== 'loading') initSchoolLoginPage();
 })();
 </script>
 </body>

@@ -1415,5 +1415,187 @@ document.addEventListener("click", function(e){
   });
 })();
 </script>
+
+<script id="INDEPENDENT_SCHOOL_LINK_CONTRACT_FIX">
+(function(){
+  'use strict';
+  const SUPABASE_URL = 'https://cijhgvbtrvmmlcssgxht.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_wrqnWejHyIhaYnMusFfDQQ_6NBvAK9N';
+  let sbClient = null;
+  function sb(){
+    if(sbClient) return sbClient;
+    if(window.supabase && window.supabase.createClient){
+      sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+      return sbClient;
+    }
+    return null;
+  }
+  function enc(v){return encodeURIComponent(String(v||''));}
+  function cleanEmail(v){return String(v||'').trim().toLowerCase();}
+  function schoolId(s){return s && (s.id || s.schoolId || s.school_id || '');}
+  function schoolCode(s){return s && (s.school_code || s.schoolCode || s.registration_code || s.registrationCode || '');}
+  function schoolName(s){return s && (s.school_name || s.schoolName || s.name || '');}
+  function managerEmail(s){return cleanEmail(s && (s.manager_email || s.managerEmail || s.email || s.principal_email || s.admin_email || s.owner_email || ''));}
+  function managerName(s){return s && (s.manager_name || s.managerName || s.principal_name || s.owner_name || '');}
+  function safeSchoolContract(s){
+    return {
+      id: schoolId(s),
+      school_id: schoolId(s),
+      schoolId: schoolId(s),
+      school_code: schoolCode(s),
+      schoolCode: schoolCode(s),
+      registration_code: s && (s.registration_code || s.registrationCode || ''),
+      registrationCode: s && (s.registration_code || s.registrationCode || ''),
+      school_name: schoolName(s),
+      schoolName: schoolName(s),
+      manager_name: managerName(s),
+      managerName: managerName(s),
+      manager_email: managerEmail(s),
+      managerEmail: managerEmail(s),
+      status: s && (s.status || 'active')
+    };
+  }
+  function cacheIndependentSchoolContract(s){
+    try{
+      var c = safeSchoolContract(s);
+      var refs = [c.id,c.school_id,c.schoolId,c.school_code,c.schoolCode,c.registration_code,c.registrationCode].filter(Boolean);
+      refs.forEach(function(ref){ localStorage.setItem('smart_school_login_contract_'+String(ref), JSON.stringify(c)); });
+      var arr=[]; try{ arr=JSON.parse(localStorage.getItem('smart_school_schools')||'[]')||[]; }catch(e){arr=[];}
+      var exists = arr.some(function(x){return String(schoolId(x)||schoolCode(x))===String(c.id||c.school_code);});
+      if(!exists){ arr.unshift(c); localStorage.setItem('smart_school_schools', JSON.stringify(arr)); }
+      return c;
+    }catch(e){ return null; }
+  }
+  function baseLoginUrl(){
+    var path = location.pathname.replace(/[^\/]*$/, 'school-login.html');
+    return location.origin + path;
+  }
+  window.buildIndependentSchoolLoginUrl = function(school){
+    school = school || {};
+    var id = schoolId(school);
+    var code = schoolCode(school);
+    var name = schoolName(school);
+    var email = managerEmail(school);
+    var q = [];
+    if(id){ q.push('sid=' + enc(id)); q.push('schoolId=' + enc(id)); q.push('id=' + enc(id)); }
+    if(code){ q.push('scode=' + enc(code)); q.push('schoolCode=' + enc(code)); q.push('school=' + enc(code)); }
+    // عقد الرابط الجذري لا يعتمد على اسم المدرسة أو بريد المدير كمرجع صلاحية؛
+    // الاسم والبريد يُجلبان من Supabase/localStorage بعد حل school id/code فقط لمنع تداخل المدارس.
+    q.push('contract=schoolLoginV3');
+    q.push('schoolMode=independent');
+    q.push('scope=school');
+    q.push('direct=1');
+    return baseLoginUrl() + '?' + q.join('&');
+  };
+  window.copyIndependentSchoolLoginLink = async function(school){
+    cacheIndependentSchoolContract(school);
+    var url = window.buildIndependentSchoolLoginUrl(school);
+    try{ if(navigator.clipboard && navigator.clipboard.writeText) await navigator.clipboard.writeText(url); else throw new Error('no clipboard'); }
+    catch(e){ prompt('انسخ رابط دخول المدرسة', url); }
+    if(typeof showToast === 'function') showToast('تم نسخ رابط دخول المدرسة المرتبط بالمدرسة ومديرها');
+    else alert('تم تجهيز رابط دخول المدرسة:\n' + url);
+    return url;
+  };
+  function statusText(s){
+    const v=String(s&&s.status||'active').toLowerCase();
+    if(['disabled','inactive','blocked','deleted','معطل','محذوف'].includes(v)) return 'معطلة';
+    return 'مفعلة';
+  }
+  function statusClass(s){return statusText(s)==='مفعلة'?'text-green-700':'text-red-700';}
+  function renderSchoolRow(s){
+    const id = schoolId(s), code = schoolCode(s), name = schoolName(s) || code || id || 'مدرسة بدون اسم';
+    const mName = managerName(s) || '—', mEmail = managerEmail(s) || '—';
+    const url = window.buildIndependentSchoolLoginUrl(s);
+    const safe = v => String(v||'').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    return `<tr class="border-b border-slate-100">
+      <td class="p-3 text-right"><b>${safe(name)}</b><div class="text-[10px] text-slate-400 font-bold">${safe(code || id)}</div></td>
+      <td class="p-3 text-right"><b>${safe(mName)}</b><div class="text-[10px] text-slate-400 font-bold" dir="ltr">${safe(mEmail)}</div></td>
+      <td class="p-3 text-center font-extrabold ${statusClass(s)}">${statusText(s)}</td>
+      <td class="p-3 text-center whitespace-nowrap">
+        <button type="button" class="bg-blue-600 text-white px-3 py-2 rounded-lg text-xs font-extrabold" onclick='copyIndependentSchoolLoginLink(${JSON.stringify(s).replace(/'/g,"&#39;")})'>رابط الدخول</button>
+        <button type="button" class="bg-teal-700 text-white px-3 py-2 rounded-lg text-xs font-extrabold" onclick='copyRegistrationLink && copyRegistrationLink(${JSON.stringify(s).replace(/'/g,"&#39;")})'>رابط التسجيل</button>
+        <button type="button" class="bg-slate-100 text-slate-700 px-3 py-2 rounded-lg text-xs font-extrabold" onclick="prompt('رابط الدخول المرتبط بالمدرسة', '${safe(url)}')">عرض الرابط</button>
+      </td>
+    </tr>`;
+  }
+  async function fetchSchools(){
+    const c=sb();
+    if(c){
+      try{
+        const r=await c.from('schools').select('*').order('created_at',{ascending:false});
+        if(r && !r.error && Array.isArray(r.data)) return r.data;
+      }catch(e){console.warn('تعذر جلب المدارس من Supabase',e);}
+    }
+    try{
+      const keys=['smart_school_schools','schools','school_list']; let out=[];
+      keys.forEach(k=>{try{const v=JSON.parse(localStorage.getItem(k)||'[]'); if(Array.isArray(v)) out=out.concat(v); else if(v&&Array.isArray(v.schools)) out=out.concat(v.schools);}catch(e){}});
+      return out;
+    }catch(e){return [];}
+  }
+  window.renderSchoolManagement = async function(){
+    const body=document.getElementById('schools-table-body');
+    const st=document.getElementById('sm-status');
+    if(body) body.innerHTML='<tr><td colspan="4" class="p-6 text-center text-slate-400 text-xs">جارٍ تحميل المدارس...</td></tr>';
+    const rows=await fetchSchools();
+    if(st) st.textContent='تم تحميل '+rows.length+' مدرسة. روابط الدخول تعتمد الآن على معرف المدرسة/كودها فقط، ويتم جلب الاسم وبريد المدير من سجل المدرسة.';
+    if(!body) return;
+    body.innerHTML = rows.length ? rows.map(renderSchoolRow).join('') : '<tr><td colspan="4" class="p-6 text-center text-slate-400 text-xs">لا توجد مدارس محفوظة.</td></tr>';
+  };
+  window.createSupabaseSchoolFromPanel = async function(){
+    const name=(document.getElementById('sm-school-name')||{}).value||'';
+    const mName=(document.getElementById('sm-manager-name')||{}).value||'';
+    const email=cleanEmail((document.getElementById('sm-manager-email')||{}).value||'');
+    const password=(document.getElementById('sm-manager-password')||{}).value||'';
+    const st=document.getElementById('sm-status');
+    if(!name||!email){ if(st) st.textContent='يرجى إدخال اسم المدرسة وبريد المدير.'; return; }
+    const c=sb();
+    const code='SCH-'+Math.random().toString(36).slice(2,8).toUpperCase();
+    const payload={school_name:name, school_code:code, manager_name:mName, manager_email:email, status:'active', registration_code:'REG-'+Math.random().toString(36).slice(2,8).toUpperCase()};
+    if(c){
+      try{
+        const ex=await c.from('schools').select('*').or(`manager_email.eq.${email},school_name.eq.${name}`).limit(1);
+        let school=ex && ex.data && ex.data[0];
+        if(!school){ const ins=await c.from('schools').insert(payload).select().single(); if(ins.error) throw ins.error; school=ins.data; }
+        try{ await c.from('users').upsert({email, full_name:mName||name, role:'manager', status:'active', school_id:school.id, password:password||undefined, is_primary_manager:true},{onConflict:'email'}); }catch(e){console.warn('تعذر حفظ مدير المدرسة في users',e);}
+        if(st) st.textContent='تم حفظ المدرسة. استخدم زر رابط الدخول من الجدول.';
+        await renderSchoolManagement();
+        return;
+      }catch(e){ if(st) st.textContent='تعذر الحفظ في Supabase: '+(e.message||e); }
+    }
+    const arr=JSON.parse(localStorage.getItem('smart_school_schools')||'[]');
+    const localSchool=Object.assign(payload,{id:code, schoolId:code, schoolCode:code, password:password||'123456', manager_password:password||'123456'});
+    arr.unshift(localSchool);
+    localStorage.setItem('smart_school_schools',JSON.stringify(arr));
+    try{
+      const users=JSON.parse(localStorage.getItem('smart_school_users')||'[]');
+      users.unshift({
+        id:'local-manager-'+code,
+        name:mName||name,
+        full_name:mName||name,
+        email,
+        password:password||'123456',
+        role:'leadership',
+        status:'active',
+        active:true,
+        isActive:true,
+        isPrimaryManager:true,
+        is_primary_manager:true,
+        schoolId:code,
+        school_id:code,
+        schoolName:name
+      });
+      localStorage.setItem('smart_school_users',JSON.stringify(users));
+    }catch(e){}
+    if(st) st.textContent='تم الحفظ محليًا. استخدم زر رابط الدخول من الجدول. كلمة المرور المحلية الافتراضية عند تركها فارغة: 123456';
+    await renderSchoolManagement();
+  };
+  window.fillSchoolPanelFromRequest = window.fillSchoolPanelFromRequest || function(){
+    const st=document.getElementById('sm-status'); if(st) st.textContent='لم يتم العثور على نموذج مدرسة جديدة قابل للقراءة تلقائيًا.';
+  };
+  if(document.readyState!=='loading') { if(document.getElementById('schools-table-body')) renderSchoolManagement(); }
+  else document.addEventListener('DOMContentLoaded', function(){ if(document.getElementById('schools-table-body')) renderSchoolManagement(); });
+})();
+</script>
+
 </body>
 </html>

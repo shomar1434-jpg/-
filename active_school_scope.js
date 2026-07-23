@@ -11,31 +11,6 @@
   function qs(){ return new URLSearchParams(location.search || ''); }
   function norm(v){ return String(v||'').trim(); }
 
-  // لا تظهر لوحة المدرسة النشطة ولا يتم اعتماد بيانات المدرسة المحفوظة محليًا
-  // إلا عند فتح مدرسة مستقلة من النسخة السحابية. هذا يمنع ظهور آخر مدرسة
-  // محفوظة في المتصفح عند تجربة النسخة المحلية أو فتح الملفات مباشرة.
-  function isLocalRuntime(){
-    var host = (location.hostname || '').toLowerCase();
-    return location.protocol === 'file:' || !host || host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || host.endsWith('.local');
-  }
-
-  function hasIndependentSchoolSignal(){
-    var q = qs();
-    var user = getCurrentUser();
-    var stored = getStoredSchool();
-    return !!(
-      q.get('schoolId') || q.get('school_id') || q.get('school') || q.get('schoolCode') || q.get('school_code') ||
-      user.activeSchoolId || user.schoolId ||
-      stored.schoolId || stored.id
-    );
-  }
-
-  function isCloudIndependentSchoolContext(){
-    if(isLocalRuntime()) return false;
-    if(!(location.protocol === 'https:' || location.protocol === 'http:')) return false;
-    return hasIndependentSchoolSignal();
-  }
-
   function getCurrentUser(){
     return read('currentSchoolUser', null) || read('currentUser', null) || {};
   }
@@ -45,7 +20,6 @@
   }
 
   function activeSchool(){
-    if(!isCloudIndependentSchoolContext()) return {id:'', schoolId:'', name:'', schoolName:'', code:'', schoolCode:'', isIndependent:false};
     var q = qs();
     var user = getCurrentUser();
     var stored = getStoredSchool();
@@ -75,7 +49,7 @@
       user.schoolCode ||
       stored.schoolCode || stored.school_code || '';
 
-    return {id:norm(id), schoolId:norm(id), name:norm(name), schoolName:norm(name), code:norm(code), schoolCode:norm(code), isIndependent:true};
+    return {id:norm(id), schoolId:norm(id), name:norm(name), schoolName:norm(name), code:norm(code), schoolCode:norm(code)};
   }
 
   function persistActiveSchool(s){
@@ -213,13 +187,7 @@
 
   function updateSchoolLabels(){
     var s = activeSchool();
-    if(!s.schoolId){
-      var old = document.getElementById('activeSchoolLabel');
-      if(old && old.parentNode) old.parentNode.removeChild(old);
-      document.documentElement.removeAttribute('data-active-school-id');
-      document.documentElement.removeAttribute('data-active-school-name');
-      return;
-    }
+    if(!s.schoolId) return;
     document.documentElement.setAttribute('data-active-school-id', s.schoolId);
     document.documentElement.setAttribute('data-active-school-name', s.schoolName || '');
 
@@ -236,7 +204,7 @@
 
   function install(){
     var s = activeSchool();
-    if(s.schoolId) persistActiveSchool(s);
+    persistActiveSchool(s);
     patchLocalStorage();
     updateSchoolLabels();
     filterVisibleUsers();
@@ -252,12 +220,6 @@
     get: activeSchool,
     set: persistActiveSchool,
     sameSchool: sameSchool,
-    stampItem: function(item){ return stampItem(item, activeSchool()); },
-    isLocalRuntime: isLocalRuntime,
-    isCloudIndependentSchoolContext: isCloudIndependentSchoolContext,
-    clearLocalSchoolContext: function(){
-      ['active_school_id','current_school_id','school_id','smart_school_id','active_school_name','current_school_name','school_name','persist_school','active_school_code','school_code','smartSchool.currentSchool'].forEach(function(k){try{localStorage.removeItem(k);}catch(e){}});
-      updateSchoolLabels();
-    }
+    stampItem: function(item){ return stampItem(item, activeSchool()); }
   };
 })();

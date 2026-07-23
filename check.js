@@ -1,317 +1,195 @@
 
-(function(){
-  const SUPABASE_URL = localStorage.getItem('smartSchoolSupabaseUrl') || 'https://cijhgvbtrvmmlcssgxht.supabase.co';
-  const DEFAULT_SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
-  const SUPABASE_KEY = localStorage.getItem('smartSchoolSupabaseAnonKey') || DEFAULT_SUPABASE_KEY;
-  let sb=null, allStudents=[], previewRows=[], currentSchool={id:'',name:''}, devMode=false;
-  const sectionMap = {'1':'أ','2':'ب','3':'ج','4':'د','5':'هـ','6':'و','7':'ز','8':'ح','9':'ط','10':'ي'};
-  function $(id){return document.getElementById(id)}
-  function safe(v){return String(v==null?'':v).trim()}
-  function html(v){return safe(v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
-  function readJson(k){try{return JSON.parse(localStorage.getItem(k)||sessionStorage.getItem(k)||'null')}catch(e){return null}}
-  function query(){return new URLSearchParams(location.search)}
-  function getClient(){
-    if(sb) return sb;
-    if(!window.supabase || !window.supabase.createClient) throw new Error('مكتبة Supabase لم تُحمّل. تحقق من الاتصال بالإنترنت.');
-    if(!SUPABASE_KEY) throw new Error('مفتاح Supabase غير موجود.');
-    sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY); return sb;
+const form=document.getElementById('visitForm');
+const KEY='moe_supervisor_visit_form_v2_item_scores';
+function values(){const data={}; form.querySelectorAll('input,textarea,select').forEach(el=>{if(el.type==='checkbox'){data[el.name+'|'+el.value]=el.checked}else{data[el.name]=el.value}});return data}
+function loadData(data){form.querySelectorAll('input,textarea,select').forEach(el=>{if(el.type==='checkbox'){el.checked=!!data[el.name+'|'+el.value]}else if(data[el.name]!==undefined){el.value=data[el.name]}})}
+function saveLocal(){localStorage.setItem(KEY,JSON.stringify(values())); toast('تم حفظ البيانات داخل المتصفح')}
+function autoSave(){localStorage.setItem(KEY,JSON.stringify(values()))}
+function clearForm(){if(confirm('هل تريد تفريغ جميع الحقول؟')){form.reset();localStorage.removeItem(KEY);toast('تم تفريغ النموذج')}}
+function printForm(){window.print()}
+function exportPDF(){alert('اختر من نافذة الطباعة: Save as PDF / حفظ كملف PDF. تم ضبط الصفحات على 8 صفحات A4 مطابقة لعدد صفحات السجل الأصلي.'); window.print()}
+function downloadJSON(){const blob=new Blob([JSON.stringify(values(),null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='بيانات_استمارة_زيارة_مشرف_الإدارة_المدرسية.json';a.click();URL.revokeObjectURL(a.href)}
+function importJSON(file){const r=new FileReader();r.onload=()=>{try{const data=JSON.parse(r.result);loadData(data);autoSave();toast('تم استيراد البيانات بنجاح')}catch(e){alert('ملف البيانات غير صالح')}};r.readAsText(file)}
+function toast(msg){const t=document.createElement('div');t.textContent=msg;t.style.cssText='position:fixed;bottom:18px;right:18px;background:#073b45;color:white;padding:12px 18px;border-radius:12px;z-index:99;box-shadow:0 4px 20px #0005';document.body.appendChild(t);setTimeout(()=>t.remove(),2200)}
+form.addEventListener('input',()=>{clearTimeout(window.__sv);window.__sv=setTimeout(autoSave,400)});
+
+function setupHijriDate(){
+  const daySel=form.querySelector('[data-hijri-day]');
+  const monthSel=form.querySelector('[data-hijri-month]');
+  const yearSel=form.querySelector('[data-hijri-year]');
+  const weekSel=form.querySelector('[data-weekday-select]');
+  const display=form.querySelector('[name="hijri_date_display"]');
+  if(!daySel||!monthSel||!yearSel||!display) return;
+
+  const months=[
+    'محرم','صفر','ربيع الأول','ربيع الآخر','جمادى الأولى','جمادى الآخرة',
+    'رجب','شعبان','رمضان','شوال','ذو القعدة','ذو الحجة'
+  ];
+  const weekdays=['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+
+  function fillSelect(sel, arr, getValue=(x)=>x, getText=(x)=>x){
+    const current=sel.value;
+    sel.innerHTML='<option value=""></option>'+arr.map(x=>`<option value="${getValue(x)}">${getText(x)}</option>`).join('');
+    if(current) sel.value=current;
   }
-  function setStatus(msg,type){$('statusBox').className= type==='bad'?'bad':type==='ok'?'ok':'note'; $('statusBox').textContent=msg;}
-  function setSchoolLabel(){
-    if(currentSchool.id){$('schoolLabel').textContent=(devMode?'وضع تجربة محلي — ':'')+'المدرسة النشطة: '+(currentSchool.name||currentSchool.id)}
-    else {$('schoolLabel').textContent='لم يتم العثور على مدرسة نشطة. يمكن تفعيل وضع التجربة المحلية.'}
-  }
-  function detectSchool(){
-    const q=query(), user=readJson('currentSchoolUser')||readJson('currentUser')||readJson('loggedUser')||{}, school=readJson('smartSchool.currentSchool')||readJson('active_school')||readJson('activeSchool')||{};
-    const id = q.get('schoolId') || q.get('school_id') || localStorage.getItem('active_school_id') || localStorage.getItem('current_school_id') || localStorage.getItem('school_id') || localStorage.getItem('smart_school_id') || school.id || school.school_id || user.school_id || user.schoolId || '';
-    const name = q.get('schoolName') || q.get('school_name') || school.school_name || school.name || user.school_name || user.schoolName || '';
-    currentSchool={id:safe(id),name:safe(name)};
-    if(currentSchool.id){['active_school_id','current_school_id','school_id','smart_school_id'].forEach(k=>localStorage.setItem(k,currentSchool.id));}
-    setSchoolLabel();
-    if(!currentSchool.id){ showDevMode(); }
-    else { $('devModeBox').classList.add('hidden'); }
-    return currentSchool;
-  }
-  async function showDevMode(){
-    $('devModeBox').classList.remove('hidden');
-    setStatus('لم يتم العثور على مدرسة نشطة. يمكنك تفعيل وضع التجربة المحلية لاختبار مركز المعلومات دون رفع GitHub.','note');
+  fillSelect(daySel, Array.from({length:30},(_,i)=>i+1), x=>String(x).padStart(2,'0'), x=>String(x).padStart(2,'0'));
+  fillSelect(monthSel, months.map((m,i)=>({m,i:i+1})), x=>String(x.i).padStart(2,'0'), x=>x.m);
+  fillSelect(yearSel, Array.from({length:1477-1447+1},(_,i)=>1447+i), x=>String(x), x=>String(x)+'هـ');
+
+  function getCurrentHijri(){
     try{
-      const client=getClient();
-      const q=await client.from('schools').select('id,school_name,school_code').order('school_name',{ascending:true}).limit(200);
-      if(q.error) throw q.error;
-      const rows=q.data||[];
-      $('devSchoolSelect').innerHTML='<option value="">اختر مدرسة...</option>'+rows.map(r=>`<option value="${html(r.id)}" data-name="${html(r.school_name||r.school_code||r.id)}">${html(r.school_name||r.school_code||r.id)}</option>`).join('');
-    }catch(e){
-      $('devSchoolSelect').innerHTML='<option value="">تعذر تحميل المدارس</option>';
+      const parts=new Intl.DateTimeFormat('en-u-ca-islamic-umalqura',{day:'numeric',month:'numeric',year:'numeric'}).formatToParts(new Date());
+      const obj={};
+      parts.forEach(p=>{if(p.type==='day')obj.day=p.value;if(p.type==='month')obj.month=p.value;if(p.type==='year')obj.year=p.value;});
+      return {
+        day:String(obj.day||'').padStart(2,'0'),
+        month:String(obj.month||'').padStart(2,'0'),
+        year:String(obj.year||'')
+      };
+    }catch(e){return {day:'',month:'',year:'1447'}}
+  }
+
+  function sync(){
+    const d=daySel.value, m=monthSel.value, y=yearSel.value;
+    const monthName=months[(parseInt(m,10)||1)-1]||'';
+    display.value=(d&&m&&y)?`${d} / ${monthName} / ${y}هـ`:'';
+    autoSave();
+  }
+  [daySel,monthSel,yearSel,weekSel].forEach(el=>el.addEventListener('change',sync));
+
+  const saved=localStorage.getItem(KEY);
+  if(!saved){
+    const cur=getCurrentHijri();
+    if(Number(cur.year)>=1447 && Number(cur.year)<=1477){
+      daySel.value=cur.day; monthSel.value=cur.month; yearSel.value=cur.year;
+    }else{
+      yearSel.value='1447';
     }
+    const gDay=weekdays[new Date().getDay()];
+    if(weekSel && !weekSel.value) weekSel.value=gDay;
+    sync();
+  }else{
+    sync();
   }
-  window.activateDevSchool=function(){
-    const sel=$('devSchoolSelect');
-    const selected=sel.options[sel.selectedIndex];
-    const manual=safe($('devSchoolId').value);
-    const id=manual || safe(sel.value) || 'DEV_SCHOOL';
-    const name=safe($('devSchoolName').value) || (selected && selected.dataset ? selected.dataset.name : '') || 'مدرسة تجربة محلية';
-    devMode=true; currentSchool={id:id,name:name};
-    localStorage.setItem('active_school_id',id); localStorage.setItem('current_school_id',id); localStorage.setItem('school_id',id);
-    localStorage.setItem('smartSchool.currentSchool',JSON.stringify({id:id,school_name:name,name:name,dev:true}));
-    setSchoolLabel(); $('devModeBox').classList.add('hidden');
-    setStatus('تم تفعيل وضع التجربة المحلي للمدرسة: '+name+' — يمكن الآن قراءة الملف والحفظ والعرض.','ok');
-    loadStudents();
-  }
-  function noorToSection(v){
-    v=safe(v); if(!v) return 'غير محدد';
-    v=v.replace(/شعبة|الشعبة|الفصل|فصل|رقم/gi,'').trim();
-    const c=v.replace(/^0+/,'');
-    return sectionMap[v] || sectionMap[c] || v;
-  }
-  function toWesternDigits(v){return safe(v).replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d))}
-  function normText(v){return toWesternDigits(v).replace(/[إأآا]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/[ـ\u064B-\u0652]/g,'').replace(/[()\[\]{}:،,؛؛\-_/\\]/g,' ').replace(/\s+/g,' ').trim()}
-  function normHeader(h){return normText(h).replace(/[\s_\-\/]/g,'').toLowerCase()}
-  function pick(row,names){const keys=Object.keys(row); for(const name of names){const target=normHeader(name); const k=keys.find(x=>normHeader(x)===target || normHeader(x).includes(target) || target.includes(normHeader(x))); if(k && safe(row[k])) return row[k];} return ''}
-  function scanRow(row, patterns){
-    const vals=[row.__sheetName||'', ...Object.values(row).map(safe)].filter(Boolean);
-    return vals.find(v=>patterns.some(re=>re.test(normText(v)))) || '';
-  }
-  function gradeFromText(txt, stageHint){
-    const t=normText(txt);
-    const st=normText(stageHint);
-    const sec=/ثانوي|مسار|عام|صحه|حياه|حاسب|هندسه|اعمال|اداره|شرعي/.test(t) || /ثانوي/.test(st);
-    const mid=/متوسط/.test(t) || /متوسط/.test(st);
-    const elem=/ابتدائي|رابع|خامس|سادس/.test(t) || /ابتدائي/.test(st);
-    // الثانوي: انتبه للترتيب من الثالث ثم الثاني ثم الأول حتى لا تلتقط كلمة عامة
-    if(sec){
-      if(/\b(3|ثالث|الثالث)\b/.test(t)) return 'الثالث الثانوي';
-      if(/\b(2|ثاني|الثاني)\b/.test(t)) return 'الثاني الثانوي';
-      if(/\b(1|اول|اولي|الاول)\b/.test(t)) return 'الأول الثانوي';
-    }
-    if(mid){
-      if(/\b(3|ثالث|الثالث)\b/.test(t)) return 'الثالث المتوسط';
-      if(/\b(2|ثاني|الثاني)\b/.test(t)) return 'الثاني المتوسط';
-      if(/\b(1|اول|اولي|الاول)\b/.test(t)) return 'الأول المتوسط';
-    }
-    if(elem || (!sec && !mid)){
-      if(/\b(6|سادس|السادس)\b/.test(t)) return 'السادس';
-      if(/\b(5|خامس|الخامس)\b/.test(t)) return 'الخامس';
-      if(/\b(4|رابع|الرابع)\b/.test(t)) return 'الرابع';
-      if(/\b(3|ثالث|الثالث)\b/.test(t)) return 'الثالث';
-      if(/\b(2|ثاني|الثاني)\b/.test(t)) return 'الثاني';
-      if(/\b(1|اول|اولي|الاول)\b/.test(t)) return 'الأول';
-    }
-    return '';
-  }
-  function stageFromText(txt){
-    const t=normText(txt);
-    if(/ثانوي|مسار|عام|صحه|حياه|حاسب|هندسه|اعمال|اداره|شرعي/.test(t)) return 'ثانوي';
-    if(/متوسط/.test(t)) return 'متوسط';
-    if(/ابتدائي|رابع|خامس|سادس|الرابع|الخامس|السادس/.test(t)) return 'ابتدائي';
-    return '';
-  }
-  function candidateGradeTexts(row, rawGrade){
-    const vals=[];
-    if(rawGrade) vals.push(rawGrade);
-    if(row && row.__sheetName) vals.push(row.__sheetName);
-    if(row){
-      Object.entries(row).forEach(([k,v])=>{
-        const hk=normHeader(k), tv=safe(v);
-        if(!tv) return;
-        if(/صف|مرحله|مرحلة|فصل|مسار|تخصص|مستوى|المستوي|الصفالدراسي|المرحلهالدراسيه/.test(hk)) vals.push(tv);
-        else if(/ثانوي|متوسط|ابتدائي/.test(normText(tv)) && /اول|ثاني|ثالث|رابع|خامس|سادس|1|2|3|4|5|6/.test(normText(tv))) vals.push(tv);
-      });
-    }
-    return vals.filter(Boolean);
-  }
-  function normalizeStage(stage, grade, track, row){
-    const direct=stageFromText(stage) || stageFromText(grade) || stageFromText(track);
-    if(direct) return direct;
-    // لا نستخدم كامل الصف إلا إذا وجد نص واضح للمرحلة، تجنبًا لالتقاط أرقام التسلسل أو بيانات أخرى
-    const rowStage=stageFromText((row&&row.__sheetName)||'') || scanRow(row||{},[/ابتدائي|متوسط|ثانوي|مسار/]);
-    const inferred=stageFromText(rowStage);
-    return inferred || safe(stage) || 'غير محدد';
-  }
-  function normalizeGrade(grade, stage, row){
-    const candidates=candidateGradeTexts(row||{}, grade);
-    for(const c of candidates){
-      const g=gradeFromText(c, stage);
-      if(g) return g;
-    }
-    return safe(grade)||'غير محدد';
-  }
-  function normalizeTrack(track, stage, grade, row){
-    const t=normText([track,row&&row.__sheetName||'', grade].join(' '));
-    if(!/ثانوي/.test(normText(stage))) return '';
-    if(/صحه|حياه/.test(t)) return 'مسار الصحة والحياة';
-    if(/حاسب|هندسه/.test(t)) return 'مسار الحاسب والهندسة';
-    if(/اداره|اعمال/.test(t)) return 'مسار إدارة الأعمال';
-    if(/شرعي/.test(t)) return 'المسار الشرعي';
-    if(/عام|مشترك/.test(t)) return 'عام';
-    return safe(track)||'عام';
-  }
-  function cleanStudent(r){
-    const stage=normalizeStage(r.stage,r.grade,r.track_name,r.__row||{});
-    const grade=normalizeGrade(r.grade,stage,r.__row||{});
-    const track=normalizeTrack(r.track_name,stage,grade,r.__row||{});
-    return {...r, stage, grade, track_name:track, noor_section_code:toWesternDigits(r.noor_section_code||''), section_name:noorToSection(r.noor_section_code||r.section_name), student_name:safe(r.student_name).replace(/\s+/g,' '), student_number:toWesternDigits(r.student_number||''), national_id:toWesternDigits(r.national_id||'')};
-  }
-  function dedupeKey(r){
-    const year=safe(r.academic_year)||safe($('academicYear').value)||'1447';
-    if(safe(r.student_number)) return ['num',currentSchool.id,year,safe(r.student_number)].join('|');
-    if(safe(r.national_id)) return ['nid',currentSchool.id,year,safe(r.national_id)].join('|');
-    return ['name',currentSchool.id,year,normText(r.student_name),normText(r.stage),normText(r.grade),normText(r.track_name||''),normText(r.section_name)].join('|');
-  }
-  function rowToStudent(row){
-    let name=pick(row,['اسم الطالب','الطالب','الاسم','اسم','Student Name','student_name']);
-    let stage=pick(row,['المرحلة','المرحلة الدراسية','المرحله الدراسيه','stage']);
-    let grade=pick(row,['الصف','الصف الدراسي','الصف الدراسي الحالي','الصفوف','المستوى','grade','class']);
-    let track=pick(row,['المسار','نوع المسار','التخصص','الخطة الدراسية','الخطة','النظام','track','track_name','major']);
-    let code=pick(row,['الشعبة','رقم الشعبة','الفصل','رقم الفصل','section','section code','noor section']);
-    let nid=pick(row,['رقم الهوية','السجل المدني','هوية الطالب','رقم السجل المدني','national_id','id']);
-    let snum=pick(row,['رقم الطالب','رقم نور','رقم الطالب في نور','student_number','student no','noor']);
-    if(!name){ const vals=Object.values(row).map(safe).filter(Boolean); name=vals.find(v=>/[\u0600-\u06FF]/.test(v) && v.length>5 && !/ثانوي|متوسط|ابتدائي|مسار/.test(v)) || ''; }
-    let r={__row:row, school_id:currentSchool.id, student_name:safe(name), student_number:safe(snum)||null, stage:safe(stage), grade:safe(grade), track_name:safe(track), noor_section_code:safe(code), section_name:noorToSection(code), national_id:safe(nid)||null, student_status:'نشط', academic_year:safe($('academicYear').value)||'1447'};
-    return cleanStudent(r);
-  }
-  window.readExcel = async function(){
-    try{
-      if(!currentSchool.id) detectSchool(); if(!currentSchool.id) throw new Error('فعّل وضع التجربة المحلية أو افتح المركز من حساب مدير مدرسة مستقلة قبل الاستيراد.');
-      const f=$('excelFile').files[0]; if(!f) throw new Error('اختر ملف Excel أولًا.');
-      if(!window.XLSX) throw new Error('مكتبة قراءة Excel لم تُحمّل.');
-      const data=await f.arrayBuffer(); const wb=XLSX.read(data,{type:'array'}); let rows=[];
-      wb.SheetNames.forEach(name=>{ const ws=wb.Sheets[name]; rows=rows.concat(XLSX.utils.sheet_to_json(ws,{defval:''}).map(r=>Object.assign(r,{__sheetName:name}))); });
-      const parsed=rows.map(rowToStudent).filter(r=>r.student_name);
-      const seen=new Set(); let duplicates=0; previewRows=[];
-      parsed.forEach(r=>{ const k=dedupeKey(r); if(seen.has(k)){duplicates++; return;} seen.add(k); previewRows.push(r); });
-      if(!previewRows.length) throw new Error('لم يتم العثور على أسماء طلاب. تأكد من وجود عمود اسم الطالب.');
-      $('previewCount').textContent='تمت قراءة '+previewRows.length+' طالبًا' + (duplicates ? ' — تم تجاهل '+duplicates+' مكرر في الملف' : ''); $('savePreviewBtn').classList.remove('hidden');
-      $('previewBox').classList.remove('hidden');
-      $('previewBox').innerHTML='<table><thead><tr><th>م</th><th>المرحلة</th><th>الصف</th><th>المسار</th><th>شعبة نور</th><th>الشعبة</th><th>رقم الطالب</th><th>اسم الطالب</th></tr></thead><tbody>'+previewRows.slice(0,100).map((r,i)=>`<tr><td>${i+1}</td><td>${html(r.stage)}</td><td>${html(r.grade)}</td><td>${html(r.track_name||'')}</td><td>${html(r.noor_section_code)}</td><td>${html(r.section_name)}</td><td>${html(r.student_number||'')}</td><td>${html(r.student_name)}</td></tr>`).join('')+'</tbody></table>';
-      setStatus('تم تنظيف البيانات وتوحيد مسميات المرحلة والصف والمسار والشعبة. راجع البيانات ثم اضغط حفظ البيانات في مركز المعلومات.','ok');
-    }catch(e){setStatus(e.message||e,'bad')}
-  }
-  window.savePreview = async function(){
-    try{
-      if(!currentSchool.id) detectSchool();
-      if(!currentSchool.id) throw new Error('لا توجد مدرسة نشطة أو وضع تجربة محلي مفعل.');
-      if(!previewRows.length) throw new Error('لا توجد بيانات للمعاينة.');
-      const client=getClient();
-      const mode=$('saveMode').value;
-      const year=safe($('academicYear').value)||'1447';
-      const clean=previewRows.map(r=>cleanStudent(r)).map(r=>({
-        school_id:currentSchool.id,
-        student_name:r.student_name,
-        student_number:r.student_number||null,
-        stage:r.stage||'غير محدد',
-        grade:r.grade||'غير محدد',
-        track_name:r.track_name||'',
-        noor_section_code:r.noor_section_code||'',
-        section_name:r.section_name||'غير محدد',
-        national_id:r.national_id||null,
-        student_status:'نشط',
-        academic_year:year
-      }));
-      if(mode==='replace'){
-        setStatus('جارٍ تنظيف بيانات العام الحالي من السحابة ثم حفظ الملف الجديد...','note');
-        const del=await client.from('students').delete().eq('school_id',currentSchool.id).eq('academic_year',year);
-        if(del.error) throw del.error;
+}
+
+setupHijriDate();
+const old=localStorage.getItem(KEY);if(old){try{loadData(JSON.parse(old));setupHijriDate()}catch(e){}}
+
+
+/* ربط استمارة الزيارة الإشرافية بمحفظة اجتماعات المدير دون التأثير على باقي المنصة */
+function __visitQueryParams(){ try{return new URLSearchParams(window.location.search||'')}catch(e){return new URLSearchParams()} }
+function __visitSchoolId(){ const q=__visitQueryParams(); return q.get('school_id')||q.get('schoolId')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||'school'; }
+function __visitSchoolName(){ const q=__visitQueryParams(); return q.get('school_name')||q.get('schoolName')||localStorage.getItem('school_name')||localStorage.getItem('persist_school')||'المدرسة'; }
+function __safeVisitText(v){ return String(v||'').replace(/[<>]/g,'').trim(); }
+function __managerMeetingKeys(){
+  const ids=['root','default',__visitSchoolId(),localStorage.getItem('cached_manager_uid'),localStorage.getItem('manager_uid'),localStorage.getItem('current_manager_uid')].filter(Boolean);
+  const uniq=[...new Set(ids.map(String))];
+  return [...new Set(uniq.map(id=>'school_meetings_archive_'+id).concat(['smartSchoolUnifiedOpsV2_minutes_manager']))];
+}
+function __readArr(key){ try{ const v=JSON.parse(localStorage.getItem(key)||'[]'); return Array.isArray(v)?v:[]; }catch(e){return []} }
+function __writeArr(key,arr){ try{ localStorage.setItem(key,JSON.stringify(arr||[])); }catch(e){} }
+function __nextVisitTitle(existing){
+  const used=new Set((existing||[]).map(x=>String((x&&x.title)||'')));
+  if(!used.has('زيارة إشرافية')) return 'زيارة إشرافية';
+  let n=2; while(used.has('زيارة إشرافية ('+n+')')) n++;
+  return 'زيارة إشرافية ('+n+')';
+}
+function __visitData(){ return values(); }
+
+function __visitPrintablePdfHtml(title){
+  try{
+    // بناء نسخة HTML ثابتة مطابقة لما يظهر عند الطباعة والحفظ، مع تثبيت القيم الحالية داخل الحقول
+    const docClone=document.documentElement.cloneNode(true);
+    const originalControls=Array.from(document.querySelectorAll('input,textarea,select'));
+    const cloneControls=Array.from(docClone.querySelectorAll('input,textarea,select'));
+    originalControls.forEach(function(src,i){
+      const dst=cloneControls[i]; if(!dst) return;
+      const tag=(src.tagName||'').toLowerCase();
+      const type=(src.type||'').toLowerCase();
+      if(tag==='textarea'){
+        dst.textContent=src.value||'';
+        dst.setAttribute('data-print-value',src.value||'');
+      }else if(tag==='select'){
+        Array.from(dst.options||[]).forEach(function(op){op.removeAttribute('selected');});
+        if(dst.options && dst.options[src.selectedIndex]) dst.options[src.selectedIndex].setAttribute('selected','selected');
+        dst.setAttribute('data-print-value',src.value||'');
+      }else if(type==='checkbox' || type==='radio'){
+        if(src.checked) dst.setAttribute('checked','checked'); else dst.removeAttribute('checked');
+      }else{
+        dst.setAttribute('value',src.value||'');
       }
-      let existingKeys=new Set();
-      if(mode!=='replace'){
-        const existingQ=await client.from('students').select('id,student_name,student_number,national_id,stage,grade,track_name,section_name,academic_year').eq('school_id',currentSchool.id).eq('academic_year',year).neq('student_status','محذوف');
-        if(existingQ.error) throw existingQ.error;
-        existingKeys=new Set((existingQ.data||[]).map(dedupeKey));
-      }
-      const seen=new Set(); let skippedExisting=0, skippedPreview=0;
-      const toInsert=[];
-      clean.forEach(r=>{
-        const k=dedupeKey(r);
-        if(seen.has(k)){skippedPreview++; return;}
-        seen.add(k);
-        if(mode!=='replace' && existingKeys.has(k)){skippedExisting++; return;}
-        toInsert.push(r);
-      });
-      let saved=0;
-      for(let i=0;i<toInsert.length;i+=250){
-        const chunk=toInsert.slice(i,i+250);
-        const ins=await client.from('students').insert(chunk);
-        if(ins.error) throw ins.error;
-        saved += chunk.length;
-      }
-      previewRows=[];
-      $('savePreviewBtn').classList.add('hidden');
-      $('previewCount').textContent='تم الحفظ والتحديث';
-      await loadStudents();
-      setStatus('تم تحديث مركز المعلومات: تم حفظ '+saved+' طالبًا. تم تجاهل '+skippedExisting+' طالب موجود مسبقًا و '+skippedPreview+' تكرار داخل الملف.','ok');
-    }catch(e){setStatus('تعذر الحفظ: '+(e.message||e),'bad')}
+    });
+    Array.from(docClone.querySelectorAll('script')).forEach(function(x){x.remove();});
+    Array.from(docClone.querySelectorAll('.toolbar,.no-print-note')).forEach(function(x){x.remove();});
+    const head=docClone.querySelector('head');
+    if(head){
+      const meta=document.createElement('meta'); meta.setAttribute('charset','utf-8'); head.prepend(meta);
+      const printStyle=document.createElement('style');
+      printStyle.textContent='@page{size:A4 portrait;margin:0}html,body{width:210mm!important;background:#fff!important}.sheet{margin:0 auto!important;box-shadow:none!important;width:210mm!important;height:297mm!important;break-after:page;page-break-after:always;overflow:hidden!important}.sheet:last-child{break-after:auto;page-break-after:auto}.toolbar,.no-print-note{display:none!important}input,textarea,select{font-weight:900!important;color:#000!important;-webkit-text-fill-color:#000!important}select{appearance:none!important;-webkit-appearance:none!important}';
+      head.appendChild(printStyle);
+      const ttl=head.querySelector('title'); if(ttl) ttl.textContent=title||'زيارة إشرافية';
+    }
+    return '<!DOCTYPE html>\n'+docClone.outerHTML;
+  }catch(e){
+    return '<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>'+(title||'زيارة إشرافية')+'</title></head><body><pre style="font-family:Arial;white-space:pre-wrap">'+__visitReadableSummary(__visitData())+'</pre></body></html>';
   }
-  window.cleanCurrentYearFromCloud = async function(){
-    try{
-      if(!currentSchool.id) detectSchool();
-      if(!currentSchool.id) throw new Error('لا توجد مدرسة نشطة أو وضع تجربة محلي مفعل.');
-      const year=safe($('academicYear').value)||'1447';
-      if(!confirm('سيتم حذف بيانات الطلاب للعام '+year+' من السحابة للمدرسة النشطة فقط، ثم تصفير لوحة مركز المعلومات. هل تريد المتابعة؟')) return;
-      const client=getClient();
-      const del=await client.from('students').delete().eq('school_id',currentSchool.id).eq('academic_year',year);
-      if(del.error) throw del.error;
-      allStudents=[]; previewRows=[];
-      rebuildFilters(true); renderTree(); renderStats(); renderStudents();
-      $('previewCount').textContent='تم تنظيف بيانات العام الحالي';
-      $('savePreviewBtn').classList.add('hidden');
-      setStatus('تم تنظيف بيانات العام الحالي من السحابة لهذه المدرسة فقط.','ok');
-    }catch(e){setStatus('تعذر التنظيف: '+(e.message||e),'bad')}
-  }
-  window.loadStudents = async function(){
-    try{
-      if(!currentSchool.id) detectSchool(); if(!currentSchool.id){ return; }
-      const client=getClient(); const year=safe($('academicYear').value)||'1447'; const q=await client.from('students').select('*').eq('school_id',currentSchool.id).eq('academic_year',year).neq('student_status','محذوف').order('stage',{ascending:true}).order('grade',{ascending:true}).order('track_name',{ascending:true}).order('section_name',{ascending:true}).order('student_name',{ascending:true});
-      if(q.error) throw q.error; allStudents=(q.data||[]).map(r=>cleanStudent(r)); rebuildFilters(true); renderTree(); renderStats(); renderStudents();
-      setStatus('تم تحميل بيانات المدرسة النشطة: '+allStudents.length+' طالبًا.','ok');
-    }catch(e){setStatus('تعذر تحميل الطلاب: '+(e.message||e),'bad')}
-  }
-  function unique(arr){return [...new Set(arr.map(safe).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ar'))}
-  function fill(sel,vals,keep){const old=keep?sel.value:''; sel.innerHTML='<option value="">الكل</option>'+vals.map(v=>`<option>${html(v)}</option>`).join(''); if(old && vals.includes(old)) sel.value=old;}
-  window.rebuildFilters = function(initial){
-    const st=$('filterStage'), gr=$('filterGrade'), tr=$('filterTrack'), sec=$('filterSection');
-    fill(st,unique(allStudents.map(x=>x.stage)),!initial);
-    const stage=st.value; fill(gr,unique(allStudents.filter(x=>!stage||x.stage===stage).map(x=>x.grade)),!initial);
-    const grade=gr.value; fill(tr,unique(allStudents.filter(x=>(!stage||x.stage===stage)&&(!grade||x.grade===grade)).map(x=>x.track_name||'غير محدد')),!initial);
-    const track=tr.value; fill(sec,unique(allStudents.filter(x=>(!stage||x.stage===stage)&&(!grade||x.grade===grade)&&(!track||(x.track_name||'غير محدد')===track)).map(x=>x.section_name)),!initial);
-  }
-  function renderStats(){
-    $('stStudents').textContent=allStudents.length; $('stStages').textContent=unique(allStudents.map(x=>x.stage)).length; $('stGrades').textContent=unique(allStudents.map(x=>x.grade)).length; $('stSections').textContent=unique(allStudents.map(x=>x.grade+'|'+(x.track_name||'')+'|'+x.section_name)).length;
-  }
-  function renderTree(){
-    if(!allStudents.length){$('treeBox').innerHTML='<div class="muted">لا توجد بيانات بعد.</div>';return;}
-    const stages=unique(allStudents.map(x=>x.stage));
-    $('treeBox').innerHTML=stages.map(stage=>{
-      const grades=unique(allStudents.filter(x=>x.stage===stage).map(x=>x.grade));
-      return `<div class="treeItem"><div class="treeHead"><span>${html(stage)}</span><span class="pill">${allStudents.filter(x=>x.stage===stage).length}</span></div>`+grades.map(g=>{
-        const tracks=unique(allStudents.filter(x=>x.stage===stage&&x.grade===g).map(x=>x.track_name||'غير محدد'));
-        return `<div style="margin-top:10px;font-weight:900">${html(g)}</div>`+tracks.map(t=>{
-          const sections=unique(allStudents.filter(x=>x.stage===stage&&x.grade===g&&(x.track_name||'غير محدد')===t).map(x=>x.section_name));
-          return `<div class="muted" style="margin-top:8px">المسار: ${html(t)}</div><div class="chips">`+sections.map(s=>`<button class="chip" onclick="selectGroup('${html(stage)}','${html(g)}','${html(t)}','${html(s)}')">${html(s)} (${allStudents.filter(x=>x.stage===stage&&x.grade===g&&(x.track_name||'غير محدد')===t&&x.section_name===s).length})</button>`).join('')+`</div>`;
-        }).join('');
-      }).join('')+`</div>`;
-    }).join('');
-  }
-  window.selectGroup=function(stage,grade,track,section){$('filterStage').value=stage; rebuildFilters(); $('filterGrade').value=grade; rebuildFilters(); $('filterTrack').value=track; rebuildFilters(); $('filterSection').value=section; renderStudents();}
-  window.clearFilters=function(){$('filterStage').value=''; rebuildFilters(); $('filterGrade').value=''; rebuildFilters(); $('filterTrack').value=''; rebuildFilters(); $('filterSection').value=''; $('searchName').value=''; renderStudents();}
-  window.renderStudents=function(){
-    const st=$('filterStage').value, gr=$('filterGrade').value, tr=$('filterTrack').value, sec=$('filterSection').value, q=safe($('searchName').value);
-    const rows=allStudents.filter(x=>(!st||x.stage===st)&&(!gr||x.grade===gr)&&(!tr||(x.track_name||'غير محدد')===tr)&&(!sec||x.section_name===sec)&&(!q||safe(x.student_name).includes(q)));
-    $('shownCount').textContent=rows.length+' طالب';
-    $('studentsBody').innerHTML=rows.map((r,i)=>`<tr><td>${i+1}</td><td><input value="${html(r.student_name)}" id="name_${r.id}"></td><td><input value="${html(r.student_number||'')}" id="snum_${r.id}"></td><td><input value="${html(r.stage)}" id="stage_${r.id}"></td><td><input value="${html(r.grade)}" id="grade_${r.id}"></td><td><input value="${html(r.track_name||'')}" id="track_${r.id}"></td><td><input value="${html(r.section_name)}" id="section_${r.id}"></td><td><input value="${html(r.noor_section_code||'')}" id="code_${r.id}"></td><td><input value="${html(r.national_id||'')}" id="nid_${r.id}"></td><td class="noPrint"><div class="actions"><button class="btn small" onclick="updateStudent('${r.id}')">حفظ/نقل</button><button class="btn small indigo" onclick="studentCard('${r.id}')">بطاقة</button><button class="btn small danger" onclick="deleteStudent('${r.id}')">حذف</button></div></td></tr>`).join('') || '<tr><td colspan="10" class="muted">لا توجد بيانات مطابقة.</td></tr>';
-  }
-  window.updateStudent=async function(id){
-    try{const client=getClient(); const row={student_name:safe($('name_'+id).value),student_number:safe($('snum_'+id).value)||null,stage:safe($('stage_'+id).value)||'غير محدد',grade:safe($('grade_'+id).value)||'غير محدد',track_name:safe($('track_'+id).value)||'',section_name:safe($('section_'+id).value)||'غير محدد',noor_section_code:safe($('code_'+id).value),national_id:safe($('nid_'+id).value)||null}; const q=await client.from('students').update(row).eq('id',id).eq('school_id',currentSchool.id); if(q.error) throw q.error; setStatus('تم تحديث بيانات الطالب ونقله حسب المرحلة/الصف/المسار/الشعبة الجديدة.','ok'); await loadStudents();}catch(e){setStatus('تعذر التحديث: '+(e.message||e),'bad')}
-  }
-  window.deleteStudent=async function(id){
-    if(!confirm('حذف الطالب من العرض؟ سيتم الحذف بشكل منطقي ويمكن الاستفادة من السجلات المرتبطة لاحقًا.')) return;
-    try{const client=getClient(); const q=await client.from('students').update({student_status:'محذوف'}).eq('id',id).eq('school_id',currentSchool.id); if(q.error) throw q.error; setStatus('تم حذف الطالب من العرض بشكل آمن.','ok'); await loadStudents();}catch(e){setStatus('تعذر الحذف: '+(e.message||e),'bad')}
-  }
-  window.studentCard=function(id){
-    const r=allStudents.find(x=>String(x.id)===String(id)); if(!r) return;
-    alert('بطاقة الطالب\n\nالاسم: '+(r.student_name||'')+'\nرقم الطالب: '+(r.student_number||'')+'\nالهوية: '+(r.national_id||'')+'\nالمرحلة: '+(r.stage||'')+'\nالصف: '+(r.grade||'')+'\nالمسار: '+(r.track_name||'')+'\nالشعبة: '+(r.section_name||'')+'\nالحالة: '+(r.student_status||'نشط'));
-  }
-  document.addEventListener('DOMContentLoaded',()=>{detectSchool(); if(currentSchool.id) loadStudents();});
-  window.addEventListener('focus',()=>{ if(currentSchool.id) loadStudents(); });
-  document.addEventListener('visibilitychange',()=>{ if(!document.hidden && currentSchool.id) loadStudents(); });
-})();
+}
+function __visitReadableSummary(data){
+  const get=k=>__safeVisitText(data[k]);
+  const lines=[
+    'استمارة زيارة مشرف الإدارة المدرسية',
+    'المدرسة: '+(get('school')||__visitSchoolName()),
+    'مدير/ة المدرسة: '+get('principal'),
+    'المشرف/ـة: '+get('supervisor'),
+    'يوم الزيارة: '+get('visit_day'),
+    'تاريخ الزيارة: '+(get('hijri_date_display')||[get('hijri_day'),get('hijri_month'),get('hijri_year')].filter(Boolean).join('/')),
+    'نقاط القوة: '+get('strengths'),
+    'فرص التحسين: '+get('improvements'),
+    'خطة العمل المقترحة: '+get('action_plan_text')
+  ];
+  return lines.filter(x=>!/:\s*$/.test(x)).join('\n');
+}
+function sendVisitToManagerPortfolio(){
+  autoSave();
+  const data=__visitData();
+  const keys=__managerMeetingKeys();
+  let all=[]; keys.forEach(k=>{ all=all.concat(__readArr(k)); });
+  const title=__nextVisitTitle(all);
+  const date=new Date();
+  const yyyy=date.getFullYear(), mm=String(date.getMonth()+1).padStart(2,'0'), dd=String(date.getDate()).padStart(2,'0');
+  const hh=String(date.getHours()).padStart(2,'0'), mi=String(date.getMinutes()).padStart(2,'0');
+  const summary=__visitReadableSummary(data);
+  const record={
+    id:'supervisor_visit_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+    source:'supervisor_visit_form',
+    archiveType:'meetingMinutes',
+    title:title,
+    type:'زيارة إشرافية',
+    date: yyyy+'-'+mm+'-'+dd,
+    time: hh+':'+mi,
+    createdBy:'المشرف الزائر',
+    createdByRole:'leadership',
+    schoolId:__visitSchoolId(),
+    schoolName:__visitSchoolName(),
+    participants:[{id:'school_manager',name:'مدير/ة المدرسة',role:'leadership'}],
+    agenda:'استمارة الزيارة الإشرافية المعبأة من رابط الزيارة.\n\n'+summary,
+    recommendations:__safeVisitText(data.improvements)||'تم إرسال استمارة الزيارة الإشرافية إلى محفظة الاجتماعات.',
+    tasks:__safeVisitText(data.action_plan_text)||'',
+    attachments:[{name:title+'.pdf',type:'application/pdf',kind:'generated-from-print-html',printReady:true}],
+    formData:data,
+    minutes:summary,
+    summary:summary,
+    pdfHtml:__visitPrintablePdfHtml(title),
+    officialHtml:__visitPrintablePdfHtml(title),
+    templateHtml:__visitPrintablePdfHtml(title),
+    pdfFileName:title+'.pdf',
+    pdfReady:true,
+    createdAt:new Date().toISOString()
+  };
+  keys.forEach(key=>{
+    const arr=__readArr(key);
+    if(!arr.some(x=>String(x.id)===String(record.id))){ arr.unshift(record); __writeArr(key,arr); }
+  });
+  toast('تم إرسال الاستمارة PDF مطابق للطباعة إلى محفظة اجتماعات مدير/ة المدرسة باسم: '+title);
+}

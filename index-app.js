@@ -107,7 +107,7 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
 
         const submitRegistrationRequest = async () => {
             const name = document.getElementById('reg-name').value.trim();
-            const email = document.getElementById('reg-email').value.trim();
+            const email = normalizeEmail(document.getElementById('reg-email').value);
             const password = document.getElementById('reg-password').value.trim();
             const role = document.getElementById('reg-role').value;
             const phone = document.getElementById('reg-phone').value.trim();
@@ -117,13 +117,15 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
             const urlParams = new URLSearchParams(window.location.search);
             const inviteAdminId = urlParams.get('admin') || window.pendingRegistrationInvite?.admin || '';
             const inviteToken = urlParams.get('token') || window.pendingRegistrationInvite?.token || '';
-            if (!name || !email || !password || !role) { showToast("يرجى تعبئة الاسم وبريد منصة مدرستي والرقم السري والدور"); return; }
+            if (!name || !email || !password || !role) { showToast("يرجى تعبئة الاسم والبريد الرسمي لحساب Microsoft Teams والرقم السري والدور"); return; }
+            if (!isValidMicrosoftEmail(email)) { showToast("يرجى إدخال بريد Microsoft صحيح"); return; }
             if (!inviteAdminId || !inviteToken) { showToast("رابط التسجيل غير صالح أو غير مرتبط بحساب مدير"); return; }
             const requestId = 'reg_' + Date.now() + '_' + Math.random().toString(36).slice(2);
             const userData = {
                 id: requestId,
                 name,
                 email,
+                microsoftEmail: email,
                 password,
                 loginPassword: password,
                 passwordMasked: '••••••',
@@ -163,14 +165,14 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
 
         const handleAdminDirectEntry = async () => {
             const n = document.getElementById('user-display-name').value.trim();
-            const e = document.getElementById('user-madrasati-email').value.trim();
+            const e = normalizeEmail(document.getElementById('user-madrasati-email').value);
             
             if (isManagerAccount(n, e)) {
                 isManagerVerifiedInSession = true;
                 localStorage.setItem('is_admin_session', 'true');
                 document.getElementById('waiting-screen').classList.add('hidden');
 
-                const tempAdminData = { id: 'root', name: n || 'مدير/ة النظام', email: e || 'admin', role: 'leadership', isActive: true };
+                const tempAdminData = { id: 'root', name: n || 'مدير/ة النظام', email: e || 'admin', microsoftEmail: e || '', role: 'leadership', isActive: true };
                 startApp(tempAdminData);
 
                 try {
@@ -190,14 +192,14 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
 
         const handleRoleSelection = async (role) => {
             const n = document.getElementById('user-display-name').value.trim();
-            const e = document.getElementById('user-madrasati-email').value.trim();
+            const e = normalizeEmail(document.getElementById('user-madrasati-email').value);
             if (!n || !e) { showToast("يرجى إدخال البيانات"); return; }
             try {
                 const user = await window.ensureAuth();
                 const isManager = isManagerAccount(n, e);
                 if (isManager) {
                     isManagerVerifiedInSession = true;
-                    const userData = { id: user.uid, name: n, email: e, role: 'leadership', isActive: true, isRootAdmin: true };
+                    const userData = { id: user.uid, name: n, email: e, microsoftEmail: e, role: 'leadership', isActive: true, isRootAdmin: true };
                     await window.fs.setDoc(window.fs.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'users', user.uid), userData, { merge: true });
                     startApp(userData);
                     return;
@@ -210,7 +212,7 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
         const checkUserStatus = async () => {
             try {
                 const n = document.getElementById('user-display-name').value.trim();
-                const e = document.getElementById('user-madrasati-email').value.trim();
+                const e = normalizeEmail(document.getElementById('user-madrasati-email').value);
                 const isRoot = isManagerVerifiedInSession || isManagerAccount(n, e) || localStorage.getItem('is_admin_session') === 'true';
                 
                 if (isRoot) {
@@ -821,10 +823,12 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
             document.getElementById('alerts-popup-modal').style.display = 'flex';
         };
 
-        const openEditModal = (uid, n, e, r, active = true) => { 
+        const openEditModal = (uid, n, e, r, active = true, microsoftUserId = '') => { 
             document.getElementById('edit-uid').value = uid; 
             document.getElementById('edit-name').value = n; 
-            document.getElementById('edit-email').value = e; 
+            document.getElementById('edit-email').value = e;
+            const msIdInput = document.getElementById('edit-microsoft-user-id');
+            if (msIdInput) msIdInput.value = microsoftUserId || getMicrosoftUserId((Array.isArray(allUsers) ? allUsers : []).find(u => String(u.id) === String(uid)) || {}); 
             document.getElementById('edit-role').value = r || 'performance'; 
             const activeSelect = document.getElementById('edit-active');
             if (activeSelect) activeSelect.value = active ? 'true' : 'false';
@@ -836,11 +840,17 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
         const saveUserEdit = async () => {
             const uid = document.getElementById('edit-uid').value;
             const name = document.getElementById('edit-name').value.trim();
-            const email = document.getElementById('edit-email').value.trim();
+            const email = normalizeEmail(document.getElementById('edit-email').value);
+            const microsoftUserId = normalizeMicrosoftUserId(document.getElementById('edit-microsoft-user-id')?.value);
             const role = document.getElementById('edit-role').value;
             const selectedActive = document.getElementById('edit-active') ? document.getElementById('edit-active').value === 'true' : true;
             
-            if (!name || !email) { showToast("يرجى ملء البيانات"); return; }
+            if (!name || !email) { showToast("يرجى ملء الاسم والبريد الرسمي لحساب Microsoft Teams"); return; }
+            if (!isValidMicrosoftEmail(email)) { showToast("يرجى إدخال بريد Microsoft صحيح"); return; }
+            const duplicateMicrosoftEmail = (Array.isArray(allUsers) ? allUsers : []).some(u => String(u.id) !== String(uid) && getMicrosoftEmail(u) === email && (!currentMeetingSchoolId() || !u.schoolId && !u.school_id || String(u.schoolId || u.school_id) === currentMeetingSchoolId()));
+            if (duplicateMicrosoftEmail) { showToast("هذا البريد مرتبط بمستخدم آخر داخل المدرسة"); return; }
+            const duplicateMicrosoftUserId = microsoftUserId && (Array.isArray(allUsers) ? allUsers : []).some(u => String(u.id) !== String(uid) && getMicrosoftUserId(u) === microsoftUserId && (!currentMeetingSchoolId() || (!u.schoolId && !u.school_id) || String(u.schoolId || u.school_id) === currentMeetingSchoolId()));
+            if (duplicateMicrosoftUserId) { showToast("معرف Microsoft Object ID مرتبط بمستخدم آخر داخل المدرسة"); return; }
             
             // في حال كان المستخدم الحالي هو admin وقام بتعديل نفسه، نضمن بقاءه مديراً
             const isEditingSelfAdmin = (uid === 'root' || uid === window.auth.currentUser?.uid) && isManagerVerifiedInSession;
@@ -849,7 +859,10 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
             const userData = { 
                 id: uid, 
                 name, 
-                email, 
+                email,
+                microsoftEmail: email,
+                microsoftUserId,
+                microsoft_user_id: microsoftUserId || null,
                 role: finalRole, 
                 isActive: isEditingSelfAdmin ? true : selectedActive,
                 adminOwnerId: isEditingSelfAdmin ? getManagerOwnerId() : (allUsers.find(u => u.id === uid)?.adminOwnerId || getManagerOwnerId()),
@@ -881,6 +894,8 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
                 if(isEditingSelfAdmin) {
                     currentUser.name = name;
                     currentUser.email = email;
+                    currentUser.microsoftEmail = email;
+                    currentUser.microsoftUserId = microsoftUserId;
                     document.getElementById('active-role-badge').innerText = 'مدير/ة النظام';
                 }
             } catch(e) {
@@ -920,6 +935,19 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
         let currentMeetingForPrint = null;
 
         const meetingsStorageKey = () => 'school_meetings_archive_' + (getManagerOwnerId ? getManagerOwnerId() : 'default');
+        const meetingsCloudSyncKey = () => meetingsStorageKey() + '_cloud_sync';
+
+        const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+        const isValidMicrosoftEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(value));
+        const getMicrosoftEmail = (user) => normalizeEmail(user?.microsoftEmail || user?.microsoft_email || user?.email);
+        const normalizeMicrosoftUserId = (value) => String(value || '').trim().toLowerCase();
+        const getMicrosoftUserId = (user) => normalizeMicrosoftUserId(user?.microsoftUserId || user?.microsoft_user_id || user?.azureObjectId || user?.azure_object_id || user?.aadObjectId || user?.aad_object_id);
+        const currentMeetingSchoolId = () => String(
+            currentUser?.schoolId || currentUser?.school_id ||
+            localStorage.getItem('current_school_id') || localStorage.getItem('school_id') ||
+            localStorage.getItem('smart_school_id') || ''
+        ).trim();
+        const meetingSupabase = () => window.SmartSchoolSupabase?.getClient?.() || null;
 
         const getStoredMeetings = () => {
             try { return JSON.parse(localStorage.getItem(meetingsStorageKey()) || '[]'); }
@@ -927,6 +955,80 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
         };
 
         const setStoredMeetings = (items) => localStorage.setItem(meetingsStorageKey(), JSON.stringify(items || []));
+
+        const mapCloudMeeting = (row) => ({
+            id: row.id,
+            cloudId: row.id,
+            schoolId: row.school_id || '',
+            title: row.title || 'اجتماع',
+            teamsUrl: row.meeting_link || row.teams_url || row.teamsUrl || '',
+            type: row.meeting_type || row.type || '',
+            date: row.meeting_date || row.date || '',
+            time: row.meeting_time || row.time || '',
+            agenda: row.agenda || '',
+            recommendations: row.recommendations || row.decisions || '',
+            tasks: row.tasks || '',
+            status: row.status || '',
+            participants: Array.isArray(row.participants) ? row.participants : [],
+            createdBy: row.created_by_name || row.created_by || '',
+            createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
+            cloudOnly: true
+        });
+
+        const syncMeetingsFromCloud = async () => {
+            const sb = meetingSupabase();
+            const schoolId = currentMeetingSchoolId();
+            if (!sb || !schoolId) return getStoredMeetings();
+            try {
+                const { data, error } = await sb.from('meetings').select('*').eq('school_id', schoolId).order('created_at', { ascending: false });
+                if (error) throw error;
+                const local = getStoredMeetings();
+                const byCloudId = new Map(local.filter(x => x.cloudId).map(x => [String(x.cloudId), x]));
+                const cloud = (data || []).map(row => ({ ...mapCloudMeeting(row), ...(byCloudId.get(String(row.id)) || {}) }));
+                const localOnly = local.filter(x => !x.cloudId || !cloud.some(c => String(c.cloudId) === String(x.cloudId)));
+                const merged = [...cloud, ...localOnly].sort((a,b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+                setStoredMeetings(merged);
+                localStorage.setItem(meetingsCloudSyncKey(), new Date().toISOString());
+                return merged;
+            } catch (error) {
+                console.warn('تعذر مزامنة الاجتماعات من Supabase', error);
+                return getStoredMeetings();
+            }
+        };
+
+        const insertMeetingInCloud = async (record) => {
+            const sb = meetingSupabase();
+            const schoolId = currentMeetingSchoolId();
+            if (!sb || !schoolId) throw new Error('تعذر تحديد المدرسة أو الاتصال بـ Supabase');
+            const corePayload = {
+                school_id: schoolId,
+                title: record.title,
+                meeting_link: record.teamsUrl || null
+            };
+            const fullPayload = {
+                ...corePayload,
+                meeting_type: record.type || null,
+                meeting_date: record.date || null,
+                meeting_time: record.time || null,
+                agenda: record.agenda || null,
+                recommendations: record.recommendations || null,
+                tasks: record.tasks || null,
+                participants: record.participants || [],
+                attachments: record.attachments || [],
+                chat_notes: record.chat || [],
+                status: record.status || 'draft',
+                created_by: currentUser?.id || null,
+                created_by_name: record.createdBy || null,
+                created_by_email: record.createdByEmail || null
+            };
+            let result = await sb.from('meetings').insert(fullPayload).select('*').single();
+            // توافق رجعي مع بنية الجدول الحالية قبل تشغيل ملف ترقية Supabase المرفق.
+            if (result.error && /column|schema cache|could not find/i.test(String(result.error.message || result.error))) {
+                result = await sb.from('meetings').insert(corePayload).select('*').single();
+            }
+            if (result.error) throw result.error;
+            return result.data;
+        };
 
         const showMeetingsRoom = () => {
             if (!currentUser) return showToast('يرجى تسجيل الدخول أولاً');
@@ -938,6 +1040,7 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
             }
             renderMeetingParticipants();
             renderMeetingsArchive();
+            syncMeetingsFromCloud().then(renderMeetingsArchive);
         };
 
         const resetMeetingForm = () => {
@@ -949,10 +1052,16 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
         };
 
         const meetingVisibleUsers = () => {
-            const users = Array.isArray(allUsers) ? allUsers : [];
-            if (currentUser?.role === 'leadership') return users.filter(u => u.isActive !== false);
-            if (currentUser?.role === 'agency') return users.filter(u => u.role === 'performance' && u.isActive !== false);
-            return users.filter(u => u.id === currentUser.id || u.email === currentUser.email);
+            const schoolId = currentMeetingSchoolId();
+            const users = (Array.isArray(allUsers) ? allUsers : []).filter(u => {
+                const userSchoolId = String(u.schoolId || u.school_id || schoolId || '').trim();
+                const active = u.isActive !== false && u.active !== false && u.status !== 'deleted' && u.status !== 'disabled';
+                return active && (!schoolId || !userSchoolId || userSchoolId === schoolId);
+            });
+            // المدير والوكيل يختاران جميع الحسابات المفعلة التابعة لنفس المدرسة.
+            if (['leadership','agency'].includes(currentUser?.role)) return users;
+            const me = getMicrosoftEmail(currentUser);
+            return users.filter(u => String(u.id) === String(currentUser?.id) || (me && getMicrosoftEmail(u) === me));
         };
 
         const renderMeetingParticipants = () => {
@@ -965,9 +1074,9 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
             }
             box.innerHTML = users.map(u => `
                 <label class="flex items-center gap-2 p-2 rounded-xl border bg-slate-50 cursor-pointer hover:bg-teal-50">
-                    <input type="checkbox" class="meeting-participant" value="${safeJs(u.id)}" data-name="${safeJs(u.name)}" data-role="${safeJs(u.role)}">
+                    <input type="checkbox" class="meeting-participant" value="${safeJs(u.id)}" data-name="${safeJs(u.name)}" data-role="${safeJs(u.role)}" data-email="${safeJs(getMicrosoftEmail(u))}" data-microsoft-user-id="${safeJs(getMicrosoftUserId(u))}">
                     <span class="font-bold text-xs text-slate-700">${u.name || 'مستخدم'}</span>
-                    <span class="text-[10px] text-slate-400 mr-auto">${roleLabel(u.role)}</span>
+                    <span class="text-[10px] text-slate-400 mr-auto" dir="ltr">${getMicrosoftEmail(u) || roleLabel(u.role)}</span>
                 </label>
             `).join('');
         };
@@ -1029,17 +1138,39 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
                 tasks: document.getElementById('meeting-tasks').value.trim(),
                 chat: meetingChatLines,
                 attachments,
-                participants: selected.map(cb => ({ id: cb.value, name: cb.dataset.name, role: cb.dataset.role })),
+                participants: selected.map(cb => ({ id: cb.value, name: cb.dataset.name, role: cb.dataset.role, email: normalizeEmail(cb.dataset.email), microsoftEmail: normalizeEmail(cb.dataset.email), microsoftUserId: normalizeMicrosoftUserId(cb.dataset.microsoftUserId), microsoft_user_id: normalizeMicrosoftUserId(cb.dataset.microsoftUserId) || null })),
+                schoolId: currentMeetingSchoolId(),
                 createdBy: currentUser?.name || 'غير محدد',
+                createdByEmail: getMicrosoftEmail(currentUser),
                 createdByRole: currentUser?.role || '',
-                createdAt: Date.now()
+                createdAt: Date.now(),
+                syncStatus: 'pending'
             };
             const items = getStoredMeetings();
             items.unshift(record);
             setStoredMeetings(items);
             currentMeetingForPrint = record;
             renderMeetingsArchive();
-            showToast('تم حفظ محضر الاجتماع في الأرشيف ✅');
+            showToast('تم حفظ المحضر محليًا، وجارٍ ربطه بجدول الاجتماعات...');
+            try {
+                const cloudRow = await insertMeetingInCloud(record);
+                record.cloudId = cloudRow.id;
+                record.id = cloudRow.id || record.id;
+                record.syncStatus = 'synced';
+                record.syncedAt = Date.now();
+                const updated = getStoredMeetings().filter(x => x !== record && String(x.id) !== String('meet-' + record.createdAt));
+                updated.unshift(record);
+                setStoredMeetings(updated);
+                currentMeetingForPrint = record;
+                renderMeetingsArchive();
+                showToast('تم حفظ الاجتماع في Supabase بنجاح ✅');
+            } catch (cloudError) {
+                record.syncStatus = 'local_only';
+                record.syncError = cloudError?.message || String(cloudError);
+                setStoredMeetings(getStoredMeetings());
+                console.warn('تم الاحتفاظ بالاجتماع محليًا لتعذر المزامنة السحابية', cloudError);
+                showToast('تم الحفظ محليًا، وتعذرت المزامنة مع Supabase ⚠️');
+            }
 
             try {
                 if (window.db && window.fs && currentUser?.role !== 'performance') {
@@ -2115,9 +2246,12 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
     return [...document.querySelectorAll('.meeting-participant')].map(cb => ({
       id: cb.value,
       name: cb.dataset.name || '',
+      email: String(cb.dataset.email || '').trim().toLowerCase(),
+      microsoftEmail: String(cb.dataset.email || '').trim().toLowerCase(),
+      microsoftUserId: String(cb.dataset.microsoftUserId || '').trim().toLowerCase(),
       role: cb.dataset.role || '',
       checked: !!cb.checked
-    })).filter(p => p.name);
+    })).filter(p => p.name || p.email);
   }
 
   function normalizeArabicName(s){
@@ -2126,8 +2260,65 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
       .replace(/[ًٌٍَُِّْـ]/g,'').replace(/\s+/g,' ').trim().toLowerCase();
   }
 
+  function normalizeParticipantEmail(value){
+    return String(value || '').trim().toLowerCase();
+  }
+
+  function extractEmails(value){
+    const text = Array.isArray(value) ? value.join(' ') : String(value || '');
+    return [...new Set((text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) || []).map(normalizeParticipantEmail))];
+  }
+
+  function extractMicrosoftUserIds(value){
+    const text = Array.isArray(value) ? value.join(' ') : String(value || '');
+    const ids = [];
+    const guidPattern = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi;
+    (text.match(guidPattern) || []).forEach(v => ids.push(String(v).toLowerCase()));
+    return [...new Set(ids)];
+  }
+
+  function applyAttendanceByMicrosoftIdentity(attendees, sourceText){
+    const objectIds = new Set();
+    const emails = new Set();
+    (attendees || []).forEach(item => {
+      if (typeof item === 'string') {
+        extractMicrosoftUserIds(item).forEach(v => objectIds.add(v));
+        extractEmails(item).forEach(v => emails.add(v));
+      } else if (item && typeof item === 'object') {
+        const idValue = item.microsoftUserId || item.microsoft_user_id || item.userId || item.user_id || item.aadObjectId || item.objectId || item.id || '';
+        extractMicrosoftUserIds(idValue).forEach(v => objectIds.add(v));
+        extractEmails(item.email || item.userPrincipalName || item.mail || '').forEach(v => emails.add(v));
+      }
+    });
+    extractMicrosoftUserIds(sourceText).forEach(v => objectIds.add(v));
+    extractEmails(sourceText).forEach(v => emails.add(v));
+    let objectIdMatches = 0, emailMatches = 0;
+    document.querySelectorAll('.meeting-participant').forEach(cb => {
+      const objectId = String(cb.dataset.microsoftUserId || '').trim().toLowerCase();
+      const email = normalizeParticipantEmail(cb.dataset.email);
+      if (objectId && objectIds.has(objectId)) { cb.checked = true; objectIdMatches++; return; }
+      if (email && emails.has(email)) { cb.checked = true; emailMatches++; }
+    });
+    return { count: objectIdMatches + emailMatches, objectIdMatches, emailMatches, objectIds: [...objectIds], emails: [...emails] };
+  }
+
+  function applyAttendanceByEmail(attendees, sourceText){
+    const emails = new Set();
+    (attendees || []).forEach(item => {
+      if (typeof item === 'string') extractEmails(item).forEach(e => emails.add(e));
+      else if (item && typeof item === 'object') extractEmails(item.email || item.userPrincipalName || item.mail || '').forEach(e => emails.add(e));
+    });
+    extractEmails(sourceText).forEach(e => emails.add(e));
+    let count = 0;
+    document.querySelectorAll('.meeting-participant').forEach(cb => {
+      const email = normalizeParticipantEmail(cb.dataset.email);
+      if (email && emails.has(email)) { cb.checked = true; count++; }
+    });
+    return { count, emails: [...emails] };
+  }
+
   function applyAttendanceNames(names){
-    const wanted = (names || []).map(normalizeArabicName).filter(Boolean);
+    const wanted = (names || []).map(v => normalizeArabicName(typeof v === 'object' ? v.name : v)).filter(Boolean);
     if (!wanted.length) return 0;
     let count = 0;
     document.querySelectorAll('.meeting-participant').forEach(cb => {
@@ -2181,14 +2372,14 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
       recommendations: getVal('meeting-recommendations'),
       tasks: getVal('meeting-tasks')
     };
-    const participantsList = platformParticipants.map(p => `${p.name} - ${roleLabelLocal(p.role)}${p.checked ? ' - محدد مسبقًا' : ''}`).join('\n');
+    const participantsList = platformParticipants.map(p => `${p.name || 'مستخدم'} | Microsoft ID: ${p.microsoftUserId || 'غير مسجل'} | البريد: ${p.email || 'غير مسجل'} | الدور: ${roleLabelLocal(p.role)}${p.checked ? ' | محدد مسبقًا' : ''}`).join('\n');
     return {
       mode,
       current,
       platformParticipants,
       selectedParticipants,
       teamsText,
-      prompt: `أنت مساعد محاضر اجتماعات داخل منصة الإدارة المدرسية الذكية.\nالمطلوب: تحليل نص/ملف اجتماع Microsoft Teams واستخراج الحضور الفعلي وتعبئة محضر رسمي جاهز لاعتماد المدير.\n\nأعد الناتج JSON فقط دون شرح خارج JSON وبالمفاتيح التالية:\n{\n  "title": "عنوان مناسب للاجتماع",\n  "type": "نوع الاجتماع",\n  "attendees": ["أسماء الحاضرين الفعليين فقط"],\n  "absentees": ["أسماء غير حاضرين إن أمكن"],\n  "agenda": "محاور الاجتماع كنقاط واضحة",\n  "recommendations": "التوصيات والقرارات كنقاط واضحة",\n  "tasks": "المهام الناتجة: المهمة - المسؤول - تاريخ المتابعة إن وجد",\n  "approvalNote": "صيغة مختصرة للمدير للاعتماد النهائي"\n}\n\nبيانات النموذج الحالية:\n${JSON.stringify(current, null, 2)}\n\nقائمة مستخدمي المنصة المتاحين للمطابقة:\n${participantsList || 'لا توجد قائمة مستخدمين ظاهرة'}\n\nنص/ملف Teams:\n${teamsText || 'لا يوجد نص Teams، اعتمد على بيانات النموذج الحالية إن وجدت.'}`
+      prompt: `أنت مساعد محاضر اجتماعات داخل منصة الإدارة المدرسية الذكية.\nالمطلوب: تحليل نص/ملف اجتماع Microsoft Teams واستخراج الحضور الفعلي وتعبئة محضر رسمي جاهز لاعتماد المدير.\n\nأعد الناتج JSON فقط دون شرح خارج JSON وبالمفاتيح التالية:\n{\n  "title": "عنوان مناسب للاجتماع",\n  "type": "نوع الاجتماع",\n  "attendees": [{"name":"اسم الحاضر","microsoftUserId":"Microsoft Object ID إن ورد في الملف","email":"البريد الرسمي لحساب Microsoft Teams كما ورد في الملف"}],\n  "absentees": ["أسماء غير حاضرين إن أمكن"],\n  "agenda": "محاور الاجتماع كنقاط واضحة",\n  "recommendations": "التوصيات والقرارات كنقاط واضحة",\n  "tasks": "المهام الناتجة: المهمة - المسؤول - تاريخ المتابعة إن وجد",\n  "approvalNote": "صيغة مختصرة للمدير للاعتماد النهائي"\n}\n\nبيانات النموذج الحالية:\n${JSON.stringify(current, null, 2)}\n\nقائمة مستخدمي المنصة المتاحين للمطابقة (الأولوية لمعرف Microsoft Object ID ثم البريد، ولا تعتمد الاسم تلقائيًا):\n${participantsList || 'لا توجد قائمة مستخدمين ظاهرة'}\n\nنص/ملف Teams:\n${teamsText || 'لا يوجد نص Teams، اعتمد على بيانات النموذج الحالية إن وجدت.'}`
     };
   }
 
@@ -2203,12 +2394,14 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
       if (obj.agenda) setVal('meeting-agenda', obj.agenda);
       if (obj.recommendations) setVal('meeting-recommendations', obj.recommendations);
       if (obj.tasks) setVal('meeting-tasks', obj.tasks);
-      const matched = applyAttendanceNames(obj.attendees || []);
+      const identityMatch = applyAttendanceByMicrosoftIdentity(obj.attendees || [], rawText || '');
+      const matched = identityMatch.count;
+      const unmatched = (obj.attendees || []).filter(a => { const emails = extractEmails(typeof a === 'object' ? (a.email || a.userPrincipalName || a.mail || '') : a); const ids = extractMicrosoftUserIds(typeof a === 'object' ? (a.microsoftUserId || a.microsoft_user_id || a.userId || a.objectId || '') : a); return !ids.some(id => identityMatch.objectIds.includes(id)) && !emails.some(e => identityMatch.emails.includes(e)); });
       const note = obj.approvalNote ? '\n\nملاحظة الاعتماد: ' + obj.approvalNote : '';
       const chatInput = $('meeting-chat-input');
       if (chatInput && note.trim()) chatInput.value = note.trim();
       localStorage.setItem('ss_last_ai_meeting_minutes', JSON.stringify({ result: obj, createdAt: Date.now() }));
-      status(`تمت تعبئة المحضر بالذكاء. تم تحديد ${matched} من الحضور المطابقين لحسابات المنصة. راجع المحضر ثم اضغط تجهيز لاعتماد المدير.`, true);
+      status(`تمت تعبئة المحضر بالذكاء. تمت مطابقة ${matched} حسابًا بهوية Microsoft (${identityMatch.objectIdMatches} بالمعرف و${identityMatch.emailMatches} بالبريد)${unmatched.length ? `، ويوجد ${unmatched.length} سجلًا يحتاج مراجعة يدوية` : ''}. راجع المحضر ثم اضغط تجهيز لاعتماد المدير.`, true);
       toast('تمت تعبئة محضر الاجتماع بالذكاء ✅');
       return;
     }
@@ -2247,8 +2440,10 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
       const raw = await askAIForMeeting(payload);
       const obj = safeJsonFromText(raw);
       const attendees = obj?.attendees || [];
-      const matched = applyAttendanceNames(attendees);
-      status(`تم استخراج ${attendees.length} اسمًا من Teams، وتم تحديد ${matched} حسابًا مطابقًا في قائمة المشاركين.`, true);
+      const identityMatch = applyAttendanceByMicrosoftIdentity(attendees, teamsText + '\n' + raw);
+      const matched = identityMatch.count;
+      const unmatchedCount = Math.max(0, attendees.length - matched);
+      status(`تم استخراج ${attendees.length} سجل حضور، وتمت مطابقة ${matched} حسابًا بهوية Microsoft (${identityMatch.objectIdMatches} بالمعرف و${identityMatch.emailMatches} بالبريد)${unmatchedCount ? `، وبقي ${unmatchedCount} سجلًا للمراجعة اليدوية` : ''}.`, true);
       toast('تم استخراج الحضور الفعلي ✅');
     } catch (err) {
       status('تعذر استخراج الحضور: ' + (err?.message || err));

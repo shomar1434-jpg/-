@@ -21,3 +21,7 @@
 ## النسخة
 
 راجع ملف `VERSION.md` لمعرفة الإصدار وآخر التحديثات.
+
+
+## ترقية هوية Microsoft للاجتماعات
+شغّل `SUPABASE_MICROSOFT_OBJECT_ID_UPGRADE.sql` مرة واحدة بعد ترقية البريد. تصبح مطابقة حضور Teams بالأولوية لمعرف Microsoft Object ID ثم البريد الرسمي.

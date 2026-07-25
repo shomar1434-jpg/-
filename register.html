@@ -202,7 +202,7 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
   <form id="reg-form" class="p-6 space-y-4">
     <div class="hint">املأ بياناتك، وسيظهر طلبك في أيقونة <b>حسابات المستخدمين</b> بحالة <b>معلّق</b> حتى يقوم المدير/ة بالتفعيل.</div>
     <input class="field" id="name" required placeholder="الاسم">
-    <input class="field" id="email" required type="email" placeholder="بريد منصة مدرستي" dir="ltr" data-email-field="true">
+    <input class="field" id="email" required type="email" placeholder="البريد الرسمي لحساب Microsoft Teams" dir="ltr" data-email-field="true">
     <input class="field" id="password" required type="password" placeholder="الرقم السري">
     <select class="field" id="role" required>
       <option value="" selected disabled>القسم</option>
@@ -255,13 +255,14 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
     await resolveInviteSchool();
     if(!invite.schoolId && !invite.schoolCode && !invite.token){ msg.textContent='الرابط غير صالح لأنه غير مرتبط بمدرسة.'; return; }
     const name=document.getElementById('name').value.trim();
-    const email=document.getElementById('email').value.trim();
+    const email=document.getElementById('email').value.trim().toLowerCase();
     const password=document.getElementById('password').value.trim();
     const role=document.getElementById('role').value;
-    if(!name||!email||!password||!role){ msg.textContent='يرجى تعبئة الاسم والبريد والرقم السري والقسم.'; return; }
+    if(!name||!email||!password||!role){ msg.textContent='يرجى تعبئة الاسم والبريد الرسمي لحساب Microsoft Teams والرقم السري والقسم.'; return; }
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ msg.textContent='يرجى إدخال بريد Microsoft صحيح.'; return; }
     const account={
       id:'reg_'+Date.now()+'_'+Math.random().toString(36).slice(2),
-      name,email,password,loginPassword:password,passwordMasked:'••••••',role,
+      name,email,microsoftEmail:email,password,loginPassword:password,passwordMasked:'••••••',role,
       phone:'',nationalId:'',schoolName:invite.schoolName,schoolId:invite.schoolId,
       isActive:false,status:'pending',source:'registration_link',
       adminOwnerId:invite.admin,registrationToken:invite.token,registeredViaManagerLink:true,

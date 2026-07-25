@@ -165,12 +165,18 @@
       const row = {
         school_id: payload.school_id || payload.schoolId,
         user_id: payload.user_id || payload.userId || null,
-        email: payload.email || '',
+        email: String(payload.email || '').trim().toLowerCase(),
+        microsoft_email: String(payload.microsoft_email || payload.microsoftEmail || payload.email || '').trim().toLowerCase(),
+        microsoft_user_id: String(payload.microsoft_user_id || payload.microsoftUserId || payload.azureObjectId || '').trim().toLowerCase() || null,
         role: payload.role || 'manager',
         status: payload.status || 'active',
         is_primary_manager: !!payload.is_primary_manager
       };
-      const q = await sb.from('school_members').insert(row).select('*').maybeSingle();
+      let q = await sb.from('school_members').insert(row).select('*').maybeSingle();
+      if(q.error && /microsoft_email|microsoft_user_id|schema cache|column/i.test(String(q.error.message || q.error))){
+        const legacyRow = {...row}; delete legacyRow.microsoft_email; delete legacyRow.microsoft_user_id;
+        q = await sb.from('school_members').insert(legacyRow).select('*').maybeSingle();
+      }
       if(q.error){
         console.warn('school_members غير متاح أو لم يتم إنشاؤه بعد، سيتم الاعتماد مؤقتًا على manager_email داخل schools:', q.error.message || q.error);
         return null;

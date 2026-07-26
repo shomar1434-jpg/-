@@ -966,12 +966,21 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
             date: row.meeting_date || row.date || '',
             time: row.meeting_time || row.time || '',
             agenda: row.agenda || '',
+            minutes: row.minutes || '',
             recommendations: row.recommendations || row.decisions || '',
             tasks: row.tasks || '',
-            status: row.status || '',
+            status: row.status || 'draft',
+            attendance: Array.isArray(row.attendance) ? row.attendance : [],
             participants: Array.isArray(row.participants) ? row.participants : [],
+            attachments: Array.isArray(row.attachments) ? row.attachments : [],
+            chat: Array.isArray(row.chat_notes) ? row.chat_notes : [],
             createdBy: row.created_by_name || row.created_by || '',
+            createdByEmail: row.created_by_email || '',
+            approvedBy: row.approved_by || null,
+            approvedAt: row.approved_at ? new Date(row.approved_at).getTime() : null,
             createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
+            updatedAt: row.updated_at ? new Date(row.updated_at).getTime() : null,
+            syncStatus: 'synced',
             cloudOnly: true
         });
 
@@ -984,7 +993,10 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
                 if (error) throw error;
                 const local = getStoredMeetings();
                 const byCloudId = new Map(local.filter(x => x.cloudId).map(x => [String(x.cloudId), x]));
-                const cloud = (data || []).map(row => ({ ...mapCloudMeeting(row), ...(byCloudId.get(String(row.id)) || {}) }));
+                const cloud = (data || []).map(row => {
+                    const cached = byCloudId.get(String(row.id)) || {};
+                    return { ...cached, ...mapCloudMeeting(row), syncStatus: 'synced' };
+                });
                 const localOnly = local.filter(x => !x.cloudId || !cloud.some(c => String(c.cloudId) === String(x.cloudId)));
                 const merged = [...cloud, ...localOnly].sort((a,b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
                 setStoredMeetings(merged);
@@ -1016,6 +1028,8 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
                 participants: record.participants || [],
                 attachments: record.attachments || [],
                 chat_notes: record.chat || [],
+                attendance: record.attendance || [],
+                minutes: record.minutes || null,
                 status: record.status || 'draft',
                 created_by: currentUser?.id || null,
                 created_by_name: record.createdBy || null,
@@ -1030,6 +1044,54 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
             return result.data;
         };
 
+        const updateMeetingInCloud = async (record, changes = {}) => {
+            const sb = meetingSupabase();
+            const schoolId = currentMeetingSchoolId();
+            const cloudId = record?.cloudId || record?.id;
+            if (!sb || !schoolId || !cloudId || String(cloudId).startsWith('meet-')) {
+                throw new Error('لا يوجد معرف سحابي صالح للاجتماع');
+            }
+            const payload = {
+                title: changes.title ?? record.title,
+                meeting_link: changes.teamsUrl ?? record.teamsUrl ?? null,
+                meeting_type: changes.type ?? record.type ?? null,
+                meeting_date: changes.date ?? record.date ?? null,
+                meeting_time: changes.time ?? record.time ?? null,
+                agenda: changes.agenda ?? record.agenda ?? null,
+                minutes: changes.minutes ?? record.minutes ?? null,
+                recommendations: changes.recommendations ?? record.recommendations ?? null,
+                tasks: changes.tasks ?? record.tasks ?? null,
+                attendance: changes.attendance ?? record.attendance ?? [],
+                participants: changes.participants ?? record.participants ?? [],
+                attachments: changes.attachments ?? record.attachments ?? [],
+                chat_notes: changes.chat ?? record.chat ?? [],
+                status: changes.status ?? record.status ?? 'draft',
+                approved_by: changes.approvedBy ?? record.approvedBy ?? null,
+                approved_at: changes.approvedAt ? new Date(changes.approvedAt).toISOString() : (record.approvedAt ? new Date(record.approvedAt).toISOString() : null),
+                updated_at: new Date().toISOString()
+            };
+            const { data, error } = await sb.from('meetings').update(payload).eq('id', cloudId).eq('school_id', schoolId).select('*').single();
+            if (error) throw error;
+            return data;
+        };
+
+        const retryPendingMeetingSync = async () => {
+            const all = getStoredMeetings();
+            const pending = all.filter(m => !m.cloudId && ['pending','local_only'].includes(m.syncStatus));
+            if (!pending.length) return;
+            for (const record of pending) {
+                try {
+                    const row = await insertMeetingInCloud(record);
+                    Object.assign(record, mapCloudMeeting(row), { syncStatus: 'synced', syncedAt: Date.now() });
+                    delete record.syncError;
+                } catch (error) {
+                    record.syncStatus = 'local_only';
+                    record.syncError = error?.message || String(error);
+                }
+            }
+            setStoredMeetings(all);
+        };
+
         const showMeetingsRoom = () => {
             if (!currentUser) return showToast('يرجى تسجيل الدخول أولاً');
             document.getElementById('meetings-room-modal').style.display = 'flex';
@@ -1040,7 +1102,7 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
             }
             renderMeetingParticipants();
             renderMeetingsArchive();
-            syncMeetingsFromCloud().then(renderMeetingsArchive);
+            retryPendingMeetingSync().finally(() => syncMeetingsFromCloud().then(renderMeetingsArchive));
         };
 
         const resetMeetingForm = () => {
@@ -1146,30 +1208,26 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
                 createdAt: Date.now(),
                 syncStatus: 'pending'
             };
-            const items = getStoredMeetings();
-            items.unshift(record);
-            setStoredMeetings(items);
             currentMeetingForPrint = record;
-            renderMeetingsArchive();
-            showToast('تم حفظ المحضر محليًا، وجارٍ ربطه بجدول الاجتماعات...');
+            showToast('جارٍ حفظ الاجتماع في Supabase...');
             try {
                 const cloudRow = await insertMeetingInCloud(record);
-                record.cloudId = cloudRow.id;
-                record.id = cloudRow.id || record.id;
-                record.syncStatus = 'synced';
-                record.syncedAt = Date.now();
-                const updated = getStoredMeetings().filter(x => x !== record && String(x.id) !== String('meet-' + record.createdAt));
+                Object.assign(record, mapCloudMeeting(cloudRow), { syncStatus: 'synced', syncedAt: Date.now() });
+                const updated = getStoredMeetings().filter(x => String(x.cloudId || x.id) !== String(record.cloudId || record.id));
                 updated.unshift(record);
-                setStoredMeetings(updated);
+                setStoredMeetings(updated); // ذاكرة مؤقتة للعرض والعمل عند انقطاع الاتصال فقط.
                 currentMeetingForPrint = record;
                 renderMeetingsArchive();
                 showToast('تم حفظ الاجتماع في Supabase بنجاح ✅');
             } catch (cloudError) {
                 record.syncStatus = 'local_only';
                 record.syncError = cloudError?.message || String(cloudError);
-                setStoredMeetings(getStoredMeetings());
-                console.warn('تم الاحتفاظ بالاجتماع محليًا لتعذر المزامنة السحابية', cloudError);
-                showToast('تم الحفظ محليًا، وتعذرت المزامنة مع Supabase ⚠️');
+                const fallback = getStoredMeetings().filter(x => String(x.id) !== String(record.id));
+                fallback.unshift(record);
+                setStoredMeetings(fallback);
+                renderMeetingsArchive();
+                console.warn('تم الاحتفاظ بنسخة احتياطية محلية لتعذر المزامنة السحابية', cloudError);
+                showToast('تعذر الحفظ السحابي؛ حُفظت نسخة احتياطية محلية وستتم إعادة المحاولة تلقائيًا ⚠️');
             }
 
             try {
@@ -1431,11 +1489,24 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
             printCurrentMeeting();
         };
 
-        const deleteMeetingById = (id) => {
-            if (!confirm('هل تريد حذف محضر الاجتماع من الأرشيف المحلي؟')) return;
-            setStoredMeetings(getStoredMeetings().filter(x => x.id !== id));
+        const deleteMeetingById = async (id) => {
+            if (!confirm('هل تريد حذف محضر الاجتماع؟')) return;
+            const meeting = getStoredMeetings().find(x => String(x.id) === String(id) || String(x.cloudId) === String(id));
+            const cloudId = meeting?.cloudId || meeting?.id;
+            if (cloudId && !String(cloudId).startsWith('meet-')) {
+                try {
+                    const sb = meetingSupabase();
+                    const schoolId = currentMeetingSchoolId();
+                    const { error } = await sb.from('meetings').delete().eq('id', cloudId).eq('school_id', schoolId);
+                    if (error) throw error;
+                } catch (error) {
+                    console.warn('تعذر حذف الاجتماع من Supabase', error);
+                    return showToast('تعذر حذف الاجتماع من السحابة؛ لم يتم حذف النسخة المحلية');
+                }
+            }
+            setStoredMeetings(getStoredMeetings().filter(x => String(x.id) !== String(id) && String(x.cloudId) !== String(id)));
             renderMeetingsArchive();
-            showToast('تم حذف الاجتماع');
+            showToast('تم حذف الاجتماع من Supabase والأرشيف المؤقت');
         };
 
 
@@ -1453,8 +1524,18 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
                 tasks: document.getElementById('meeting-tasks')?.value?.trim() || '',
                 chat: meetingChatLines || [],
                 attachments: [],
-                participants: selected.map(cb => ({ id: cb.value, name: cb.dataset.name, role: cb.dataset.role })),
+                participants: selected.map(cb => ({
+                    id: cb.value,
+                    name: cb.dataset.name,
+                    role: cb.dataset.role,
+                    email: normalizeEmail(cb.dataset.email),
+                    microsoftEmail: normalizeEmail(cb.dataset.email),
+                    microsoftUserId: normalizeMicrosoftUserId(cb.dataset.microsoftUserId),
+                    microsoft_user_id: normalizeMicrosoftUserId(cb.dataset.microsoftUserId) || null
+                })),
+                schoolId: currentMeetingSchoolId(),
                 createdBy: currentUser?.name || 'غير محدد',
+                createdByEmail: getMicrosoftEmail(currentUser),
                 createdByRole: currentUser?.role || '',
                 createdAt: Date.now()
             };
@@ -1598,6 +1679,18 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
             w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 500);
         };
 
+
+        // جسر قاعة الاجتماعات لطبقة الاعتماد: Supabase هو المصدر الأساسي، والتخزين المحلي ذاكرة مؤقتة فقط.
+        window.getStoredMeetings = getStoredMeetings;
+        window.setStoredMeetings = setStoredMeetings;
+        window.syncMeetingsFromCloud = syncMeetingsFromCloud;
+        window.insertMeetingInCloud = insertMeetingInCloud;
+        window.updateMeetingInCloud = updateMeetingInCloud;
+        window.getCurrentMeetingDraft = getCurrentMeetingDraft;
+        window.renderMeetingsArchive = renderMeetingsArchive;
+        window.renderMeetingPortfolio = renderMeetingPortfolio;
+        window.getMeetingCurrentUserId = () => currentUser?.id || null;
+        window.getMeetingCurrentUserEmail = () => getMicrosoftEmail(currentUser);
 
         const showSchoolManagementPanel = async () => {
             const modal = document.getElementById('school-management-modal');
@@ -1957,6 +2050,29 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
   }
   function printCss(){ return '@page{size:A4;margin:0}*{box-sizing:border-box}body{font-family:Cairo,Arial,sans-serif;margin:0;color:#0f172a;background:#f8fafc}.page{width:210mm;min-height:297mm;background:white;margin:0 auto;padding:14mm 12mm;position:relative;page-break-after:always}.topbar{position:absolute;top:0;left:0;right:0;height:8px;background:#08783f}header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid #e5e7eb;padding-bottom:12px}.hblock{line-height:1.8;color:#065f46;font-size:15px;display:flex;flex-direction:column}.logo{text-align:center;color:#059669;font-weight:800}.logo small{font-size:10px;color:#64748b}.meta{font-size:12px;line-height:2;background:#ecfdf5;border-radius:12px;padding:8px 16px;min-width:140px}h1{text-align:center;color:#047857;font-size:28px;margin:16px 0 10px}h2{color:#047857;font-size:15px;margin:13px 0 7px}.basmala{text-align:center;font-size:13px;color:#475569}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}.field,.notice,.teams{background:#f0fdf4;border:1px solid #d1fae5;border-radius:13px;padding:9px;font-size:13px}.notice{line-height:2}.teams{direction:ltr;text-align:left;word-break:break-all;font-size:11px}ol{margin:0;padding:0 24px;background:#fbfffd;border:1px dashed #bbf7d0;border-radius:12px;min-height:32px}li{padding:4px 0;font-size:13px;line-height:1.7}footer{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end;margin-top:18px;border-top:1px solid #e5e7eb;padding-top:12px;font-size:12px}.sig{max-width:120px;max-height:55px;object-fit:contain}.sigLine{width:120px;height:40px;border-bottom:1px solid #334155}.seal{width:90px;height:90px;object-fit:contain}.sealBox{width:90px;height:90px;border:2px dashed #94a3b8;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#64748b;font-weight:800;font-size:11px}.qr{text-align:center;font-size:10px}.qr svg{border:1px solid #d1fae5}.code{direction:ltr;font-weight:800;color:#047857}.footnote{position:absolute;bottom:9mm;left:12mm;right:12mm;border-top:1px solid #edf2f7;padding-top:6px;color:#047857;font-weight:700;font-size:11px}.note{margin-top:14px;background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:12px;text-align:center;color:#92400e;font-size:13px}table{width:100%;border-collapse:collapse;margin-top:14px}th{background:#08783f;color:white;padding:8px;font-size:13px}td{border:1px solid #e5e7eb;height:24px;padding:4px;font-size:12px}td:first-child{width:35px;text-align:center}@media print{body{background:white}.page{margin:0;box-shadow:none}}'; }
   function dayName(dateStr){ try{ var d=dateStr?new Date(dateStr):new Date(); return ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'][d.getDay()]||'';}catch(e){return '';} }
+  async function persistApprovedMeetingToCloud(m){
+    if(typeof window.updateMeetingInCloud!=='function') return m;
+    var cloudId=m.cloudId||m.id;
+    if(!cloudId || String(cloudId).indexOf('meet-')===0) {
+      if(typeof window.insertMeetingInCloud==='function') {
+        var created=await window.insertMeetingInCloud(m);
+        m.cloudId=created.id; m.id=created.id;
+      }
+    }
+    var row=await window.updateMeetingInCloud(m, {
+      status:'approved',
+      approvedBy:(typeof window.getMeetingCurrentUserId==='function'?window.getMeetingCurrentUserId():null),
+      approvedAt:m.approvedAt||Date.now(),
+      minutes:m.minutes||m.recommendations||''
+    });
+    m.cloudId=row.id; m.id=row.id; m.status='approved'; m.syncStatus='synced';
+    if(typeof window.getStoredMeetings==='function' && typeof window.setStoredMeetings==='function') {
+      var list=window.getStoredMeetings().filter(function(x){return String(x.cloudId||x.id)!==String(m.id);});
+      list.unshift(m); window.setStoredMeetings(list);
+    }
+    return m;
+  }
+
   function printApprovedMeeting(m){ var w=window.open('','_blank'); if(!w){toast('يرجى السماح بالنوافذ المنبثقة للطباعة'); return;} w.document.open(); w.document.write(officialMinutesHtml(m)); w.document.close(); w.focus(); setTimeout(function(){ try{w.print();}catch(e){} },500); }
 
   var originalPrint = window.printCurrentMeeting;
@@ -1966,12 +2082,19 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
   window.openMeetingApprovalReview=function(){ createApprovalModal(); loadSettingsToModal(); var m=q('meeting-approval-modal'); if(m) m.style.display='flex'; };
   window.closeMeetingApprovalModal=function(){ var m=q('meeting-approval-modal'); if(m)m.style.display='none'; };
   window.saveMeetingApprovalAsDefault=async function(){ var s=await collectSettingsFromModal(); saveSettings(s); toast('تم حفظ إعدادات محاضر الاجتماعات كإعداد افتراضي ✅'); updateApprovalPreview(); };
-  window.applyMeetingApprovalAndPrint=async function(){ var s=await collectSettingsFromModal(); var m=approvedMeetingFromDraft(s); if(s.archive) ensureMeetingArchived(m); window.currentMeetingForPrint=m; printApprovedMeeting(m); toast('تم اعتماد المحضر وتجهيزه للطباعة ✅'); };
+  window.applyMeetingApprovalAndPrint=async function(){
+    var s=await collectSettingsFromModal(); var m=approvedMeetingFromDraft(s);
+    try { m=await persistApprovedMeetingToCloud(m); }
+    catch(e){ console.warn(e); toast('تعذر اعتماد المحضر سحابيًا؛ لم يتم اعتباره معتمدًا'); return; }
+    if(s.archive) ensureMeetingArchived(m); window.currentMeetingForPrint=m; printApprovedMeeting(m); toast('تم اعتماد المحضر سحابيًا وتجهيزه للطباعة ✅');
+  };
   window.applyMeetingApprovalAndSend=async function(){
     var s=await collectSettingsFromModal(); if(!s.send){ toast('خيار الإرسال غير مفعّل في المراجعة النهائية'); return; }
     var m=approvedMeetingFromDraft(s);
     if(!m.title || m.title==='محضر اجتماع') return toast('اكتب عنوان الاجتماع قبل الاعتماد');
     if(!m.participants || !m.participants.length) return toast('اختر المشاركين قبل الإرسال');
+    try { m=await persistApprovedMeetingToCloud(m); }
+    catch(e){ console.warn(e); toast('تعذر اعتماد المحضر سحابيًا؛ لم يتم الإرسال'); return; }
     if(s.archive) ensureMeetingArchived(m); window.currentMeetingForPrint=m;
     if(typeof originalSendRecord==='function') await originalSendRecord(m); else if(typeof originalSendCurrent==='function') await originalSendCurrent();
     toast('تم اعتماد محضر الاجتماع وإرساله للمشاركين ✅');

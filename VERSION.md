@@ -70,3 +70,8 @@
 - ربط حساسية التنبيه بالـ thresholds والبطاقات والرؤى.
 - ربط طريقة العرض بتغيير البطاقات والأقسام المعروضة.
 - إضافة تقرير COMMAND_CENTER_FINAL_AUDIT.md.
+
+## v3.0.0 — Unified Cloud File Engine Final Build
+- Finalized phases 1–3 in one deployable build.
+- Added versioning, shared read permissions, audit, stats, health check, recursive trash, and automatic module integration.
+- Added one-shot Supabase setup SQL and static QA report.

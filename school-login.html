@@ -499,6 +499,7 @@
     </form>
   </main>
 
+<script src="platform-cloud-session.js"></script>
 <script id="independent-school-login-engine">
 (function(){
   'use strict';
@@ -825,6 +826,10 @@
       if((targetSchoolId || targetSchoolCode) && !school){ setMsg('رابط المدرسة غير مرتبط بسجل مدرسة صحيح.'); return; }
       let user = await loginFromSupabase(loginId,password);
       if(!user) user = loginFromLocal(loginId,password,school);
+      if(user && window.PlatformCloudSession){
+        try{ await window.PlatformCloudSession.open(loginId,password,(user.schoolId||user.school_id||targetSchoolId||'')); }
+        catch(sessionError){ console.warn('تعذر إنشاء جلسة الملفات السحابية:',sessionError); }
+      }
       if(!user){ setMsg('بيانات الدخول غير صحيحة أو الحساب غير موجود في هذه المدرسة'); return; }
       if(!isActiveAccount(user)){ setMsg('الحساب غير مفعل بعد'); return; }
       user = normalizeLocalUser(user, school);

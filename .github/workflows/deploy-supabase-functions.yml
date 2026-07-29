@@ -1,0 +1,43 @@
+name: Deploy Supabase Edge Functions
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "supabase/functions/platform-session/**"
+      - "supabase/functions/platform-files/**"
+      - ".github/workflows/deploy-supabase-functions.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy platform-session
+        run: |
+          supabase functions deploy platform-session \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
+            --no-verify-jwt
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Deploy platform-files
+        run: |
+          supabase functions deploy platform-files \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
+            --no-verify-jwt
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

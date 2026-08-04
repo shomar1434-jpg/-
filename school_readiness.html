@@ -621,7 +621,7 @@ function taskHtml(s,i,t){
    <div class="full evidence-zone" data-evidence-zone="${s.id}-${i}">
     <strong>شاهد التنفيذ:</strong> ${evidenceRequired(d)}<br>
     <input class="evidence-input no-print" data-evidence-section="${s.id}" data-evidence-index="${i}" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg">
-    <div class="evidence-list">${d.evidence.map((e,x)=>`<div class="evidence-item"><div><strong>${esc(e.name)}</strong><br><small>${esc(e.type||"ملف")} · ${esc(e.date||"")}</small></div><div><button class="btn preview-evidence" data-x="${x}">معاينة</button><button class="btn danger remove-evidence" data-x="${x}">حذف</button></div></div>`).join("")||'<span class="empty">لم يُرفق شاهد تنفيذ بعد.</span>'}</div>
+    <div class="evidence-list">${d.evidence.map((e,x)=>`<div class="evidence-item"><div><strong>${esc(e.name)}</strong><br><small>${esc(e.type||"ملف")} · ${esc(e.date||"")} · ${e.storage==="cloud"?"سحابي":"محلي"}</small></div><div><button class="btn preview-evidence" data-x="${x}">معاينة</button><button class="btn danger remove-evidence" data-x="${x}">حذف</button></div></div>`).join("")||'<span class="empty">لم يُرفق شاهد تنفيذ بعد.</span>'}</div>
    </div>
    <div class="full review-box" style="margin-top:10px;display:${ev?"block":"none"}">
     <strong>التحقق من الشاهد</strong>
@@ -661,8 +661,19 @@ function renderSection(s){
    const files=[...e.target.files];
    if(!files.length)return;
    for(const f of files){
-    const id=await dbPut(f);
-    d.evidence.push({id,name:f.name,type:f.type,size:f.size,date:new Date().toISOString().slice(0,10)})
+    const uploaded=await dbPut(f,s.id,i,d.phase);
+    d.evidence.push({
+     id:uploaded.id,
+     platformFileId:uploaded.platformFileId||"",
+     evidenceRecordId:uploaded.evidenceRecordId||"",
+     name:f.name,
+     type:f.type,
+     size:f.size,
+     date:new Date().toISOString().slice(0,10),
+     sectionKey:s.id,
+     taskKey:`${s.id}:${i}`,
+     storage:uploaded.storage||"local"
+    })
    }
    d.execution={result:"done",reason:"",by:d.responsible||"",date:new Date().toISOString()};
    d.status="completed";d.done=new Date().toISOString().slice(0,10);
@@ -681,9 +692,19 @@ function renderSection(s){
   });
   card.querySelectorAll(".preview-evidence").forEach(b=>b.onclick=async e=>{
    e.stopPropagation();
-   const f=await dbGet(d.evidence[+b.dataset.x].id);
-   if(!f)return alert("تعذر العثور على الملف المحلي.");
-   window.open(URL.createObjectURL(f),"_blank")
+   const evidence=d.evidence[+b.dataset.x];
+   try{
+    if(String(evidence.id).startsWith("cloud:")&&window.CloudFileEngine){
+     await CloudFileEngine.open(String(evidence.id).slice(6));
+     return;
+    }
+    const f=await dbGet(evidence.id);
+    if(!f)return alert("تعذر العثور على ملف الشاهد.");
+    window.open(URL.createObjectURL(f),"_blank");
+   }catch(err){
+    console.error("Evidence preview failed",err);
+    alert("تعذر فتح شاهد التنفيذ.");
+   }
   });
  });
  const q=document.querySelector(`.search[data-s="${s.id}"]`);
@@ -984,14 +1005,37 @@ document.getElementById("printBtn").onclick=()=>printPage(document.querySelector
 document.getElementById("exportBtn").onclick=()=>{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(state,null,2)],{type:"application/json"}));a.download="school-readiness-backup.json";a.click()};
 document.getElementById("importInput").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{state=JSON.parse(r.result);normalizeReadinessState();save();alert("تم استيراد النسخة وحفظها محليًا وسحابيًا.")}catch{alert("ملف غير صالح")}};r.readAsText(f)};
 let dbPromise;function db(){return dbPromise||(dbPromise=new Promise((res,rej)=>{const q=indexedDB.open("readiness_evidence",1);q.onupgradeneeded=()=>q.result.createObjectStore("files");q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error)}))}
-async function dbPut(file){
+async function dbPut(file,sectionKey,taskIndex,stageKey){
  try{
   if(window.CloudFileEngine&&window.PlatformCloudSession?.token()){
-   const r=await CloudFileEngine.upload({file,ownershipScope:"school",moduleKey:"school_readiness",recordType:"readiness_plan",recordId:cloudPlanId||currentSchoolId(),relationType:"evidence"});
-   return "cloud:"+r.file.id;
+   if(!cloudPlanId)throw new Error("لم يتم إنشاء خطة الجاهزية السحابية بعد");
+   const taskKey=`${sectionKey}:${taskIndex}`;
+   const r=await CloudFileEngine.upload({
+    file,
+    ownershipScope:"school",
+    moduleKey:"school_readiness",
+    recordType:"readiness_plan",
+    recordId:cloudPlanId||currentSchoolId(),
+    relationType:"evidence",
+    metadata:{
+     readinessPlanId:cloudPlanId||"",
+     sectionKey,
+     taskKey,
+     taskIndex,
+     stageKey:stageKey==null?"":String(stageKey),
+     academicYear:state.settings?.year||"",
+     semester:"first"
+    }
+   });
+   return {
+    id:"cloud:"+r.file.id,
+    platformFileId:r.file.id,
+    evidenceRecordId:r.evidence?.id||"",
+    storage:"cloud"
+   };
   }
  }catch(e){console.warn("Cloud evidence upload fallback",e)}
- const id=crypto.randomUUID();const x=await db();return new Promise((res,rej)=>{const t=x.transaction("files","readwrite");t.objectStore("files").put(file,id);t.oncomplete=()=>res(id);t.onerror=()=>rej(t.error)})
+ const id=crypto.randomUUID();const x=await db();return new Promise((res,rej)=>{const t=x.transaction("files","readwrite");t.objectStore("files").put(file,id);t.oncomplete=()=>res({id,platformFileId:"",evidenceRecordId:"",storage:"local"});t.onerror=()=>rej(t.error)})
 }
 async function dbGet(id){
  if(String(id).startsWith("cloud:")&&window.CloudFileEngine){return CloudFileEngine.getBlob(String(id).slice(6))}

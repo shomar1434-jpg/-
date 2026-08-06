@@ -20,7 +20,14 @@
     const r=await CloudTaskEngine.create(payload);
     if(!r||!r.task||!r.task.id) throw new Error('لم يُرجع الخادم معرفًا صحيحًا للتكليف المحفوظ.');
     const t=CloudTaskEngine.mapTask(r.task);
-    let a=tasks();a.unshift(t);saveTasks(a);routeTaskToAssignee(t);resetForm();switchView('active');
+    let a=tasks();
+    if(!Array.isArray(a))a=[];
+    a=a.filter(x=>String(x?.task_id||'')!==String(t.task_id));
+    a.unshift(t);
+    saveTasks(a);
+    // عمليات التوافق المحلية مساندة فقط؛ لا يجوز أن تحول نجاح الحفظ السحابي إلى فشل مرئي.
+    try{routeTaskToAssignee(t)}catch(syncError){console.warn('[central-task-local-route]',syncError)}
+    resetForm();switchView('active');renderAll();
     await emitCoreEvent(t,'task_created',{status:t.status,progress_percent:t.progress_percent,assignee_id:t.assignee_id,assignee_role:t.assignee_role});
     toast('تم إنشاء التكليف سحابيًا وإرساله للمكلف');
     await refresh({preserveOnEmpty:true});

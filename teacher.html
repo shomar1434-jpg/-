@@ -2166,18 +2166,10 @@ body{overflow-x:hidden}
 <p class="text-[10px] text-slate-500 text-center leading-relaxed font-bold">متابعة الطلاب والاختبارات والتحليل من مركز المعلومات</p>
 </div>
 
-<div id="teacher-additional-assignments-card" class="hidden bg-white/90 backdrop-blur p-10 rounded-[45px] shadow-lg border border-white hover:border-indigo-400 cursor-pointer transition-all flex flex-col items-center gap-4 group hover:-translate-y-2" onclick="openTeacherSectionLibrary()">
-<div class="w-20 h-20 bg-gradient-to-br from-indigo-600 to-sky-700 text-white rounded-3xl flex items-center justify-center shadow-lg group-hover:-rotate-6 transition-transform text-4xl">🧩</div>
-<h3 id="teacher-extra-card-title" class="font-bold text-xl text-slate-700">معلم/معلمة مكلف/ة بـ</h3>
-<div id="teacher-extra-card-badges" class="flex flex-wrap justify-center gap-2 text-[10px] font-bold"></div>
-<p id="teacher-extra-card-desc" class="text-[10px] text-slate-500 text-center leading-relaxed font-bold">يفتح القسم المتخصص للتكليفات الإضافية المفعلة لهذا الحساب.</p>
-</div>
-
-
 <div id="teacher-central-tasks-card" class="hidden bg-white/90 backdrop-blur p-10 rounded-[45px] shadow-lg border border-white hover:border-emerald-400 cursor-pointer transition-all flex flex-col items-center gap-4 group hover:-translate-y-2" onclick="openTeacherCentralTasks()">
 <div class="w-20 h-20 bg-gradient-to-br from-emerald-600 to-teal-800 text-white rounded-3xl flex items-center justify-center shadow-lg group-hover:-rotate-6 transition-transform text-4xl">🧭</div>
 <h3 class="font-bold text-xl text-slate-700">مركز تكليفاتي</h3>
-<p id="teacher-central-tasks-desc" class="text-[10px] text-slate-500 text-center leading-relaxed font-bold">تنفيذ التكليفات المرسلة من المدير أو الوكيل ورفع الشواهد للاعتماد.</p>
+<p id="teacher-central-tasks-desc" class="text-[10px] text-slate-500 text-center leading-relaxed font-bold">تنفيذ التكليفات داخل السجلات المرتبطة وإرسال العمل للاعتماد.</p>
 </div>
 
 <div class="bg-white/90 backdrop-blur p-10 rounded-[45px] shadow-lg border border-white hover:border-sky-400 cursor-pointer transition-all flex flex-col items-center gap-4 group hover:-translate-y-2" onclick="window.location.href='teacher_weekly_tasks.html'">
@@ -5128,100 +5120,6 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
   document.addEventListener('change', function(e){ if(e.target && e.target.id === 'categorySelect') setTimeout(window.__forceFillReportCategoryData, 0); }, true);
 })();
 </script>
-
-<script>
-(function(){
-  function esc(s){return String(s||'').replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
-  function normalizeExtra(v){ if(Array.isArray(v)) return v.map(String).filter(Boolean); if(typeof v==='string') return v.split(/[،,|]+/).map(function(x){return x.trim()}).filter(Boolean); return []; }
-  function extraRoleCode(x){x=String(x||'').trim();var map={'التوجيه الصحي':'health_guidance','موجه صحي':'health_guidance','الموجه الصحي':'health_guidance','health':'health_guidance','health_guidance':'health_guidance','منسق الموهوبين':'gifted_coordinator','منسق/ة الموهوبين':'gifted_coordinator','الجودة':'quality_coordinator','منسق الجودة':'quality_coordinator','منسق/ة الجودة':'quality_coordinator','منصة مدرستي':'madrasati_coordinator','منسق منصة مدرستي':'madrasati_coordinator'};return map[x]||x}
-  function normalizeExtraRoles(v){return normalizeExtra(v).map(extraRoleCode).filter(Boolean)}
-  function isTeacherRole(v){v=String(v||'').trim();return ['teacher','performance','معلم','معلمة','المعلم','المعلمة'].indexOf(v)>-1}
-  function currentTeacherUser(){
-    var p=new URLSearchParams(location.search||'');
-    var fromQ={id:p.get('uid')||p.get('userId')||p.get('targetUser')||'',email:p.get('email')||p.get('targetEmail')||p.get('followEmail')||localStorage.getItem('currentUserEmail')||'',name:localStorage.getItem('currentUserName')||'',role:'teacher',teacher_extra_roles:normalizeExtra(p.get('teacher_extra_roles')||'')};
-    var keys=['currentSchoolUser','currentUser','smart_school_current_session'];
-    for(var i=0;i<keys.length;i++){
-      try{
-        var u=JSON.parse(localStorage.getItem(keys[i])||'null');
-        if(!u) continue;
-        var role=u.role||u.type||localStorage.getItem('currentRole')||localStorage.getItem('smart_school_active_role')||'';
-        if(isTeacherRole(role)) return Object.assign({},fromQ,u,{teacher_extra_roles:normalizeExtra(u.teacher_extra_roles||u.additional_assignments||u.extra_roles||fromQ.teacher_extra_roles)});
-      }catch(e){}
-    }
-    return fromQ;
-  }
-  function roleMaps(){var a=[];try{a.push(JSON.parse(localStorage.getItem('smart_school_teacher_extra_roles_map')||'{}'))}catch(e){} try{a.push(JSON.parse(localStorage.getItem('smartSchoolCloudStorage_teacher_extra_roles_map')||'{}'))}catch(e){} return a}
-  function findTeacherFromStoredUsers(u){
-    var email=String(u.email||localStorage.getItem('currentUserEmail')||'').trim().toLowerCase(), id=String(u.id||'').trim();
-    var keys=['smartSchoolCloudStorage_users','smart_school_users'];
-    for(var i=0;i<keys.length;i++){try{var arr=JSON.parse(localStorage.getItem(keys[i])||'[]')||[];var found=arr.find(function(x){return (id&&String(x.id)===id)||(email&&String(x.email||'').trim().toLowerCase()===email)}); if(found) return found;}catch(e){}}
-    return null;
-  }
-  function getExtraRoles(){
-    var u=currentTeacherUser();
-    var roles=normalizeExtraRoles(u.teacher_extra_roles||u.additional_assignments||u.extra_roles);
-    var stored=findTeacherFromStoredUsers(u);
-    if(!roles.length&&stored) roles=normalizeExtraRoles(stored.teacher_extra_roles||stored.additional_assignments||stored.extra_roles||stored.extraRoles);
-    var maps=roleMaps();
-    for(var i=0;i<maps.length;i++){
-      var map=maps[i];
-      if(!roles.length && u.id) roles=normalizeExtraRoles(map['id:'+u.id]);
-      if(!roles.length && u.email) roles=normalizeExtraRoles(map['email:'+String(u.email).trim().toLowerCase()]);
-    }
-    return roles;
-  }
-  function healthRecords(){return ['السجل الصحي الشامل','سجل الحالات الصحية','سجل التوعية الصحية','سجل الإسعافات الأولية','سجل الأمراض المعدية','متابعة المقصف صحيًا','التواصل مع المركز الصحي','المبادرات الصحية','أرشيف السجلات الصحية'];}
-
-  function roleLabel(code){
-    var map={health_guidance:'التوجيه الصحي',gifted_coordinator:'الموهوبين',quality_coordinator:'الجودة',madrasati_coordinator:'منصة مدرستي',student_guidance:'الإرشاد الطلابي'};
-    return map[code]||code;
-  }
-  function renderExtraCardText(roles){
-    var title=document.getElementById('teacher-extra-card-title');
-    var badges=document.getElementById('teacher-extra-card-badges');
-    var desc=document.getElementById('teacher-extra-card-desc');
-    if(!title||!badges) return;
-    roles=roles||[];
-    badges.innerHTML=roles.map(function(r){return '<span class="px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">'+esc(roleLabel(r))+'</span>';}).join('');
-    if(roles.length===1){
-      title.textContent='معلم/معلمة مكلف/ة بـ';
-      if(desc) desc.textContent='يفتح قسم '+roleLabel(roles[0])+' والسجلات والأرشيفات الخاصة به فقط.';
-    }else{
-      title.textContent='معلم/معلمة مكلف/ة بـ '+roles.length+' مهام إضافية';
-      if(desc) desc.textContent='يفتح الأقسام المتخصصة حسب التكليفات الإضافية المفعلة لهذا الحساب.';
-    }
-  }
-  function hasExtraAssignments(){ return getExtraRoles().length > 0; }
-  window.updateTeacherAdditionalAssignmentsCard=function(){
-    var card=document.getElementById('teacher-additional-assignments-card');
-    if(!card) return;
-    var roles=getExtraRoles();
-    if(roles.length){
-      renderExtraCardText(roles);
-      card.classList.remove('hidden');
-      card.style.display='';
-    }else{
-      card.classList.add('hidden');
-      card.style.display='none';
-    }
-  };
-  window.openTeacherSectionLibrary=function(){
-    if(!hasExtraAssignments()){
-      try{ alert('لا توجد تكليفات إضافية مفعلة لهذا الحساب حالياً.'); }catch(e){}
-      return;
-    }
-    var roles=getExtraRoles(); var u=currentTeacherUser(); var q=new URLSearchParams({uid:u.id||'',email:u.email||localStorage.getItem('currentUserEmail')||'',teacher_extra_roles:roles.join(','),source:'teacher_extra_roles'}); window.location.href='teacher_section_library.html?'+q.toString();
-  };
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', window.updateTeacherAdditionalAssignmentsCard); else window.updateTeacherAdditionalAssignmentsCard();
-  var oldEnter=window.enterApp;
-  if(typeof oldEnter==='function' && !oldEnter.__extraAssignmentWrapped){
-    var wrapped=function(){ var r=oldEnter.apply(this, arguments); setTimeout(window.updateTeacherAdditionalAssignmentsCard,0); return r; };
-    wrapped.__extraAssignmentWrapped=true;
-    window.enterApp=wrapped;
-  }
-})();
-</script>
-
 
 <script id="central-task-routing-teacher">
 (function(){

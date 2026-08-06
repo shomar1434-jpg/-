@@ -43,7 +43,7 @@ Deno.serve(async (req) => {
       if (error) throw error;
       return data;
     };
-    const canAccessTask = (task: any) => isOwner || String(task?.created_by || '') === String(session.user_id) || String(task?.assigned_to || '') === String(session.user_id) || (task?.assignee_email && String(task.assignee_email).toLowerCase() === String(session.email || '').toLowerCase());
+    const canAccessTask = (task: any) => isOwner || String(task?.created_by || '') === String(session.user_id) || String(task?.assigned_to || '') === String(session.user_id) || (task?.assignee_email && String(task.assignee_email).toLowerCase() === String(session.user_email || '').toLowerCase());
 
     if (action === 'health') return json({ ok: true, service: 'platform-core', requestId, schoolId: session.school_id, userId: session.user_id });
 
@@ -52,10 +52,10 @@ Deno.serve(async (req) => {
         sb.from('platform_modules').select('*').eq('is_active', true).order('display_name'),
         sb.from('platform_record_types').select('*').eq('is_active', true).order('display_name'),
         sb.from('central_tasks').select('id,title,description,module_key,record_type,record_id,assignment_type,status,priority,progress_percent,start_date,due_date,assignee_role,created_at,updated_at')
-          .eq('school_id', session.school_id).or(`assigned_to.eq.${session.user_id},assignee_email.eq.${String(session.email || '').toLowerCase()}`).is('deleted_at', null)
+          .eq('school_id', session.school_id).or(`assigned_to.eq.${session.user_id},assignee_email.eq.${String(session.user_email || '').toLowerCase()}`).is('deleted_at', null)
           .in('status', ['active','in_progress','transferred','pending_approval','returned']).order('updated_at', { ascending: false }),
         sb.from('vw_platform_core_dashboard').select('*').eq('school_id', session.school_id).maybeSingle(),
-        sb.from('central_task_notifications').select('*').eq('school_id', session.school_id).or(`recipient_user_id.eq.${session.user_id},recipient_email.eq.${String(session.email || '').toLowerCase()}`).is('read_at', null).order('created_at', { ascending: false }).limit(20)
+        sb.from('central_task_notifications').select('*').eq('school_id', session.school_id).or(`recipient_user_id.eq.${session.user_id},recipient_email.eq.${String(session.user_email || '').toLowerCase()}`).is('read_at', null).order('created_at', { ascending: false }).limit(20)
       ]);
       for (const result of [modules, records, assignments, dashboard, notifications]) if (result.error) throw result.error;
       return json({ modules: modules.data || [], recordTypes: records.data || [], assignments: assignments.data || [], dashboard: dashboard.data || {}, notifications: notifications.data || [] });
@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
     if (action === 'my-assignments') {
       const { data, error } = await sb.from('central_tasks').select('*,task_access_grants(*),task_record_links(*)')
         .eq('school_id', session.school_id)
-        .or(`assigned_to.eq.${session.user_id},assignee_email.eq.${String(session.email || '').toLowerCase()}`)
+        .or(`assigned_to.eq.${session.user_id},assignee_email.eq.${String(session.user_email || '').toLowerCase()}`)
         .is('deleted_at', null).in('status', ['active','in_progress','transferred','pending_approval','returned'])
         .order('updated_at', { ascending: false });
       if (error) throw error;
@@ -92,7 +92,19 @@ Deno.serve(async (req) => {
         sb.from('central_task_reviews').select('*').eq('task_id', task.id).order('reviewed_at', { ascending: false })
       ]);
       for (const result of [grants, records, updates, evidence, events, reviews]) if (result.error) throw result.error;
-      return json({ task, grants: grants.data || [], records: records.data || [], updates: updates.data || [], evidence: evidence.data || [], events: events.data || [], reviews: reviews.data || [] });
+      let resolvedRecords: any[] = records.data || [];
+      if (!resolvedRecords.length && Array.isArray(task?.metadata?.delegatedRecords)) {
+        resolvedRecords = task.metadata.delegatedRecords.filter((r: any) => r?.moduleKey && r?.recordType).map((r: any) => ({
+          task_id: task.id, module_key: r.moduleKey, record_type: r.recordType, record_id: null,
+          relation_type: 'delegated_record', label: r.label || null, route_url: r.routeUrl || null, synthesized: true
+        }));
+      }
+      if (!resolvedRecords.length && task?.module_key) {
+        resolvedRecords = [{ task_id: task.id, module_key: task.module_key, record_type: task.record_type || null,
+          record_id: task.record_id || null, relation_type: 'execution_source', label: task.record_key || task.title,
+          route_url: task?.metadata?.routeUrl || null, synthesized: true }];
+      }
+      return json({ task, grants: grants.data || [], records: resolvedRecords, updates: updates.data || [], evidence: evidence.data || [], events: events.data || [], reviews: reviews.data || [] });
     }
 
     if (action === 'record-event') {
@@ -199,7 +211,7 @@ Deno.serve(async (req) => {
       const id = String(body.id || '');
       const { error } = await sb.from('central_task_notifications').update({ read_at: new Date().toISOString() })
         .eq('id', id).eq('school_id', session.school_id)
-        .or(`recipient_user_id.eq.${session.user_id},recipient_email.eq.${String(session.email || '').toLowerCase()}`);
+        .or(`recipient_user_id.eq.${session.user_id},recipient_email.eq.${String(session.user_email || '').toLowerCase()}`);
       if (error) throw error;
       return json({ ok: true });
     }

@@ -27,7 +27,7 @@ const api={
  dashboard:()=>request('dashboard',{}),
  markNotificationRead:id=>request('mark-notification-read',{id}),
  invalidate(){cache.bootstrap=null;cache.at=0},
- openAssignment(taskId){location.href='assignment_workspace.html?task_id='+encodeURIComponent(taskId)}
+ openAssignment(taskId){location.href='central_task_center.html?mode=assignee&task_id='+encodeURIComponent(taskId)}
 };
 window.PlatformCore=api;
 window.addEventListener('cloudtasks:changed',()=>api.invalidate());

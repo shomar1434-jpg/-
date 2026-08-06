@@ -26,7 +26,7 @@ Deno.serve(async(req)=>{
   const mine=(t:any)=>t&&(String(t.assigned_to||'')===String(s.user_id)||String(t.assignee_email||'').toLowerCase()===sessionEmail);
   const canRead=(t:any)=>t&&t.school_id===s.school_id&&(isOwner||mine(t)||String(t.created_by)===String(s.user_id));
   console.log('[platform-tasks]',{requestId,action,schoolId:s.school_id,userId:s.user_id,role:s.role});
-  if(action==='health')return json({ok:true,version:'1.0.1',schoolId:s.school_id,userId:s.user_id,role:s.role});
+  if(action==='health')return json({ok:true,version:'1.1.0',schoolId:s.school_id,userId:s.user_id,role:s.role});
   if(action==='list-users'){
    if(!isOwner)return json({error:'لا توجد صلاحية لعرض المستخدمين'},403);
    const {data,error}=await sb.from('users').select('id,school_id,email,full_name,role,status').eq('school_id',s.school_id).order('full_name');
@@ -53,8 +53,14 @@ Deno.serve(async(req)=>{
    if(!row.title)return json({error:'عنوان التكليف مطلوب'},400);
    const {data:t,error}=await sb.from('central_tasks').insert(row).select('*').single();if(error){console.error('[platform-tasks:create:insert]',requestId,error,row);throw error;}if(!t?.id)throw new Error('تعذر إنشاء معرف التكليف بعد الإدراج');
    await sb.from('central_task_assignments').insert({school_id:s.school_id,task_id:t.id,assigned_to:assignedTo,assignee_email:assigneeEmail,assignee_name:row.assignee_name,assignee_role:row.assignee_role,assigned_by:s.user_id,assignment_reason:'إنشاء التكليف',is_current:true});
-   if(body.recordKey||body.recordType)await sb.from('task_record_links').insert({school_id:s.school_id,task_id:t.id,module_key:row.module_key,record_type:String(body.recordType||body.assignmentType||'record'),record_id:body.recordId||body.recordKey||null,relation_type:'execution_source',created_by:s.user_id});
-   if(body.grant){await sb.from('task_access_grants').insert({school_id:s.school_id,task_id:t.id,user_id:assignedTo,user_email:assigneeEmail,module_key:safeKey(body.grant.moduleKey||row.module_key),record_type:body.grant.recordType||body.recordType||null,record_id:body.grant.recordId||body.recordId||null,permission_scope:body.grant.permissionScope||'module',can_view:true,can_create:!!body.grant.canCreate,can_update:body.grant.canUpdate!==false,can_upload:body.grant.canUpload!==false,can_submit:body.grant.canSubmit!==false,can_approve:!!body.grant.canApprove,can_delete:!!body.grant.canDelete,starts_at:body.startDate||now,expires_at:body.dueDate?new Date(String(body.dueDate)+'T23:59:59Z').toISOString():null,granted_by:s.user_id})}
+   const delegatedRecords=Array.isArray(body.metadata?.delegatedRecords)?body.metadata.delegatedRecords:[];
+   if(delegatedRecords.length){
+    const links=delegatedRecords.filter((r:any)=>r&&r.moduleKey&&r.recordType).map((r:any)=>({school_id:s.school_id,task_id:t.id,module_key:safeKey(r.moduleKey),record_type:String(r.recordType),record_id:null,relation_type:'delegated_record',created_by:s.user_id}));
+    if(links.length){const {error:linksError}=await sb.from('task_record_links').insert(links);if(linksError)throw linksError}
+   }else if(body.recordKey||body.recordType){
+    const {error:linkError}=await sb.from('task_record_links').insert({school_id:s.school_id,task_id:t.id,module_key:row.module_key,record_type:String(body.recordType||body.assignmentType||'record'),record_id:body.recordId||null,relation_type:'execution_source',created_by:s.user_id});if(linkError)throw linkError;
+   }
+   if(body.grant){const {error:grantError}=await sb.from('task_access_grants').insert({school_id:s.school_id,task_id:t.id,user_id:assignedTo,user_email:assigneeEmail,module_key:safeKey(body.grant.moduleKey||row.module_key),record_type:body.grant.recordType||body.recordType||null,record_id:body.grant.recordId||body.recordId||null,permission_scope:body.grant.permissionScope||'module',can_view:true,can_create:!!body.grant.canCreate,can_update:body.grant.canUpdate!==false,can_upload:body.grant.canUpload!==false,can_submit:body.grant.canSubmit!==false,can_approve:!!body.grant.canApprove,can_delete:!!body.grant.canDelete,starts_at:body.startDate||now,expires_at:body.dueDate?new Date(String(body.dueDate)+'T23:59:59Z').toISOString():null,granted_by:s.user_id});if(grantError)throw grantError}
    await event(t.id,'created','تم إنشاء التكليف',null,t);await notice(t.id,assignedTo,assigneeEmail,'assigned','تكليف جديد',`تم إسناد التكليف: ${t.title}`);return json({task:t},201);
   }
   const task=await getTask(String(body.taskId||''));if(!task)return json({error:'التكليف غير موجود'},404);

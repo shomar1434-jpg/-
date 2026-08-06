@@ -16,7 +16,17 @@
    try{
     const users=collectUsers(),sel=document.getElementById('assigneeId'),u=users.find(x=>String(x.id)===String(sel.value))||{};
     if(!u.id && !u.email) throw new Error('تعذر تحديد حساب المستخدم المكلف. حدّث الصفحة واختر المستخدم مرة أخرى.');
-    const payload={title:document.getElementById('taskTitle').value,description:document.getElementById('taskDesc').value,assignmentType:document.getElementById('taskType').value,sourceOwner:document.getElementById('sourceOwner').value,recordKey:document.getElementById('recordKey').value,moduleKey:document.getElementById('sourceOwner').value,recordType:document.getElementById('taskType').value,ownerLabel:currentOwnerLabel(),assignedTo:u.id,assigneeEmail:u.email,assigneeName:u.name,assigneeRole:u.role,priority:document.getElementById('priority').value,startDate:document.getElementById('startDate').value,dueDate:document.getElementById('dueDate').value,grant:{moduleKey:normalizeExtraCode(document.getElementById('recordKey').value)||document.getElementById('sourceOwner').value,permissionScope:document.getElementById('taskType').value==='additional_role'?'module':'record',canCreate:true,canUpdate:true,canUpload:true,canSubmit:true}};
+    const owner=document.getElementById('sourceOwner').value;
+    const section=document.getElementById('ownerSection')?.value||'';
+    const group=document.getElementById('recordGroup')?.value||'';
+    const delegationScope=document.getElementById('delegationScope')?.value||'record_type';
+    const selectedValue=document.getElementById('recordKey').value;
+    const recordDef=delegationScope==='record_group'
+      ? window.PlatformRecordCatalog?.groupDefinition(owner,section,group)
+      : (window.PlatformRecordCatalog?.fromOption(selectedValue)||window.PlatformRecordCatalog?.resolve(selectedValue,owner)||null);
+    if(!recordDef) throw new Error('تعذر التعرف على نطاق التفويض المحدد. حدّث الصفحة واختر القسم والمجموعة مرة أخرى.');
+    const assignmentType=document.getElementById('taskType').value;
+    const payload={title:document.getElementById('taskTitle').value,description:document.getElementById('taskDesc').value,assignmentType,sourceOwner:owner,recordKey:recordDef.label,moduleKey:recordDef.moduleKey,recordType:delegationScope==='record_group'?null:recordDef.recordType,recordId:null,ownerLabel:currentOwnerLabel(),assignedTo:u.id,assigneeEmail:u.email,assigneeName:u.name,assigneeRole:u.role,priority:document.getElementById('priority').value,startDate:document.getElementById('startDate').value,dueDate:document.getElementById('dueDate').value,metadata:{recordLabel:recordDef.label,routeUrl:recordDef.routeUrl,catalogVersion:window.PlatformRecordCatalog?.version||'unknown',ownerSection:recordDef.ownerSection||section,ownerSectionLabel:recordDef.ownerSectionLabel||'',recordGroupKey:recordDef.recordGroupKey||group,recordGroupName:recordDef.recordGroupName||recordDef.label,delegationScope,delegatedRecords:(recordDef.records||[]).map(r=>({moduleKey:r.moduleKey,recordType:r.recordType,label:r.label,routeUrl:r.routeUrl}))},grant:{moduleKey:recordDef.moduleKey,recordType:delegationScope==='record_group'?null:recordDef.recordType,recordId:null,permissionScope:delegationScope,recordGroupKey:recordDef.recordGroupKey||group,canCreate:true,canUpdate:true,canUpload:recordDef.supportsFiles!==false,canSubmit:true,canApprove:false}};
     const r=await CloudTaskEngine.create(payload);
     if(!r||!r.task||!r.task.id) throw new Error('لم يُرجع الخادم معرفًا صحيحًا للتكليف المحفوظ.');
     const t=CloudTaskEngine.mapTask(r.task);

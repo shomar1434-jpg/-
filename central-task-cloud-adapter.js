@@ -2,7 +2,7 @@
  'use strict';
  async function emitCoreEvent(task,eventType,data={}){try{if(window.PlatformCore)await PlatformCore.emitRecordEvent({moduleKey:'central_tasks',recordType:'central_task',recordId:task.task_id||task.id,taskId:task.task_id||task.id,eventType,data})}catch(e){console.warn('تعذر إرسال حدث Platform Core:',e)}}
  function toast(msg,ok=true){let x=document.getElementById('cloudTaskToast');if(!x){x=document.createElement('div');x.id='cloudTaskToast';x.style.cssText='position:fixed;left:24px;bottom:24px;z-index:99999;padding:12px 18px;border-radius:16px;color:white;font-weight:900;font-size:13px;box-shadow:0 16px 40px #0003;transition:.25s';document.body.appendChild(x)}x.textContent=msg;x.style.background=ok?'#0f766e':'#b91c1c';x.style.opacity='1';setTimeout(()=>x.style.opacity='0',3500)}
- async function refresh(){if(!window.CloudTaskEngine)return;try{const r=await CloudTaskEngine.list();const mapped=(r.tasks||[]).map(CloudTaskEngine.mapTask);saveTasks(mapped);renderAll();window.dispatchEvent(new CustomEvent('central-tasks:cloud-loaded',{detail:{count:mapped.length}}));}catch(e){console.warn('تعذر تحميل التكليفات السحابية، تم الإبقاء على النسخة المحلية المؤقتة:',e);toast(e.message||'تعذر تحميل التكليفات السحابية',false)}}
+ async function refresh(options={}){if(!window.CloudTaskEngine)return;try{const r=await CloudTaskEngine.list();const mapped=(r.tasks||[]).map(CloudTaskEngine.mapTask);if(options.preserveOnEmpty&&mapped.length===0&&tasks().length>0){console.warn('أعاد الخادم قائمة فارغة بعد الحفظ؛ تم الاحتفاظ بالعرض الحالي مؤقتًا.');return;}saveTasks(mapped);renderAll();window.dispatchEvent(new CustomEvent('central-tasks:cloud-loaded',{detail:{count:mapped.length}}));}catch(e){console.warn('تعذر تحميل التكليفات السحابية، تم الإبقاء على النسخة المحلية المؤقتة:',e);toast(e.message||'تعذر تحميل التكليفات السحابية',false)}}
  document.addEventListener('DOMContentLoaded',async()=>{
   if(!window.CloudTaskEngine)return;
   const oldCreate=window.createTask;
@@ -18,17 +18,18 @@
     if(!u.id && !u.email) throw new Error('تعذر تحديد حساب المستخدم المكلف. حدّث الصفحة واختر المستخدم مرة أخرى.');
     const payload={title:document.getElementById('taskTitle').value,description:document.getElementById('taskDesc').value,assignmentType:document.getElementById('taskType').value,sourceOwner:document.getElementById('sourceOwner').value,recordKey:document.getElementById('recordKey').value,moduleKey:document.getElementById('sourceOwner').value,recordType:document.getElementById('taskType').value,ownerLabel:currentOwnerLabel(),assignedTo:u.id,assigneeEmail:u.email,assigneeName:u.name,assigneeRole:u.role,priority:document.getElementById('priority').value,startDate:document.getElementById('startDate').value,dueDate:document.getElementById('dueDate').value,grant:{moduleKey:normalizeExtraCode(document.getElementById('recordKey').value)||document.getElementById('sourceOwner').value,permissionScope:document.getElementById('taskType').value==='additional_role'?'module':'record',canCreate:true,canUpdate:true,canUpload:true,canSubmit:true}};
     const r=await CloudTaskEngine.create(payload);
+    if(!r||!r.task||!r.task.id) throw new Error('لم يُرجع الخادم معرفًا صحيحًا للتكليف المحفوظ.');
     const t=CloudTaskEngine.mapTask(r.task);
     let a=tasks();a.unshift(t);saveTasks(a);routeTaskToAssignee(t);resetForm();switchView('active');
     await emitCoreEvent(t,'task_created',{status:t.status,progress_percent:t.progress_percent,assignee_id:t.assignee_id,assignee_role:t.assignee_role});
     toast('تم إنشاء التكليف سحابيًا وإرساله للمكلف');
-    await refresh();
+    await refresh({preserveOnEmpty:true});
    }catch(err){console.error('[central-task-create]',err);toast(err.message||'تعذر إنشاء التكليف السحابي',false)}
    finally{if(submit){submit.dataset.saving='0';submit.disabled=false;submit.textContent=submit.dataset.originalText||'حفظ التكليف'}}
   };
   // ضمان أن النموذج يستدعي المعالج السحابي حتى لو تم ربط المعالج المحلي قبله.
   const taskForm=document.getElementById('taskForm');
-  if(taskForm){taskForm.removeEventListener('submit',oldCreate);taskForm.addEventListener('submit',window.createTask)}
+  if(taskForm){taskForm.onsubmit=window.createTask}
   const oldSet=window.setTask;
   window.setTask=function(next){const previous=getTask(next.task_id);oldSet(next);if(!next._cloud)return;setTimeout(async()=>{try{if(previous&&String(previous.assignee_id)!==String(next.assignee_id)){await CloudTaskEngine.reassign({taskId:next.task_id,assignedTo:next.assignee_id,assigneeEmail:next.assignee_email,assigneeName:next.assignee_name,assigneeRole:next.assignee_role,reason:'نقل من مركز التكليفات'});await emitCoreEvent(next,'task_reassigned',{status:next.status,progress_percent:next.progress_percent,assignee_id:next.assignee_id,assignee_role:next.assignee_role});toast('تم نقل التكليف سحابيًا');return}if(previous&&previous.status!==next.status){const map={in_progress:'in_progress',pending_approval:'pending_approval',approved:'approved',returned:'returned',rejected:'rejected',withdrawn:'withdrawn',archived:'archived'};if(map[next.status]){await CloudTaskEngine.transition(next.task_id,map[next.status],next.history?.[0]?.note||'');await emitCoreEvent(next,'task_status_changed',{status:next.status,progress_percent:next.progress_percent});toast('تم تحديث حالة التكليف سحابيًا')}}}catch(err){console.error(err);toast('تم الحفظ محليًا مؤقتًا، لكن تعذرت المزامنة السحابية: '+(err.message||err),false)}},0)};
   const oldSaveUpdate=window.saveUpdate;

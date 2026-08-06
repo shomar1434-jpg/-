@@ -18,12 +18,15 @@ Deno.serve(async(req)=>{
   await sb.from('platform_sessions').update({last_seen_at:now}).eq('id',s.id);
   const action=new URL(req.url).searchParams.get('action')||'',body=req.method==='GET'?{}:await req.json().catch(()=>({}));
   const role=String(s.role||'').toLowerCase(),isOwner=ownerRoles.has(role)||ownerRoles.has(String(s.role||''));
+  let sessionEmail=String(s.user_email||'').trim().toLowerCase();
+  if(!sessionEmail&&isUuid(s.user_id)){const {data:su}=await sb.from('users').select('email').eq('id',s.user_id).eq('school_id',s.school_id).maybeSingle();sessionEmail=String(su?.email||'').trim().toLowerCase()}
   const event=async(taskId:string,type:string,note='',oldValues:any=null,newValues:any=null)=>{await sb.from('central_task_events').insert({school_id:s.school_id,task_id:taskId,actor_id:s.user_id,event_type:type,event_note:note||null,old_values:oldValues,new_values:newValues})};
   const notice=async(taskId:string,userId:any,email:any,type:string,title:string,message:string)=>{await sb.from('central_task_notifications').insert({school_id:s.school_id,task_id:taskId,recipient_user_id:isUuid(userId)?userId:null,recipient_email:email?String(email).toLowerCase():null,notification_type:type,title,message})};
   const getTask=async(id:string)=>{const {data}=await sb.from('central_tasks').select('*').eq('id',id).eq('school_id',s.school_id).is('deleted_at',null).maybeSingle();return data};
-  const mine=(t:any)=>t&&(String(t.assigned_to||'')===String(s.user_id)||String(t.assignee_email||'').toLowerCase()===String(s.user_email||'').toLowerCase());
+  const mine=(t:any)=>t&&(String(t.assigned_to||'')===String(s.user_id)||String(t.assignee_email||'').toLowerCase()===sessionEmail);
   const canRead=(t:any)=>t&&t.school_id===s.school_id&&(isOwner||mine(t)||String(t.created_by)===String(s.user_id));
-  if(action==='health')return json({ok:true,version:'1.0.0',schoolId:s.school_id,userId:s.user_id,role:s.role});
+  console.log('[platform-tasks]',{requestId,action,schoolId:s.school_id,userId:s.user_id,role:s.role});
+  if(action==='health')return json({ok:true,version:'1.0.1',schoolId:s.school_id,userId:s.user_id,role:s.role});
   if(action==='list-users'){
    if(!isOwner)return json({error:'لا توجد صلاحية لعرض المستخدمين'},403);
    const {data,error}=await sb.from('users').select('id,school_id,email,full_name,role,status').eq('school_id',s.school_id).order('full_name');
@@ -31,7 +34,7 @@ Deno.serve(async(req)=>{
   }
   if(action==='list'){
    let q=sb.from('central_tasks').select('*,central_task_updates(*),central_task_evidence(*),central_task_assignments(*)').eq('school_id',s.school_id).is('deleted_at',null).order('updated_at',{ascending:false}).limit(Math.min(Number(body.limit)||500,1000));
-   if(!isOwner)q=q.or(`assigned_to.eq.${s.user_id},created_by.eq.${s.user_id}${s.user_email?`,assignee_email.eq.${String(s.user_email).toLowerCase()}`:''}`);
+   if(!isOwner)q=q.or(`assigned_to.eq.${s.user_id},created_by.eq.${s.user_id}${sessionEmail?`,assignee_email.eq.${sessionEmail}`:''}`);
    if(body.status)q=q.eq('status',body.status);if(body.moduleKey)q=q.eq('module_key',safeKey(body.moduleKey));
    const {data,error}=await q;if(error)throw error;return json({tasks:data||[]});
   }
@@ -48,7 +51,7 @@ Deno.serve(async(req)=>{
    if(assignedTo){const {data:u}=await sb.from('users').select('id,school_id,email,full_name,role,status').eq('id',assignedTo).eq('school_id',s.school_id).maybeSingle();if(!u)return json({error:'المستخدم المكلف غير مرتبط بالمدرسة'},409)}
    const row={school_id:s.school_id,module_key:safeKey(body.moduleKey||body.sourceOwner||'central_tasks'),record_type:body.recordType||body.assignmentType||null,record_id:body.recordId||null,title:String(body.title||'').trim().slice(0,300),description:String(body.description||'').trim()||null,assignment_type:['record','partial','additional_role'].includes(body.assignmentType)?body.assignmentType:'partial',source_owner:body.sourceOwner||null,record_key:body.recordKey||null,created_by:s.user_id,owner_role:s.role,owner_label:body.ownerLabel||null,assigned_to:assignedTo,assignee_email:assigneeEmail,assignee_name:body.assigneeName||null,assignee_role:body.assigneeRole||null,priority:['low','normal','high','urgent'].includes(body.priority)?body.priority:'normal',status:'active',start_date:body.startDate||null,due_date:body.dueDate||null,requires_approval:body.requiresApproval!==false,metadata:body.metadata||{}};
    if(!row.title)return json({error:'عنوان التكليف مطلوب'},400);
-   const {data:t,error}=await sb.from('central_tasks').insert(row).select('*').single();if(error)throw error;
+   const {data:t,error}=await sb.from('central_tasks').insert(row).select('*').single();if(error){console.error('[platform-tasks:create:insert]',requestId,error,row);throw error;}if(!t?.id)throw new Error('تعذر إنشاء معرف التكليف بعد الإدراج');
    await sb.from('central_task_assignments').insert({school_id:s.school_id,task_id:t.id,assigned_to:assignedTo,assignee_email:assigneeEmail,assignee_name:row.assignee_name,assignee_role:row.assignee_role,assigned_by:s.user_id,assignment_reason:'إنشاء التكليف',is_current:true});
    if(body.recordKey||body.recordType)await sb.from('task_record_links').insert({school_id:s.school_id,task_id:t.id,module_key:row.module_key,record_type:String(body.recordType||body.assignmentType||'record'),record_id:body.recordId||body.recordKey||null,relation_type:'execution_source',created_by:s.user_id});
    if(body.grant){await sb.from('task_access_grants').insert({school_id:s.school_id,task_id:t.id,user_id:assignedTo,user_email:assigneeEmail,module_key:safeKey(body.grant.moduleKey||row.module_key),record_type:body.grant.recordType||body.recordType||null,record_id:body.grant.recordId||body.recordId||null,permission_scope:body.grant.permissionScope||'module',can_view:true,can_create:!!body.grant.canCreate,can_update:body.grant.canUpdate!==false,can_upload:body.grant.canUpload!==false,can_submit:body.grant.canSubmit!==false,can_approve:!!body.grant.canApprove,can_delete:!!body.grant.canDelete,starts_at:body.startDate||now,expires_at:body.dueDate?new Date(String(body.dueDate)+'T23:59:59Z').toISOString():null,granted_by:s.user_id})}

@@ -44,6 +44,7 @@ Deno.serve(async (req) => {
       return data;
     };
     const canAccessTask = (task: any) => isOwner || String(task?.created_by || '') === String(session.user_id) || String(task?.assigned_to || '') === String(session.user_id) || (task?.assignee_email && String(task.assignee_email).toLowerCase() === String(session.user_email || '').toLowerCase());
+    const visibleAssignment = (task: any) => !task?.metadata?.legacy_archived && !task?.metadata?.hidden_from_assignee;
 
     if (action === 'health') return json({ ok: true, service: 'platform-core', requestId, schoolId: session.school_id, userId: session.user_id });
 
@@ -58,7 +59,7 @@ Deno.serve(async (req) => {
         sb.from('central_task_notifications').select('*').eq('school_id', session.school_id).or(`recipient_user_id.eq.${session.user_id},recipient_email.eq.${String(session.user_email || '').toLowerCase()}`).is('read_at', null).order('created_at', { ascending: false }).limit(20)
       ]);
       for (const result of [modules, records, assignments, dashboard, notifications]) if (result.error) throw result.error;
-      return json({ modules: modules.data || [], recordTypes: records.data || [], assignments: assignments.data || [], dashboard: dashboard.data || {}, notifications: notifications.data || [] });
+      return json({ modules: modules.data || [], recordTypes: records.data || [], assignments: (assignments.data || []).filter(visibleAssignment), dashboard: dashboard.data || {}, notifications: notifications.data || [] });
     }
 
     if (action === 'registry') {
@@ -76,7 +77,7 @@ Deno.serve(async (req) => {
         .is('deleted_at', null).in('status', ['active','in_progress','transferred','pending_approval','returned'])
         .order('updated_at', { ascending: false });
       if (error) throw error;
-      return json({ assignments: data || [] });
+      return json({ assignments: (data || []).filter(visibleAssignment) });
     }
 
     if (action === 'workspace') {

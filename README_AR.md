@@ -1,13 +1,9 @@
-# طريقة التطبيق
+تصحيح الأرشفة وحذف التكليف
 
-استبدل الملفات في GitHub مع الحفاظ على المسارات:
+1) استبدل central_task_center.html في جذر المستودع.
+2) استبدل cloud-task-engine.js في جذر المستودع.
+3) استبدل supabase/functions/platform-tasks/index.ts.
+4) ارفع الملفات إلى main وانتظر نجاح Deploy Supabase Edge Functions.
+5) نفّذ Ctrl+F5 ثم سجل الخروج والدخول قبل الاختبار.
 
-- `my-additional-assignments.js`
-- `platform-core-engine.js`
-- `delegated-access-guard.js`
-- `central_task_center.html`
-- `assignment_workspace.html`
-- `supabase/functions/platform-core/index.ts`
-
-لا يوجد SQL جديد لهذه الحزمة.
-بعد الرفع انتظر نجاح GitHub Actions لنشر `platform-core`، ثم نفذ تحديثًا قويًا وسجل الخروج والدخول.
+لا يوجد SQL جديد لهذا التصحيح.

@@ -23,10 +23,10 @@
     const selectedValue=document.getElementById('recordKey').value;
     const recordDef=delegationScope==='record_group'
       ? window.PlatformRecordCatalog?.groupDefinition(owner,section,group)
-      : (window.PlatformRecordCatalog?.fromOptionStrict?.(selectedValue,owner,section,group)||null);
-    if(!recordDef) throw new Error('تعذر التعرف بدقة على نطاق التفويض المحدد. أعد اختيار الجهة والقسم والمجموعة والسجل.');
+      : (window.PlatformRecordCatalog?.fromOption(selectedValue)||window.PlatformRecordCatalog?.resolve(selectedValue,owner)||null);
+    if(!recordDef) throw new Error('تعذر التعرف على نطاق التفويض المحدد. حدّث الصفحة واختر القسم والمجموعة مرة أخرى.');
     const assignmentType=document.getElementById('taskType').value;
-    const payload={title:document.getElementById('taskTitle').value,description:document.getElementById('taskDesc').value,assignmentType,sourceOwner:owner,recordKey:recordDef.label,moduleKey:recordDef.moduleKey,recordType:delegationScope==='record_group'?null:recordDef.recordType,recordId:null,ownerLabel:currentOwnerLabel(),assignedTo:u.id,assigneeEmail:u.email,assigneeName:u.name,assigneeRole:u.role,priority:document.getElementById('priority').value,startDate:document.getElementById('startDate').value,dueDate:document.getElementById('dueDate').value,metadata:{recordLabel:recordDef.label,routeUrl:recordDef.routeUrl,catalogVersion:window.PlatformRecordCatalog?.version||'unknown',sourceOwner:owner,ownerSection:recordDef.ownerSection||section,ownerSectionLabel:recordDef.ownerSectionLabel||'',recordGroupKey:recordDef.recordGroupKey||group,recordGroupName:recordDef.recordGroupName||recordDef.label,delegationScope,delegationSignature:[owner,recordDef.ownerSection||section,recordDef.recordGroupKey||group].join('|'),delegatedRecords:(recordDef.records||[recordDef]).filter(r=>r&&r.moduleKey&&r.recordType).map(r=>({moduleKey:r.moduleKey,recordType:r.recordType,label:r.label,routeUrl:r.routeUrl,owner:r.owner,ownerRole:r.ownerRole,ownerSection:r.ownerSection,recordGroupKey:r.recordGroupKey,recordKey:r.recordKey}))},grant:{moduleKey:recordDef.moduleKey,recordType:delegationScope==='record_group'?null:recordDef.recordType,recordId:null,permissionScope:delegationScope,recordGroupKey:recordDef.recordGroupKey||group,canCreate:true,canUpdate:true,canUpload:recordDef.supportsFiles!==false,canSubmit:true,canApprove:false}};
+    const payload={title:document.getElementById('taskTitle').value,description:document.getElementById('taskDesc').value,assignmentType,sourceOwner:owner,recordKey:recordDef.label,moduleKey:recordDef.moduleKey,recordType:delegationScope==='record_group'?null:recordDef.recordType,recordId:null,ownerLabel:currentOwnerLabel(),assignedTo:u.id,assigneeEmail:u.email,assigneeName:u.name,assigneeRole:u.role,priority:document.getElementById('priority').value,startDate:document.getElementById('startDate').value,dueDate:document.getElementById('dueDate').value,metadata:{recordLabel:recordDef.label,routeUrl:recordDef.routeUrl,catalogVersion:window.PlatformRecordCatalog?.version||'unknown',ownerSection:recordDef.ownerSection||section,ownerSectionLabel:recordDef.ownerSectionLabel||'',recordGroupKey:recordDef.recordGroupKey||group,recordGroupName:recordDef.recordGroupName||recordDef.label,delegationScope,delegatedRecords:(delegationScope==='record_group'?(recordDef.records||[]):[recordDef]).filter(r=>r?.moduleKey&&r?.recordType).map(r=>({moduleKey:r.moduleKey,recordType:r.recordType,recordId:r.recordId||null,label:r.label,routeUrl:r.routeUrl}))},grant:{moduleKey:recordDef.moduleKey,recordType:delegationScope==='record_group'?null:recordDef.recordType,recordId:null,permissionScope:delegationScope,recordGroupKey:recordDef.recordGroupKey||group,canCreate:true,canUpdate:true,canUpload:recordDef.supportsFiles!==false,canSubmit:true,canApprove:false}};
     const r=await CloudTaskEngine.create(payload);
     if(!r||!r.task||!r.task.id) throw new Error('لم يُرجع الخادم معرفًا صحيحًا للتكليف المحفوظ.');
     const t=CloudTaskEngine.mapTask(r.task);
@@ -35,7 +35,8 @@
     a=a.filter(x=>String(x?.task_id||'')!==String(t.task_id));
     a.unshift(t);
     saveTasks(a);
-    // Supabase هو المصدر الوحيد للتوجيه. لا ننشئ مسارات/أدوار محلية موازية حتى لا تتكرر التكليفات أو تختلط الصلاحيات.
+    // عمليات التوافق المحلية مساندة فقط؛ لا يجوز أن تحول نجاح الحفظ السحابي إلى فشل مرئي.
+    try{routeTaskToAssignee(t)}catch(syncError){console.warn('[central-task-local-route]',syncError)}
     resetForm();switchView('active');renderAll();
     await emitCoreEvent(t,'task_created',{status:t.status,progress_percent:t.progress_percent,assignee_id:t.assignee_id,assignee_role:t.assignee_role});
     toast('تم إنشاء التكليف سحابيًا وإرساله للمكلف');
@@ -46,19 +47,6 @@
   // ضمان أن النموذج يستدعي المعالج السحابي حتى لو تم ربط المعالج المحلي قبله.
   const taskForm=document.getElementById('taskForm');
   if(taskForm){taskForm.onsubmit=window.createTask}
-  window.deleteTaskCloud=async function(id){
-   const t=getTask(id);if(!t)return;
-   const ok=confirm('سيتم حذف التكليف من قائمة المكلف وإنهاء صلاحياته على السجلات المفوضة. لن تُحذف الأعمال التي نُفذت سابقًا داخل السجلات. هل تريد المتابعة؟');
-   if(!ok)return;
-   try{
-    await CloudTaskEngine.deleteTask(id,'حذف من مركز التكليفات');
-    saveTasks(tasks().filter(x=>String(x.task_id)!==String(id)));
-    if(inlineWs?.task?.id===id||inlineWs?.task?.task_id===id)closeInlineWorkspace();
-    renderAll();
-    toast('تم حذف التكليف وإنهاء صلاحياته مع الاحتفاظ بالتنفيذ السابق');
-    await refresh();
-   }catch(err){console.error('[central-task-delete]',err);toast(err.message||'تعذر حذف التكليف',false)}
-  };
   const oldSet=window.setTask;
   window.setTask=function(next){const previous=getTask(next.task_id);oldSet(next);if(!next._cloud)return;setTimeout(async()=>{try{if(previous&&String(previous.assignee_id)!==String(next.assignee_id)){await CloudTaskEngine.reassign({taskId:next.task_id,assignedTo:next.assignee_id,assigneeEmail:next.assignee_email,assigneeName:next.assignee_name,assigneeRole:next.assignee_role,reason:'نقل من مركز التكليفات'});await emitCoreEvent(next,'task_reassigned',{status:next.status,progress_percent:next.progress_percent,assignee_id:next.assignee_id,assignee_role:next.assignee_role});toast('تم نقل التكليف سحابيًا');return}if(previous&&previous.status!==next.status){const map={in_progress:'in_progress',pending_approval:'pending_approval',approved:'approved',returned:'returned',rejected:'rejected',withdrawn:'withdrawn',archived:'archived'};if(map[next.status]){await CloudTaskEngine.transition(next.task_id,map[next.status],next.history?.[0]?.note||'');await emitCoreEvent(next,'task_status_changed',{status:next.status,progress_percent:next.progress_percent});toast('تم تحديث حالة التكليف سحابيًا')}}}catch(err){console.error(err);toast('تم الحفظ محليًا مؤقتًا، لكن تعذرت المزامنة السحابية: '+(err.message||err),false)}},0)};
   const oldSaveUpdate=window.saveUpdate;

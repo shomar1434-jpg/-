@@ -43,22 +43,110 @@ Deno.serve(async (req) => {
       if (error) throw error;
       return data;
     };
-    const canAccessTask = (task: any) => isOwner || String(task?.created_by || '') === String(session.user_id) || String(task?.assigned_to || '') === String(session.user_id) || (task?.assignee_email && String(task.assignee_email).toLowerCase() === String(session.email || '').toLowerCase());
+    const canAccessTask = (task: any) => isOwner || String(task?.created_by || '') === String(session.user_id) || String(task?.assigned_to || '') === String(session.user_id) || (task?.assignee_email && String(task.assignee_email).toLowerCase() === String(session.user_email || '').toLowerCase());
+    const visibleAssignment = (task: any) => !task?.metadata?.legacy_archived && !task?.metadata?.hidden_from_assignee;
+    const executionStatuses = new Set(['active','in_progress','transferred','returned']);
+    const stageByEvent: Record<string, number> = { record_opened: 20, record_created: 60, record_updated: 60, record_completed: 80 };
+    const grantMatchesRecord = (g:any,moduleKey:string,recordType:string,recordId:any) => {
+      if (!g || g.status !== 'active' || !g.can_view) return false;
+      const ts=Date.now(),start=g.starts_at?Date.parse(g.starts_at):0,end=g.expires_at?Date.parse(g.expires_at):Infinity;
+      if (Number.isFinite(start) && start>ts) return false; if (Number.isFinite(end) && end<ts) return false;
+      if (String(g.module_key||'')!==String(moduleKey||'')) return false;
+      if (String(g.record_type||'')!==String(recordType||'')) return false;
+      if (String(g.record_id||'')!==String(recordId||'')) return false;
+      return true;
+    };
+    const currentAssignee = (task:any) => String(task?.assigned_to||'')===String(session.user_id||'') || (!!task?.assignee_email && String(task.assignee_email).toLowerCase()===String(session.user_email||'').toLowerCase());
 
-    if (action === 'health') return json({ ok: true, service: 'platform-core', requestId, schoolId: session.school_id, userId: session.user_id });
+    // Canonical delegated records are derived from the task metadata created by the owner.
+    // Existing links are accepted only when they still resolve to an active registry entry.
+    const canonicalTaskRecords = async (task:any, existingLinks:any[] = []) => {
+      const metadataRows = Array.isArray(task?.metadata?.delegatedRecords)
+        ? task.metadata.delegatedRecords.filter((r:any)=>r?.moduleKey && r?.recordType).map((r:any)=>({
+            task_id: task.id,
+            module_key: safeKey(r.moduleKey),
+            record_type: String(r.recordType),
+            record_id: r.recordId || null,
+            relation_type: 'delegated_record',
+            label: r.label || null,
+            route_url: r.routeUrl || null,
+            canonical_source: 'metadata'
+          }))
+        : [];
+
+      let candidates:any[] = metadataRows.length ? metadataRows : [];
+      // Repair older group assignments that stored only a generic `record` link.
+      if (!candidates.length && String(task?.metadata?.delegationScope||'') === 'record_group' && task?.metadata?.recordGroupKey) {
+        let q = sb.from('platform_record_types').select('module_key,record_type,display_name,route_url,record_group_key,owner_section,is_active')
+          .eq('record_group_key', String(task.metadata.recordGroupKey)).eq('is_active', true);
+        if (task?.metadata?.ownerSection) q = q.eq('owner_section', String(task.metadata.ownerSection));
+        const { data: groupRows, error: groupErr } = await q;
+        if (groupErr) throw groupErr;
+        candidates = (groupRows || []).map((r:any)=>({task_id:task.id,module_key:r.module_key,record_type:r.record_type,record_id:null,relation_type:'delegated_record',label:r.display_name,route_url:r.route_url,canonical_source:'registry_group'}));
+      }
+      if (!candidates.length) candidates = (existingLinks || []).filter((r:any)=>r?.module_key && r?.record_type && String(r.record_type)!=='record');
+      if (!candidates.length && task?.module_key && task?.record_type && String(task.record_type)!=='record') candidates.push({
+        task_id: task.id,
+        module_key: safeKey(task.module_key),
+        record_type: String(task.record_type),
+        record_id: task.record_id || null,
+        relation_type: 'execution_source',
+        label: task.record_key || task.title || null,
+        route_url: task?.metadata?.routeUrl || null,
+        canonical_source: 'task'
+      });
+
+      const unique = new Map<string,any>();
+      for (const r of candidates) {
+        const k=[safeKey(r.module_key),String(r.record_type||''),String(r.record_id||'')].join('|');
+        if(!unique.has(k)) unique.set(k,{...r,module_key:safeKey(r.module_key),record_type:String(r.record_type)});
+      }
+      const out:any[]=[];
+      for(const r of unique.values()){
+        const {data:reg,error:regErr}=await sb.from('platform_record_types')
+          .select('module_key,record_type,display_name,route_url,is_active')
+          .eq('module_key',r.module_key).eq('record_type',r.record_type).eq('is_active',true).maybeSingle();
+        if(regErr) throw regErr;
+        if(!reg) continue;
+        out.push({...r,label:r.label||reg.display_name||r.record_type,route_url:r.route_url||reg.route_url||null});
+      }
+      return out;
+    };
+
+    const ensureExactTaskAccess = async (task:any, canonicalRecords:any[], existingLinks:any[] = [], existingGrants:any[] = []) => {
+      if (!executionStatuses.has(String(task?.status||'')) || (!task?.assigned_to && !task?.assignee_email)) return {links:existingLinks||[],grants:existingGrants||[]};
+      const links=[...(existingLinks||[])], grants=[...(existingGrants||[])];
+      for(const r of canonicalRecords||[]){
+        const exactLink=links.find((l:any)=>String(l.module_key||'')===String(r.module_key||'')&&String(l.record_type||'')===String(r.record_type||'')&&String(l.record_id||'')===String(r.record_id||''));
+        if(!exactLink){
+          const row={school_id:task.school_id,task_id:task.id,module_key:r.module_key,record_type:r.record_type,record_id:r.record_id||null,relation_type:r.relation_type||'delegated_record',created_by:task.created_by};
+          const {data:created,error}=await sb.from('task_record_links').insert(row).select('*').single();
+          if(error) throw error; if(created) links.push(created);
+        }
+        const exactGrant=grants.find((g:any)=>String(g.status||'')==='active'&&((task.assigned_to&&String(g.user_id||'')===String(task.assigned_to||''))||(!task.assigned_to&&task.assignee_email&&String(g.user_email||'').toLowerCase()===String(task.assignee_email||'').toLowerCase()))&&String(g.module_key||'')===String(r.module_key||'')&&String(g.record_type||'')===String(r.record_type||'')&&String(g.record_id||'')===String(r.record_id||''));
+        if(!exactGrant){
+          const grow={school_id:task.school_id,task_id:task.id,user_id:task.assigned_to,user_email:task.assignee_email||null,module_key:r.module_key,record_type:r.record_type,record_id:r.record_id||null,permission_scope:'record',can_view:true,can_create:true,can_update:true,can_upload:true,can_submit:true,can_approve:false,can_delete:false,starts_at:task.start_date||task.created_at||now,expires_at:null,status:'active',granted_by:task.created_by};
+          const {data:created,error}=await sb.from('task_access_grants').insert(grow).select('*').single();
+          if(error) throw error; if(created) grants.push(created);
+        }
+      }
+      return {links,grants};
+    };
+
+    if (action === 'health') return json({ ok: true, service: 'platform-core', version:'2.3.0-registry-group-repair', requestId, schoolId: session.school_id, userId: session.user_id });
 
     if (action === 'bootstrap') {
       const [modules, records, assignments, dashboard, notifications] = await Promise.all([
         sb.from('platform_modules').select('*').eq('is_active', true).order('display_name'),
         sb.from('platform_record_types').select('*').eq('is_active', true).order('display_name'),
         sb.from('central_tasks').select('id,title,description,module_key,record_type,record_id,assignment_type,status,priority,progress_percent,start_date,due_date,assignee_role,created_at,updated_at')
-          .eq('school_id', session.school_id).or(`assigned_to.eq.${session.user_id},assignee_email.eq.${String(session.email || '').toLowerCase()}`).is('deleted_at', null)
+          .eq('school_id', session.school_id).or(`assigned_to.eq.${session.user_id},assignee_email.eq.${String(session.user_email || '').toLowerCase()}`).is('deleted_at', null)
           .in('status', ['active','in_progress','transferred','pending_approval','returned']).order('updated_at', { ascending: false }),
         sb.from('vw_platform_core_dashboard').select('*').eq('school_id', session.school_id).maybeSingle(),
-        sb.from('central_task_notifications').select('*').eq('school_id', session.school_id).or(`recipient_user_id.eq.${session.user_id},recipient_email.eq.${String(session.email || '').toLowerCase()}`).is('read_at', null).order('created_at', { ascending: false }).limit(20)
+        sb.from('central_task_notifications').select('*').eq('school_id', session.school_id).or(`recipient_user_id.eq.${session.user_id},recipient_email.eq.${String(session.user_email || '').toLowerCase()}`).is('read_at', null).order('created_at', { ascending: false }).limit(20)
       ]);
       for (const result of [modules, records, assignments, dashboard, notifications]) if (result.error) throw result.error;
-      return json({ modules: modules.data || [], recordTypes: records.data || [], assignments: assignments.data || [], dashboard: dashboard.data || {}, notifications: notifications.data || [] });
+      return json({ modules: modules.data || [], recordTypes: records.data || [], assignments: (assignments.data || []).filter(visibleAssignment), dashboard: dashboard.data || {}, notifications: notifications.data || [] });
     }
 
     if (action === 'registry') {
@@ -72,11 +160,11 @@ Deno.serve(async (req) => {
     if (action === 'my-assignments') {
       const { data, error } = await sb.from('central_tasks').select('*,task_access_grants(*),task_record_links(*)')
         .eq('school_id', session.school_id)
-        .or(`assigned_to.eq.${session.user_id},assignee_email.eq.${String(session.email || '').toLowerCase()}`)
+        .or(`assigned_to.eq.${session.user_id},assignee_email.eq.${String(session.user_email || '').toLowerCase()}`)
         .is('deleted_at', null).in('status', ['active','in_progress','transferred','pending_approval','returned'])
         .order('updated_at', { ascending: false });
       if (error) throw error;
-      return json({ assignments: data || [] });
+      return json({ assignments: (data || []).filter(visibleAssignment) });
     }
 
     if (action === 'workspace') {
@@ -92,7 +180,14 @@ Deno.serve(async (req) => {
         sb.from('central_task_reviews').select('*').eq('task_id', task.id).order('reviewed_at', { ascending: false })
       ]);
       for (const result of [grants, records, updates, evidence, events, reviews]) if (result.error) throw result.error;
-      return json({ task, grants: grants.data || [], records: records.data || [], updates: updates.data || [], evidence: evidence.data || [], events: events.data || [], reviews: reviews.data || [] });
+
+      // Always resolve the workspace against the canonical registry. Metadata delegatedRecords takes precedence
+      // over stale/generic legacy links so a deputy assignment can never fall back to manager/shared records.
+      const resolvedRecords = await canonicalTaskRecords(task, records.data || []);
+      if(!resolvedRecords.length) return json({ error:'لا توجد سجلات صحيحة مرتبطة بهذا التكليف في القاموس الموحد', code:'TASK_RECORDS_UNRESOLVED' },409);
+      const healed = await ensureExactTaskAccess(task,resolvedRecords,records.data||[],grants.data||[]);
+      const exactGrants=(healed.grants||[]).filter((g:any)=>resolvedRecords.some((r:any)=>String(g.module_key||'')===String(r.module_key||'')&&String(g.record_type||'')===String(r.record_type||'')&&String(g.record_id||'')===String(r.record_id||'')));
+      return json({ task, grants: exactGrants, records: resolvedRecords, updates: updates.data || [], evidence: evidence.data || [], events: events.data || [], reviews: reviews.data || [] });
     }
 
     if (action === 'record-event') {
@@ -100,9 +195,19 @@ Deno.serve(async (req) => {
       const recordType = safeKey(body.recordType, 'record');
       const eventType = safeKey(body.eventType, 'record_updated');
       const taskId = body.taskId || null;
+      let executionTask:any = null;
       if (taskId) {
-        const task = await readTask(String(taskId));
-        if (!task || !canAccessTask(task)) return json({ error: 'لا توجد صلاحية على التكليف المرتبط' }, 403);
+        executionTask = await readTask(String(taskId));
+        if (!executionTask || !canAccessTask(executionTask)) return json({ error: 'لا توجد صلاحية على التكليف المرتبط' }, 403);
+        if (!currentAssignee(executionTask)) return json({ error: 'التكليف غير مسند إلى المستخدم الحالي' }, 403);
+        if (!executionStatuses.has(String(executionTask.status||''))) return json({ error: 'التكليف غير متاح للتنفيذ حالياً' }, 409);
+        const [{data:taskGrants},{data:taskLinks}] = await Promise.all([
+          sb.from('task_access_grants').select('*').eq('task_id',executionTask.id).eq('status','active'),
+          sb.from('task_record_links').select('module_key,record_type,record_id').eq('task_id',executionTask.id)
+        ]);
+        const linked=(taskLinks||[]).some((l:any)=>String(l.module_key||'')===String(moduleKey)&&String(l.record_type||'')===String(recordType)&&String(l.record_id||'')===String(body.recordId||''));
+        const granted=(taskGrants||[]).some((g:any)=>grantMatchesRecord(g,moduleKey,recordType,body.recordId));
+        if (!linked || !granted) return json({ error: 'السجل غير داخل نطاق التفويض الفعّال' }, 403);
       }
       const { data: event, error: eventError } = await sb.from('platform_record_events').insert({
         school_id: session.school_id,
@@ -116,6 +221,38 @@ Deno.serve(async (req) => {
         event_data: body.data || {}
       }).select('*').single();
       if (eventError) throw eventError;
+
+      // التنفيذ داخل السجل هو شاهد داخلي. النسبة تُحسب من جميع السجلات المرتبطة بالتكليف، لا من آخر حدث فقط.
+      if (taskId) {
+        const targetProgress = stageByEvent[eventType];
+        if (targetProgress != null) {
+          const [{ data: links }, { data: taskEvents }] = await Promise.all([
+            sb.from('task_record_links').select('module_key,record_type,record_id').eq('task_id', taskId),
+            sb.from('platform_record_events').select('module_key,record_type,record_id,event_type').eq('task_id', taskId)
+          ]);
+          const uniqueLinks:any[]=[]; const seen=new Set<string>();
+          for(const l of links||[]){const k=[l.module_key,l.record_type,l.record_id||''].join('|');if(!seen.has(k)){seen.add(k);uniqueLinks.push(l)}}
+          let computed=targetProgress;
+          if(uniqueLinks.length){
+            let total=0;
+            for(const l of uniqueLinks){
+              let stage=0;
+              for(const ev of taskEvents||[]){
+                const matches=String(ev.module_key||'')===String(l.module_key||'')&&String(ev.record_type||'')===String(l.record_type||'')&&String(ev.record_id||'')===String(l.record_id||'');
+                if(matches)stage=Math.max(stage,stageByEvent[String(ev.event_type||'')]||0);
+              }
+              total+=stage;
+            }
+            computed=Math.round(total/uniqueLinks.length);
+          }
+          const task = executionTask || await readTask(String(taskId));
+          const nextProgress = Math.max(Number(task?.progress_percent || 0), computed);
+          const nextStatus = ['active','transferred','returned'].includes(String(task?.status || '')) ? 'in_progress' : task?.status;
+          await sb.from('central_tasks').update({ progress_percent: nextProgress, status: nextStatus, updated_at: new Date().toISOString() }).eq('id', taskId).eq('school_id', session.school_id);
+          await sb.from('central_task_updates').insert({ school_id: session.school_id, task_id: taskId, user_id: session.user_id, update_type: 'execution', title: body.data?.title || 'تنفيذ داخل السجل', notes: body.data?.notes || 'تم توثيق نشاط تنفيذي داخل السجل المرتبط بالتكليف.', progress_percent: nextProgress, status: 'draft', metadata: { module_key: moduleKey, record_type: recordType, record_id: body.recordId || null, record_event_id: event.id, internal_evidence: true } });
+          await sb.from('central_task_events').insert({ school_id: session.school_id, task_id: taskId, event_type: 'record_execution_evidence', actor_id: session.user_id, event_note: `${moduleKey}/${recordType}: ${eventType}`, old_values: null, new_values: { record_event_id: event.id, record_id: body.recordId || null, internal_evidence: true, progress_percent: nextProgress, execution_role: session.role } });
+        }
+      }
 
       const { data: rules, error: rulesError } = await sb.from('platform_indicator_rules').select('*')
         .eq('source_module_key', moduleKey).eq('source_event_type', eventType).eq('is_active', true)
@@ -185,7 +322,7 @@ Deno.serve(async (req) => {
       const id = String(body.id || '');
       const { error } = await sb.from('central_task_notifications').update({ read_at: new Date().toISOString() })
         .eq('id', id).eq('school_id', session.school_id)
-        .or(`recipient_user_id.eq.${session.user_id},recipient_email.eq.${String(session.email || '').toLowerCase()}`);
+        .or(`recipient_user_id.eq.${session.user_id},recipient_email.eq.${String(session.user_email || '').toLowerCase()}`);
       if (error) throw error;
       return json({ ok: true });
     }

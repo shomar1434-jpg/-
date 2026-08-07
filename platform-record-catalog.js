@@ -10,21 +10,7 @@ function recordsByGroup(owner,section,group){return byOwner(owner).filter(r=>(!s
 function resolve(value,owner){const q=norm(value);return RECORDS.find(r=>(!owner||r.owner===owner)&&(norm(r.label)===q||norm(r.moduleKey)===q||norm(r.recordType)===q||norm(r.recordKey)===q||(r.aliases||[]).some(a=>norm(a)===q)))||null}
 function optionValue(r){return r.moduleKey+'::'+r.recordType}
 function fromOption(value){const [m,t]=String(value||'').split('::');return RECORDS.find(r=>r.moduleKey===m&&r.recordType===t)||null}
-function fromOptionStrict(value,owner,section,group){
- const r=fromOption(value); if(!r)return null;
- if(owner && r.owner!==owner)return null;
- if(section && (r.ownerSection||r.recordGroupKey||r.moduleKey)!==section)return null;
- if(group && (r.recordGroupKey||r.moduleKey)!==group)return null;
- return r;
-}
-function exact(moduleKey,recordType){return RECORDS.find(r=>r.moduleKey===moduleKey&&r.recordType===recordType)||null}
-function groupDefinition(owner,section,group){
- const rows=recordsByGroup(owner,section,group).filter(r=>r.owner===owner);
- if(!rows.length)return null;
- const first=rows[0];
- if(rows.some(r=>r.owner!==first.owner || (r.ownerSection||'')!==(first.ownerSection||'') || (r.recordGroupKey||'')!==(first.recordGroupKey||'')))return null;
- return {label:first.recordGroupName||first.ownerSectionLabel,owner:first.owner,ownerRole:first.ownerRole,ownerSection:first.ownerSection,ownerSectionLabel:first.ownerSectionLabel,recordGroupKey:first.recordGroupKey,recordGroupName:first.recordGroupName,moduleKey:first.moduleKey,recordType:null,recordId:null,permissionScope:'record_group',routeUrl:first.routeUrl,records:rows}
-}
-window.PlatformRecordCatalog={all,byOwner,sections,groups,recordsByGroup,groupDefinition,resolve,fromOption,fromOptionStrict,exact,optionValue,version:'2.1.0'};
+function groupDefinition(owner,section,group){const rows=recordsByGroup(owner,section,group);if(!rows.length)return null;const first=rows[0];return {label:first.recordGroupName||first.ownerSectionLabel,owner:first.owner,ownerRole:first.ownerRole,ownerSection:first.ownerSection,ownerSectionLabel:first.ownerSectionLabel,recordGroupKey:first.recordGroupKey,recordGroupName:first.recordGroupName,moduleKey:first.moduleKey,recordType:null,recordId:null,permissionScope:'record_group',routeUrl:first.routeUrl,records:rows}}
+window.PlatformRecordCatalog={all,byOwner,sections,groups,recordsByGroup,groupDefinition,resolve,fromOption,optionValue,version:'2.0.0'};
 if(window.PlatformRecordRegistry){RECORDS.forEach(r=>{try{PlatformRecordRegistry.register({...r})}catch(e){}})}
 })();

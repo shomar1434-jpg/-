@@ -41,8 +41,14 @@ function hookFormsAndActions(){
 async function run(){try{
  await ensureEngines();
  workspace=await window.PlatformCore.workspace(taskId);
- const grants=workspace.grants||[];
- const grant=grants.find(g=>(!moduleKey||g.module_key===moduleKey)&&(!recordType||!g.record_type||g.record_type===recordType)&&(!recordId||!g.record_id||String(g.record_id)===String(recordId)));
+ const grants=workspace.grants||[],records=workspace.records||[];
+ const linkedRecord=records.find(r=>(!moduleKey||r.module_key===moduleKey)&&(!recordType||!r.record_type||r.record_type===recordType)&&(!recordId||!r.record_id||String(r.record_id)===String(recordId)));
+ let grant=grants.find(g=>(!moduleKey||g.module_key===moduleKey)&&(!recordType||!g.record_type||g.record_type===recordType)&&(!recordId||!g.record_id||String(g.record_id)===String(recordId)));
+ // توافق آمن مع تفويضات المجموعات: إذا كان السجل نفسه مرتبطًا بالتكليف، تكفي صلاحية المجموعة/الوحدة النشطة لنفس التكليف.
+ if(!grant&&linkedRecord){
+  grant=grants.find(g=>g.can_view&&(!g.record_type||g.permission_scope==='module'||g.permission_scope==='record_group'))||null;
+  if(grant)grant={...grant,module_key:linkedRecord.module_key,record_type:linkedRecord.record_type,record_id:linkedRecord.record_id||null,_resolved_from_group:true};
+ }
  if(!grant||!grant.can_view)throw new Error('لا توجد صلاحية فعالة لفتح هذا السجل');
  const bar=document.createElement('div');bar.id='delegatedAccessBanner';bar.style.cssText='position:sticky;top:0;z-index:99998;direction:rtl;background:#0f766e;color:#fff;padding:9px 16px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;font:700 13px/1.5 system-ui;box-shadow:0 7px 20px #0002';
  bar.innerHTML=`<div><strong>تنفيذ تكليف:</strong> ${esc(workspace.task?.title||'تكليف')} · أي حفظ أو تعديل داخل السجل يُوثق تلقائيًا ضمن نسبة الإنجاز.</div><button id="delegatedBackBtn" style="border:0;border-radius:10px;padding:7px 12px;font-weight:900;cursor:pointer">العودة لمركز تكليفاتي</button>`;

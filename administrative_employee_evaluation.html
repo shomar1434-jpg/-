@@ -1262,7 +1262,7 @@ initEmployees();
   function val(id){var el=document.getElementById(id);return el?String(el.value||el.textContent||''):''}
   function num(v){var n=parseFloat(String(v||'').replace(/[^0-9.\-]/g,''));return isNaN(n)?0:n}
   window.saveAdministrativeEmployeeEvaluationForImprovement=function(showAlert){
-    try{var qs=new URLSearchParams(location.search);var emp=qs.get('emp')||'';if(!emp){if(showAlert)alert('لا يوجد موظف مرتبط بهذا التقييم.');return null;}if(typeof calcAll==='function')calcAll();var total=num(val('sc-total')),obj=num(val('sc-obj')),comp=num(val('sc-comp'));var lows=[];for(var i=1;i<=20;i++){var name=val('oname-'+i),rating=num(val('erating-'+i));if(name&&rating&&rating<=2)lows.push({area:name,score:rating,note:'هدف وظيفي بدرجة منخفضة'});}if(Array.isArray(window.competencies)){window.competencies.forEach(function(c){var r=num(val('cr-'+c.id));if(r&&r<=2)lows.push({area:c.name,score:r,note:'جدارة تحتاج تحسين'});});}var data={id:emp,total:total,score:total,objectiveScore:obj,competencyScore:comp,lowAreas:lows,updated:new Date().toISOString()};localStorage.setItem('administrative_employee_eval_'+emp,JSON.stringify(data));try{window.dispatchEvent(new StorageEvent('storage',{key:'administrative_employee_eval_'+emp}));}catch(e){}if(showAlert)alert('تم حفظ التقييم وربطه بخطة التحسين.');return data;}catch(e){console.warn(e);if(showAlert)alert('تعذر حفظ التقييم.');return null;}};
+    try{var qs=new URLSearchParams(location.search);var emp=qs.get('emp')||'';if(!emp){if(showAlert)alert('لا يوجد موظف مرتبط بهذا التقييم.');return null;}if(typeof calcAll==='function')calcAll();var total=num(val('sc-total')),obj=num(val('sc-obj')),comp=num(val('sc-comp'));var lows=[];for(var i=1;i<=20;i++){var name=val('oname-'+i),rating=num(val('erating-'+i));if(name&&rating&&rating<=2)lows.push({area:name,score:rating,note:'هدف وظيفي بدرجة منخفضة'});}if(Array.isArray(window.competencies)){window.competencies.forEach(function(c){var r=num(val('cr-'+c.id));if(r&&r<=2)lows.push({area:c.name,score:r,note:'جدارة تحتاج تحسين'});});}var data={id:emp,total:total,score:total,objectiveScore:obj,competencyScore:comp,lowAreas:lows,updated:new Date().toISOString()};localStorage.setItem('administrative_employee_eval_'+emp,JSON.stringify(data));try{window.dispatchEvent(new StorageEvent('storage',{key:'administrative_employee_eval_'+emp}));}catch(e){}try{window.SchoolActivity?.emit('record_completed','حفظ تقييم الأداء الوظيفي',{progress:100,score:total,objective_score:obj,competency_score:comp,employee_id:emp});}catch(e){}if(showAlert)alert('تم حفظ التقييم وربطه بخطة التحسين.');return data;}catch(e){console.warn(e);if(showAlert)alert('تعذر حفظ التقييم.');return null;}};
   function addSaveButton(){try{var qs=new URLSearchParams(location.search);if(!qs.get('emp'))return;var rows=document.querySelectorAll('#p7 .btn-row');var row=rows[rows.length-1];if(!row||document.getElementById('saveAdminEvalBtn'))return;var b=document.createElement('button');b.id='saveAdminEvalBtn';b.className='btn btn-p';b.textContent='💾 حفظ التقييم وربطه بخطة التحسين';b.onclick=function(){saveAdministrativeEmployeeEvaluationForImprovement(true)};row.insertBefore(b,row.children[2]||null);}catch(e){}}
   window.addEventListener('load',function(){setTimeout(addSaveButton,500)});
 })();
@@ -1294,5 +1294,9 @@ window.addEventListener('load',function(){setTimeout(renderAdminEvalPanel,400)})
   window.addEventListener('load',apply);
 })();
 </script>
+
+<script src="platform-record-catalog.js"></script>
+<script src="delegated-access-guard.js"></script>
+<script src="school-activity-engine.js"></script>
 </body>
 </html>

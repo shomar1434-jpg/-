@@ -1,4 +1,4 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -218,7 +218,7 @@ Deno.serve(async (req) => {
         actor_id: session.user_id,
         execution_role: body.executionRole || session.role || null,
         event_type: eventType,
-        event_data: body.data || {}
+        event_data: { ...(body.data || {}), execution_source: taskId ? 'delegated_task' : String(body.data?.execution_source || 'direct_role') }
       }).select('*').single();
       if (eventError) throw eventError;
 
@@ -310,12 +310,32 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'dashboard') {
-      const { data: core, error: coreError } = await sb.from('vw_platform_core_dashboard').select('*').eq('school_id', session.school_id).maybeSingle();
-      if (coreError) throw coreError;
-      const { data: indicators, error: indicatorsError } = await sb.from('platform_indicator_values').select('*').eq('school_id', session.school_id).order('measured_at', { ascending: false }).limit(200);
-      if (indicatorsError) throw indicatorsError;
+      const since = new Date(Date.now() - 30*24*60*60*1000).toISOString();
+      const [{ data: core, error: coreError }, { data: indicators, error: indicatorsError }, { data: activityEvents, error: activityError }] = await Promise.all([
+        sb.from('vw_platform_core_dashboard').select('*').eq('school_id', session.school_id).maybeSingle(),
+        sb.from('platform_indicator_values').select('*').eq('school_id', session.school_id).order('measured_at', { ascending: false }).limit(200),
+        sb.from('platform_record_events').select('id,module_key,record_type,record_id,task_id,actor_id,event_type,event_data,occurred_at').eq('school_id', session.school_id).gte('occurred_at', since).order('occurred_at', { ascending: false }).limit(3000)
+      ]);
+      if (coreError) throw coreError; if (indicatorsError) throw indicatorsError; if (activityError) throw activityError;
       const visible = isOwner ? (indicators || []) : (indicators || []).filter((x: any) => x.module_key === role || x.created_by === session.user_id);
-      return json({ summary: core || {}, indicators: visible });
+      const events = activityEvents || [];
+      const stage:any = {record_opened:10,record_created:50,record_updated:60,record_saved:60,record_submitted:80,record_completed:100,performance_plan_saved:40,performance_plan_submitted:80,performance_execution_updated:60,performance_evaluation_saved:100};
+      const byRecord = new Map<string, any>(); const actors = new Set<string>(); let direct=0,delegated=0,meaningful=0;
+      for (const ev of events) {
+        actors.add(String(ev.actor_id||'')); if (ev.task_id) delegated++; else direct++;
+        if (String(ev.event_type||'') !== 'record_opened') meaningful++;
+        const key=[ev.module_key,ev.record_type,ev.record_id||''].join('|');
+        const data:any=ev.event_data||{}; const explicit=Number(data.progress);
+        const score=Number.isFinite(explicit)?Math.max(0,Math.min(100,explicit)):(stage[String(ev.event_type||'')]||0);
+        const prev=byRecord.get(key)||{score:0,module_key:ev.module_key,record_type:ev.record_type,record_id:ev.record_id,last_at:ev.occurred_at};
+        if(score>prev.score)prev.score=score; if(String(ev.occurred_at||'')>String(prev.last_at||''))prev.last_at=ev.occurred_at; byRecord.set(key,prev);
+      }
+      const records=[...byRecord.values()];
+      const operational = records.length ? Math.round(records.reduce((a:any,r:any)=>a+Number(r.score||0),0)/records.length) : 0;
+      const moduleMap:any={}; for(const r of records){const k=String(r.module_key||'general');const x=moduleMap[k]||(moduleMap[k]={module_key:k,records:0,progress_total:0});x.records++;x.progress_total+=Number(r.score||0)}
+      const modules=Object.values(moduleMap).map((x:any)=>({module_key:x.module_key,records:x.records,average_progress:x.records?Math.round(x.progress_total/x.records):0})).sort((a:any,b:any)=>b.records-a.records);
+      const activity={window_days:30,total_events:events.length,meaningful_events:meaningful,direct_events:direct,delegated_events:delegated,active_users:actors.size,unique_records:records.length,operational_execution_progress:operational,last_activity_at:events[0]?.occurred_at||null,modules};
+      return json({ summary: core || {}, activity, indicators: visible });
     }
 
     if (action === 'mark-notification-read') {

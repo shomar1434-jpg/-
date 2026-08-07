@@ -1294,18 +1294,9 @@ function allowedWakilCategory(cat){
   if(!agencies.length) return true;
   return agencies.indexOf(cat)>-1;
 }
-function visibleForms(){
-  var q=new URLSearchParams(location.search||'');
-  var delegated=q.get('delegated')==='1', requested=q.get('record')||'';
-  if(delegated&&requested){
-    var exact=FORMS.find(function(f){return f.id===requested;});
-    return exact?[exact]:[];
-  }
-  return FORMS.filter(function(f){return allowedWakilCategory(f.category||'shared');});
-}
+function visibleForms(){return FORMS.filter(function(f){return allowedWakilCategory(f.category||'shared');});}
 function formsByCategory(){
-  var source=visibleForms();
-  return WAKIL_CATEGORY_ORDER.map(cat=>({cat,label:wakilCategoryLabel(cat),items:source.filter(f=>(f.category||'shared')===cat)})).filter(g=>g.items.length);
+  return WAKIL_CATEGORY_ORDER.map(cat=>({cat,label:wakilCategoryLabel(cat),items:FORMS.filter(f=>(f.category||'shared')===cat && allowedWakilCategory(f.category||'shared'))})).filter(g=>g.items.length);
 }
 function ensureCurrentVisible(){var vf=visibleForms(); if(vf.length && (!current || !allowedWakilCategory(current.category||'shared'))) current=vf[0];}
 function agencyNoticeHtml(){var list=currentWakilAgencies(); var txt=list.length?list.map(function(x){return WAKIL_AGENCY_LABELS[x]||x}).join(' + '):'كل السجلات'; return '<div style="margin:10px 0 14px;padding:10px;border:1px solid #b8d4c8;border-radius:14px;background:#f0fdfa;color:#0f766e;font-size:12px;font-weight:900;line-height:1.8">التصنيف الحالي: '+txt+'<br><span style="color:#64748b;font-weight:800">تظهر السجلات والأرشيف حسب تصنيفات الوكيل المحددة من حساب المدير.</span></div>';}
@@ -1522,7 +1513,12 @@ function getCurrentRecordPrintableDocumentForArchive(){
     + '.page:not(:first-of-type){display:none!important;}'
     + 'input,select,textarea{color:#11221d!important;-webkit-text-fill-color:#11221d!important;}'
     + '@media print{.page{margin:0!important;page-break-after:auto!important;break-after:auto!important;} body{width:210mm!important;}}'
-    + '</style></head><body><main class="main">'+content+'</main></body></html>';
+    + '</style></head><body><main class="main">'+content+'</main>
+
+<script src="platform-record-catalog.js"></script>
+<script src="delegated-access-guard.js"></script>
+<script src="school-activity-engine.js"></script>
+</body></html>';
 }
 
 
@@ -1934,7 +1930,7 @@ aiComplete = async function(){
 
 const delegatedRecordKey=new URLSearchParams(location.search).get('record');
 if(delegatedRecordKey){
-  const requested=FORMS.find(f=>f.id===delegatedRecordKey);
+  const requested=visibleForms().find(f=>f.id===delegatedRecordKey);
   if(requested) current=requested;
 }
 renderNav();renderForm();loadCurrent();bindAutoGrow(qs('#formPage'));autoGrowAll(qs('#formPage'));
@@ -1988,4 +1984,5 @@ renderNav();renderForm();loadCurrent();bindAutoGrow(qs('#formPage'));autoGrowAll
 
 <script src="platform-record-catalog.js"></script>
 <script src="delegated-access-guard.js"></script>
+<script src="school-activity-engine.js"></script>
 </body></html>

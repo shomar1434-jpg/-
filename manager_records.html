@@ -812,13 +812,16 @@ const records = [
   {id:"digital", category:"additional", categoryTitle:"سجلات مساندة محفوظة", title:"سجل التحول الرقمي والخدمات الإلكترونية", desc:"متابعة المنصات والأنظمة والدعم التقني.", type:"digital"}
 ];
 
-let current = records[0];
+const delegatedRecordKeyGlobal=new URLSearchParams(location.search).get('record');
+const delegatedModeGlobal=new URLSearchParams(location.search).get('delegated')==='1';
+let current = records.find(r=>r.id===delegatedRecordKeyGlobal||r.type===delegatedRecordKeyGlobal) || records[0];
 
 function renderNav(){
   const q = document.getElementById('search').value.trim();
   const nav = document.getElementById('nav');
   nav.innerHTML = "";
-  const filtered = records.filter(r=>!q || r.title.includes(q) || r.desc.includes(q) || r.categoryTitle.includes(q));
+  const baseRecords=delegatedModeGlobal?[current]:records;
+  const filtered = baseRecords.filter(r=>!q || r.title.includes(q) || r.desc.includes(q) || r.categoryTitle.includes(q));
   const groups = ["السجلات الإدارية","السجلات القيادية والتشغيلية","سجلات الأداء والمتابعة","سجلات الجودة والحوكمة","السجلات التحليلية","سجلات مساندة محفوظة"];
   groups.forEach(group=>{
     const items = filtered.filter(r=>r.categoryTitle===group);
@@ -1085,11 +1088,6 @@ function renderAll(){
  document.getElementById('pageTitle').textContent=current.title;
  document.getElementById('pageDesc').textContent=current.desc;
  document.getElementById('paper').innerHTML=headerHtml()+formByType(current.type)+footerHtml();
- const delegatedRecordKey=new URLSearchParams(location.search).get('record');
- if(delegatedRecordKey){
-   const requested=records.find(r=>r.id===delegatedRecordKey||r.type===delegatedRecordKey);
-   if(requested) current=requested;
- }
  renderNav(); loadDraft(); loadFooterPanel(); syncHeaderFooter();
  document.querySelectorAll('[data-k]').forEach(el=>el.addEventListener('input',autoDraft));
 }

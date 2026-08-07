@@ -47,13 +47,14 @@ Deno.serve(async (req) => {
     const visibleAssignment = (task: any) => !task?.metadata?.legacy_archived && !task?.metadata?.hidden_from_assignee;
     const executionStatuses = new Set(['active','in_progress','transferred','returned']);
     const stageByEvent: Record<string, number> = { record_opened: 20, record_created: 60, record_updated: 60, record_completed: 80 };
+    const grantBelongsToCurrent = (g:any) => String(g?.user_id||'')===String(session.user_id||'') || (!!g?.user_email && String(g.user_email).toLowerCase()===String(session.user_email||'').toLowerCase());
     const grantMatchesRecord = (g:any,moduleKey:string,recordType:string,recordId:any) => {
-      if (!g || g.status !== 'active' || !g.can_view) return false;
+      if (!g || g.status !== 'active' || !g.can_view || !grantBelongsToCurrent(g)) return false;
       const ts=Date.now(),start=g.starts_at?Date.parse(g.starts_at):0,end=g.expires_at?Date.parse(g.expires_at):Infinity;
       if (Number.isFinite(start) && start>ts) return false; if (Number.isFinite(end) && end<ts) return false;
       if (String(g.module_key||'')!==String(moduleKey||'')) return false;
-      if (g.record_type && String(g.record_type)!==String(recordType||'')) return false;
-      if (g.record_id && recordId && String(g.record_id)!==String(recordId)) return false;
+      if (String(g.record_type||'')!==String(recordType||'')) return false;
+      if ((g.record_id||recordId) && String(g.record_id||'')!==String(recordId||'')) return false;
       return true;
     };
     const currentAssignee = (task:any) => String(task?.assigned_to||'')===String(session.user_id||'') || (!!task?.assignee_email && String(task.assignee_email).toLowerCase()===String(session.user_email||'').toLowerCase());
@@ -106,18 +107,25 @@ Deno.serve(async (req) => {
       ]);
       for (const result of [grants, records, updates, evidence, events, reviews]) if (result.error) throw result.error;
       let resolvedRecords: any[] = records.data || [];
-      if (!resolvedRecords.length && Array.isArray(task?.metadata?.delegatedRecords)) {
-        resolvedRecords = task.metadata.delegatedRecords.filter((r: any) => r?.moduleKey && r?.recordType).map((r: any) => ({
-          task_id: task.id, module_key: r.moduleKey, record_type: r.recordType, record_id: null,
-          relation_type: 'delegated_record', label: r.label || null, route_url: r.routeUrl || null, synthesized: true
-        }));
+      if (resolvedRecords.length) {
+        const moduleKeys=[...new Set(resolvedRecords.map((r:any)=>String(r.module_key||'')).filter(Boolean))];
+        const recordTypes=[...new Set(resolvedRecords.map((r:any)=>String(r.record_type||'')).filter(Boolean))];
+        const {data:definitions,error:defError}=await sb.from('platform_record_types')
+          .select('module_key,record_type,display_name,route_url,owner_role,owner_section,record_group_key,record_group_name,configuration_json,is_active')
+          .in('module_key',moduleKeys).in('record_type',recordTypes).eq('is_active',true);
+        if(defError)throw defError;
+        resolvedRecords=resolvedRecords.map((r:any)=>{
+          const d=(definitions||[]).find((x:any)=>String(x.module_key)===String(r.module_key)&&String(x.record_type)===String(r.record_type));
+          if(!d)return null;
+          return {...r,label:d.display_name,route_url:d.route_url,owner_role:d.owner_role,owner_section:d.owner_section,record_group_key:d.record_group_key,record_group_name:d.record_group_name,record_key:d.configuration_json?.record_key||null};
+        }).filter(Boolean);
       }
-      if (!resolvedRecords.length && task?.module_key) {
-        resolvedRecords = [{ task_id: task.id, module_key: task.module_key, record_type: task.record_type || null,
-          record_id: task.record_id || null, relation_type: 'execution_source', label: task.record_key || task.title,
-          route_url: task?.metadata?.routeUrl || null, synthesized: true }];
+      if (!resolvedRecords.length && task?.module_key && task?.record_type) {
+        const {data:d}=await sb.from('platform_record_types').select('module_key,record_type,display_name,route_url,owner_role,owner_section,record_group_key,record_group_name,configuration_json').eq('module_key',task.module_key).eq('record_type',task.record_type).eq('is_active',true).maybeSingle();
+        if(d)resolvedRecords=[{task_id:task.id,module_key:d.module_key,record_type:d.record_type,record_id:task.record_id||null,relation_type:'execution_source',label:d.display_name,route_url:d.route_url,owner_role:d.owner_role,owner_section:d.owner_section,record_group_key:d.record_group_key,record_group_name:d.record_group_name,record_key:d.configuration_json?.record_key||null}];
       }
-      return json({ task, grants: grants.data || [], records: resolvedRecords, updates: updates.data || [], evidence: evidence.data || [], events: events.data || [], reviews: reviews.data || [] });
+      const visibleGrants=isOwner?(grants.data||[]):(grants.data||[]).filter(grantBelongsToCurrent);
+      return json({ task, grants: visibleGrants, records: resolvedRecords, updates: updates.data || [], evidence: evidence.data || [], events: events.data || [], reviews: reviews.data || [] });
     }
 
     if (action === 'record-event') {
@@ -135,7 +143,7 @@ Deno.serve(async (req) => {
           sb.from('task_access_grants').select('*').eq('task_id',executionTask.id).eq('status','active'),
           sb.from('task_record_links').select('module_key,record_type,record_id').eq('task_id',executionTask.id)
         ]);
-        const linked=(taskLinks||[]).some((l:any)=>String(l.module_key||'')===String(moduleKey)&&String(l.record_type||'')===String(recordType)&&(!l.record_id||!body.recordId||String(l.record_id)===String(body.recordId)));
+        const linked=(taskLinks||[]).some((l:any)=>String(l.module_key||'')===String(moduleKey)&&String(l.record_type||'')===String(recordType)&&String(l.record_id||'')===String(body.recordId||''));
         const granted=(taskGrants||[]).some((g:any)=>grantMatchesRecord(g,moduleKey,recordType,body.recordId));
         if (!linked || !granted) return json({ error: 'السجل غير داخل نطاق التفويض الفعّال' }, 403);
       }
@@ -153,6 +161,7 @@ Deno.serve(async (req) => {
       if (eventError) throw eventError;
 
       // التنفيذ داخل السجل هو شاهد داخلي. النسبة تُحسب من جميع السجلات المرتبطة بالتكليف، لا من آخر حدث فقط.
+      let resultingProgress:number|null=null;
       if (taskId) {
         const targetProgress = stageByEvent[eventType];
         if (targetProgress != null) {
@@ -181,6 +190,7 @@ Deno.serve(async (req) => {
           await sb.from('central_tasks').update({ progress_percent: nextProgress, status: nextStatus, updated_at: new Date().toISOString() }).eq('id', taskId).eq('school_id', session.school_id);
           await sb.from('central_task_updates').insert({ school_id: session.school_id, task_id: taskId, user_id: session.user_id, update_type: 'execution', title: body.data?.title || 'تنفيذ داخل السجل', notes: body.data?.notes || 'تم توثيق نشاط تنفيذي داخل السجل المرتبط بالتكليف.', progress_percent: nextProgress, status: 'draft', metadata: { module_key: moduleKey, record_type: recordType, record_id: body.recordId || null, record_event_id: event.id, internal_evidence: true } });
           await sb.from('central_task_events').insert({ school_id: session.school_id, task_id: taskId, event_type: 'record_execution_evidence', actor_id: session.user_id, event_note: `${moduleKey}/${recordType}: ${eventType}`, old_values: null, new_values: { record_event_id: event.id, record_id: body.recordId || null, internal_evidence: true, progress_percent: nextProgress, execution_role: session.role } });
+          resultingProgress=nextProgress;
         }
       }
 
@@ -236,7 +246,7 @@ Deno.serve(async (req) => {
         }
       }
       await sb.from('platform_record_events').update({ processed_at: new Date().toISOString(), processing_result: { matchedRules: (rules || []).length, actions: actions.length } }).eq('id', event.id);
-      return json({ event, matchedRules: (rules || []).length, actions }, 201);
+      return json({ event, matchedRules: (rules || []).length, actions, progress_percent: resultingProgress }, 201);
     }
 
     if (action === 'dashboard') {

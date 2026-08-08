@@ -131,6 +131,23 @@ function updateAll(){ $('#dashboard').innerHTML=dashboardHTML(); $('#schoolData'
 function bindInputs(){$$('[data-school]').forEach(el=>el.onchange=setSchoolFromInputs)}
 function switchSection(id){if(state.locked&&!['dashboard','smartReport','decision','archive','finalLock'].includes(id))return alert('الزيارة مقفلة بعد الاعتماد النهائي'); $$('.section').forEach(s=>s.classList.remove('active')); $('#'+id)?.classList.add('active'); $$('.treeItem,.treeToggle').forEach(b=>b.classList.remove('active')); $$(`[data-target="${id}"]`).forEach(b=>b.classList.add('active'))}
 
+
+let __externalSmartCardAccessValidated=false;
+async function validateExternalSmartCardAccess(){
+  const params=getVisitParams();
+  if(!params.visit_token){__externalSmartCardAccessValidated=true;return true;}
+  try{
+    if(!window.SmartSchoolSupabase||!SmartSchoolSupabase.validateExternalAccess) throw new Error('محرك التحقق السحابي غير جاهز');
+    const row=await SmartSchoolSupabase.validateExternalAccess(params.visit_token,'external_evaluation');
+    if(!row||String(row.status)!=='active') throw new Error(row&&row.status==='expired'?'انتهت صلاحية رابط الزيارة':'رابط الزيارة مغلق أو غير صالح');
+    if(params.school_id&&String(row.school_id)!==String(params.school_id)) throw new Error('الرابط لا يخص هذه المدرسة');
+    __externalSmartCardAccessValidated=true;
+    return true;
+  }catch(e){
+    document.body.innerHTML='<main dir="rtl" style="min-height:100vh;display:grid;place-items:center;background:#f8fafc;font-family:Cairo,Tajawal,Arial,sans-serif;padding:24px"><section style="max-width:620px;background:#fff;border:1px solid #fecaca;border-radius:28px;padding:28px;text-align:center"><div style="font-size:48px">⛔</div><h2 style="color:#b91c1c">تعذر فتح بطاقة الفريق الزائر</h2><p style="color:#64748b;font-weight:700">'+String(e.message||e).replace(/[&<>]/g,'')+'</p></section></main>';
+    return false;
+  }
+}
 function getVisitParams(){const q=new URLSearchParams(location.search);return{school_id:q.get('school_id')||q.get('schoolId')||localStorage.getItem('active_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||'',visit_token:q.get('visit_token')||q.get('visitToken')||'',visit_number:q.get('visit_number')||q.get('visitNumber')||visitCode()}}
 function getCurrentUserId(){try{let u=JSON.parse(localStorage.getItem('currentSchoolUser')||localStorage.getItem('currentUser')||'{}');return u.id||u.user_id||null}catch(e){return null}}
 function buildSmartCardSupabasePayload(){let params=getVisitParams();return{school_id:params.school_id,created_by:getCurrentUserId(),draft_number:params.visit_number,visit_number:params.visit_number,visit_year:String(new Date().getFullYear()),status:state.archived?'archived':'draft',form_data:{smartCard:state,visit_token:params.visit_token,visit_number:params.visit_number,school_id:params.school_id,savedAt:new Date().toISOString()},final_score:finalScore(),accreditation_decision:decisionText(finalScore())[0],team_leader_name:state.teamLeaderName||state.leaderName||''}}
@@ -174,7 +191,7 @@ async function uploadLeaderSignatureFile(file){
 function clearSignature(){state.signature=null;state.leaderSignaturePath=null;state.leaderSignatureRecordId=null;updateAll()}
 $('#signatureInput').addEventListener('change',async e=>{let file=e.target.files[0];if(!file)return;if(file.size>2*1024*1024)return alert('الحد الأقصى 2MB');let r=new FileReader();r.onload=async ev=>{state.signature=ev.target.result;updateAll();await saveSmartCardDraftRemote(false);await uploadLeaderSignatureFile(file);};r.readAsDataURL(file);e.target.value=''});
 document.addEventListener('click',e=>{let t=e.target.closest('.treeToggle');if(t&&!t.dataset.target)t.parentElement.classList.toggle('open');if(t&&t.dataset.target)switchSection(t.dataset.target);let i=e.target.closest('.treeItem');if(i)switchSection(i.dataset.target)});
-load();updateAll();switchSection('dashboard');
+(async function(){const ok=await validateExternalSmartCardAccess();if(!ok)return;load();updateAll();switchSection('dashboard');})();
 </script>
 
 <!-- Unified Cloud File Engine v3 -->

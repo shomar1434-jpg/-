@@ -39,6 +39,8 @@
 </script>
 
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-bridge.js"></script>
 <!-- PREMIUM_UI_2026 -->
 <link rel="stylesheet" href="premium-ui.css">
 <script defer src="premium-ui.js"></script>
@@ -87,12 +89,15 @@
 </section>
 <script>
 const qs = new URLSearchParams(location.search);
-const schoolId = qs.get('school_id') || qs.get('schoolId') || localStorage.getItem('current_school_id') || localStorage.getItem('school_id') || 'school';
-const schoolName = qs.get('school_name') || qs.get('schoolName') || localStorage.getItem('school_name') || localStorage.getItem('persist_school') || 'المدرسة';
-const token = qs.get('token') || localStorage.getItem('supervisor_visit_token_'+schoolId) || 'visit';
+const schoolIdParam = qs.get('school_id') || qs.get('schoolId') || '';
+let schoolId = schoolIdParam;
+let schoolName = qs.get('school_name') || qs.get('schoolName') || 'المدرسة';
+const token = qs.get('token') || '';
 let currentRole = '';
+let visitUsersRemote=[];
+let supervisorAccessValid=false;
 
-document.getElementById('school-title').textContent = schoolName + ' — الزيارة الإشرافية';
+document.getElementById('school-title').textContent = 'جارٍ التحقق من رابط الزيارة الإشرافية...';
 
 
 function closeSupervisorVisitPage(){
@@ -102,15 +107,31 @@ function closeSupervisorVisitPage(){
   }, 250);
 }
 
+
+async function validateSupervisorVisitAccess(){
+  if(!token){document.getElementById('portal').innerHTML='<section class="card p-8 text-center"><h2 class="font-black text-red-600">رابط الزيارة غير صالح</h2><p class="text-slate-500 font-bold mt-3">الرمز غير موجود.</p></section>';return false;}
+  try{
+    if(!window.SmartSchoolSupabase||!SmartSchoolSupabase.validateExternalAccess) throw new Error('محرك التحقق السحابي غير جاهز');
+    const row=await SmartSchoolSupabase.validateExternalAccess(token,'supervisor_visit');
+    if(!row||String(row.status)!=='active') throw new Error(row&&row.status==='expired'?'انتهت صلاحية الرابط':'الرابط مغلق أو غير صالح');
+    if(schoolIdParam&&String(row.school_id)!==String(schoolIdParam)) throw new Error('الرابط لا يخص هذه المدرسة');
+    schoolId=String(row.school_id||''); schoolName=row.school_name||schoolName; supervisorAccessValid=true;
+    visitUsersRemote=await SmartSchoolSupabase.listExternalVisitUsers(token);
+    document.getElementById('school-title').textContent=schoolName+' — الزيارة الإشرافية';
+    return true;
+  }catch(e){
+    console.warn('Supervisor visit validation failed',e);
+    document.getElementById('portal').innerHTML='<section class="card p-8 text-center"><div class="text-5xl mb-3">⛔</div><h2 class="font-black text-red-600">تعذر فتح الزيارة الإشرافية</h2><p class="text-slate-500 font-bold mt-3">'+String(e.message||e).replace(/[&<>]/g,'')+'</p></section>';
+    return false;
+  }
+}
 function pageFor(role){
   return role==='manager'?'manager.html':role==='agent'?'agent.html':role==='teacher'?'teacher.html':'student_advisor.html';
 }
 function roleName(role){
   return role==='manager'?'قسم المدير/المديرة':role==='agent'?'قسم الوكيل/الوكيلة':role==='teacher'?'قسم المعلم/المعلمة':'قسم الموجه/ة الطلابي/ة';
 }
-function readVisitUsers(){
-  try{return JSON.parse(localStorage.getItem('smartSchoolUnifiedOpsV2_users') || '[]') || [];}catch(e){return [];}
-}
+function readVisitUsers(){return visitUsersRemote||[];}
 function normalizeVisitRole(role){
   role=String(role||'').toLowerCase();
   if(role==='leadership'||role==='manager') return 'manager';
@@ -123,6 +144,7 @@ function usersForVisitRole(role){
   return readVisitUsers().filter(u=>normalizeVisitRole(u.role)===r && (u.status==='active'||u.isActive===true||u.active===true));
 }
 function openRole(role){
+  if(!supervisorAccessValid)return alert('رابط الزيارة غير صالح أو لم يكتمل التحقق منه.');
   const list = usersForVisitRole(role);
   if(list.length > 1){
     currentRole = role;
@@ -223,6 +245,7 @@ function protectFrame(){
 }
 
 function openSupervisorVisitForm(){
+  if(!supervisorAccessValid)return alert('رابط الزيارة غير صالح أو لم يكتمل التحقق منه.');
   currentRole = 'supervisor_visit_form';
   document.getElementById('viewerTitle').textContent = schoolName + ' — استمارة الزيارة الإشرافية';
   document.getElementById('portal').style.display = 'none';
@@ -447,5 +470,8 @@ function copyVisitLink(){
 <script src="cloud-file-bootstrap.js"></script>
 <script src="cloud-upload-hub.js"></script>
 <script src="cloud-file-auto-sync.js"></script>
+
+<script src="platform-record-catalog.js"></script>
+<script src="delegated-access-guard.js"></script>
 </body>
 </html>

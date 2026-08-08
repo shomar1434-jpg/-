@@ -354,11 +354,43 @@ function createNewVisit(showAlert=true,options={}){
   if(showAlert)alert('تم إنشاء زيارة جديدة برقم '+v.number+' وحالتها مسودة. تم حفظ الزيارة السابقة في الأرشيف إذا كانت مفتوحة.');
   return v
 }
-async function startCurrentVisit(){const v=getCurrentVisit();if(!Object.values(getVisitAccess()).some(Boolean))return alert('اختر عناصر العرض للفريق أولاً من إعداد الزيارة.');v.access={...getVisitAccess()};v.schoolId=getActiveSchoolId();v.status='active';v.activatedAt=new Date().toISOString();v.linkUpdatedAt=v.linkUpdatedAt||new Date().toISOString();localStorage.setItem(LS,JSON.stringify(data));renderVisitorPortal();await saveExternalVisitRemote(v,false);await saveExternalDraftRemote(false);alert('تم تفعيل الزيارة. أصبح الرابط والرمز صالحين للفريق الزائر.');}
-async function closeCurrentVisit(){const v=getCurrentVisit();if(v.status==='closed')return alert('هذه الزيارة مغلقة بالفعل.');if(!confirm('سيتم إغلاق رابط وQR هذه الزيارة ومنع الدخول إليها وأرشفتها. هل تريد المتابعة؟'))return;archiveVisit(v,'manual_close');localStorage.setItem(LS,JSON.stringify(data));renderVisitorPortal();await saveExternalVisitRemote(v,false);await saveExternalDraftRemote(false);alert('تم إغلاق الزيارة وأرشفتها. لإنشاء رابط جديد استخدم زر إنشاء زيارة جديدة.');}
-async function regenerateVisitLink(){const v=getCurrentVisit();if(v.status==='closed')return alert('لا يمكن تحديث رابط زيارة مغلقة. أنشئ زيارة جديدة.');v.token=token();v.linkUpdatedAt=new Date().toISOString();v.schoolId=getActiveSchoolId();localStorage.setItem(LS,JSON.stringify(data));renderVisitorPortal();await saveExternalVisitRemote(v,false);await saveExternalDraftRemote(false);alert('تم تحديث رابط وQR الزيارة الحالية دون تغيير رقم الزيارة.');}
+
+function getExternalManagerUserId(){try{const u=JSON.parse(localStorage.getItem('currentSchoolUser')||localStorage.getItem('currentUser')||'{}');return u.id||u.user_id||null}catch(e){return null}}
+async function syncExternalVisitAccess(v){
+  if(!v||!v.token||!window.SmartSchoolSupabase||!SmartSchoolSupabase.registerExternalAccess) return null;
+  const uid=getExternalManagerUserId(); if(!uid) throw new Error('تعذر تحديد حساب مدير المدرسة لإنشاء الرابط السحابي');
+  const id=await SmartSchoolSupabase.registerExternalAccess({
+    token:v.token,school_id:v.schoolId||getActiveSchoolId(),access_type:'external_evaluation',created_by:uid,
+    visit_number:v.number||'',permissions:v.access||getVisitAccess(),status:v.status==='active'?'active':'closed',
+    metadata:{visit_id:v.id||'',visit_number:v.number||'',year:v.year||getVisitYear(),school_name:data.school&&data.school.schoolName||'',linkUpdatedAt:v.linkUpdatedAt||null}
+  });
+  v.externalAccessId=id||v.externalAccessId||null; localStorage.setItem(LS,JSON.stringify(data)); return id;
+}
+async function revokeExternalVisitAccess(v){
+  if(!v||!v.token||!window.SmartSchoolSupabase||!SmartSchoolSupabase.revokeExternalAccess) return false;
+  const uid=getExternalManagerUserId(); if(!uid) return false;
+  return await SmartSchoolSupabase.revokeExternalAccess({token:v.token,school_id:v.schoolId||getActiveSchoolId(),revoked_by:uid});
+}
+let __remoteVisitorVisit=null;
+let __visitorValidationStarted=false;
+async function hydrateVisitorVisit(){
+  const q=new URLSearchParams(location.search); const mode=q.get('view')==='externalVisit'||q.has('visit_token')||q.has('visitToken'); if(!mode)return null;
+  const t=q.get('visit_token')||q.get('visitToken')||''; if(!t){__remoteVisitorVisit={status:'invalid',validationError:'missing_token',access:{}};renderVisitorPortal();return null;}
+  __visitorValidationStarted=true; __remoteVisitorVisit={status:'loading',number:q.get('visit_number')||'—',access:{}}; renderVisitorPortal();
+  try{
+    if(!window.SmartSchoolSupabase||!SmartSchoolSupabase.validateExternalAccess) throw new Error('محرك التحقق السحابي غير جاهز');
+    const row=await SmartSchoolSupabase.validateExternalAccess(t,'external_evaluation');
+    if(!row){__remoteVisitorVisit={status:'invalid',validationError:'token_not_found',access:{}};}
+    else if(String(row.status)!=='active'){__remoteVisitorVisit={status:'closed',validationError:String(row.status),number:row.visit_number||'—',access:row.permissions||{},schoolId:row.school_id,schoolName:row.school_name||''};}
+    else {__remoteVisitorVisit={status:'active',fromLink:true,token:t,number:row.visit_number||q.get('visit_number')||'—',access:row.permissions||{},schoolId:row.school_id,schoolName:row.school_name||'',metadata:row.metadata||{},externalAccessId:row.access_id};}
+  }catch(e){console.warn('تعذر التحقق من رابط الفريق الزائر:',e);__remoteVisitorVisit={status:'invalid',validationError:'validation_failed',access:{}};}
+  renderVisitorPortal(); return __remoteVisitorVisit;
+}
+async function startCurrentVisit(){const v=getCurrentVisit();if(!Object.values(getVisitAccess()).some(Boolean))return alert('اختر عناصر العرض للفريق أولاً من إعداد الزيارة.');v.access={...getVisitAccess()};v.schoolId=getActiveSchoolId();v.status='active';v.activatedAt=new Date().toISOString();v.linkUpdatedAt=v.linkUpdatedAt||new Date().toISOString();localStorage.setItem(LS,JSON.stringify(data));try{await syncExternalVisitAccess(v);}catch(e){v.status='draft';localStorage.setItem(LS,JSON.stringify(data));renderVisitorPortal();return alert('تعذر تفعيل رابط الفريق الزائر سحابيًا: '+(e.message||e));}renderVisitorPortal();await saveExternalVisitRemote(v,false);await saveExternalDraftRemote(false);alert('تم تفعيل الزيارة سحابيًا. أصبح الرابط والرمز صالحين من أي جهاز.');}
+async function closeCurrentVisit(){const v=getCurrentVisit();if(v.status==='closed')return alert('هذه الزيارة مغلقة بالفعل.');if(!confirm('سيتم إغلاق رابط وQR هذه الزيارة ومنع الدخول إليها وأرشفتها. هل تريد المتابعة؟'))return;try{await revokeExternalVisitAccess(v);}catch(e){return alert('تعذر إغلاق صلاحية الرابط سحابيًا: '+(e.message||e));}archiveVisit(v,'manual_close');localStorage.setItem(LS,JSON.stringify(data));renderVisitorPortal();await saveExternalVisitRemote(v,false);await saveExternalDraftRemote(false);alert('تم إغلاق الزيارة وأرشفتها وسحب صلاحية الرابط.');}
+async function regenerateVisitLink(){const v=getCurrentVisit();if(v.status==='closed')return alert('لا يمكن تحديث رابط زيارة مغلقة. أنشئ زيارة جديدة.');const oldToken=v.token;try{if(oldToken)await revokeExternalVisitAccess({...v,token:oldToken});v.token=token();v.linkUpdatedAt=new Date().toISOString();v.schoolId=getActiveSchoolId();if(v.status==='active')await syncExternalVisitAccess(v);}catch(e){v.token=oldToken;return alert('تعذر تجديد الرابط سحابيًا: '+(e.message||e));}localStorage.setItem(LS,JSON.stringify(data));renderVisitorPortal();await saveExternalVisitRemote(v,false);await saveExternalDraftRemote(false);alert('تم تحديث رابط وQR الزيارة وسحب صلاحية الرمز السابق.');}
 function getVisitUrl(v){const base=getAppBaseUrl();const params=new URLSearchParams();params.set('view','externalVisit');params.set('school_id',v.schoolId||getActiveSchoolId());params.set('visit_token',v.token||'');params.set('visit_number',v.number||'');return base+(base.includes('?')?'&':'?')+params.toString()+'#visitorPortal'}
-function getVisitorVisit(){const q=new URLSearchParams(location.search);const mode=q.get('view')==='externalVisit'||q.has('visit_token')||q.has('visitToken');if(!mode)return null;const t=q.get('visit_token')||q.get('visitToken');const sid=q.get('school_id')||q.get('schoolId')||'';if(!t)return {status:'invalid',number:'غير معروف',access:{},validationError:'missing_token'};ensureVisitsRaw();const v=data.visits.find(x=>x.token===t);if(!v)return {token:t,status:'invalid',number:q.get('visit_number')||'غير معروف',access:{},validationError:'token_not_found'};if(sid&&v.schoolId&&sid!==String(v.schoolId))return {token:t,status:'invalid',number:v.number,access:{},validationError:'school_mismatch'};if(v.status!=='active')return {...v,status:'closed',validationError:'not_active'};return {...v,fromLink:true}}
+function getVisitorVisit(){const q=new URLSearchParams(location.search);const mode=q.get('view')==='externalVisit'||q.has('visit_token')||q.has('visitToken');if(!mode)return null;if(__remoteVisitorVisit)return __remoteVisitorVisit;return {status:'loading',number:q.get('visit_number')||'—',access:{}}}
 function copyVisitLink(){const v=getCurrentVisit();const url=getVisitUrl(v);navigator.clipboard&&navigator.clipboard.writeText?navigator.clipboard.writeText(url).then(()=>alert('تم نسخ رابط الزيارة.')).catch(()=>prompt('انسخ الرابط:',url)):prompt('انسخ الرابط:',url)}
 function openSmartCardForVisit(){const v=getVisitorVisit()||getCurrentVisit();if(!v||v.status==='invalid')return alert('رابط الزيارة غير صالح.');if(v.status==='closed')return alert('هذه الزيارة مغلقة ولا يمكن فتح بطاقة التقييم من رابطها.');const url='external_team_smart_card.html?school_id='+encodeURIComponent(v.schoolId||getActiveSchoolId())+'&visit_token='+encodeURIComponent(v.token||'')+'&visit_number='+encodeURIComponent(v.number||'');window.open(url,'_blank')}
 function renderVisitStatusPanel(){const box=document.getElementById('visitStatusPanel');if(!box)return;const visitor=getVisitorVisit();const v=visitor||getCurrentVisit();const invalid=v.status==='invalid';const closed=v.status==='closed';const active=v.status==='active';const cls=invalid?'status-closed':closed?'status-closed':active?'status-active':'status-draft';const label=invalid?'رابط غير صالح':closed?'مغلقة':active?'نشطة':'مسودة';const url=(!invalid&&!closed)?getVisitUrl(v):'';const qr=url?'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data='+encodeURIComponent(url):'';box.innerHTML=`<div class="visit-control-card"><h3>تشغيل الزيارة</h3><span class="status-pill ${cls}">● ${label}</span><p class="sub">رقم الزيارة: <b>${esc(v.number||'—')}</b></p>${visitor?'<p class="sub">أنت الآن في وضع الفريق الزائر؛ المحتوى للقراءة فقط.</p>':'<div class="portal-actions"><button class="btn" onclick="startCurrentVisit()">بدء الزيارة</button><button class="btn red" onclick="closeCurrentVisit()">إغلاق الزيارة</button><button class="btn gray" onclick="createNewVisit()">إنشاء زيارة جديدة</button><button class="btn gold" onclick="regenerateVisitLink()">تحديث الرابط وQR</button><button class="btn blue" onclick="setPlatformBaseUrl()">ضبط رابط المنصة</button></div><p class="sub">إنشاء زيارة جديدة يغلق الزيارة السابقة ويؤرشفها تلقائيًا. تحديث الرابط يغير رمز الدخول لنفس الزيارة فقط.</p>'}</div><div class="visit-code-card"><h3>رابط وQR دخول الفريق</h3>${url?`<img class="qr-img" src="${qr}" alt="QR"><div class="visit-link-box">${esc(url)}</div><div class="portal-actions" style="justify-content:center"><button class="btn gray" onclick="copyVisitLink()">نسخ الرابط</button><button class="btn blue" onclick="openSmartCardForVisit()">فتح بطاقة التقييم</button></div>`:'<p class="sub">لا يوجد رابط صالح لهذه الزيارة. يجب أن تكون الزيارة نشطة وغير مغلقة.</p>'}</div>`}
@@ -399,12 +431,13 @@ function renderVisitAccessGrid(){
   grid.innerHTML=visitAccessSources.map(group=>`<div class="access-card"><h3><span>${group.icon} ${group.role}</span><small class="sub">عرض فقط</small></h3><div class="access-list">${group.items.map(([key,label])=>`<label class="access-item"><span>${esc(label)}</span><input type="checkbox" ${access[key]?'checked':''} onchange="toggleVisitAccess('${key}',this.checked)"></label>`).join('')}</div></div>`).join('');
 }
 function toggleVisitAccess(key,val){const access=getVisitAccess();access[key]=!!val;const v=getCurrentVisit();if(v&&v.status!=='closed')v.access={...access};localStorage.setItem(LS,JSON.stringify(data));renderVisitorPortal();}
-async function saveVisitAccessSettings(){const v=getCurrentVisit();v.access={...getVisitAccess()};localStorage.setItem(LS,JSON.stringify(data));await saveExternalDraftRemote(false);await saveExternalVisitRemote(v,false);alert('تم حفظ إعدادات الزيارة وربطها ببوابة الفريق الزائر.');renderVisitorPortal();}
+async function saveVisitAccessSettings(){const v=getCurrentVisit();v.access={...getVisitAccess()};localStorage.setItem(LS,JSON.stringify(data));try{if(v.status==='active')await syncExternalVisitAccess(v);}catch(e){return alert('تعذر تحديث صلاحيات الفريق الزائر سحابيًا: '+(e.message||e));}await saveExternalDraftRemote(false);await saveExternalVisitRemote(v,false);alert('تم حفظ إعدادات الزيارة وربطها ببوابة الفريق الزائر سحابيًا.');renderVisitorPortal();}
 function renderVisitorPortal(){
   const box=document.getElementById('visitorPortalContent'); if(!box)return;
   renderVisitStatusPanel();
   const visitor=getVisitorVisit();
   const v=visitor||getCurrentVisit();
+  if(v.status==='loading'){box.innerHTML='<div class="portal-card" style="grid-column:1/-1;text-align:center"><h3>جارٍ التحقق من رابط الزيارة...</h3><p class="sub">يتم التحقق من صلاحية الرمز سحابيًا.</p></div>';return;}
   if(v.status==='invalid'){box.innerHTML='<div class="portal-card disabled" style="grid-column:1/-1;text-align:center"><h3>رابط الزيارة غير صالح</h3><p class="sub">تواصل مع إدارة المدرسة للحصول على رابط أو QR جديد.</p></div>';return;}
   if(v.status==='closed'){box.innerHTML='<div class="portal-card disabled" style="grid-column:1/-1;text-align:center"><h3>الزيارة مغلقة</h3><p class="sub">تم إغلاق هذه الزيارة وتعطيل الرابط والرمز الخاص بها.</p></div>';return;}
   const access=visitor?(v.access||{}):getVisitAccess();
@@ -479,7 +512,7 @@ document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelect
 render();
 renderImpactResults();
 const __visitParams=new URLSearchParams(location.search);
-if(__visitParams.get('view')==='externalVisit'||__visitParams.get('visit_token')||__visitParams.get('visitToken')){document.body.classList.add('visitor-mode');activateTab('visitorPortal');renderVisitorPortal();}
+if(__visitParams.get('view')==='externalVisit'||__visitParams.get('visit_token')||__visitParams.get('visitToken')){document.body.classList.add('visitor-mode');activateTab('visitorPortal');renderVisitorPortal();hydrateVisitorVisit();}
 else if(location.hash==="#impact"){activateTab('impact');}
 </script>
 

@@ -4693,10 +4693,26 @@ document.addEventListener("click", function(e){
  function token(){let t=localStorage.getItem(tokenKey()); if(!t){t='sv_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8); localStorage.setItem(tokenKey(),t)} return t}
  function base(){return location.origin + location.pathname.replace(/manager\.html.*$/,'')}
  function link(){return base() + 'supervisor_visit.html?school_id=' + encodeURIComponent(schoolId()) + '&school_name=' + encodeURIComponent(schoolName()) + '&token=' + encodeURIComponent(token())}
- window.openSupervisorVisitLinkModal=function(){document.getElementById('supervisorVisitGeneratedLink').value=link();document.getElementById('supervisorVisitLinkModal').style.display='flex'}
+ function currentManagerId(){try{var u=JSON.parse(localStorage.getItem('currentSchoolUser')||localStorage.getItem('currentUser')||'{}');return u.id||u.user_id||null}catch(e){return null}}
+ async function syncSupervisorToken(){
+   if(!window.SmartSchoolSupabase||!SmartSchoolSupabase.registerExternalAccess) throw new Error('محرك الروابط السحابية غير جاهز');
+   var uid=currentManagerId(); if(!uid) throw new Error('تعذر تحديد حساب مدير المدرسة');
+   return await SmartSchoolSupabase.registerExternalAccess({token:token(),school_id:schoolId(),access_type:'supervisor_visit',created_by:uid,visit_number:'SUP-'+new Date().getFullYear(),permissions:{manager:true,agent:true,teacher:true,student_advisor:true},metadata:{school_name:schoolName(),read_only:true}});
+ }
+ async function revokeSupervisorToken(t){
+   if(!t||!window.SmartSchoolSupabase||!SmartSchoolSupabase.revokeExternalAccess)return false;
+   var uid=currentManagerId(); if(!uid)return false;
+   return await SmartSchoolSupabase.revokeExternalAccess({token:t,school_id:schoolId(),revoked_by:uid});
+ }
+ window.openSupervisorVisitLinkModal=async function(){
+   document.getElementById('supervisorVisitLinkModal').style.display='flex';
+   document.getElementById('supervisorVisitGeneratedLink').value='جارٍ تفعيل الرابط سحابيًا...';
+   try{await syncSupervisorToken();document.getElementById('supervisorVisitGeneratedLink').value=link();}
+   catch(e){document.getElementById('supervisorVisitGeneratedLink').value='';alert('تعذر تفعيل رابط الزيارة الإشرافية: '+(e.message||e));}
+ }
  window.closeSupervisorVisitLinkModal=function(){document.getElementById('supervisorVisitLinkModal').style.display='none'}
- window.copySupervisorVisitLink=function(){const v=document.getElementById('supervisorVisitGeneratedLink').value;navigator.clipboard&&navigator.clipboard.writeText(v);alert('تم نسخ رابط الزيارة الإشرافية')}
- window.regenerateSupervisorVisitToken=function(){localStorage.setItem(tokenKey(),'sv_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8));document.getElementById('supervisorVisitGeneratedLink').value=link();alert('تم تجديد رمز الزيارة')}
+ window.copySupervisorVisitLink=function(){const v=document.getElementById('supervisorVisitGeneratedLink').value;if(!/^https?:/i.test(v))return alert('الرابط غير جاهز بعد');navigator.clipboard&&navigator.clipboard.writeText(v);alert('تم نسخ رابط الزيارة الإشرافية')}
+ window.regenerateSupervisorVisitToken=async function(){var old=token();try{await revokeSupervisorToken(old);localStorage.setItem(tokenKey(),'sv_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8));await syncSupervisorToken();document.getElementById('supervisorVisitGeneratedLink').value=link();alert('تم تجديد رمز الزيارة وسحب صلاحية الرمز السابق');}catch(e){localStorage.setItem(tokenKey(),old);alert('تعذر تجديد الرمز سحابيًا: '+(e.message||e));}}
 })();
 </script>
 <script id="safe-activation-bypass-tail">

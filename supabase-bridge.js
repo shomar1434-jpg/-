@@ -466,6 +466,39 @@
     return true;
   }
 
+
+  async function registerExternalAccess(payload){
+    const sb=getClient(); if(!sb) throw new Error('Supabase غير جاهز');
+    const {data,error}=await sb.rpc('register_school_external_access',{
+      p_token:String(payload.token||''),
+      p_school_id:payload.school_id||payload.schoolId,
+      p_access_type:payload.access_type||payload.accessType,
+      p_created_by:payload.created_by||payload.createdBy,
+      p_visit_number:payload.visit_number||payload.visitNumber||null,
+      p_permissions:payload.permissions||{},
+      p_metadata:payload.metadata||{},
+      p_status:payload.status||'active',
+      p_expires_at:payload.expires_at||payload.expiresAt||null
+    });
+    if(error) throw explainSupabaseError(error); return data;
+  }
+  async function validateExternalAccess(token,accessType){
+    const sb=getClient(); if(!sb) throw new Error('Supabase غير جاهز');
+    const {data,error}=await sb.rpc('validate_school_external_access',{p_token:String(token||''),p_access_type:String(accessType||'')});
+    if(error) throw explainSupabaseError(error); return Array.isArray(data)?(data[0]||null):data;
+  }
+  async function revokeExternalAccess(payload){
+    const sb=getClient(); if(!sb) throw new Error('Supabase غير جاهز');
+    const {data,error}=await sb.rpc('revoke_school_external_access',{
+      p_token:String(payload.token||''),p_school_id:payload.school_id||payload.schoolId,p_revoked_by:payload.revoked_by||payload.revokedBy
+    });
+    if(error) throw explainSupabaseError(error); return !!data;
+  }
+  async function listExternalVisitUsers(token){
+    const sb=getClient(); if(!sb) throw new Error('Supabase غير جاهز');
+    const {data,error}=await sb.rpc('list_external_visit_users',{p_token:String(token||'')});
+    if(error) throw explainSupabaseError(error); return data||[];
+  }
   window.SmartSchoolSupabase = {
     getClient,
     appRoleToDb,
@@ -486,7 +519,11 @@
     deleteUser,
     login: loginSchoolUser,
     signIn: loginSchoolUser,
-    schoolLogin: loginSchoolUser
+    schoolLogin: loginSchoolUser,
+    registerExternalAccess,
+    validateExternalAccess,
+    revokeExternalAccess,
+    listExternalVisitUsers
   };
 
   window.addEventListener('DOMContentLoaded', function(){

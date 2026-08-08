@@ -24,7 +24,7 @@ const api={
  myAssignments:()=>request('my-assignments',{}),
  workspace:taskId=>request('workspace',{taskId}),
  emitRecordEvent:payload=>request('record-event',payload),
- dashboard:()=>request('dashboard',{}),
+ dashboard:(filters={})=>request('dashboard',{filters}),
  markNotificationRead:id=>request('mark-notification-read',{id}),
  invalidate(){cache.bootstrap=null;cache.at=0},
  openAssignment(taskId){location.href='central_task_center.html?mode=assignee&task_id='+encodeURIComponent(taskId)}

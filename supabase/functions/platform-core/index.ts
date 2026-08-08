@@ -310,15 +310,25 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'dashboard') {
-      const since = new Date(Date.now() - 30*24*60*60*1000).toISOString();
+      const filters:any = body.filters || {};
+      const period = String(filters.period || 'month');
+      const periodDays:any = { day:1, week:7, month:31, term:130, year:370 };
+      const windowDays = Number(periodDays[period] || 31);
+      const since = new Date(Date.now() - windowDays*24*60*60*1000).toISOString();
+      const normalizeDashboardRole=(r:any)=>{const x=String(r||'').toLowerCase();if(/teacher|معلم|معلمة/.test(x))return 'teacher';if(/admin_employee|administrative|إداري|اداري|موظف|محضر|مصادر|سكرتير|كاتب|مدخل/.test(x))return 'admin';if(/agent|deputy|vice|wakil|وكيل|وكيلة/.test(x))return 'agent';if(/advisor|counsel|موجه|مرشد|إرشاد|ارشاد/.test(x))return 'advisor';if(/activity|رائد|نشاط/.test(x))return 'activity';if(/manager|owner|principal|مدير|مديرة/.test(x))return 'manager';if(/student|طالب|طالبة/.test(x))return 'student';return 'other'};
+      const scopeRoles:any={all:['teacher','admin','agent','advisor','activity','manager','student','other'],teachers:['teacher'],admin:['admin'],students:['student','advisor']};
+      const selectedRoles=scopeRoles[String(filters.scope||'all')]||scopeRoles.all;
+      const focus=String(filters.focus||'all');
+      const matchesFocus=(ev:any)=>{const mk=String(ev.module_key||'').toLowerCase();const rt=String(ev.record_type||'').toLowerCase();if(focus==='all')return true;if(focus==='tasks')return !!ev.task_id;if(focus==='followup')return /followup|deputy|wakil|teacher_followup/.test(mk+' '+rt);if(focus==='advising')return /advisor|counsel|student_followup|guidance/.test(mk+' '+rt);if(focus==='evaluation')return /evaluation|self_evaluation|external_evaluation|improvement|performance/.test(mk+' '+rt);return true};
       const [{ data: core, error: coreError }, { data: indicators, error: indicatorsError }, { data: activityEvents, error: activityError }] = await Promise.all([
         sb.from('vw_platform_core_dashboard').select('*').eq('school_id', session.school_id).maybeSingle(),
-        sb.from('platform_indicator_values').select('*').eq('school_id', session.school_id).order('measured_at', { ascending: false }).limit(200),
-        sb.from('platform_record_events').select('id,module_key,record_type,record_id,task_id,actor_id,event_type,event_data,occurred_at').eq('school_id', session.school_id).gte('occurred_at', since).order('occurred_at', { ascending: false }).limit(3000)
+        sb.from('platform_indicator_values').select('*').eq('school_id', session.school_id).gte('measured_at', since).order('measured_at', { ascending: false }).limit(500),
+        sb.from('platform_record_events').select('id,module_key,record_type,record_id,task_id,actor_id,execution_role,event_type,event_data,occurred_at').eq('school_id', session.school_id).gte('occurred_at', since).order('occurred_at', { ascending: false }).limit(5000)
       ]);
       if (coreError) throw coreError; if (indicatorsError) throw indicatorsError; if (activityError) throw activityError;
-      const visible = isOwner ? (indicators || []) : (indicators || []).filter((x: any) => x.module_key === role || x.created_by === session.user_id);
-      const events = activityEvents || [];
+      const visibleBase = isOwner ? (indicators || []) : (indicators || []).filter((x: any) => x.module_key === role || x.created_by === session.user_id);
+      const visible = visibleBase.filter((x:any)=>focus==='all'||(focus==='evaluation'?/evaluation|improvement|performance/.test(String(x.module_key||'').toLowerCase()):true));
+      const events = (activityEvents || []).filter((ev:any)=>selectedRoles.includes(normalizeDashboardRole(ev.execution_role)) && matchesFocus(ev));
       const stage:any = {record_opened:10,record_created:50,record_updated:60,record_saved:60,record_submitted:80,record_completed:100,performance_plan_saved:40,performance_plan_submitted:80,performance_execution_updated:60,performance_evaluation_saved:100};
       const byRecord = new Map<string, any>(); const actors = new Set<string>(); let direct=0,delegated=0,meaningful=0;
       for (const ev of events) {
@@ -334,8 +344,8 @@ Deno.serve(async (req) => {
       const operational = records.length ? Math.round(records.reduce((a:any,r:any)=>a+Number(r.score||0),0)/records.length) : 0;
       const moduleMap:any={}; for(const r of records){const k=String(r.module_key||'general');const x=moduleMap[k]||(moduleMap[k]={module_key:k,records:0,progress_total:0});x.records++;x.progress_total+=Number(r.score||0)}
       const modules=Object.values(moduleMap).map((x:any)=>({module_key:x.module_key,records:x.records,average_progress:x.records?Math.round(x.progress_total/x.records):0})).sort((a:any,b:any)=>b.records-a.records);
-      const activity={window_days:30,total_events:events.length,meaningful_events:meaningful,direct_events:direct,delegated_events:delegated,active_users:actors.size,unique_records:records.length,operational_execution_progress:operational,last_activity_at:events[0]?.occurred_at||null,modules};
-      return json({ summary: core || {}, activity, indicators: visible });
+      const activity={window_days:windowDays,period,scope:String(filters.scope||'all'),focus,total_events:events.length,meaningful_events:meaningful,direct_events:direct,delegated_events:delegated,active_users:actors.size,unique_records:records.length,operational_execution_progress:operational,last_activity_at:events[0]?.occurred_at||null,modules};
+      return json({ summary: core || {}, activity, indicators: visible, filters:{period,scope:String(filters.scope||'all'),focus,viewmode:String(filters.viewmode||'exec'),sensitivity:String(filters.sensitivity||'normal')} });
     }
 
     if (action === 'mark-notification-read') {

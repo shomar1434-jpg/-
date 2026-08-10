@@ -1397,6 +1397,8 @@ body{overflow-x:hidden}
 <!-- PREMIUM_UI_2026 -->
 <link rel="stylesheet" href="premium-ui.css">
 <script defer src="premium-ui.js"></script>
+<script src="platform-state-engine.js"></script>
+<script src="platform-persistence-guard.js"></script>
 </head>
 <body class="global-app-bg" data-ss-role="agent">
 <script data-openai-engine="true" defer="" src="./openai-engine.js"></script>
@@ -2858,7 +2860,7 @@ body{overflow-x:hidden}
 
 
         /* =======================
-           سجلات الوكيل - حفظ محلي وسحابي اختياري
+           سجلات الوكيل - حفظ سحابي موحّد
            ======================= */
         const AGENT_CLOUD_SYNC_ENABLED = false;
         const AGENT_CLOUD_UPLOAD_URL = "";
@@ -2994,10 +2996,10 @@ function openWakilRecordsNewTab() {
             const el = document.getElementById('agent-cloud-status');
             if (!el) return;
             if (AGENT_CLOUD_SYNC_ENABLED && AGENT_CLOUD_UPLOAD_URL) {
-                el.textContent = 'الحفظ المحلي والسحابي مفعّل';
+                el.textContent = 'الحفظ السحابي مفعّل';
                 el.className = 'text-[10px] font-bold bg-teal-50 text-teal-700 border border-teal-100 px-3 py-2 rounded-xl';
             } else {
-                el.textContent = 'الحفظ المحلي مفعّل - السحابي غير مفعّل';
+                el.textContent = 'الحفظ السحابي مفعّل';
                 el.className = 'text-[10px] font-bold bg-amber-50 text-amber-600 border border-amber-100 px-3 py-2 rounded-xl';
             }
         }
@@ -3016,49 +3018,42 @@ function openWakilRecordsNewTab() {
             });
         }
 
+        async function migrateLegacyAgentRecordsToCloud() {
+            const flag='legacy_agent_records_migrated_v1';
+            if(sessionStorage.getItem(flag)==='1'||!window.CloudFileEngine)return;
+            sessionStorage.setItem(flag,'1');
+            try{
+                const db=await openAgentRecordsDB();
+                const rows=await new Promise((resolve,reject)=>{const tx=db.transaction(AGENT_STORE_NAME,'readonly');const rq=tx.objectStore(AGENT_STORE_NAME).getAll();rq.onsuccess=()=>resolve(rq.result||[]);rq.onerror=()=>reject(rq.error);});
+                if(!rows.length)return;
+                for(const rec of rows){if(!rec.file)continue;await CloudFileEngine.upload({file:rec.file,ownershipScope:'user',moduleKey:'agent_records_archive',recordType:'pdf_archive',recordId:'agent',relationType:'archive_file',displayName:rec.name||rec.file.name,metadata:{legacyId:rec.id,migratedFrom:'indexeddb'}});}
+                await new Promise((resolve,reject)=>{const tx=db.transaction(AGENT_STORE_NAME,'readwrite');const rq=tx.objectStore(AGENT_STORE_NAME).clear();rq.onsuccess=()=>resolve();rq.onerror=()=>reject(rq.error);});
+            }catch(e){console.warn('[AgentRecords] legacy migration deferred',e?.message||e);sessionStorage.removeItem(flag);}
+        }
+
         async function saveAgentPDFLocally(file) {
-            const db = await openAgentRecordsDB();
-            return new Promise((resolve, reject) => {
-                const transaction = db.transaction(AGENT_STORE_NAME, 'readwrite');
-                const store = transaction.objectStore(AGENT_STORE_NAME);
-                const record = { name: file.name, type: file.type, size: file.size, file: file, createdAt: new Date().toISOString() };
-                const request = store.add(record);
-                request.onsuccess = () => resolve(request.result);
-                request.onerror = () => reject('تعذر حفظ السجل محليًا');
-            });
+            if(!window.CloudFileEngine) throw new Error('الحفظ السحابي غير متاح');
+            const r=await CloudFileEngine.upload({file,ownershipScope:'user',moduleKey:'agent_records_archive',recordType:'pdf_archive',recordId:'agent',relationType:'archive_file',displayName:file.name,metadata:{source:'agent.html',legacyRepository:true}});
+            return r.file.id;
         }
 
         async function getAllAgentLocalRecords() {
-            const db = await openAgentRecordsDB();
-            return new Promise((resolve, reject) => {
-                const transaction = db.transaction(AGENT_STORE_NAME, 'readonly');
-                const store = transaction.objectStore(AGENT_STORE_NAME);
-                const request = store.getAll();
-                request.onsuccess = () => resolve(request.result || []);
-                request.onerror = () => reject('تعذر قراءة السجلات المحلية');
-            });
+            if(!window.CloudFileEngine) throw new Error('الحفظ السحابي غير متاح');
+            await migrateLegacyAgentRecordsToCloud();
+            const r=await CloudFileEngine.list({moduleKey:'agent_records_archive',recordType:'pdf_archive',limit:1000});
+            return (r.files||[]).map(f=>({id:f.id,name:f.display_name||f.original_name||'ملف',type:f.mime_type||'',size:Number(f.file_size||0),createdAt:f.created_at,cloud:true}));
         }
 
         async function getAgentLocalRecord(id) {
-            const db = await openAgentRecordsDB();
-            return new Promise((resolve, reject) => {
-                const transaction = db.transaction(AGENT_STORE_NAME, 'readonly');
-                const store = transaction.objectStore(AGENT_STORE_NAME);
-                const request = store.get(Number(id));
-                request.onsuccess = () => resolve(request.result);
-                request.onerror = () => reject('تعذر قراءة السجل');
-            });
+            if(!window.CloudFileEngine) throw new Error('الحفظ السحابي غير متاح');
+            const u=await CloudFileEngine.usage(String(id)); if(!u.file)return null;
+            const file=await CloudFileEngine.getBlob(String(id));
+            return {id:u.file.id,name:u.file.display_name||u.file.original_name||'ملف',type:u.file.mime_type||'',size:Number(u.file.file_size||0),createdAt:u.file.created_at,file,cloud:true};
         }
 
         async function deleteAgentLocalRecord(id) {
-            const db = await openAgentRecordsDB();
-            return new Promise((resolve, reject) => {
-                const transaction = db.transaction(AGENT_STORE_NAME, 'readwrite');
-                const store = transaction.objectStore(AGENT_STORE_NAME);
-                const request = store.delete(Number(id));
-                request.onsuccess = () => resolve();
-                request.onerror = () => reject('تعذر حذف السجل');
-            });
+            if(!window.CloudFileEngine) throw new Error('الحفظ السحابي غير متاح');
+            return CloudFileEngine.trash(String(id));
         }
 
         async function renderAgentRecordsList() {

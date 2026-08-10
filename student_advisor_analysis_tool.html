@@ -1452,6 +1452,8 @@ button[onclick="openExitModal()"],button[onclick="exitApp()"],button[onclick="cl
 <!-- PREMIUM_UI_2026 -->
 <link rel="stylesheet" href="premium-ui.css">
 <script defer src="premium-ui.js"></script>
+<script src="platform-state-engine.js"></script>
+<script src="platform-persistence-guard.js"></script>
 </head>
 <body data-ss-role="teacher" class="global-app-bg">
 
@@ -3059,108 +3061,6 @@ font-size:16px;font-weight:700;text-align:center;background:#fff;color:#0f172a;"
 
 
 
-<script src="school-exit-scope.js" defer></script>
-<script id="unified-current-report-print-fix">
-(function(){
-  if (window.__UNIFIED_CURRENT_REPORT_PRINT_FIX__) return;
-  window.__UNIFIED_CURRENT_REPORT_PRINT_FIX__ = true;
-
-  function syncCurrentControls(root){
-    if(!root) return;
-    root.querySelectorAll('select').forEach(function(sel){
-      Array.prototype.forEach.call(sel.options || [], function(opt){ opt.removeAttribute('selected'); });
-      if(sel.selectedIndex >= 0 && sel.options[sel.selectedIndex]) sel.options[sel.selectedIndex].setAttribute('selected','selected');
-    });
-    root.querySelectorAll('input, textarea').forEach(function(el){
-      if(el.type === 'checkbox' || el.type === 'radio'){
-        if(el.checked) el.setAttribute('checked','checked'); else el.removeAttribute('checked');
-      } else {
-        el.setAttribute('value', el.value || '');
-        if(el.tagName === 'TEXTAREA') el.textContent = el.value || '';
-      }
-    });
-  }
-
-  function ensureUnifiedPrintStyle(){
-    var old = document.getElementById('unified-current-report-print-style');
-    if(old) old.remove();
-    var style = document.createElement('style');
-    style.id = 'unified-current-report-print-style';
-    style.textContent = `
-      @media print{
-        @page{size:A4 portrait;margin:0!important;}
-        html,body{margin:0!important;padding:0!important;background:#fff!important;width:210mm!important;min-width:210mm!important;max-width:210mm!important;height:auto!important;overflow:visible!important;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}
-        body.unified-current-report-print > *:not(#main-report-app){display:none!important;visibility:hidden!important;}
-        body.unified-current-report-print #main-report-app{display:block!important;visibility:visible!important;position:static!important;inset:auto!important;margin:0!important;padding:0!important;background:#fff!important;width:210mm!important;min-width:210mm!important;max-width:210mm!important;height:auto!important;overflow:visible!important;}
-        body.unified-current-report-print #main-report-app.hidden{display:block!important;}
-        body.unified-current-report-print #main-report-app > nav,
-        body.unified-current-report-print #main-report-app .no-print,
-        body.unified-current-report-print #main-report-app .progress-top-bar,
-        body.unified-current-report-print #main-report-app button,
-        body.unified-current-report-print #main-report-app input[type="file"],
-        body.unified-current-report-print #main-report-app .delete-btn-box,
-        body.unified-current-report-print #main-report-app .magic-goal-btn,
-        body.unified-current-report-print #main-report-app .support-goal-btn,
-        body.unified-current-report-print #main-report-app .theme-icon-btn{display:none!important;visibility:hidden!important;}
-        body.unified-current-report-print #report-content-container{display:block!important;visibility:visible!important;position:static!important;margin:0!important;padding:0!important;background:#fff!important;width:210mm!important;min-width:210mm!important;max-width:210mm!important;height:auto!important;overflow:visible!important;}
-        body.unified-current-report-print #report-content-container *{visibility:visible!important;}
-        body.unified-current-report-print #report-content-container .no-print,
-        body.unified-current-report-print #report-content-container button,
-        body.unified-current-report-print #report-content-container input[type="file"],
-        body.unified-current-report-print #report-content-container .delete-btn-box,
-        body.unified-current-report-print #report-content-container .magic-goal-btn,
-        body.unified-current-report-print #report-content-container .support-goal-btn{display:none!important;visibility:hidden!important;}
-        body.unified-current-report-print #report-content-container .page-container{display:flex!important;visibility:visible!important;position:relative!important;width:210mm!important;min-width:210mm!important;max-width:210mm!important;height:297mm!important;min-height:297mm!important;max-height:297mm!important;margin:0!important;padding:7mm!important;box-sizing:border-box!important;background:#fff!important;box-shadow:none!important;border-radius:0!important;overflow:hidden!important;page-break-inside:avoid!important;break-inside:avoid-page!important;}
-        body.unified-current-report-print #report-content-container .page-container:first-of-type{page-break-after:always!important;break-after:page!important;}
-        body.unified-current-report-print #report-content-container .page-container:nth-of-type(2){page-break-after:avoid!important;break-after:avoid!important;}
-        body.unified-current-report-print #report-content-container .page-container:nth-of-type(n+3){display:none!important;visibility:hidden!important;}
-        body.unified-current-report-print #report-content-container .border-double-frame{display:flex!important;flex-direction:column!important;height:100%!important;max-height:100%!important;overflow:hidden!important;box-sizing:border-box!important;}
-        body.unified-current-report-print #report-content-container table,
-        body.unified-current-report-print #report-content-container tr,
-        body.unified-current-report-print #report-content-container td,
-        body.unified-current-report-print #report-content-container th{page-break-inside:avoid!important;break-inside:avoid!important;}
-        body.unified-current-report-print #report-content-container select{appearance:none!important;-webkit-appearance:none!important;border:0!important;background:transparent!important;color:inherit!important;}
-        body.unified-current-report-print #report-content-container img{max-width:100%!important;max-height:100%!important;object-fit:contain!important;}
-        body.unified-current-report-print #report-content-container .sig-stamp-container{min-height:70px!important;height:90px!important;display:flex!important;align-items:center!important;justify-content:center!important;overflow:hidden!important;}
-        body.unified-current-report-print .internal-watermark::before{display:none!important;visibility:hidden!important;}
-      }
-    `;
-    document.head.appendChild(style);
-  }
-
-  function cleanupUnifiedPrint(){
-    document.body.classList.remove('unified-current-report-print');
-    window.__unifiedPrintLock = false;
-    window.removeEventListener('afterprint', cleanupUnifiedPrint);
-  }
-
-  window.platformPrintCurrentReportOnly = function(){
-    var app = document.getElementById('main-report-app');
-    var container = document.getElementById('report-content-container');
-    if(!container || !container.querySelector('.page-container')){
-      if (typeof showToast === 'function') showToast('افتح التقرير أولاً قبل الطباعة');
-      else alert('افتح التقرير أولاً قبل الطباعة');
-      return false;
-    }
-    if(app){ app.classList.remove('hidden'); app.style.display = 'block'; }
-    syncCurrentControls(container);
-    ensureUnifiedPrintStyle();
-    document.body.classList.add('unified-current-report-print');
-    if(window.__unifiedPrintLock) return false;
-    window.__unifiedPrintLock = true;
-    window.removeEventListener('afterprint', cleanupUnifiedPrint);
-    window.addEventListener('afterprint', cleanupUnifiedPrint);
-    setTimeout(function(){ window.focus(); window.print(); setTimeout(cleanupUnifiedPrint, 1800); }, 120);
-    return false;
-  };
-  window.preparePrint = window.platformPrintCurrentReportOnly;
-})();
-</script>
-
-<script src="platform-record-catalog.js"></script>
-<script src="delegated-access-guard.js"></script>
-<script src="platform-core-engine.js"></script>
-<script src="platform-dashboard-bridge.js"></script>
 </body></html>`);
             printWindow.document.close();
             setTimeout(() => { loader.classList.add('hidden'); showToast("تم تجهيز مسودة ملف الإنجاز المهني كملف واحد ✅"); }, 1800);
@@ -4071,110 +3971,7 @@ font-size:16px;font-weight:700;text-align:center;background:#fff;color:#0f172a;"
             const content = document.getElementById('report-content-container')?.innerHTML;
             if (!content || content.trim().length < 20) return showToast('لا يوجد تقرير جاهز للتصدير ⚠️');
             const title = (document.getElementById('field_prog_name')?.innerText || 'تقرير_الموجه/ة الطلابي/ة').trim().replace(/[\\/:*?"<>|\s]+/g, '_');
-            const standalone = `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${title}</title>${document.head.innerHTML}<style>body{background:#fff!important}.no-print,nav,.progress-top-bar,#draft-status{display:none!important}.page-container{margin:0 auto!important;box-shadow:none!important}</style><style id="evidence-print-fix">@media print{.evidence-box img,.evidence-box canvas,.evidence-box iframe,.evidence-box .uploaded-file,.evidence-box [data-evidence]{display:block!important;visibility:visible!important;opacity:1!important}}</style></head><body dir="rtl"><main>${content}</main>
-<script id="unified-current-report-print-fix">
-(function(){
-  if (window.__UNIFIED_CURRENT_REPORT_PRINT_FIX__) return;
-  window.__UNIFIED_CURRENT_REPORT_PRINT_FIX__ = true;
-
-  function syncCurrentControls(root){
-    if(!root) return;
-    root.querySelectorAll('select').forEach(function(sel){
-      Array.prototype.forEach.call(sel.options || [], function(opt){ opt.removeAttribute('selected'); });
-      if(sel.selectedIndex >= 0 && sel.options[sel.selectedIndex]) sel.options[sel.selectedIndex].setAttribute('selected','selected');
-    });
-    root.querySelectorAll('input, textarea').forEach(function(el){
-      if(el.type === 'checkbox' || el.type === 'radio'){
-        if(el.checked) el.setAttribute('checked','checked'); else el.removeAttribute('checked');
-      } else {
-        el.setAttribute('value', el.value || '');
-        if(el.tagName === 'TEXTAREA') el.textContent = el.value || '';
-      }
-    });
-  }
-
-  function ensureUnifiedPrintStyle(){
-    var old = document.getElementById('unified-current-report-print-style');
-    if(old) old.remove();
-    var style = document.createElement('style');
-    style.id = 'unified-current-report-print-style';
-    style.textContent = `
-      @media print{
-        @page{size:A4 portrait;margin:0!important;}
-        html,body{margin:0!important;padding:0!important;background:#fff!important;width:210mm!important;min-width:210mm!important;max-width:210mm!important;height:auto!important;overflow:visible!important;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}
-        body.unified-current-report-print > *:not(#main-report-app){display:none!important;visibility:hidden!important;}
-        body.unified-current-report-print #main-report-app{display:block!important;visibility:visible!important;position:static!important;inset:auto!important;margin:0!important;padding:0!important;background:#fff!important;width:210mm!important;min-width:210mm!important;max-width:210mm!important;height:auto!important;overflow:visible!important;}
-        body.unified-current-report-print #main-report-app.hidden{display:block!important;}
-        body.unified-current-report-print #main-report-app > nav,
-        body.unified-current-report-print #main-report-app .no-print,
-        body.unified-current-report-print #main-report-app .progress-top-bar,
-        body.unified-current-report-print #main-report-app button,
-        body.unified-current-report-print #main-report-app input[type="file"],
-        body.unified-current-report-print #main-report-app .delete-btn-box,
-        body.unified-current-report-print #main-report-app .magic-goal-btn,
-        body.unified-current-report-print #main-report-app .support-goal-btn,
-        body.unified-current-report-print #main-report-app .theme-icon-btn{display:none!important;visibility:hidden!important;}
-        body.unified-current-report-print #report-content-container{display:block!important;visibility:visible!important;position:static!important;margin:0!important;padding:0!important;background:#fff!important;width:210mm!important;min-width:210mm!important;max-width:210mm!important;height:auto!important;overflow:visible!important;}
-        body.unified-current-report-print #report-content-container *{visibility:visible!important;}
-        body.unified-current-report-print #report-content-container .no-print,
-        body.unified-current-report-print #report-content-container button,
-        body.unified-current-report-print #report-content-container input[type="file"],
-        body.unified-current-report-print #report-content-container .delete-btn-box,
-        body.unified-current-report-print #report-content-container .magic-goal-btn,
-        body.unified-current-report-print #report-content-container .support-goal-btn{display:none!important;visibility:hidden!important;}
-        body.unified-current-report-print #report-content-container .page-container{display:flex!important;visibility:visible!important;position:relative!important;width:210mm!important;min-width:210mm!important;max-width:210mm!important;height:297mm!important;min-height:297mm!important;max-height:297mm!important;margin:0!important;padding:7mm!important;box-sizing:border-box!important;background:#fff!important;box-shadow:none!important;border-radius:0!important;overflow:hidden!important;page-break-inside:avoid!important;break-inside:avoid-page!important;}
-        body.unified-current-report-print #report-content-container .page-container:first-of-type{page-break-after:always!important;break-after:page!important;}
-        body.unified-current-report-print #report-content-container .page-container:nth-of-type(2){page-break-after:avoid!important;break-after:avoid!important;}
-        body.unified-current-report-print #report-content-container .page-container:nth-of-type(n+3){display:none!important;visibility:hidden!important;}
-        body.unified-current-report-print #report-content-container .border-double-frame{display:flex!important;flex-direction:column!important;height:100%!important;max-height:100%!important;overflow:hidden!important;box-sizing:border-box!important;}
-        body.unified-current-report-print #report-content-container table,
-        body.unified-current-report-print #report-content-container tr,
-        body.unified-current-report-print #report-content-container td,
-        body.unified-current-report-print #report-content-container th{page-break-inside:avoid!important;break-inside:avoid!important;}
-        body.unified-current-report-print #report-content-container select{appearance:none!important;-webkit-appearance:none!important;border:0!important;background:transparent!important;color:inherit!important;}
-        body.unified-current-report-print #report-content-container img{max-width:100%!important;max-height:100%!important;object-fit:contain!important;}
-        body.unified-current-report-print #report-content-container .sig-stamp-container{min-height:70px!important;height:90px!important;display:flex!important;align-items:center!important;justify-content:center!important;overflow:hidden!important;}
-        body.unified-current-report-print .internal-watermark::before{display:none!important;visibility:hidden!important;}
-      }
-    `;
-    document.head.appendChild(style);
-  }
-
-  function cleanupUnifiedPrint(){
-    document.body.classList.remove('unified-current-report-print');
-    window.__unifiedPrintLock = false;
-    window.removeEventListener('afterprint', cleanupUnifiedPrint);
-  }
-
-  window.platformPrintCurrentReportOnly = function(){
-    var app = document.getElementById('main-report-app');
-    var container = document.getElementById('report-content-container');
-    if(!container || !container.querySelector('.page-container')){
-      if (typeof showToast === 'function') showToast('افتح التقرير أولاً قبل الطباعة');
-      else alert('افتح التقرير أولاً قبل الطباعة');
-      return false;
-    }
-    if(app){ app.classList.remove('hidden'); app.style.display = 'block'; }
-    syncCurrentControls(container);
-    ensureUnifiedPrintStyle();
-    document.body.classList.add('unified-current-report-print');
-    if(window.__unifiedPrintLock) return false;
-    window.__unifiedPrintLock = true;
-    window.removeEventListener('afterprint', cleanupUnifiedPrint);
-    window.addEventListener('afterprint', cleanupUnifiedPrint);
-    setTimeout(function(){ window.focus(); window.print(); setTimeout(cleanupUnifiedPrint, 1800); }, 120);
-    return false;
-  };
-  window.preparePrint = window.platformPrintCurrentReportOnly;
-})();
-</script>
-
-
-<script src="platform-record-catalog.js"></script>
-<script src="delegated-access-guard.js"></script>
-<script src="platform-core-engine.js"></script>
-<script src="platform-dashboard-bridge.js"></script>
-</body></html>`;
+            const standalone = `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${title}</title>${document.head.innerHTML}<style>body{background:#fff!important}.no-print,nav,.progress-top-bar,#draft-status{display:none!important}.page-container{margin:0 auto!important;box-shadow:none!important}</style><style id="evidence-print-fix">@media print{.evidence-box img,.evidence-box canvas,.evidence-box iframe,.evidence-box .uploaded-file,.evidence-box [data-evidence]{display:block!important;visibility:visible!important;opacity:1!important}}</style></head><body dir="rtl"><main>${content}</main></body></html>`;
             const blob = new Blob([standalone], { type: 'text/html;charset=utf-8' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');

@@ -1354,6 +1354,8 @@ body{overflow-x:hidden}
 <!-- PREMIUM_UI_2026 -->
 <link rel="stylesheet" href="premium-ui.css">
 <script defer src="premium-ui.js"></script>
+<script src="platform-state-engine.js"></script>
+<script src="platform-persistence-guard.js"></script>
 </head>
 <body class="global-app-bg" data-ss-role="manager">
 <script data-openai-engine="true" defer="" src="./openai-engine.js"></script>
@@ -3054,7 +3056,7 @@ body{overflow-x:hidden}
 
 
         /* =======================
-           سجلات المدير - حفظ محلي وسحابي اختياري
+           سجلات المدير - حفظ سحابي موحّد
            منقول من سجلات الوكيل مع تغيير الاسم فقط
            ======================= */
         const MANAGER_CLOUD_SYNC_ENABLED = false;
@@ -3090,10 +3092,10 @@ body{overflow-x:hidden}
             const el = document.getElementById('manager-cloud-status');
             if (!el) return;
             if (MANAGER_CLOUD_SYNC_ENABLED && MANAGER_CLOUD_UPLOAD_URL) {
-                el.textContent = 'الحفظ المحلي والسحابي مفعّل';
+                el.textContent = 'الحفظ السحابي مفعّل';
                 el.className = 'text-[10px] font-bold bg-teal-50 text-teal-700 border border-teal-100 px-3 py-2 rounded-xl';
             } else {
-                el.textContent = 'الحفظ المحلي مفعّل - السحابي غير مفعّل';
+                el.textContent = 'الحفظ السحابي مفعّل';
                 el.className = 'text-[10px] font-bold bg-amber-50 text-amber-600 border border-amber-100 px-3 py-2 rounded-xl';
             }
         }
@@ -3112,49 +3114,42 @@ body{overflow-x:hidden}
             });
         }
 
+        async function migrateLegacyManagerRecordsToCloud() {
+            const flag='legacy_manager_records_migrated_v1';
+            if(sessionStorage.getItem(flag)==='1'||!window.CloudFileEngine)return;
+            sessionStorage.setItem(flag,'1');
+            try{
+                const db=await openManagerRecordsDB();
+                const rows=await new Promise((resolve,reject)=>{const tx=db.transaction(MANAGER_STORE_NAME,'readonly');const rq=tx.objectStore(MANAGER_STORE_NAME).getAll();rq.onsuccess=()=>resolve(rq.result||[]);rq.onerror=()=>reject(rq.error);});
+                if(!rows.length)return;
+                for(const rec of rows){if(!rec.file)continue;await CloudFileEngine.upload({file:rec.file,ownershipScope:'user',moduleKey:'manager_records_archive',recordType:'pdf_archive',recordId:'manager',relationType:'archive_file',displayName:rec.name||rec.file.name,metadata:{legacyId:rec.id,migratedFrom:'indexeddb'}});}
+                await new Promise((resolve,reject)=>{const tx=db.transaction(MANAGER_STORE_NAME,'readwrite');const rq=tx.objectStore(MANAGER_STORE_NAME).clear();rq.onsuccess=()=>resolve();rq.onerror=()=>reject(rq.error);});
+            }catch(e){console.warn('[ManagerRecords] legacy migration deferred',e?.message||e);sessionStorage.removeItem(flag);}
+        }
+
         async function saveManagerPDFLocally(file) {
-            const db = await openManagerRecordsDB();
-            return new Promise((resolve, reject) => {
-                const transaction = db.transaction(MANAGER_STORE_NAME, 'readwrite');
-                const store = transaction.objectStore(MANAGER_STORE_NAME);
-                const record = { name: file.name, type: file.type, size: file.size, file: file, createdAt: new Date().toISOString() };
-                const request = store.add(record);
-                request.onsuccess = () => resolve(request.result);
-                request.onerror = () => reject('تعذر حفظ السجل محليًا');
-            });
+            if(!window.CloudFileEngine) throw new Error('الحفظ السحابي غير متاح');
+            const r=await CloudFileEngine.upload({file,ownershipScope:'user',moduleKey:'manager_records_archive',recordType:'pdf_archive',recordId:'manager',relationType:'archive_file',displayName:file.name,metadata:{source:'manager.html',legacyRepository:true}});
+            return r.file.id;
         }
 
         async function getAllManagerLocalRecords() {
-            const db = await openManagerRecordsDB();
-            return new Promise((resolve, reject) => {
-                const transaction = db.transaction(MANAGER_STORE_NAME, 'readonly');
-                const store = transaction.objectStore(MANAGER_STORE_NAME);
-                const request = store.getAll();
-                request.onsuccess = () => resolve(request.result || []);
-                request.onerror = () => reject('تعذر قراءة السجلات المحلية');
-            });
+            if(!window.CloudFileEngine) throw new Error('الحفظ السحابي غير متاح');
+            await migrateLegacyManagerRecordsToCloud();
+            const r=await CloudFileEngine.list({moduleKey:'manager_records_archive',recordType:'pdf_archive',limit:1000});
+            return (r.files||[]).map(f=>({id:f.id,name:f.display_name||f.original_name||'ملف',type:f.mime_type||'',size:Number(f.file_size||0),createdAt:f.created_at,updatedAt:f.updated_at,folder:(f.metadata&&f.metadata.folder)||'عام',kind:(f.metadata&&f.metadata.kind)||'',metadata:f.metadata||{},cloud:true}));
         }
 
         async function getManagerLocalRecord(id) {
-            const db = await openManagerRecordsDB();
-            return new Promise((resolve, reject) => {
-                const transaction = db.transaction(MANAGER_STORE_NAME, 'readonly');
-                const store = transaction.objectStore(MANAGER_STORE_NAME);
-                const request = store.get(Number(id));
-                request.onsuccess = () => resolve(request.result);
-                request.onerror = () => reject('تعذر قراءة السجل');
-            });
+            if(!window.CloudFileEngine) throw new Error('الحفظ السحابي غير متاح');
+            const u=await CloudFileEngine.usage(String(id)); if(!u.file)return null;
+            const file=await CloudFileEngine.getBlob(String(id));
+            return {id:u.file.id,name:u.file.display_name||u.file.original_name||'ملف',type:u.file.mime_type||'',size:Number(u.file.file_size||0),createdAt:u.file.created_at,updatedAt:u.file.updated_at,folder:(u.file.metadata&&u.file.metadata.folder)||'عام',kind:(u.file.metadata&&u.file.metadata.kind)||'',metadata:u.file.metadata||{},file,cloud:true};
         }
 
         async function deleteManagerLocalRecord(id) {
-            const db = await openManagerRecordsDB();
-            return new Promise((resolve, reject) => {
-                const transaction = db.transaction(MANAGER_STORE_NAME, 'readwrite');
-                const store = transaction.objectStore(MANAGER_STORE_NAME);
-                const request = store.delete(Number(id));
-                request.onsuccess = () => resolve();
-                request.onerror = () => reject('تعذر حذف السجل');
-            });
+            if(!window.CloudFileEngine) throw new Error('الحفظ السحابي غير متاح');
+            return CloudFileEngine.trash(String(id));
         }
 
         async function renderManagerRecordsList() {
@@ -4288,14 +4283,12 @@ document.addEventListener("click", function(e){
   }
 
   async function updateManagerLocalRecord(record){
-    const db = await openManagerRecordsDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction(MANAGER_STORE_NAME, 'readwrite');
-      const store = transaction.objectStore(MANAGER_STORE_NAME);
-      const request = store.put(record);
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject('تعذر حفظ التعديل');
-    });
+    if(!window.CloudFileEngine) throw new Error('الحفظ السحابي غير متاح');
+    if(record.file){
+      return CloudFileEngine.upload({file:record.file,replaceFileId:String(record.id),ownershipScope:'user',moduleKey:'manager_records_archive',recordType:'pdf_archive',recordId:'manager',relationType:'archive_file',displayName:record.name||record.file.name,metadata:{folder:record.folder||'عام',kind:record.kind||kindOf(record),source:'manager.html'}});
+    }
+    if(record.name) return CloudFileEngine.renameFile(String(record.id),record.name);
+    return record.id;
   }
 
   function ensurePreviewContainers(){
@@ -4826,12 +4819,12 @@ function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
     const files=Array.from(event.target.files||[]); if(!files.length) return;
     const allowed=['pdf','doc','docx','xls','xlsx','ppt','pptx','jpg','jpeg','png','gif','webp','bmp','svg','tif','tiff','heic','heif']; let ok=0,bad=0;
     try{
-      const db=await openManagerRecordsDB();
+      if(!window.CloudFileEngine) throw new Error('الحفظ السحابي غير متاح');
       for(const file of files){
         if(!allowed.includes(ext(file.name))&&!/^image\//.test(file.type||'')){bad++;continue;}
-        await new Promise((resolve,reject)=>{const tx=db.transaction(MANAGER_STORE_NAME,'readwrite'); const store=tx.objectStore(MANAGER_STORE_NAME); const record={name:file.name,type:file.type||'',kind:kind(file),size:file.size,file:file,folder:activeFolder||'عام',createdAt:new Date().toISOString(),cloudStatus:MANAGER_CLOUD_SYNC_ENABLED?'pending':'local'}; const req=store.add(record); req.onsuccess=()=>resolve(req.result); req.onerror=()=>reject('تعذر حفظ الملف محليًا');}); ok++;
+        await CloudFileEngine.upload({file,ownershipScope:'user',moduleKey:'manager_records_archive',recordType:'pdf_archive',recordId:'manager',relationType:'archive_file',displayName:file.name,metadata:{folder:activeFolder||'عام',kind:kind(file),source:'manager_library'}}); ok++;
       }
-      await window.renderManagerRecordsList(); if(ok) showToast('تم حفظ الملفات داخل مكتبة القسم ✅'); if(bad) showToast('تم تجاهل بعض الملفات لأن صيغتها غير مدعومة');
+      await window.renderManagerRecordsList(); if(ok) showToast('تم حفظ الملفات سحابيًا داخل مكتبة القسم ✅'); if(bad) showToast('تم تجاهل بعض الملفات لأن صيغتها غير مدعومة');
     }catch(e){showToast(String(e));}
     event.target.value='';
   };
@@ -4852,8 +4845,13 @@ function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
   window.downloadManagerCurrentRecord=function(){ if(currentImageId) return window.downloadManagerRecord(currentImageId); if(typeof oldDownloadCurrent==='function') return oldDownloadCurrent(); };
 
   async function putManagerLocalRecordSafe(record){
-    const db=await openManagerRecordsDB();
-    return new Promise((resolve,reject)=>{const tx=db.transaction(MANAGER_STORE_NAME,'readwrite'); const store=tx.objectStore(MANAGER_STORE_NAME); const req=store.put(record); req.onsuccess=()=>resolve(req.result); req.onerror=()=>reject('تعذر تحديث الملف');});
+    if(!window.CloudFileEngine) throw new Error('الحفظ السحابي غير متاح');
+    if(record.file){
+      const r=await CloudFileEngine.upload({file:record.file,replaceFileId:String(record.id),ownershipScope:'user',moduleKey:'manager_records_archive',recordType:'pdf_archive',recordId:'manager',relationType:'archive_file',displayName:record.name||record.file.name,metadata:{folder:record.folder||activeFolder||'عام',kind:record.kind||kind(record),source:'manager_library'}});
+      return r.file?.id||r.fileId||record.id;
+    }
+    if(record.name){await CloudFileEngine.renameFile(String(record.id),record.name);}
+    return record.id;
   }
   window.editManagerRecordSafe=async function(id){
     const record=await getManagerLocalRecord(id); if(!record){showToast('تعذر العثور على الملف');return;}

@@ -22,7 +22,39 @@ Deno.serve(async(req)=>{
    await audit(true,school.id,{schoolName,managerEmail});return json({ok:true,school});
   }
   if(action==='set_school_status'){const schoolId=clean(body.schoolId),status=clean(body.status);if(!schoolId||!['active','disabled','inactive','suspended'].includes(status))return json({error:'طلب غير صالح'},400);const r=await admin.from('schools').update({status}).eq('id',schoolId).select('*').single();if(r.error)throw r.error;await audit(true,schoolId,{status});return json({ok:true,school:r.data})}
-  if(action==='delete_school')return json({error:'الحذف النهائي معطل أمنيًا. استخدم التعطيل أولًا ثم إجراء التنظيف المراجع.'},403);
+  if(action==='delete_school'){
+   const schoolId=clean(body.schoolId); if(!schoolId)return json({error:'معرف المدرسة مطلوب'},400);
+   const confirmText=clean(body.confirmText); if(confirmText!=='DELETE')return json({error:'تأكيد الحذف غير صالح'},400);
+   const schoolLookup=await admin.from('schools').select('id,school_name,manager_email').eq('id',schoolId).maybeSingle();
+   if(schoolLookup.error)throw schoolLookup.error; if(!schoolLookup.data)return json({error:'المدرسة غير موجودة'},404);
+
+   // اجمع الحسابات والملفات قبل حذف صف المدرسة لأن العلاقات قد تعمل ON DELETE CASCADE.
+   const usersLookup=await admin.from('users').select('id,email').eq('school_id',schoolId);
+   if(usersLookup.error)throw usersLookup.error;
+   const schoolUsers=usersLookup.data||[];
+   const filesLookup=await admin.from('platform_files').select('bucket_name,storage_path').eq('school_id',schoolId);
+   const schoolFiles=filesLookup.error?[]:(filesLookup.data||[]);
+
+   // حذف الكائنات الفعلية من Storage قبل حذف metadata المتسلسل.
+   const storageWarnings:string[]=[];
+   const byBucket=new Map<string,string[]>();
+   for(const f of schoolFiles){const b=clean((f as any).bucket_name)||'school-platform-files';const path=clean((f as any).storage_path);if(!path)continue;if(!byBucket.has(b))byBucket.set(b,[]);byBucket.get(b)!.push(path)}
+   for(const [bucket,paths] of byBucket.entries()){
+    for(let i=0;i<paths.length;i+=100){const rm=await admin.storage.from(bucket).remove(paths.slice(i,i+100));if(rm.error)storageWarnings.push(bucket+': '+rm.error.message)}
+   }
+
+   // حذف المدرسة من المصدر السحابي. الجداول المرتبطة ذات FK CASCADE تنظف تلقائيًا.
+   const del=await admin.from('schools').delete().eq('id',schoolId).select('id');
+   if(del.error)throw del.error; if(!del.data?.length)return json({error:'لم يتم حذف المدرسة'},409);
+
+   // تنظيف حسابات Auth التابعة للمدرسة بعد إزالة سجلات public.users.
+   let authDeleted=0; const authWarnings:string[]=[];
+   for(const u of schoolUsers){const uid=clean((u as any).id);if(!uid)continue;const r=await admin.auth.admin.deleteUser(uid);if(r.error)authWarnings.push(uid+': '+r.error.message);else authDeleted++}
+
+   const details={schoolName:schoolLookup.data.school_name,managerEmail:schoolLookup.data.manager_email,usersFound:schoolUsers.length,authDeleted,filesFound:schoolFiles.length,storageWarnings,authWarnings};
+   await audit(true,schoolId,details);
+   return json({ok:true,deletedSchoolId:schoolId,details});
+  }
   return json({error:'عملية غير مدعومة'},400);
  }catch(e){await audit(false,clean(body.schoolId),{message:String((e as any)?.message||e)});return json({error:'فشل تنفيذ العملية',details:String((e as any)?.message||e)},500)}
 });

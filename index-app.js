@@ -1753,14 +1753,24 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
                 await renderSchoolManagement();
             } catch (err) { showToast('تعذر تحديث حالة المدرسة: ' + (err.message || err)); }
         };
-
         const deleteSupabaseSchool = async (schoolId) => {
-            if (!confirm('سيتم حذف المدرسة من Supabase مع المستخدمين المرتبطين بها إذا كانت العلاقات مفعلة. هل تريد المتابعة؟')) return;
+            const id = String(schoolId || '').trim();
+            if (!id) return showToast('تعذر تحديد المدرسة');
+            if (!confirm('سيتم حذف المدرسة نهائيًا من Supabase وحساباتها وملفاتها السحابية المرتبطة. هل تريد المتابعة؟')) return;
             try {
-                await window.SmartSchoolSupabase.deleteSchool(schoolId);
-                showToast('تم حذف المدرسة');
+                const sb = window.SmartSchoolSupabase?.getClient?.();
+                if (!sb) throw new Error('Supabase غير جاهز');
+                const session = (await sb.auth.getSession()).data?.session;
+                if (!session?.access_token) throw new Error('يلزم تسجيل دخول مدير النظام');
+                showToast('جاري حذف المدرسة من Supabase...');
+                const invoked = await sb.functions.invoke('system-admin', { body:{action:'delete_school', schoolId:id, confirmText:'DELETE'} });
+                if (invoked.error || !invoked.data?.ok) throw new Error(invoked.data?.error || invoked.error?.message || 'رفض الخادم الحذف');
+                showToast('تم حذف المدرسة من Supabase');
                 await renderSchoolManagement();
-            } catch (err) { showToast('تعذر حذف المدرسة: ' + (err.message || err)); }
+            } catch (err) {
+                showToast('تعذر حذف المدرسة: ' + (err.message || err));
+                try { await renderSchoolManagement(); } catch(_) {}
+            }
         };
 
         try { window.showSchoolManagementPanel = showSchoolManagementPanel; window.renderSchoolManagement = renderSchoolManagement; window.createSupabaseSchoolFromPanel = createSupabaseSchoolFromPanel; window.fillSchoolPanelFromRequest = fillSchoolPanelFromRequest; window.copyTextValue = copyTextValue; window.toggleSchoolSupabaseStatus = toggleSchoolSupabaseStatus; window.deleteSupabaseSchool = deleteSupabaseSchool; } catch(e) {}

@@ -1515,6 +1515,7 @@ document.addEventListener("click", function(e){
         <button type="button" class="bg-blue-600 text-white px-3 py-2 rounded-lg text-xs font-extrabold" onclick='copyIndependentSchoolLoginLink(${JSON.stringify(s).replace(/'/g,"&#39;")})'>رابط الدخول</button>
         <button type="button" class="bg-teal-700 text-white px-3 py-2 rounded-lg text-xs font-extrabold" onclick='copyRegistrationLink && copyRegistrationLink(${JSON.stringify(s).replace(/'/g,"&#39;")})'>رابط التسجيل</button>
         <button type="button" class="bg-slate-100 text-slate-700 px-3 py-2 rounded-lg text-xs font-extrabold" onclick="prompt('رابط الدخول المرتبط بالمدرسة', '${safe(url)}')">عرض الرابط</button>
+        <button type="button" class="bg-red-600 text-white px-3 py-2 rounded-lg text-xs font-extrabold" onclick="deleteSupabaseSchool('${safe(id)}')">حذف</button>
       </td>
     </tr>`;
   }
@@ -1534,6 +1535,27 @@ document.addEventListener("click", function(e){
     try{ const rows=await fetchSchools(); if(st) st.textContent='تم تحميل '+rows.length+' مدرسة عبر بوابة مدير النظام المحمية.'; if(body) body.innerHTML=rows.length?rows.map(renderSchoolRow).join(''):'<tr><td colspan="4" class="p-6 text-center text-slate-400 text-xs">لا توجد مدارس محفوظة.</td></tr>'; }
     catch(e){ if(st) st.textContent='غير مصرح: '+(e.message||e); if(body) body.innerHTML='<tr><td colspan="4" class="p-6 text-center text-red-600 text-xs">لا يمكن قراءة المدارس دون جلسة مدير نظام موثقة.</td></tr>'; }
   };
+  window.deleteSupabaseSchool = async function(schoolId){
+    const id=String(schoolId||'').trim(),st=document.getElementById('sm-status'),body=document.getElementById('schools-table-body');
+    if(!id){if(st)st.textContent='تعذر تحديد المدرسة.';return;}
+    if(!confirm('سيتم حذف المدرسة نهائيًا من Supabase وحساباتها وملفاتها السحابية المرتبطة. هل تريد المتابعة؟')) return;
+    try{
+      if(st) st.textContent='جاري حذف المدرسة من Supabase...';
+      // انعكاس فوري بصري مع إبقاء المصدر الحقيقي في Supabase هو الحكم النهائي.
+      if(body){const btn=[...body.querySelectorAll('button')].find(b=>String(b.getAttribute('onclick')||'').includes(id)&&String(b.textContent||'').trim()==='حذف');const row=btn&&btn.closest('tr');if(row){row.dataset.pendingDelete='1';row.style.opacity='.45';row.style.pointerEvents='none';}}
+      const data=await secureAdminCall('delete_school',{schoolId:id,confirmText:'DELETE'});
+      if(!data||!data.ok) throw new Error((data&&data.error)||'لم يؤكد الخادم الحذف');
+      if(st) st.textContent='تم حذف المدرسة سحابيًا. جارٍ تحديث القائمة...';
+      await window.renderSchoolManagement();
+      if(st) st.textContent='تم حذف المدرسة من Supabase وتحديث القائمة بنجاح.';
+      if(typeof showToast==='function') showToast('تم حذف المدرسة من Supabase وتحديث الواجهة');
+    }catch(e){
+      if(st) st.textContent='تعذر حذف المدرسة: '+(e.message||e);
+      await window.renderSchoolManagement();
+      if(typeof showToast==='function') showToast('تعذر حذف المدرسة: '+(e.message||e));
+    }
+  };
+
   window.createSupabaseSchoolFromPanel = async function(){
     const schoolName=(document.getElementById('sm-school-name')||{}).value||'',managerName=(document.getElementById('sm-manager-name')||{}).value||'',email=cleanEmail((document.getElementById('sm-manager-email')||{}).value||''),password=(document.getElementById('sm-manager-password')||{}).value||'',st=document.getElementById('sm-status');
     if(!schoolName||!email||password.length<8){if(st)st.textContent='أدخل اسم المدرسة والبريد وكلمة مرور من 8 أحرف على الأقل.';return;}

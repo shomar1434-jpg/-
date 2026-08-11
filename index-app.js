@@ -142,7 +142,7 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
         };
 
         const handleAdminDirectEntry = async () => {
-            const e = normalizeEmail(document.getElementById('user-madrasati-email').value);
+            const e = normalizeEmail(document.getElementById('system-admin-email')?.value || '');
             const password = String(document.getElementById('system-admin-password')?.value || '');
             if(!e || !password){ showToast('أدخل بريد مدير النظام وكلمة المرور'); return; }
             try{
@@ -286,7 +286,6 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
                 localStorage.setItem('smart_school_active_role', appId);
             } catch(e) {}
             let suffix = `?role=${encodeURIComponent(currentUser?.role || appId)}&uid=${encodeURIComponent(currentUser?.id || '')}`;
-            if ((currentUser?.role || '') === 'leadership') suffix += `&admin=true&bypass=true`;
             window.location.href = target + suffix;
         };
 
@@ -2569,7 +2568,7 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
 /* Email fields direction guard: keep Arabic UI RTL, but emails/domains LTR */
 (function(){
   function fixEmailDirection(){
-    document.querySelectorAll('input[type="email"], input[data-email-field="true"], #user-madrasati-email').forEach(function(el){
+    document.querySelectorAll('input[type="email"], input[data-email-field="true"], #user-madrasati-email, #system-admin-email').forEach(function(el){
       el.setAttribute('dir','ltr');
       el.setAttribute('data-email-field','true');
       el.style.direction='ltr';
@@ -2580,6 +2579,6 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
   document.addEventListener('DOMContentLoaded', fixEmailDirection);
   window.addEventListener('load', fixEmailDirection);
   document.addEventListener('focusin', function(e){
-    if(e.target && (e.target.matches('input[type="email"]') || e.target.id==='user-madrasati-email')) fixEmailDirection();
+    if(e.target && (e.target.matches('input[type="email"]') || e.target.id==='user-madrasati-email' || e.target.id==='system-admin-email')) fixEmailDirection();
   });
 })();

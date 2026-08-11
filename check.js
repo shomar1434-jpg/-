@@ -1,195 +1,968 @@
 
-const form=document.getElementById('visitForm');
-const KEY='moe_supervisor_visit_form_v2_item_scores';
-function values(){const data={}; form.querySelectorAll('input,textarea,select').forEach(el=>{if(el.type==='checkbox'){data[el.name+'|'+el.value]=el.checked}else{data[el.name]=el.value}});return data}
-function loadData(data){form.querySelectorAll('input,textarea,select').forEach(el=>{if(el.type==='checkbox'){el.checked=!!data[el.name+'|'+el.value]}else if(data[el.name]!==undefined){el.value=data[el.name]}})}
-function saveLocal(){localStorage.setItem(KEY,JSON.stringify(values())); toast('تم حفظ البيانات داخل المتصفح')}
-function autoSave(){localStorage.setItem(KEY,JSON.stringify(values()))}
-function clearForm(){if(confirm('هل تريد تفريغ جميع الحقول؟')){form.reset();localStorage.removeItem(KEY);toast('تم تفريغ النموذج')}}
-function printForm(){window.print()}
-function exportPDF(){alert('اختر من نافذة الطباعة: Save as PDF / حفظ كملف PDF. تم ضبط الصفحات على 8 صفحات A4 مطابقة لعدد صفحات السجل الأصلي.'); window.print()}
-function downloadJSON(){const blob=new Blob([JSON.stringify(values(),null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='بيانات_استمارة_زيارة_مشرف_الإدارة_المدرسية.json';a.click();URL.revokeObjectURL(a.href)}
-function importJSON(file){const r=new FileReader();r.onload=()=>{try{const data=JSON.parse(r.result);loadData(data);autoSave();toast('تم استيراد البيانات بنجاح')}catch(e){alert('ملف البيانات غير صالح')}};r.readAsText(file)}
-function toast(msg){const t=document.createElement('div');t.textContent=msg;t.style.cssText='position:fixed;bottom:18px;right:18px;background:#073b45;color:white;padding:12px 18px;border-radius:12px;z-index:99;box-shadow:0 4px 20px #0005';document.body.appendChild(t);setTimeout(()=>t.remove(),2200)}
-form.addEventListener('input',()=>{clearTimeout(window.__sv);window.__sv=setTimeout(autoSave,400)});
-
-function setupHijriDate(){
-  const daySel=form.querySelector('[data-hijri-day]');
-  const monthSel=form.querySelector('[data-hijri-month]');
-  const yearSel=form.querySelector('[data-hijri-year]');
-  const weekSel=form.querySelector('[data-weekday-select]');
-  const display=form.querySelector('[name="hijri_date_display"]');
-  if(!daySel||!monthSel||!yearSel||!display) return;
-
-  const months=[
-    'محرم','صفر','ربيع الأول','ربيع الآخر','جمادى الأولى','جمادى الآخرة',
-    'رجب','شعبان','رمضان','شوال','ذو القعدة','ذو الحجة'
-  ];
-  const weekdays=['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
-
-  function fillSelect(sel, arr, getValue=(x)=>x, getText=(x)=>x){
-    const current=sel.value;
-    sel.innerHTML='<option value=""></option>'+arr.map(x=>`<option value="${getValue(x)}">${getText(x)}</option>`).join('');
-    if(current) sel.value=current;
-  }
-  fillSelect(daySel, Array.from({length:30},(_,i)=>i+1), x=>String(x).padStart(2,'0'), x=>String(x).padStart(2,'0'));
-  fillSelect(monthSel, months.map((m,i)=>({m,i:i+1})), x=>String(x.i).padStart(2,'0'), x=>x.m);
-  fillSelect(yearSel, Array.from({length:1477-1447+1},(_,i)=>1447+i), x=>String(x), x=>String(x)+'هـ');
-
-  function getCurrentHijri(){
-    try{
-      const parts=new Intl.DateTimeFormat('en-u-ca-islamic-umalqura',{day:'numeric',month:'numeric',year:'numeric'}).formatToParts(new Date());
-      const obj={};
-      parts.forEach(p=>{if(p.type==='day')obj.day=p.value;if(p.type==='month')obj.month=p.value;if(p.type==='year')obj.year=p.value;});
-      return {
-        day:String(obj.day||'').padStart(2,'0'),
-        month:String(obj.month||'').padStart(2,'0'),
-        year:String(obj.year||'')
-      };
-    }catch(e){return {day:'',month:'',year:'1447'}}
-  }
-
-  function sync(){
-    const d=daySel.value, m=monthSel.value, y=yearSel.value;
-    const monthName=months[(parseInt(m,10)||1)-1]||'';
-    display.value=(d&&m&&y)?`${d} / ${monthName} / ${y}هـ`:'';
-    autoSave();
-  }
-  [daySel,monthSel,yearSel,weekSel].forEach(el=>el.addEventListener('change',sync));
-
-  const saved=localStorage.getItem(KEY);
-  if(!saved){
-    const cur=getCurrentHijri();
-    if(Number(cur.year)>=1447 && Number(cur.year)<=1477){
-      daySel.value=cur.day; monthSel.value=cur.month; yearSel.value=cur.year;
-    }else{
-      yearSel.value='1447';
+/* inlined wakil-schemas.js */
+/* AI Schema Engine - سجلات الوكيل
+   كل سجل له شخصية ذكية وتحليل خاص وتوصيات وتعبئة مهيكلة.
+*/
+window.AI_SCHEMA_ENGINE = {
+  version: "1.0.0",
+  roleBase: "أنت مساعد إداري تربوي داخل منصة الإدارة المدرسية الذكية في المملكة العربية السعودية. التزم بصياغة رسمية مختصرة ومناسبة للبيئة المدرسية.",
+  schemas: {
+    "student-referral": {
+      title: "تحويل طالب للوكيل",
+      persona: "وكيل شؤون الطلاب وخبير إرشاد وانضباط مدرسي",
+      analysisFocus: ["تحليل سبب الإحالة", "تقدير مستوى الحالة", "اقتراح إجراء تربوي", "خطة متابعة مع المرشد وولي الأمر"],
+      fillPriority: ["وصف الحالة", "الإجراء المتخذ", "التوصيات", "تاريخ المتابعة", "الإجراءات والتوصيات النهائية"],
+      tone: "حازم تربوي غير عقابي",
+      outputRules: "اكتب إجراءات عملية قابلة للتنفيذ، ولا تستخدم عبارات عامة."
+    },
+    "repeated-absence-referral": {
+      title: "تحويل طالب متكرر الغياب",
+      persona: "وكيل شؤون الطلاب مختص في الانضباط والغياب",
+      analysisFocus: ["أسباب الغياب", "نمط التكرار", "التواصل الأسري", "خطة علاج الغياب"],
+      fillPriority: ["أسباب الغياب حسب الإفادة", "الإجراءات المتخذة", "توصيات الوكيل", "موعد المتابعة", "الإجراءات والتوصيات النهائية"],
+      tone: "وقائي داعم",
+      outputRules: "اقترح تدرجًا في الإجراء يبدأ بالتواصل والدعم ثم المتابعة النظامية."
+    },
+    "daily-duty-report": {
+      title: "تقرير المناوبة اليومي",
+      persona: "مشرف انضباط وسلامة مدرسية",
+      analysisFocus: ["بداية اليوم", "الفسحة", "الانصراف", "السلامة", "الحالات اليومية"],
+      fillPriority: ["ملاحظات بداية اليوم", "ملاحظات الفسحة", "ملاحظات الانصراف", "الحالات المرصودة", "الإجراءات الفورية", "التوصيات", "الإجراءات والتوصيات النهائية"],
+      tone: "إداري مباشر",
+      outputRules: "اكتب ملاحظات يومية قابلة للرصد، مع إجراء فوري وتوصية متابعة."
+    },
+    "late-leave-warning": {
+      title: "تنبيه عن تأخر أو انصراف",
+      persona: "وكيل انضباط مدرسي",
+      analysisFocus: ["نوع الحالة", "درجة التكرار", "الإشعار المناسب", "الإجراء النظامي"],
+      fillPriority: ["عدد مرات التكرار", "المبررات المقدمة", "الإشعار الموجه", "الإجراء النظامي", "توصيات الوكيل"],
+      tone: "رسمي واضح",
+      outputRules: "صغ التنبيه بدون مبالغة، مع إجراء واضح ومتدرج."
+    },
+    "class-visits-plan": {
+      title: "خطة الزيارات الصفية",
+      persona: "مشرف تربوي متخصص في تحسين التدريس",
+      analysisFocus: ["جودة التدريس", "إدارة الصف", "التفاعل الصفي", "استراتيجيات التعلم", "التقويم", "نواتج التعلم"],
+      fillPriority: ["ملحوظات الزيارة", "جوانب القوة", "فرص التحسين", "التوصيات", "الإجراءات والتوصيات النهائية"],
+      tone: "تطويري مهني",
+      outputRules: "وازن بين جوانب القوة وفرص التحسين، واجعل التوصيات قابلة للقياس والمتابعة."
+    },
+    "student-permission": {
+      title: "سجل استئذان الطلاب",
+      persona: "وكيل شؤون طلاب مسؤول عن الانضباط والسلامة",
+      analysisFocus: ["سبب الاستئذان", "المستلم", "صلة المستلم", "حالة العودة", "مخاطر التكرار"],
+      fillPriority: ["سبب الاستئذان", "حالة العودة", "ملاحظات", "الإجراءات والتوصيات النهائية"],
+      tone: "مختصر نظامي",
+      outputRules: "اكتب صياغة قصيرة مناسبة للسجل، مع تنبيه عند وجود تكرار أو خروج مبكر."
+    },
+    "staff-permission": {
+      title: "سجل استئذان الموظفين",
+      persona: "وكيل مدرسة مسؤول عن تنظيم العمل اليومي",
+      analysisFocus: ["سبب الاستئذان", "مدة الاستئذان", "أثره على العمل", "البديل"],
+      fillPriority: ["سبب الاستئذان", "مدة الاستئذان", "البديل إن وجد", "ملاحظات", "الإجراءات والتوصيات النهائية"],
+      tone: "إداري مهني",
+      outputRules: "اربط الاستئذان باستمرارية العمل ووجود بديل إن لزم."
+    },
+    "waiting-register": {
+      title: "سجل الانتظار",
+      persona: "منسق جداول وحصص انتظار",
+      analysisFocus: ["الحصة", "المعلم الغائب", "المعلم المنفذ", "موضوع الحصة", "آلية التنفيذ"],
+      fillPriority: ["موضوع الحصة", "آلية التنفيذ", "ملاحظات", "الإجراءات والتوصيات النهائية"],
+      tone: "تنظيمي مباشر",
+      outputRules: "اقترح آلية تنفيذ حصة انتظار مفيدة وليست مجرد إشغال وقت."
+    },
+    "daily-supervision": {
+      title: "سجل المناوبة والإشراف اليومي",
+      persona: "مشرف مناوبة وسلامة مدرسية",
+      analysisFocus: ["نقطة الإشراف", "زمن الإشراف", "الحالات المرصودة", "الإجراء المتخذ", "التوصيات"],
+      fillPriority: ["الحالات المرصودة", "الإجراء المتخذ", "التوصيات", "الإجراءات والتوصيات النهائية"],
+      tone: "رصد وتحسين",
+      outputRules: "اكتب رصدًا واضحًا للحالة وإجراءً مباشرًا وتوصية وقائية."
+    },
+    "deduction-late-leave": {
+      title: "قرار حسم تأخر وخروج",
+      persona: "مسؤول إداري مطلع على الانضباط الوظيفي",
+      analysisFocus: ["نوع الحالة", "المدة", "المستند النظامي", "نص القرار"],
+      fillPriority: ["نوع الحالة", "مدة الحسم", "المستند النظامي", "نص القرار", "الملاحظات"],
+      tone: "رسمي نظامي",
+      outputRules: "اكتب بصياغة إدارية محايدة، ولا تذكر مواد نظامية محددة ما لم تكن موجودة في المدخلات."
+    },
+    "deduction-absence": {
+      title: "قرار حسم غياب",
+      persona: "مسؤول إداري مختص بمتابعة الغياب",
+      analysisFocus: ["تاريخ الغياب", "عدد الأيام", "نوع الغياب", "المستند النظامي", "نص القرار"],
+      fillPriority: ["عدد أيام الغياب", "نوع الغياب", "مدة الحسم", "المستند النظامي", "نص القرار", "الملاحظات"],
+      tone: "رسمي نظامي",
+      outputRules: "اكتب قرارًا مختصرًا قابلًا للمراجعة والاعتماد."
+    },
+    "late-students-list": {
+      title: "كشف بأسماء الطلاب المتأخرين",
+      persona: "محلل انضباط طلابي",
+      analysisFocus: ["عدد الطلاب المتأخرين", "أسباب التأخر", "النمط المتكرر", "خطة المتابعة"],
+      fillPriority: ["أبرز الأسباب", "الإجراء المتخذ", "توصيات الوكيل", "خطة المتابعة", "الإجراءات والتوصيات النهائية"],
+      tone: "تحليلي علاجي",
+      outputRules: "اقترح خطة متابعة أسبوعية وتواصل أسري وتحفيز للانتظام."
+    },
+    "absence-inquiry": {
+      title: "مساءلة غياب",
+      persona: "وكيل إداري مسؤول عن مساءلة الغياب",
+      analysisFocus: ["سبب الغياب", "إفادة الموظف", "المرفقات", "رأي الوكيل", "قرار المدير"],
+      fillPriority: ["سبب الغياب حسب الإفادة", "المرفقات", "رأي الوكيل", "قرار المدير", "ملاحظات"],
+      tone: "رسمي متوازن",
+      outputRules: "فرّق بين الرأي الإداري والقرار النهائي."
+    },
+    "default": {
+      title: "سجل وكيل مدرسي",
+      persona: "وكيل مدرسة خبير في السجلات والتقارير",
+      analysisFocus: ["تحليل البيانات", "الإجراءات", "التوصيات", "المتابعة"],
+      fillPriority: ["الإجراءات والتوصيات النهائية", "الإجراء المتخذ", "التوصيات", "ملاحظات"],
+      tone: "رسمي مختصر",
+      outputRules: "املأ الحقول المناسبة فقط بناءً على البيانات المتاحة."
     }
-    const gDay=weekdays[new Date().getDay()];
-    if(weekSel && !weekSel.value) weekSel.value=gDay;
-    sync();
-  }else{
-    sync();
+  },
+  getSchema(formId){
+    return this.schemas[formId] || this.schemas.default;
+  },
+  buildPrompt({formId, formTitle, data, fields, extraText=""}){
+    const s = this.getSchema(formId);
+    return `${this.roleBase}
+
+أنت الآن تعمل وفق AI Schema Engine.
+اسم السجل: ${formTitle || s.title}
+الشخصية الذكية: ${s.persona}
+محاور التحليل الخاصة بهذا السجل:
+${s.analysisFocus.map(x=>"- "+x).join("\n")}
+
+نبرة الكتابة: ${s.tone}
+قواعد الإخراج: ${s.outputRules}
+
+البيانات الحالية داخل النموذج:
+${JSON.stringify(data || {}, null, 2)}
+
+الحقول المتاحة داخل النموذج:
+${JSON.stringify(fields || [], null, 2)}
+
+الحقول ذات الأولوية للتعبئة:
+${JSON.stringify(s.fillPriority || [], null, 2)}
+
+مدخلات إضافية:
+${extraText || "لا يوجد"}
+
+المطلوب:
+أعد JSON فقط بدون Markdown وبدون شرح.
+يجب أن تكون المفاتيح من أسماء الحقول المتاحة داخل النموذج فقط.
+املأ الحقول المناسبة بصياغة عربية رسمية ومخصصة لهذا السجل.
+إذا لم توجد بيانات كافية فاقترح تعبئة مهنية مناسبة بناءً على نوع السجل.
+لا تضف مفاتيح غير موجودة في الحقول المتاحة.`;
+  }
+};
+
+
+
+(function(){
+  if(window.__GLOBAL_VERTICAL_FLOATING_ICONS_SINGLE_LABEL__) return;
+  window.__GLOBAL_VERTICAL_FLOATING_ICONS_SINGLE_LABEL__ = true;
+
+  function clean(v){
+    return String(v || '')
+      .replace(/[\u{1F300}-\u{1FAFF}\u2600-\u27BF]/gu, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function labelFromElement(el){
+    var saved = clean(el.dataset.originalTitle || el.dataset.originalAriaLabel || el.dataset.floatingOriginalLabel || '');
+    if(saved) return saved;
+
+    var title = clean(el.getAttribute('title') || '');
+    if(title) return title;
+
+    var aria = clean(el.getAttribute('aria-label') || '');
+    if(aria && aria !== 'أداة') return aria;
+
+    var childTitle = '';
+    var titled = el.querySelector && el.querySelector('[title]');
+    if(titled) childTitle = clean(titled.getAttribute('title') || '');
+    if(childTitle) return childTitle;
+
+    var text = clean(el.innerText || el.textContent || '');
+    if(text && text.length > 1) return text;
+
+    return '';
+  }
+
+  function removeNativeTooltip(node){
+    if(!node || !node.hasAttribute) return;
+    if(node.hasAttribute('title')){
+      if(!node.dataset.originalTitle) node.dataset.originalTitle = node.getAttribute('title') || '';
+      node.removeAttribute('title');
+    }
+  }
+
+  function apply(){
+    var bars = document.querySelectorAll('#ssFinalBar,.ss-final-bar,#smartSchoolFloatingBar,.smart-school-floating-bar,#top-floating-icons,.top-floating-icons,.floating-icons,.global-floating-icons,.top-actions-floating,.quick-actions-floating');
+    bars.forEach(function(bar){
+      Array.from(bar.children || []).forEach(function(el){
+        if(el.hasAttribute('aria-label') && !el.dataset.originalAriaLabel){
+          el.dataset.originalAriaLabel = el.getAttribute('aria-label') || '';
+        }
+
+        var label = labelFromElement(el);
+
+        // لا نستخدم أي تخمين أو ترتيب رقمي حتى لا تظهر مسميات خاطئة.
+        if(!label) label = 'أداة';
+
+        el.dataset.floatingOriginalLabel = label;
+        el.dataset.floatingLabel = label;
+        el.removeAttribute('data-tooltip');
+        el.setAttribute('aria-label', label);
+
+        removeNativeTooltip(el);
+        if(el.querySelectorAll){
+          el.querySelectorAll('[title]').forEach(removeNativeTooltip);
+        }
+
+        el.onmouseenter = function(){
+          removeNativeTooltip(el);
+          if(el.querySelectorAll) el.querySelectorAll('[title]').forEach(removeNativeTooltip);
+        };
+      });
+    });
+  }
+
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply);
+  else apply();
+
+  setTimeout(apply, 120);
+  setTimeout(apply, 500);
+  setTimeout(apply, 1200);
+  setTimeout(apply, 2500);
+  setInterval(apply, 3000);
+})();
+
+
+/* Hotfix: نظام تسميات خفيف بدون مراقبة مستمرة أو فحص شامل للصفحة.
+   التسميات المحايدة تم تثبيتها داخل النصوص، وهذا السكربت يوفّر قاموسًا فقط للاستخدامات المستقبلية. */
+(function(){
+  window.roleLabels = window.roleLabels || {
+    manager: 'المدير/المديرة',
+    deputy: 'الوكيل/الوكيلة',
+    teacher: 'المعلم/المعلمة',
+    supervisor: 'الموجه/الموجهة',
+    activityLeader: 'رائد/رائدة النشاط',
+    adminEmployee: 'الموظف/الموظفة الإدارية',
+    student: 'الطالب/الطالبة'
+  };
+})();
+
+
+const FORMS = [{"id": "school-timetables","title": "الجداول المدرسية","category": "educational","archiveFolder": "school-timetables","sections": [["بيانات الجدول",["العام الدراسي","الفصل الدراسي","المرحلة","الصفوف المشمولة","تاريخ اعتماد الجدول"]],["متابعة الجدول",["عدد الجداول المعتمدة","آخر تحديث","ملاحظات التعارض","الإجراء المتخذ"]],["اعتماد الجدول",["مسؤول الإعداد","مراجعة الوكيل","اعتماد المدير"]]],"kind": "table"},{"id": "waiting-register","title": "حصص الانتظار","category": "educational","archiveFolder": "waiting-register","sections": [["بيانات الحصة",["اليوم","التاريخ","الحصة","الفصل"]],["بيانات المعلم",["المعلم الغائب","المعلم المنفذ","المادة"]],["تنفيذ الانتظار",["موضوع الحصة","آلية التنفيذ","ملاحظات"]]],"kind": "waiting"},{"id": "daily-supervision","title": "المناوبة والإشراف اليومي","category": "educational","archiveFolder": "daily-supervision","sections": [["بيانات الإشراف",["اليوم","التاريخ","الفترة","نقطة الإشراف"]],["المكلفون بالإشراف",["المناوبون","الموقع","زمن الإشراف"]],["الحالات والإجراء",["الحالات المرصودة","الإجراء المتخذ","التوصيات"]]],"kind": "supervision"},{"id": "daily-duty-report","title": "تقرير المناوبة اليومي","category": "educational","archiveFolder": "daily-duty-report","sections": [["بيانات اليوم",["اليوم","التاريخ","الفترة","المناوب الأول","المناوب الثاني","المناوب الثالث","مشرف الانصراف"]],["ملاحظات المناوبة",["الحضور العام","ملاحظات بداية اليوم","ملاحظات الفسحة","ملاحظات الانصراف"]],["الحالات والتوصيات",["الحالات المرصودة","الإجراءات الفورية","التوصيات"]]],"kind": "table"},{"id": "study-plans","title": "الخطط الدراسية","category": "educational","archiveFolder": "study-plans","sections": [["بيانات الخطة",["العام الدراسي","الفصل الدراسي","المرحلة","الصف","المادة"]],["متابعة الخطة",["نسبة الإنجاز","أبرز ملاحظات التنفيذ","معوقات التنفيذ","الإجراء المتخذ"]],["اعتماد ومتابعة",["اسم المعلم/ة","تاريخ المتابعة","توصيات الوكيل"]]],"kind": "table"},{"id": "teaching-staff-development","title": "دعم وتطوير الهيئة التعليمية","category": "educational","archiveFolder": "teaching-staff-development","sections": [["بيانات البرنامج",["اسم البرنامج","الفئة المستهدفة","الفترة","منفذ البرنامج"]],["أثر الدعم",["الاحتياج التدريبي","الإجراءات المقدمة","مؤشرات التحسن"]],["المتابعة",["توصيات الوكيل","خطة المتابعة","ملاحظات"]]],"kind": "table"},{"id": "teacher-admin-followup","title": "متابعة أعمال المعلمين والإداريين","category": "educational","archiveFolder": "teacher-admin-followup","sections": [["بيانات المتابعة",["الأسبوع","الفترة","الفئة المستهدفة","اسم المسؤول عن المتابعة"]],["عناصر المتابعة",["الأعمال المطلوبة","نسبة الإنجاز","الشواهد","ملاحظات التنفيذ"]],["الإجراءات",["الإجراء المتخذ","التوصيات","موعد المتابعة"]]],"kind": "table"},{"id": "achievement-learning-loss","title": "التحصيل الدراسي والفاقد التعليمي","category": "educational","archiveFolder": "achievement-learning-loss","sections": [["بيانات التحصيل",["الصف","المادة","الفترة","عدد الطلاب"]],["تحليل الفاقد",["مواطن الضعف","نسبة الإتقان","أسباب الفاقد","الفئة المستهدفة"]],["خطة المعالجة",["الإجراء العلاجي","المدة","المسؤول","مؤشرات التحسن"]]],"kind": "table"},{"id": "general-exams-file","title": "ملف الاختبار العام","category": "educational","archiveFolder": "general-exams-file","sections": [["بيانات الاختبارات",["الفصل الدراسي","الفترة الاختبارية","عدد اللجان","عدد الطلاب"]],["متابعة الاستعداد",["الجداول","اللجان","النماذج والمحاضر","حالة التسليم"]],["ملاحظات واعتماد",["أبرز الملاحظات","الإجراءات التصحيحية","توصيات الوكيل"]]],"kind": "table"},{"id": "international-tests-file","title": "ملف الاختبارات الدولية","category": "educational","archiveFolder": "international-tests-file","sections": [["بيانات الاختبار",["اسم الاختبار","الفئة المستهدفة","الفترة","منسق الاختبار"]],["الاستعداد والتنفيذ",["خطة التهيئة","الطلاب المستهدفون","الشواهد","حالة التنفيذ"]],["النتائج والمتابعة",["أبرز النتائج","فرص التحسين","التوصيات"]]],"kind": "table"},{"id": "madrasati-platform","title": "منصة مدرستي","category": "educational","archiveFolder": "madrasati-platform","sections": [["بيانات المتابعة",["الأسبوع","الفترة","الفئة المستهدفة","اسم المسؤول"]],["مؤشرات المنصة",["نسبة الدخول","تفعيل الواجبات","تفعيل الاختبارات","تفعيل الدروس"]],["الإجراءات",["ملاحظات التعثر","الإجراء المتخذ","توصيات الوكيل"]]],"kind": "table"},{"id": "professional-growth","title": "النمو المهني","category": "educational","archiveFolder": "professional-growth","sections": [["بيانات النمو المهني",["الفترة","اسم المعلم/ة","التخصص","نوع البرنامج"]],["ساعات النمو",["عدد الساعات","نوع الرخصة","الحالة","الاحتياج التدريبي"]],["المتابعة",["أثر البرنامج","توصيات الوكيل","ملاحظات"]]],"kind": "table"},{"id": "gifted-file","title": "ملف الموهوبين / الموهوبات","category": "educational","archiveFolder": "gifted-file","sections": [["بيانات الملف",["الفترة","مسؤول الموهوبين","عدد الطلاب المرشحين","عدد البرامج"]],["الرعاية والبرامج",["أسماء البرامج","الشواهد","مؤشرات المشاركة","ملاحظات التنفيذ"]],["التوصيات",["فرص التحسين","الإجراء المتخذ","توصيات الوكيل"]]],"kind": "table"},{"id": "special-education","title": "التربية الخاصة","category": "educational","archiveFolder": "special-education","sections": [["بيانات المستفيدين",["الفترة","الفئة","عدد الطلاب","المعلم/ة المسؤول"]],["متابعة الخدمات",["الخدمات المقدمة","الخطط الفردية","الشواهد","نسبة الإنجاز"]],["المتابعة",["أبرز الاحتياجات","الإجراء المتخذ","توصيات الوكيل"]]],"kind": "table"},{"id": "official-work-register","title": "سجل العمل الرسمي","category": "school_affairs","archiveFolder": "official-work-register","sections": [["بيانات الدوام",["اليوم","التاريخ","الفترة","المسؤول المناوب"]],["حضور الموظفين",["عدد الحاضرين","عدد الغائبين","عدد المتأخرين","ملاحظات الدوام"]],["الإجراءات",["الإجراء المتخذ","توصيات الوكيل","ملاحظات"]]],"kind": "table"},{"id": "staff-permission","title": "استئذان الموظفين","category": "school_affairs","archiveFolder": "staff-permission","sections": [["بيانات الموظف",["اسم الموظف","المسمى / التخصص","التاريخ","وقت الخروج","وقت العودة"]],["بيانات الاستئذان",["سبب الاستئذان","مدة الاستئذان","البديل إن وجد"]],["اعتماد وملاحظات",["موافقة المسؤول","ملاحظات"]]],"kind": "permission"},{"id": "staff-absence-inventory","title": "حصر غياب الموظفين","category": "school_affairs","archiveFolder": "staff-absence-inventory","sections": [["بيانات الحصر",["الفترة","الأسبوع","الشهر","المسؤول عن الحصر"]],["حالات الغياب",["اسم الموظف","تاريخ الغياب","نوع الغياب","المبرر"]],["الإجراءات",["الإجراء المتخذ","متابعة نظام نور / فارس","توصيات الوكيل"]]],"kind": "table"},{"id": "delay-minutes-inventory","title": "حصر دقائق التأخير","category": "school_affairs","archiveFolder": "delay-minutes-inventory","sections": [["بيانات الحصر",["الفترة","الأسبوع","الشهر","المسؤول عن الحصر"]],["حالات التأخير",["اسم الموظف","تاريخ التأخير","وقت الحضور","عدد دقائق التأخير"]],["الإجراءات",["عدد مرات التكرار","الإشعار الموجه","الإجراء النظامي","توصيات الوكيل"]]],"kind": "table"},{"id": "referrals","title": "التحويلات","category": "school_affairs","archiveFolder": "referrals","sections": [["بيانات التحويل",["نوع التحويل","اسم المستفيد","الجهة المحول إليها","تاريخ التحويل"]],["تفاصيل الحالة",["سبب التحويل","الإجراء المطلوب","المرفقات","حالة المتابعة"]],["الإغلاق",["نتيجة التحويل","توصيات الوكيل","ملاحظات"]]],"kind": "table"},{"id": "custody-warehouses-archive","title": "العهد والمستودعات والأرشفة","category": "school_affairs","archiveFolder": "custody-warehouses-archive","sections": [["بيانات العهدة",["نوع العهدة","رقم العهدة","الموقع","المسؤول عنها"]],["متابعة المستودع",["حالة العهدة","تاريخ الجرد","النواقص","الإجراء المتخذ"]],["الأرشفة",["رقم ملف الأرشفة","موقع الحفظ","توصيات الوكيل"]]],"kind": "table"},{"id": "maintenance-cleaning","title": "الصيانة والنظافة","category": "school_affairs","archiveFolder": "maintenance-cleaning","sections": [["بيانات البلاغ",["التاريخ","الموقع","نوع البلاغ","درجة الأولوية"]],["متابعة التنفيذ",["وصف المشكلة","الإجراء المتخذ","الجهة المنفذة","حالة البلاغ"]],["الإغلاق",["تاريخ الإغلاق","ملاحظات الجودة","توصيات الوكيل"]]],"kind": "table"},{"id": "school-transport","title": "النقل المدرسي","category": "school_affairs","archiveFolder": "school-transport","sections": [["بيانات النقل",["الفترة","عدد الحافلات","عدد الطلاب المستفيدين","المتعهد"]],["متابعة يومية",["الحضور والانصراف","الملاحظات المرصودة","الإجراء المتخذ","الشواهد"]],["التوصيات",["ملاحظات السلامة","توصيات الوكيل","موعد المتابعة"]]],"kind": "table"},{"id": "school-canteen","title": "المقصف المدرسي","category": "school_affairs","archiveFolder": "school-canteen","sections": [["بيانات المقصف",["الفترة","المتعهد","المسؤول المتابع","تاريخ الزيارة"]],["متابعة التشغيل",["النظافة","سلامة الأغذية","الأسعار","الملاحظات"]],["الإجراءات",["المخالفة إن وجدت","الإجراء المتخذ","توصيات الوكيل"]]],"kind": "table"},{"id": "facilities","title": "المرافق","category": "school_affairs","archiveFolder": "facilities","sections": [["بيانات المرفق",["اسم المرفق","الموقع","المسؤول عنه","تاريخ المتابعة"]],["حالة المرفق",["النظافة","السلامة","الصيانة المطلوبة","ملاحظات الاستخدام"]],["الإجراءات",["الإجراء المتخذ","تاريخ المتابعة القادم","توصيات الوكيل"]]],"kind": "table"},{"id": "labs-sources","title": "المعامل والمختبرات ومصادر التعلم","category": "school_affairs","archiveFolder": "labs-sources","sections": [["بيانات الموقع",["نوع الموقع","اسم المسؤول","الفترة","تاريخ المتابعة"]],["متابعة التجهيزات",["الأجهزة والأدوات","حالة السلامة","الاستخدام الفعلي","النواقص"]],["الإجراءات",["الإجراء المتخذ","احتياج الدعم","توصيات الوكيل"]]],"kind": "table"},{"id": "admin-teacher-followup","title": "متابعة الإداريين والمعلمين","category": "school_affairs","archiveFolder": "admin-teacher-followup","sections": [["بيانات المتابعة",["الفترة","الفئة المستهدفة","اسم الموظف","المسمى"]],["محاور المتابعة",["الانضباط","إنجاز الأعمال","التعاون","الشواهد"]],["الإجراءات",["جوانب القوة","فرص التحسين","توصيات الوكيل"]]],"kind": "table"},{"id": "visitors-register","title": "سجل الزائرين","category": "school_affairs","archiveFolder": "visitors-register","sections": [["بيانات الزائر",["اسم الزائر","الجهة","التاريخ","وقت الدخول","وقت الخروج"]],["سبب الزيارة",["الغرض من الزيارة","الشخص المقابل","الإجراء المتخذ"]],["ملاحظات",["ملاحظات الأمن والسلامة","توصيات الوكيل"]]],"kind": "table"},{"id": "noor-leaves-followup","title": "متابعة إدخال الإجازات في نظام نور","category": "school_affairs","archiveFolder": "noor-leaves-followup","sections": [["بيانات المتابعة",["الفترة","المسؤول عن الإدخال","عدد الإجازات","تاريخ المراجعة"]],["حالة الإدخال",["الإجازات المدخلة","الإجازات المعلقة","أسباب التعليق","الإجراء المتخذ"]],["اعتماد",["توصيات الوكيل","ملاحظات"]]],"kind": "table"},{"id": "fares-entry-followup","title": "متابعة الإدخال في نظام فارس","category": "school_affairs","archiveFolder": "fares-entry-followup","sections": [["بيانات المتابعة",["الفترة","المسؤول عن الإدخال","نوع البيانات","تاريخ المراجعة"]],["حالة الإدخال",["المدخلات المكتملة","المدخلات المعلقة","أسباب التعليق","الإجراء المتخذ"]],["اعتماد",["توصيات الوكيل","ملاحظات"]]],"kind": "table"},{"id": "summary-print","title": "طباعة الخلاصة","category": "school_affairs","archiveFolder": "summary-print","sections": [["بيانات الخلاصة",["الفترة","نوع الخلاصة","عدد السجلات المشمولة","تاريخ الطباعة"]],["ملخص المؤشرات",["أبرز المنجزات","أبرز الملاحظات","الإجراءات المنفذة"]],["اعتماد",["توصيات الوكيل","ملاحظات المدير","حالة الاعتماد"]]],"kind": "table"},{"id": "student-daily-attendance","title": "متابعة الحضور اليومي للطلاب","category": "student_affairs","archiveFolder": "student-affairs/daily-attendance","sections": [["بيانات المتابعة",["اليوم","التاريخ","الأسبوع","الفصل الدراسي","المسؤول عن المتابعة"]],["إحصاءات الحضور",["عدد الطلاب","عدد الحاضرين","عدد الغائبين","نسبة الحضور","أبرز الملاحظات"]],["الإجراءات",["الإجراء المتخذ","التواصل مع ولي الأمر","توصيات الوكيل"]]],"kind": "table"},{"id": "student-absence-inventory","title": "حصر غياب الطلاب","category": "student_affairs","archiveFolder": "student-affairs/student-absence","sections": [["بيانات الحصر",["الفترة","الأسبوع","الشهر","الصف","الشعبة"]],["حالات الغياب",["اسم الطالب","السجل المدني","عدد أيام الغياب","آخر يوم حضور","المبرر"]],["المتابعة",["الإجراءات المتخذة","إحالة للمرشد الطلابي","موعد المتابعة","توصيات الوكيل"]]],"kind": "student"},{"id": "student-morning-late","title": "حصر التأخر الصباحي للطلاب","category": "student_affairs","archiveFolder": "student-affairs/morning-late","sections": [["بيانات التأخر",["اليوم","التاريخ","الأسبوع","الفصل الدراسي"]],["حالات التأخر",["اسم الطالب","الصف","الشعبة","وقت الحضور","عدد مرات التكرار"]],["الإجراءات",["التنبيه الموجه","التواصل مع ولي الأمر","الإجراء النظامي","توصيات الوكيل"]]],"kind": "late-list"},{"id": "student-behavior-violations","title": "سجل المخالفات السلوكية","category": "student_affairs","archiveFolder": "student-affairs/behavior-violations","sections": [["بيانات الطالب",["اسم الطالب","السجل المدني","الصف","الفصل","تاريخ الحالة"]],["تفاصيل المخالفة",["نوع المخالفة","وصف الحالة","مكان وقوع الحالة","الشهود إن وجدوا"]],["الإجراء التربوي",["الإجراء المتخذ","إحالة للمرشد الطلابي","إشعار ولي الأمر","خطة المتابعة"]]],"kind": "student"},{"id": "student-cases-register","title": "سجل القضايا الطلابية","category": "student_affairs","archiveFolder": "student-affairs/student-cases","sections": [["بيانات القضية",["رقم القضية","تاريخ فتح القضية","اسم الطالب","الصف","درجة السرية"]],["تفاصيل القضية",["وصف الحالة","الأطراف ذات العلاقة","الإجراءات الأولية","المرفقات"]],["الإغلاق والمتابعة",["نتيجة المعالجة","تاريخ الإغلاق","توصيات الوكيل","موعد المتابعة"]]],"kind": "student"},{"id": "special-student-cases","title": "الحالات الخاصة","category": "student_affairs","archiveFolder": "student-affairs/special-cases","sections": [["بيانات الحالة",["اسم الطالب","السجل المدني","الصف","نوع الحالة","تاريخ الرصد"]],["الدعم المقدم",["وصف الاحتياج","الإجراءات الداعمة","الجهات المشاركة","الشواهد"]],["خطة المتابعة",["مسؤول المتابعة","موعد المتابعة","مؤشرات التحسن","توصيات الوكيل"]]],"kind": "student"},{"id": "behavioral-risk-followup","title": "متابعة التعثر السلوكي","category": "student_affairs","archiveFolder": "student-affairs/behavioral-risk","sections": [["بيانات الطالب",["اسم الطالب","الصف","الفصل","الفترة"]],["مؤشرات التعثر",["نوع السلوك المتكرر","عدد مرات التكرار","الأسباب المحتملة","درجة الخطورة"]],["الخطة العلاجية",["الإجراء العلاجي","دور الأسرة","دور المرشد الطلابي","توصيات الوكيل"]]],"kind": "student"},{"id": "student-remedial-plans","title": "متابعة الخطط العلاجية للطلاب","category": "student_affairs","archiveFolder": "student-affairs/remedial-plans","sections": [["بيانات الخطة",["اسم الطالب","الصف","المجال","الفترة","المسؤول عن الخطة"]],["تنفيذ الخطة",["أهداف الخطة","الإجراءات المنفذة","الشواهد","نسبة الإنجاز"]],["قياس الأثر",["مؤشرات التحسن","معوقات التنفيذ","التوصيات","موعد المراجعة"]]],"kind": "table"},{"id": "student-profile","title": "ملف الطالب","category": "student_affairs","archiveFolder": "student-affairs/student-profile","sections": [["بيانات الطالب",["اسم الطالب","السجل المدني","الصف","الفصل","ولي الأمر","رقم التواصل"]],["ملخص المتابعة",["الحضور والغياب","السلوك","التحصيل","الخدمات المقدمة"]],["الإجراءات",["آخر إجراء","التوصيات","موعد المتابعة القادم"]]],"kind": "student"},{"id": "student-guidance-programs","title": "برامج التوجيه والإرشاد","category": "student_affairs","archiveFolder": "student-affairs/guidance-programs","sections": [["بيانات البرنامج",["اسم البرنامج","الفئة المستهدفة","الفترة","منفذ البرنامج"]],["تنفيذ البرنامج",["الأهداف","آلية التنفيذ","عدد المستفيدين","الشواهد"]],["الأثر والتوصيات",["مؤشرات الأثر","فرص التحسين","توصيات الوكيل"]]],"kind": "table"},{"id": "student-services","title": "الخدمات الطلابية والتكافل","category": "student_affairs","archiveFolder": "student-affairs/student-services","sections": [["بيانات الخدمة",["نوع الخدمة","الفئة المستفيدة","الفترة","المسؤول"]],["تفاصيل الخدمة",["عدد المستفيدين","آلية الترشيح","الدعم المقدم","الشواهد"]],["المتابعة",["ملاحظات التنفيذ","الإجراءات التصحيحية","توصيات الوكيل"]]],"kind": "table"},{"id": "parent-communication","title": "سجل التواصل مع أولياء الأمور","category": "student_affairs","archiveFolder": "student-affairs/parent-communication","sections": [["بيانات التواصل",["اسم الطالب","ولي الأمر","رقم التواصل","التاريخ","وسيلة التواصل"]],["موضوع التواصل",["سبب التواصل","ملخص الإفادة","الإجراء المتفق عليه"]],["المتابعة",["موعد المتابعة","نتيجة التواصل","توصيات الوكيل"]]],"kind": "student"},{"id": "family-meetings","title": "محاضر الاجتماعات الأسرية والاستدعاءات","category": "student_affairs","archiveFolder": "student-affairs/family-meetings","sections": [["بيانات الاجتماع",["اسم الطالب","ولي الأمر","التاريخ","الحضور","سبب الاستدعاء"]],["محضر الاجتماع",["ملخص النقاش","التزامات الأسرة","التزامات المدرسة","الإجراءات المتفق عليها"]],["اعتماد ومتابعة",["موعد المتابعة","توصيات الوكيل","حالة الإغلاق"]]],"kind": "student"},{"id": "student-safety-incidents","title": "الحوادث والإصابات والبلاغات الطلابية","category": "student_affairs","archiveFolder": "student-affairs/safety-incidents","sections": [["بيانات الحالة",["التاريخ","الوقت","الموقع","اسم الطالب","الصف"]],["تفاصيل البلاغ",["نوع الحالة","وصف الحادثة","الإجراء الفوري","الجهة التي تم إشعارها"]],["الإغلاق",["الإسعافات أو المعالجة","التواصل مع ولي الأمر","توصيات السلامة","حالة الإغلاق"]]],"kind": "student"},{"id": "student-referral","title": "تحويل طالب للوكيل","category": "shared","archiveFolder": "student-referral","sections": [["بيانات الطالب",["اسم الطالب","السجل المدني","الصف","الفصل","المرشد الطلابي","تاريخ التحويل"]],["بيانات التحويل",["اسم المحول","صفته","سبب التحويل","وصف الحالة"]],["إجراء الوكيل",["الإجراء المتخذ","التوصيات","تاريخ المتابعة"]]],"kind": "student"},{"id": "repeated-absence-referral","title": "تحويل طالب متكرر الغياب","category": "shared","archiveFolder": "repeated-absence-referral","sections": [["بيانات الطالب",["اسم الطالب","السجل المدني","الصف","الفصل","ولي الأمر","رقم التواصل","تاريخ التحويل"]],["حصر الغياب",["عدد أيام الغياب","آخر يوم حضور","الأيام المتكررة","أسباب الغياب حسب الإفادة"]],["إجراء الوكيل",["الإجراءات المتخذة","توصيات الوكيل","موعد المتابعة"]]],"kind": "student"},{"id": "student-permission","title": "سجل استئذان الطلاب","category": "shared","archiveFolder": "student-permission","sections": [["بيانات الطالب",["اسم الطالب","الصف","الفصل","التاريخ","وقت الخروج","المستلم","صلة المستلم"]],["بيانات الاستئذان",["سبب الاستئذان","رقم التواصل","حالة العودة"]],["اعتماد وملاحظات",["موافقة الوكيل","ملاحظات"]]],"kind": "permission"},{"id": "late-students-list","title": "كشف بأسماء الطلاب المتأخرين","category": "shared","archiveFolder": "late-students-list","sections": [["بيانات الكشف",["اليوم","التاريخ","الأسبوع","الفصل الدراسي"]],["متابعة التأخر",["عدد الطلاب المتأخرين","أبرز الأسباب","الإجراء المتخذ"]],["التوصيات",["توصيات الوكيل","خطة المتابعة"]]],"kind": "late-list"},{"id": "late-leave-warning","title": "تنبيه عن تأخر أو انصراف","category": "shared","archiveFolder": "late-leave-warning","sections": [["بيانات المستفيد",["اسم الطالب / الموظف","الصف / العمل","التاريخ","نوع الحالة","وقت الحضور أو الانصراف"]],["تفاصيل الحالة",["عدد مرات التكرار","المبررات المقدمة","الإشعار الموجه"]],["الإجراء",["الإجراء النظامي","توصيات الوكيل"]]],"kind": "notice"},{"id": "deduction-late-leave","title": "قرار حسم تأخر وخروج","category": "shared","archiveFolder": "deduction-late-leave","sections": [["بيانات الموظف",["اسم الموظف","المسمى الوظيفي","رقم الهوية","التاريخ"]],["بيانات المخالفة",["نوع الحالة","وقت التأخر / الخروج","مدة الحسم","المستند النظامي"]],["الإجراء النظامي",["نص القرار","الملاحظات"]]],"kind": "decision"},{"id": "deduction-absence","title": "قرار حسم غياب","category": "shared","archiveFolder": "deduction-absence","sections": [["بيانات الموظف",["اسم الموظف","المسمى الوظيفي","رقم الهوية","تاريخ الغياب"]],["بيانات الغياب",["عدد أيام الغياب","نوع الغياب","مدة الحسم","المستند النظامي"]],["الإجراء النظامي",["نص القرار","الملاحظات"]]],"kind": "decision"},{"id": "absence-inquiry","title": "مساءلة غياب","category": "shared","archiveFolder": "absence-inquiry","sections": [["بيانات الموظف",["اسم الموظف","المسمى الوظيفي","تاريخ الغياب","مدة الغياب"]],["إفادة الموظف",["سبب الغياب حسب الإفادة","المرفقات","تاريخ الإفادة"]],["رأي الإدارة",["رأي الوكيل","قرار المدير","ملاحظات"]]],"kind": "inquiry"}];
+
+const WAKIL_CATEGORY_LABELS = {
+  educational: 'وكيل الشؤون التعليمية',
+  school_affairs: 'وكيل الشؤون المدرسية',
+  student_affairs: 'وكيل شؤون الطلاب',
+  shared: 'السجلات المشتركة'
+};
+const WAKIL_CATEGORY_ORDER = ['educational','school_affairs','student_affairs','shared'];
+const WAKIL_AGENCY_LABELS = {educational:'وكيل/وكيلة الشؤون التعليمية',school_affairs:'وكيل/وكيلة الشؤون المدرسية',student_affairs:'وكيل/وكيلة شؤون الطلاب'};
+function wakilCategoryLabel(cat){return WAKIL_CATEGORY_LABELS[cat] || 'سجلات أخرى'}
+function readJsonSafe(key,fallback){try{return JSON.parse(localStorage.getItem(key)||JSON.stringify(fallback||{}));}catch(e){return fallback||{};}}
+function normalizeAgencyList(v){
+  if(Array.isArray(v)) return v.map(String).map(function(x){return x.trim()}).filter(Boolean).filter(function(x){return x!=='general'});
+  v=String(v||'').trim(); if(!v || v==='general') return [];
+  if(v.charAt(0)==='['){try{return normalizeAgencyList(JSON.parse(v));}catch(e){}}
+  return v.split(/[،,|]/).map(function(x){return x.trim()}).filter(Boolean).filter(function(x){return x!=='general'});
+}
+function currentWakilUser(){
+  var q=new URLSearchParams(location.search||'');
+  var u=readJsonSafe('currentSchoolUser',null)||readJsonSafe('currentUser',null)||readJsonSafe('smart_school_current_session',null)||{};
+  var qp=q.get('agency_type')||q.get('agency_types')||q.get('agent_categories')||'';
+  if(qp){u.agency_type=qp; u.agent_categories=normalizeAgencyList(qp);}
+  return u||{};
+}
+function currentWakilAgencies(){
+  var u=currentWakilUser();
+  var list=normalizeAgencyList(u.agent_categories||u.agency_categories||u.agency_types||u.agency_type||u.agencyType||u.vice_agency_type||u.viceAgencyType||'');
+  if(!list.length){
+    var sid=u.schoolId||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||'default';
+    var map=readJsonSafe('smartSchoolUnifiedOpsV2_vp_agency_map_'+sid,{});
+    var id=String(u.id||''), email=String(u.email||localStorage.getItem('currentUserEmail')||'').toLowerCase();
+    list=normalizeAgencyList((id&&map[id])||(email&&map[email])||'');
+  }
+  return list;
+}
+function currentWakilAgency(){var list=currentWakilAgencies(); return list.length?list.join(','):'general';}
+function allowedWakilCategory(cat){
+  var agencies=currentWakilAgencies();
+  cat=cat||'shared';
+  if(cat==='shared') return true;
+  if(!agencies.length) return true;
+  return agencies.indexOf(cat)>-1;
+}
+function visibleForms(){return FORMS.filter(function(f){return allowedWakilCategory(f.category||'shared');});}
+function formsByCategory(){
+  return WAKIL_CATEGORY_ORDER.map(cat=>({cat,label:wakilCategoryLabel(cat),items:FORMS.filter(f=>(f.category||'shared')===cat && allowedWakilCategory(f.category||'shared'))})).filter(g=>g.items.length);
+}
+function ensureCurrentVisible(){var vf=visibleForms(); if(vf.length && (!current || !allowedWakilCategory(current.category||'shared'))) current=vf[0];}
+function agencyNoticeHtml(){var list=currentWakilAgencies(); var txt=list.length?list.map(function(x){return WAKIL_AGENCY_LABELS[x]||x}).join(' + '):'كل السجلات'; return '<div style="margin:10px 0 14px;padding:10px;border:1px solid #b8d4c8;border-radius:14px;background:#f0fdfa;color:#0f766e;font-size:12px;font-weight:900;line-height:1.8">التصنيف الحالي: '+txt+'<br><span style="color:#64748b;font-weight:800">تظهر السجلات والأرشيف حسب تصنيفات الوكيل المحددة من حساب المدير.</span></div>';}
+
+
+const LOGO_URL='https://salogos.b-cdn.net/logos/svg/1774895141785-5zgexuf8.svg';
+const ASK_AI_URL='https://cijhgvbtrvmmlcssgxht.supabase.co/functions/v1/ASK-AI';
+const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
+let current=FORMS[0];
+function qs(x,root=document){return root.querySelector(x)} function qsa(x,root=document){return Array.from(root.querySelectorAll(x))}
+function today(){return new Date().toISOString().slice(0,10)}
+function formatDateDMY(dateObj){
+  const d=String(dateObj.getDate()).padStart(2,'0');
+  const m=String(dateObj.getMonth()+1).padStart(2,'0');
+  const y=dateObj.getFullYear();
+  return `${d} / ${m} / ${y}`;
+}
+function parseDateDMY(value){
+  if(!value) return null;
+  value=String(value).trim();
+  let iso=value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(iso) return new Date(`${iso[1]}-${iso[2]}-${iso[3]}T12:00:00`);
+  let m=value.match(/(\d{1,2})\s*[\/\-]\s*(\d{1,2})\s*[\/\-]\s*(\d{4})/);
+  if(m) return new Date(`${m[3]}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}T12:00:00`);
+  return null;
+}
+function normalizeDateText(el){
+  if(!el) return;
+  const d=parseDateDMY(el.value);
+  if(d && !isNaN(d)) el.value=formatDateDMY(d);
+}
+function isDateField(n){return /تاريخ|اليوم/.test(n)}
+function isLongField(n){return /سبب|وصف|إجراء|إجراءات|توصيات|ملاحظات|ملحوظات|رأي|قرار|إفادة|نص|خطة|آلية|جوانب|فرص|مرفقات|الحالات|هدف|تحسين|متابعة/.test(n)}
+function settings(){try{return JSON.parse(localStorage.getItem('wakil_settings')||'{}')}catch(e){return {}}}
+function formKey(){return 'wakil_form_v3_'+current.id}
+function renderNav(){
+  const nav=qs('#nav');
+  nav.innerHTML='';
+  ensureCurrentVisible();
+  nav.insertAdjacentHTML('beforeend', agencyNoticeHtml());
+  formsByCategory().forEach(group=>{
+    const h=document.createElement('div');
+    h.className='wakil-nav-group-title';
+    h.textContent=group.label;
+    nav.appendChild(h);
+    group.items.forEach(f=>{
+      const b=document.createElement('button');
+      b.textContent=f.title;
+      b.dataset.category=f.category||'shared';
+      b.dataset.archiveFolder=f.archiveFolder||f.id;
+      b.onclick=()=>selectForm(f.id);
+      if(f.id===current.id)b.className='active';
+      nav.appendChild(b);
+    });
+  });
+}
+function selectForm(id){current=visibleForms().find(f=>f.id===id)||visibleForms()[0]||FORMS[0];renderNav();renderForm();loadCurrent()}
+function yearOptions(selected=''){let opts='<option value="">اختر العام</option>';for(let y=1445;y<=1466;y++){let v=y+' هـ';opts+=`<option value="${v}" ${selected===v?'selected':''}>${v}</option>`}return opts}
+function semesterOptions(selected=''){return `<option value="">اختر الفصل</option><option ${selected==='الأول'?'selected':''}>الأول</option><option ${selected==='الثاني'?'selected':''}>الثاني</option>`}
+
+function timeOptions(selected=''){
+  let opts='<option value="">اختر الوقت</option>';
+  for(let h=7; h<=14; h++){
+    for(let m of [0,15,30,45]){
+      if(h===14 && m>0) continue;
+      const hour12 = h>12 ? h-12 : h;
+      const period = h<12 ? 'صباحًا' : 'ظهرًا';
+      const val = `${String(hour12).padStart(2,'0')}:${String(m).padStart(2,'0')} ${period}`;
+      opts += `<option value="${val}" ${selected===val?'selected':''}>${val}</option>`;
+    }
+  }
+  return opts;
+}
+function receiverRelationOptions(selected=''){
+  const arr=['أب','أم','أخ','أخت','عم','عمة','غير ذلك'];
+  return '<option value="">اختر صلة المستلم</option>'+arr.map(v=>`<option value="${v}" ${selected===v?'selected':''}>${v}</option>`).join('');
+}
+function returnStatusOptions(selected=''){
+  const arr=['سيعود','لن يعود'];
+  return '<option value="">اختر حالة العودة</option>'+arr.map(v=>`<option value="${v}" ${selected===v?'selected':''}>${v}</option>`).join('');
+}
+function fieldHtml(name){
+  const wide=isLongField(name)?' wide note':'';
+  let input='';
+  if(name==='الفصل الدراسي') input=`<select data-field="${name}">${semesterOptions()}</select>`;
+  else if(name==='العام الدراسي') input=`<select data-field="${name}">${yearOptions()}</select>`;
+  else if(name==='وقت الخروج') input=`<select data-field="${name}" class="time-select">${timeOptions()}</select>`;
+  else if(name==='صلة المستلم') input=`<select data-field="${name}">${receiverRelationOptions()}</select>`;
+  else if(name==='حالة العودة') input=`<select data-field="${name}">${returnStatusOptions()}</select>`;
+  else if(isLongField(name)) input=`<textarea data-field="${name}"></textarea>`;
+  else if(/تاريخ/.test(name)) input=`<input type="text" class="date-display" data-field="${name}" placeholder="اليوم / الشهر / السنة">`;
+  else input=`<input type="text" data-field="${name}">`;
+  return `<div class="field${wide}"><div class="label">${name}</div><div>${input}</div></div>`
+}
+function tableRows(kind,count=5){let heads=['م','الاسم','الصف / العمل','التاريخ','الإجراء / الملاحظات']; if(kind==='visits')heads=['م','اسم المعلم/ة','المادة','الفصل','تاريخ الزيارة','الحصة','ملاحظات']; if(kind==='waiting')heads=['م','الحصة','الفصل','المعلم الغائب','المعلم المنفذ','المادة','ملاحظات'];let h=heads.map(x=>`<th>${x}</th>`).join('');let rows='';for(let i=1;i<=count;i++){rows+='<tr>'+heads.map((x,j)=>j===0?`<td>${i}</td>`:`<td><textarea class="table-textarea auto-grow" data-table="${kind}-${i}-${j}"></textarea></td>`).join('')+'</tr>'}return `<div class="section dynamic-table-section"><h3>جدول تفصيلي قابل للتعبئة</h3><table class="form-table"><thead><tr>${h}</tr></thead><tbody>${rows}</tbody></table></div>`}
+function settingInput(key,value,label,extra=''){
+  return `<div class="head-row"><span class="head-label">${label}</span><input class="header-input ${extra}" data-setting="${key}" value="${value||''}"></div>`
+}
+
+function getIdentityValue(data=null){
+  if(!data) data=collectSafe();
+  return (data['السجل المدني']||data['رقم الهوية']||data['رقم السجل المدني']||'').toString().trim();
+}
+function collectSafe(){let d={};qsa('[data-field], [data-table]',qs('#formPage')).forEach(el=>{d[el.dataset.field||el.dataset.table]=el.value||''});return d}
+function archiveKey(){return 'wakil_archive_v5_'+current.id}
+function archiveSection(){return `<div class="section" id="archiveSection"><h3>أرشفة السجل والمرات السابقة حسب السجل المدني</h3><div class="fields"><div class="field"><div class="label">السجل المدني / الهوية للأرشفة</div><div><input data-field="السجل المدني" placeholder="يُستخدم لعرض المرات السابقة تلقائيًا"></div></div><div class="field"><div class="label">آخر حفظ</div><div><input data-field="آخر حفظ" readonly></div></div></div><div id="archiveRows"></div></div>`}
+function readArchive(){try{return JSON.parse(localStorage.getItem(archiveKey())||'[]')}catch(e){return []}}
+function writeArchive(arr){localStorage.setItem(archiveKey(),JSON.stringify(arr.slice(0,80)))}
+function renderArchiveRows(){const box=qs('#archiveRows'); if(!box) return; const id=getIdentityValue(); const rows=readArchive().filter(r=>!id||r.identity===id).slice(0,10); if(!rows.length){box.innerHTML='<div style="padding:8px;color:#667085;font-weight:700">لا توجد مرات سابقة لهذا السجل المدني بعد.</div>';return} box.innerHTML=`<table class="archive-table"><thead><tr><th>م</th><th>تاريخ الحفظ</th><th>رقم السجل</th><th>اسم الطالب/الموظف</th><th>ملاحظة مختصرة</th><th class="no-print">استرجاع</th></tr></thead><tbody>${rows.map((r,i)=>`<tr><td>${i+1}</td><td>${r.savedAt||''}</td><td>${r.recordNo||''}</td><td>${r.person||''}</td><td>${r.note||''}</td><td class="no-print"><button class="btn gray" style="padding:5px 10px" onclick="restoreArchive('${r.id}')">استرجاع</button></td></tr>`).join('')}</tbody></table>`}
+function addArchiveSnapshot(data){const id=getIdentityValue(data); if(!id) return; let arr=readArchive(); const now=new Date(); const rec={id:String(Date.now()),identity:id,savedAt:now.toLocaleString('ar-SA'),recordNo:data['رقم السجل']||'',person:data['اسم الطالب']||data['اسم الموظف']||data['الاسم']||'',note:(data['سبب التحويل']||data['الإجراءات والتوصيات النهائية']||data['ملاحظات']||'').slice(0,90),data:data}; arr.unshift(rec); writeArchive(arr);}
+function restoreArchive(id){const rec=readArchive().find(r=>r.id===id); if(!rec) return; qsa('[data-field], [data-table]',qs('#formPage')).forEach(el=>{const k=el.dataset.field||el.dataset.table;if(rec.data[k]!==undefined)el.value=rec.data[k]});setDefaults();renderArchiveRows();autoGrowAll(qs('#formPage'));alert('تم استرجاع بيانات الأرشيف إلى النموذج.');}
+function syncDayFromDate(dateValue){
+  const day=qs('[data-field="اليوم"]',qs('#formPage'));
+  if(!day||!dateValue) return;
+  const d=parseDateDMY(dateValue);
+  if(d && !isNaN(d)) day.value=new Intl.DateTimeFormat('ar-SA',{weekday:'long'}).format(d);
+}
+function preparePrintFit(){const page=qs('#formPage');const frame=qs('.official-frame',page);if(!page||!frame)return;document.documentElement.style.setProperty('--print-scale','1');}
+window.addEventListener('beforeprint',preparePrintFit);
+window.addEventListener('afterprint',()=>document.documentElement.style.setProperty('--print-scale','1'));
+
+function commonHeader(s){return `<header class="header pro-header">
+<div class="headtext center official-side">
+<div>المملكة العربية السعودية</div>
+<div>وزارة التعليم</div>
+${settingInput('edu',s.edu,'إدارة تعليم')}
+${settingInput('school',s.school,'المدرسة')}
+</div>
+<div class="logoWrap"><img class="logo" src="${LOGO_URL}" alt="شعار وزارة التعليم"></div>
+<div class="headtext start info-side">
+<div class="head-row"><span class="head-label">العام الدراسي</span><select class="header-select" data-setting="year">${yearOptions(s.year||'')}</select></div>
+<div class="head-row"><span class="head-label">الفصل الدراسي</span><select class="header-select" data-setting="semester"><option ${s.semester==='الأول'?'selected':''}>الأول</option><option ${s.semester==='الثاني'?'selected':''}>الثاني</option></select></div>
+<div class="head-row day-row"><span class="head-label">اليوم</span><input class="header-input header-day" data-field="اليوم" type="text" readonly></div>
+<div class="head-row date-row"><span class="head-label">التاريخ</span><input class="header-input header-date date-display" data-field="التاريخ" type="text" placeholder="اليوم / الشهر / السنة"></div>
+</div></header>`}
+function mediaBox(key, label, cls=''){
+  const st=settings();
+  const val=st[key]||'';
+  return `<div class="approval-media-frame ${cls}">${val?`<img src="${val}" alt="${label}">`:`<span style="color:#94a3b8;font-size:12px">${label}</span>`}</div>
+  <label class="upload-inline no-print">إضافة / تغيير صورة<input type="file" accept="image/png,image/jpeg" onchange="loadImage(event,'', '${key}')"></label>
+  ${val?`<button type="button" class="remove-media no-print" onclick="removeSettingImage('${key}')">حذف</button>`:''}
+  <div class="approval-hint no-print">PNG أو JPG/JPEG — يتم احتواء الصورة داخل المربع تلقائيًا</div>`;
+}
+function approvalNameInput(key, placeholder){
+  const st=settings();
+  return `<div class="approval-name-line"><span>الاسم:</span><input class="approval-name-input" data-setting="${key}" value="${st[key]||''}" placeholder="${placeholder}" oninput="updateSettingFromInput(this)"></div>`;
+}
+function approvalBlock(s){
+  return `<div class="approval-row no-page-break">
+    <div class="approval-box"><strong>إعداد الوكيل</strong>${approvalNameInput('wakil','اكتب اسم الوكيل')}<div style="font-size:12px;font-weight:800">التوقيع:</div>${mediaBox('signature','توقيع الوكيل')}</div>
+    <div class="approval-box"><strong>ختم المدرسة</strong>${mediaBox('stamp','ختم المدرسة','stamp')}</div>
+    <div class="approval-box"><strong>اعتماد مدير/ة المدرسة</strong>${approvalNameInput('manager','اكتب اسم المدير')}<div style="font-size:12px;font-weight:800">التوقيع:</div>${mediaBox('managerSignature','توقيع المدير')}</div>
+  </div>`
+}
+function renderForm(){
+  const s=settings();
+  qs('#currentTitle').textContent=wakilCategoryLabel(current.category||'shared')+' / '+current.title;
+  const allSections=current.sections||[];
+  const split=Math.max(1, Math.ceil(allSections.length/2));
+  const firstSections=allSections.slice(0, split);
+  const secondSections=allSections.slice(split);
+  const shouldTable=['table','permission','waiting','supervision','visits','late-list'].includes(current.kind);
+  let firstBody=`<div class="form-title">${current.title}</div>`;
+  firstSections.forEach(sec=>{firstBody+=`<div class="section"><h3>${sec[0]}</h3><div class="fields">${sec[1].map(fieldHtml).join('')}</div></div>`});
+  if(shouldTable && allSections.length<=2) firstBody+=tableRows(current.kind,5);
+  let secondBody='';
+  secondSections.forEach(sec=>{secondBody+=`<div class="section"><h3>${sec[0]}</h3><div class="fields">${sec[1].map(fieldHtml).join('')}</div></div>`});
+  if(shouldTable && allSections.length>2) secondBody+=tableRows(current.kind,5);
+  secondBody+=`<div class="section"><h3>الإجراءات والتوصيات النهائية</h3><div class="fields"><div class="field wide note"><div class="label">الإجراءات والتوصيات النهائية</div><div><textarea data-field="الإجراءات والتوصيات النهائية"></textarea></div></div></div></div>${archiveSection()}${approvalBlock(s)}`;
+  const html=`<div class="sheet compact first"><div class="official-frame">${commonHeader(s)}<div class="sheet-content">${firstBody}</div><div class="page-counter">الصفحة 1 من 2</div><div class="sheet-footer">سجلات الوكيل التفاعلية</div></div></div><div class="sheet compact second"><div class="official-frame">${commonHeader(s)}<div class="sheet-content">${secondBody}</div><div class="page-counter">الصفحة 2 من 2</div><div class="sheet-footer">سجلات الوكيل التفاعلية</div></div></div>`;
+  qs('#formPage').innerHTML=html; qs('#formPage').setAttribute('data-current-form', current.id);
+  qsa('[data-setting]',qs('#formPage')).forEach(el=>{const sync=()=>{let st=settings();st[el.dataset.setting]=el.value;localStorage.setItem('wakil_settings',JSON.stringify(st));};el.addEventListener('input',sync);el.addEventListener('change',sync);});
+  qsa('[data-field]',qs('#formPage')).forEach(el=>{el.addEventListener('input',()=>{if(el.dataset.field==='السجل المدني'||el.dataset.field==='رقم الهوية'){renderArchiveRows()}; if(el.dataset.field==='التاريخ'){syncDayFromDate(el.value)}; if(el.tagName==='TEXTAREA') autoGrowOne(el)});el.addEventListener('change',()=>{if(el.dataset.field==='التاريخ'){normalizeDateText(el);syncDayFromDate(el.value)}; if(el.tagName==='TEXTAREA') autoGrowOne(el)})}); bindAutoGrow(qs('#formPage'));
+}
+function collect(){let d={};qsa('[data-field], [data-table]',qs('#formPage')).forEach(el=>{const k=el.dataset.field||el.dataset.table;const v=el.value||''; if(v || d[k]===undefined) d[k]=v});qsa('[data-setting]',qs('#formPage')).forEach(el=>{let st=settings();st[el.dataset.setting]=el.value||'';localStorage.setItem('wakil_settings',JSON.stringify(st));});return d}
+function setDefaults(){
+  const todayDate=new Date(today()+'T12:00:00');
+  const todayText=formatDateDMY(todayDate);
+  qsa('[data-field]',qs('#formPage')).forEach(el=>{const k=el.dataset.field;
+    if((k==='التاريخ'||/تاريخ/.test(k))&&!el.value)el.value=todayText;
+    if(k==='التاريخ'||/تاريخ/.test(k)) normalizeDateText(el);
+    if(k==='اليوم'&&!el.value)el.value=new Intl.DateTimeFormat('ar-SA',{weekday:'long'}).format(todayDate);
+  });
+  const dateEl=qs('[data-field="التاريخ"]',qs('#formPage')); if(dateEl) syncDayFromDate(dateEl.value||todayText);
+  renderArchiveRows();
+}
+function loadCurrent(){let d={};try{d=JSON.parse(localStorage.getItem(formKey())||'{}')}catch(e){} qsa('[data-field], [data-table]',qs('#formPage')).forEach(el=>{const k=el.dataset.field||el.dataset.table;if(d[k]!==undefined)el.value=d[k]});setDefaults();renderArchiveRows();autoGrowAll(qs('#formPage'))}
+
+function guessWakilPersonNameForRecordsArchive(data){
+  const keys=['اسم الطالب','اسم الموظف','اسم الطالب / الموظف','اسم المعلم/ة','المعلم الغائب','المعلم المنفذ','اسم المحول','المستلم'];
+  for(const k of keys){ if(data[k]) return data[k]; }
+  return '';
+}
+function getCurrentFormHTMLForRecordsArchive(){
+  const page=document.getElementById('formPage');
+  return page ? page.innerHTML : '';
+}
+
+
+function getCurrentRecordPrintableDocumentForArchive(){
+  const styles = Array.from(document.querySelectorAll('style')).map(s=>s.outerHTML).join('\n');
+  const page = document.getElementById('formPage');
+  const title = (current && current.title) ? current.title : 'سجل الوكيل';
+  const content = page ? page.outerHTML : '';
+  return '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>'+title+'</title>'
+    + styles
+    + '<style>'
+    + '@page{size:A4 portrait;margin:0!important;}'
+    + 'html,body{margin:0!important;padding:0!important;background:#fff!important;overflow:visible!important;}'
+    + '.app{display:block!important;min-height:auto!important;}'
+    + '.sidebar,.toolbar,.no-print,.ai-panel,.modal,#topAiCenterIcon,#topAiCenterModal{display:none!important;}'
+    + '.main{display:block!important;padding:0!important;margin:0!important;background:#fff!important;}'
+    + '.page{width:210mm!important;min-height:297mm!important;margin:0 auto!important;box-shadow:none!important;border:0!important;page-break-after:auto!important;break-after:auto!important;}'
+    + '.page:not(:first-of-type){display:none!important;}'
+    + 'input,select,textarea{color:#11221d!important;-webkit-text-fill-color:#11221d!important;}'
+    + '@media print{.page{margin:0!important;page-break-after:auto!important;break-after:auto!important;} body{width:210mm!important;}}'
+    + '</style></head><body><main class="main">'+content+'</main></body></html>';
+}
+
+
+function saveCurrentLocalOnly(){
+  const data = collect();
+  data['آخر حفظ'] = new Date().toLocaleString('ar-SA');
+  localStorage.setItem(formKey(), JSON.stringify(data));
+  return data;
+}
+
+function saveCurrent(){
+  const data = collect();
+  data['آخر حفظ'] = new Date().toLocaleString('ar-SA');
+  localStorage.setItem(formKey(), JSON.stringify(data));
+
+  try{
+    if(window.parent && window.parent !== window){
+      const personName = guessWakilPersonNameForRecordsArchive(data) || 'بدون اسم';
+      window.parent.postMessage({
+        type: 'WAKIL_RECORD_SAVED',
+        payload: {
+          formId: current.id,
+          folderId: current.archiveFolder || current.id,
+          category: current.category || 'shared',
+          categoryLabel: wakilCategoryLabel(current.category || 'shared'),
+          folderName: current.title,
+          title: current.title,
+          personName: personName,
+          personType: current.kind && String(current.kind).includes('staff')
+            ? 'employee'
+            : (String(current.title || '').includes('موظ') || String(current.title || '').includes('معلم') ? 'employee' : 'student'),
+          summary: Object.entries(data).map(([k,v]) => k + ': ' + v).join('\\n'),
+          htmlContent: getCurrentFormHTMLForRecordsArchive(),
+          printableHTML: getCurrentRecordPrintableDocumentForArchive()
+        }
+      }, '*');
+    }
+  }catch(e){
+    console.error(e);
+  }
+
+  alert('تم حفظ النموذج وإرسال نسخة إلى أرشيف السجلات.');
+}
+
+function clearCurrent(){if(confirm('هل تريد تفريغ هذا النموذج؟')){localStorage.removeItem(formKey());renderForm();loadCurrent()}}
+
+function updateSettingFromInput(el){let st=settings();st[el.dataset.setting]=el.value||'';localStorage.setItem('wakil_settings',JSON.stringify(st));}
+function removeSettingImage(key){let st=settings();delete st[key];localStorage.setItem('wakil_settings',JSON.stringify(st));renderForm();loadCurrent();}
+function openSettings(){const s=settings();['Edu','Office','School','Wakil','Manager','Year'].forEach(k=>{const id='#set'+k; const key=k.toLowerCase(); if(qs(id)) qs(id).value=s[key]||''});qs('#setSignaturePreview').src=s.signature||'';qs('#setStampPreview').src=s.stamp||'';if(qs('#setManagerSignaturePreview')) qs('#setManagerSignaturePreview').src=s.managerSignature||'';qs('#settingsModal').style.display='flex'}
+function closeSettings(){qs('#settingsModal').style.display='none'}
+function loadImage(ev,preview,key){const f=ev.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{let s=settings();s[key]=r.result;localStorage.setItem('wakil_settings',JSON.stringify(s));if(preview && qs('#'+preview)) qs('#'+preview).src=r.result;renderForm();loadCurrent()};r.readAsDataURL(f)}
+function saveSettings(){let s=settings();s.edu=qs('#setEdu').value;s.office=qs('#setOffice').value;s.school=qs('#setSchool').value;s.wakil=qs('#setWakil').value;s.manager=qs('#setManager').value;s.year=qs('#setYear').value;localStorage.setItem('wakil_settings',JSON.stringify(s));closeSettings();renderForm();loadCurrent();alert('تم حفظ الإعدادات وانعكست على جميع السجلات.')}
+
+let lastAIAnswer='';
+let lastAIMap=null;
+function extractAIJson(text){
+  if(!text) return null;
+  let t=String(text).trim();
+  t=t.replace(/^```json\s*/i,'').replace(/^```\s*/,'').replace(/```$/,'').trim();
+  const start=t.indexOf('{'), end=t.lastIndexOf('}');
+  if(start>=0 && end>start) t=t.slice(start,end+1);
+  try{return JSON.parse(t)}catch(e){return null}
+}
+function buildAIFieldList(){
+  return qsa('[data-field]',qs('#formPage')).map(el=>el.dataset.field).filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i);
+}
+function fillFieldByName(name,value,overwrite=false){
+  if(value===undefined || value===null || String(value).trim()==='') return false;
+  const el=qsa('[data-field]',qs('#formPage')).find(x=>x.dataset.field===name);
+  if(!el) return false;
+  if(!overwrite && el.value && el.value.trim()) return false;
+  el.value=String(value).trim();
+  el.dispatchEvent(new Event('input',{bubbles:true}));
+  el.dispatchEvent(new Event('change',{bubbles:true}));
+  if(el.tagName==='TEXTAREA') autoGrowOne(el);
+  return true;
+}
+function fillFirstMatching(labels,value,overwrite=false){
+  for(const label of labels){ if(fillFieldByName(label,value,overwrite)) return true; }
+  return false;
+}
+function applyAIObject(obj,overwrite=false){
+  let count=0;
+  if(!obj || typeof obj!=='object') return 0;
+  const aliases={
+    'الإجراءات والتوصيات النهائية':['الإجراءات والتوصيات النهائية','الإجراءات النهائية','التوصيات النهائية'],
+    'الإجراء المتخذ':['الإجراء المتخذ','الإجراءات المتخذة','الإجراءات','الإجراء','إجراء الوكيل','الإجراء النظامي'],
+    'التوصيات':['التوصيات','توصيات الوكيل','التوصيات والمقترحات'],
+    'ملاحظات':['ملاحظات','ملحوظات الزيارة','ملاحظات المناوبة','ملاحظات بداية اليوم','ملاحظات الفسحة','ملاحظات الانصراف'],
+    'فرص التحسين':['فرص التحسين','جوانب التحسين'],
+    'جوانب القوة':['جوانب القوة'],
+    'خطة المتابعة':['خطة المتابعة','موعد المتابعة','تاريخ المتابعة'],
+    'وصف الحالة':['وصف الحالة','تفاصيل الحالة','الحالات المرصودة'],
+    'سبب التحويل':['سبب التحويل','سبب الاستئذان','سبب الغياب حسب الإفادة','أبرز الأسباب'],
+    'نص القرار':['نص القرار','رأي الوكيل','قرار المدير']
+  };
+  for(const [k,v] of Object.entries(obj)){
+    if(typeof v==='object') continue;
+    if(fillFieldByName(k,v,overwrite)) {count++; continue;}
+    for(const [main,names] of Object.entries(aliases)){
+      if(k.includes(main) || names.some(n=>k.includes(n) || n.includes(k))){
+        if(fillFirstMatching(names,v,overwrite)){count++; break;}
+      }
+    }
+  }
+  if(obj.فرص_التحسين) count += fillFirstMatching(['فرص التحسين','ملحوظات الزيارة','ملاحظات'],obj.فرص_التحسين,overwrite)?1:0;
+  if(obj.التوصيات) count += fillFirstMatching(['التوصيات','توصيات الوكيل','الإجراءات والتوصيات النهائية'],obj.التوصيات,overwrite)?1:0;
+  if(obj.الإجراءات) count += fillFirstMatching(['الإجراء المتخذ','الإجراءات المتخذة','الإجراءات والتوصيات النهائية'],obj.الإجراءات,overwrite)?1:0;
+  return count;
+}
+function fallbackApplyAIText(text,overwrite=false){
+  let count=0;
+  const clean=String(text||'').replace(/```[\s\S]*?```/g,'').trim();
+  if(!clean) return 0;
+  const rec=qs('[data-field="الإجراءات والتوصيات النهائية"]');
+  if(rec && (overwrite || !rec.value.trim())){rec.value=clean;autoGrowOne(rec);count++;}
+  const recommendations=(clean.match(/(?:التوصيات|توصيات)[:：]?([\s\S]*?)(?:الإجراءات|فرص|جوانب|$)/)||[])[1];
+  if(recommendations) count += fillFirstMatching(['التوصيات','توصيات الوكيل','التوصيات والمقترحات'],recommendations.trim(),overwrite)?1:0;
+  const actions=(clean.match(/(?:الإجراءات|إجراءات|الإجراء)[:：]?([\s\S]*?)(?:التوصيات|فرص|جوانب|$)/)||[])[1];
+  if(actions) count += fillFirstMatching(['الإجراء المتخذ','الإجراءات المتخذة','الإجراءات والتوصيات النهائية'],actions.trim(),overwrite)?1:0;
+  const improvements=(clean.match(/(?:فرص التحسين|فرص)[:：]?([\s\S]*?)(?:التوصيات|الإجراءات|$)/)||[])[1];
+  if(improvements) count += fillFirstMatching(['فرص التحسين','ملحوظات الزيارة','ملاحظات'],improvements.trim(),overwrite)?1:0;
+  return count;
+}
+function applyAIToCurrentForm(){
+  const overwrite=confirm('هل تريد تضمين نتيجة الذكاء داخل الخانات المناسبة؟\n\nاضغط موافق لاستبدال الخانات المناسبة حتى لو كانت تحتوي نصًا، أو إلغاء لتعبئة الخانات الفارغة فقط.');
+  let count=0;
+  if(lastAIMap) count=applyAIObject(lastAIMap,overwrite);
+  if(!count) count=fallbackApplyAIText(lastAIAnswer || qs('#aiResult').textContent,overwrite);
+  saveCurrentLocalOnly();
+  alert(count ? 'تم تضمين نتيجة الذكاء داخل النموذج دون إرسال نسخة للأرشيف.' : 'لم يتم العثور على خانات مناسبة للتضمين. يمكنك نسخ النتيجة يدويًا.');
+}
+async function aiComplete(){
+  saveCurrentLocalOnly();
+  const panel=qs('#aiPanel'),pre=qs('#aiResult');
+  panel.style.display='block';
+  pre.textContent='جاري توليد مقترحات التعبئة...';
+  lastAIAnswer=''; lastAIMap=null;
+  const fields=buildAIFieldList();
+  const payload={message:`أنت محرك تعبئة ذكي لسجلات الوكيل التفاعلية.\nاسم النموذج: ${current.title}\nالبيانات الحالية: ${JSON.stringify(collect())}\nالخانات المتاحة للتعبئة: ${JSON.stringify(fields)}\nالمطلوب: أعد JSON فقط بدون شرح، مفاتيحه تكون من أسماء الخانات المتاحة، وقيمه صياغة رسمية مختصرة مناسبة للمدرسة. ركز على الخانات الفارغة مثل الإجراءات، التوصيات، فرص التحسين، الملاحظات، الإجراءات والتوصيات النهائية. لا تضع أي نص خارج JSON.`};
+  try{
+    const res=await fetch(ASK_AI_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+SUPABASE_ANON_KEY},body:JSON.stringify(payload)});
+    const data=await res.json();
+    const ans=data.response||data.result||data.answer||'لم يتم الحصول على رد.';
+    lastAIAnswer=ans;
+    lastAIMap=extractAIJson(ans);
+    if(lastAIMap){
+      pre.textContent=Object.entries(lastAIMap).map(([k,v])=>`${k}:\n${v}`).join('\n\n');
+    }else{
+      pre.textContent=ans;
+    }
+  }catch(e){pre.textContent='تعذر الاتصال بالذكاء: '+e.message}
+}
+
+function autoGrowOne(el){
+  if(!el || el.tagName!=='TEXTAREA') return;
+  const isTable = el.classList.contains('table-textarea') || el.hasAttribute('data-table');
+  const isLong = el.closest('.note') || el.dataset.field === 'الإجراءات والتوصيات النهائية';
+  const maxHeight = isTable ? 58 : (isLong ? 92 : 78);
+  const minHeight = isTable ? 30 : 34;
+  el.style.height='auto';
+  const nextHeight = Math.max(minHeight, Math.min(el.scrollHeight, maxHeight));
+  el.style.height = nextHeight + 'px';
+  el.style.overflow = el.scrollHeight > maxHeight ? 'hidden' : 'hidden';
+}
+function autoGrowAll(root=document){
+  qsa('textarea', root).forEach(autoGrowOne);
+}
+function bindAutoGrow(root=document){
+  qsa('textarea', root).forEach(el=>{
+    autoGrowOne(el);
+    if(!el.dataset.autogrowBound){
+      el.addEventListener('input',()=>autoGrowOne(el));
+      el.addEventListener('change',()=>autoGrowOne(el));
+      el.dataset.autogrowBound='1';
+    }
+  });
+}
+
+
+/* ===== V23 Smart Structured AI + Teams Meeting AI Engine ===== */
+const AI_SCHEMAS = {
+  "student-referral": {
+    role: "تحليل حالة طالب محال للوكيل",
+    required: ["وصف الحالة","الإجراء المتخذ","التوصيات","تاريخ المتابعة","الإجراءات والتوصيات النهائية"],
+    guidance: "ركّز على وصف تربوي للحالة، إجراءات الوكيل، إشعار ولي الأمر، المتابعة، وخطة تحسين السلوك أو الانتظام."
+  },
+  "repeated-absence-referral": {
+    role: "تحليل تكرار غياب طالب",
+    required: ["أسباب الغياب حسب الإفادة","الإجراءات المتخذة","توصيات الوكيل","موعد المتابعة","الإجراءات والتوصيات النهائية"],
+    guidance: "اقترح إجراءات نظامية وتربوية لمعالجة الغياب، التواصل مع ولي الأمر، وجدولة متابعة."
+  },
+  "daily-duty-report": {
+    role: "تقرير المناوبة اليومي",
+    required: ["ملاحظات بداية اليوم","ملاحظات الفسحة","ملاحظات الانصراف","الحالات المرصودة","الإجراءات الفورية","التوصيات","الإجراءات والتوصيات النهائية"],
+    guidance: "استخرج ملاحظات اليوم المدرسي والحالات والإجراءات الفورية والتوصيات."
+  },
+  "class-visits-plan": {
+    role: "خطة الزيارات الصفية",
+    required: ["ملحوظات الزيارة","جوانب القوة","فرص التحسين","التوصيات","الإجراءات والتوصيات النهائية"],
+    guidance: "حلّل جودة التدريس، إدارة الصف، استراتيجيات التعلم، التقويم، التفاعل، وقدّم توصيات قابلة للتنفيذ."
+  },
+  "student-permission": {
+    role: "استئذان طالب",
+    required: ["سبب الاستئذان","حالة العودة","ملاحظات","الإجراءات والتوصيات النهائية"],
+    guidance: "صغ ملاحظة إدارية مختصرة حول الاستئذان والمستلم وحالة العودة."
+  },
+  "staff-permission": {
+    role: "استئذان موظف",
+    required: ["سبب الاستئذان","مدة الاستئذان","البديل إن وجد","ملاحظات","الإجراءات والتوصيات النهائية"],
+    guidance: "صغ اعتماد الاستئذان وفق الحاجة والبديل ومصلحة العمل."
+  },
+  "waiting-register": {
+    role: "سجل الانتظار",
+    required: ["موضوع الحصة","آلية التنفيذ","ملاحظات","الإجراءات والتوصيات النهائية"],
+    guidance: "اقترح آلية تنفيذ حصة انتظار منظمة وملاحظات متابعة."
+  },
+  "daily-supervision": {
+    role: "سجل المناوبة والإشراف اليومي",
+    required: ["الحالات المرصودة","الإجراء المتخذ","التوصيات","الإجراءات والتوصيات النهائية"],
+    guidance: "اكتب حالات الإشراف والإجراءات والتوصيات لضبط البيئة المدرسية."
+  },
+  "late-students-list": {
+    role: "كشف الطلاب المتأخرين",
+    required: ["أبرز الأسباب","الإجراء المتخذ","توصيات الوكيل","خطة المتابعة","الإجراءات والتوصيات النهائية"],
+    guidance: "حلّل أسباب التأخر واقترح خطة متابعة وتحسين."
+  },
+  "default": {
+    role: "سجل وكيل مدرسي",
+    required: ["الإجراءات والتوصيات النهائية","الإجراء المتخذ","التوصيات","ملاحظات"],
+    guidance: "ولّد تعبئة رسمية مختصرة مناسبة لسجلات الوكيل في البيئة المدرسية السعودية."
+  }
+};
+
+
+
+function getWritableFields(){
+  return qsa('[data-field]',qs('#formPage'))
+    .map(el=>el.dataset.field)
+    .filter(Boolean)
+    .filter((v,i,a)=>a.indexOf(v)===i);
+}
+
+
+
+
+/* ===== V29: AI Schema Engine Integration ===== */
+function getCurrentAISchema(){
+  if(window.AI_SCHEMA_ENGINE && typeof window.AI_SCHEMA_ENGINE.getSchema === "function"){
+    return window.AI_SCHEMA_ENGINE.getSchema(current.id);
+  }
+  return (typeof AI_SCHEMAS !== "undefined" && (AI_SCHEMAS[current.id] || AI_SCHEMAS.default)) || {};
+}
+
+function buildStructuredPrompt(extraText=''){
+  const data=collect();
+  const fields=getWritableFields();
+
+  if(window.AI_SCHEMA_ENGINE && typeof window.AI_SCHEMA_ENGINE.buildPrompt === "function"){
+    return window.AI_SCHEMA_ENGINE.buildPrompt({
+      formId: current.id,
+      formTitle: current.title,
+      data,
+      fields,
+      extraText
+    });
+  }
+
+  const schema=getCurrentAISchema();
+  return `أنت Smart Structured AI داخل منصة الإدارة المدرسية.
+نوع السجل: ${current.title}
+الشخصية الذكية: ${schema.persona || schema.role || "وكيل مدرسة"}
+إرشادات السجل: ${schema.guidance || schema.outputRules || ""}
+
+البيانات الحالية:
+${JSON.stringify(data, null, 2)}
+
+الحقول المتاحة داخل النموذج:
+${JSON.stringify(fields)}
+
+الحقول ذات الأولوية للتعبئة:
+${JSON.stringify(schema.fillPriority || schema.required || [])}
+
+مدخلات إضافية:
+${extraText || "لا يوجد"}
+
+المطلوب:
+أعد JSON فقط بدون أي شرح.
+يجب أن تكون المفاتيح من أسماء الحقول المتاحة داخل النموذج فقط.
+املأ الحقول المناسبة بصياغة عربية رسمية مختصرة.`;
+}
+
+function showCurrentAISchemaInfo(){
+  return requestStructuredAI('', 'جاري تشغيل شخصية السجل الذكية وتعبئة الحقول المناسبة...');
+}
+
+async function requestStructuredAI(extraText='', modeLabel='جاري توليد تعبئة مهيكلة...'){
+  saveCurrentLocalOnly();
+  const panel=qs('#aiPanel'),pre=qs('#aiResult');
+  panel.style.display='block';
+  pre.textContent=modeLabel;
+  lastAIAnswer=''; lastAIMap=null;
+  const payload={message:buildStructuredPrompt(extraText)};
+  try{
+    const res=await fetch(ASK_AI_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+SUPABASE_ANON_KEY},body:JSON.stringify(payload)});
+    const data=await res.json();
+    const ans=data.response||data.result||data.answer||'لم يتم الحصول على رد.';
+    lastAIAnswer=ans;
+    lastAIMap=extractAIJson(ans);
+    if(lastAIMap){
+      pre.textContent=Object.entries(lastAIMap).map(([k,v])=>`${k}:\n${v}`).join('\n\n');
+      const count=applyAIObject(lastAIMap,false);
+      saveCurrentLocalOnly();
+      pre.textContent += `\n\nتم تضمين ${count} حقل/حقول تلقائيًا داخل النموذج دون إرسال نسخة للأرشيف.`;
+      autoGrowAll(qs('#formPage'));
+    }else{
+      pre.textContent=ans;
+    }
+  }catch(e){
+    pre.textContent='تعذر الاتصال بالذكاء: '+e.message;
   }
 }
 
-setupHijriDate();
-const old=localStorage.getItem(KEY);if(old){try{loadData(JSON.parse(old));setupHijriDate()}catch(e){}}
-
-
-/* ربط استمارة الزيارة الإشرافية بمحفظة اجتماعات المدير دون التأثير على باقي المنصة */
-function __visitQueryParams(){ try{return new URLSearchParams(window.location.search||'')}catch(e){return new URLSearchParams()} }
-function __visitSchoolId(){ const q=__visitQueryParams(); return q.get('school_id')||q.get('schoolId')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||'school'; }
-function __visitSchoolName(){ const q=__visitQueryParams(); return q.get('school_name')||q.get('schoolName')||localStorage.getItem('school_name')||localStorage.getItem('persist_school')||'المدرسة'; }
-function __safeVisitText(v){ return String(v||'').replace(/[<>]/g,'').trim(); }
-function __managerMeetingKeys(){
-  const ids=['root','default',__visitSchoolId(),localStorage.getItem('cached_manager_uid'),localStorage.getItem('manager_uid'),localStorage.getItem('current_manager_uid')].filter(Boolean);
-  const uniq=[...new Set(ids.map(String))];
-  return [...new Set(uniq.map(id=>'school_meetings_archive_'+id).concat(['smartSchoolUnifiedOpsV2_minutes_manager']))];
+async function smartStructuredAI(){
+  await requestStructuredAI('', 'جاري تشغيل Smart Structured AI...');
 }
-function __readArr(key){ try{ const v=JSON.parse(localStorage.getItem(key)||'[]'); return Array.isArray(v)?v:[]; }catch(e){return []} }
-function __writeArr(key,arr){ try{ localStorage.setItem(key,JSON.stringify(arr||[])); }catch(e){} }
-function __nextVisitTitle(existing){
-  const used=new Set((existing||[]).map(x=>String((x&&x.title)||'')));
-  if(!used.has('زيارة إشرافية')) return 'زيارة إشرافية';
-  let n=2; while(used.has('زيارة إشرافية ('+n+')')) n++;
-  return 'زيارة إشرافية ('+n+')';
-}
-function __visitData(){ return values(); }
 
-function __visitPrintablePdfHtml(title){
-  try{
-    // بناء نسخة HTML ثابتة مطابقة لما يظهر عند الطباعة والحفظ، مع تثبيت القيم الحالية داخل الحقول
-    const docClone=document.documentElement.cloneNode(true);
-    const originalControls=Array.from(document.querySelectorAll('input,textarea,select'));
-    const cloneControls=Array.from(docClone.querySelectorAll('input,textarea,select'));
-    originalControls.forEach(function(src,i){
-      const dst=cloneControls[i]; if(!dst) return;
-      const tag=(src.tagName||'').toLowerCase();
-      const type=(src.type||'').toLowerCase();
-      if(tag==='textarea'){
-        dst.textContent=src.value||'';
-        dst.setAttribute('data-print-value',src.value||'');
-      }else if(tag==='select'){
-        Array.from(dst.options||[]).forEach(function(op){op.removeAttribute('selected');});
-        if(dst.options && dst.options[src.selectedIndex]) dst.options[src.selectedIndex].setAttribute('selected','selected');
-        dst.setAttribute('data-print-value',src.value||'');
-      }else if(type==='checkbox' || type==='radio'){
-        if(src.checked) dst.setAttribute('checked','checked'); else dst.removeAttribute('checked');
-      }else{
-        dst.setAttribute('value',src.value||'');
+function openTeamsAIModal(){
+  const modal=qs('#teamsAIModal');
+  if(modal) modal.style.display='flex';
+  const d=qs('#teamsMeetingDate');
+  if(d && !d.value){
+    const now=new Date();
+    d.value=formatDateDMY(now);
+  }
+}
+
+function closeTeamsAIModal(){
+  const modal=qs('#teamsAIModal');
+  if(modal) modal.style.display='none';
+}
+
+function readTeamsAIFile(event){
+  const file=event.target.files && event.target.files[0];
+  if(!file) return;
+  const reader=new FileReader();
+  reader.onload=()=>{
+    const text=String(reader.result||'');
+    qs('#teamsMeetingText').value=text;
+    previewTeamsText(text);
+  };
+  reader.readAsText(file, 'utf-8');
+}
+
+function previewTeamsText(text){
+  const participants=parseTeamsParticipants(text);
+  const preview=qs('#teamsPreview');
+  if(!preview) return;
+  preview.innerHTML = `<strong>ملخص أولي:</strong><br>
+  عدد الأسماء المحتملة: ${participants.length}<br>
+  ${participants.slice(0,12).join('، ')}${participants.length>12?' ...':''}`;
+}
+
+function parseTeamsParticipants(text){
+  if(!text) return [];
+  const lines=String(text).split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+  const names=[];
+  for(const line of lines){
+    let cleaned=line
+      .replace(/\[[^\]]+\]/g,'')
+      .replace(/\([^\)]*(joined|left|انضم|غادر|دخل|خرج)[^\)]*\)/ig,'')
+      .replace(/\b(joined|left|started|ended|meeting|chat)\b/ig,'')
+      .replace(/^\d{1,2}:\d{2}(:\d{2})?\s*/,'')
+      .replace(/[,:؛|-].*$/,'')
+      .trim();
+    if(cleaned.length>=3 && cleaned.length<=60 && !/[<>@]/.test(cleaned)){
+      if(!names.includes(cleaned)) names.push(cleaned);
+    }
+  }
+  return names.slice(0,40);
+}
+
+async function generateTeamsMinutesAI(){
+  const title=(qs('#teamsMeetingTitle')||{}).value||current.title;
+  const date=(qs('#teamsMeetingDate')||{}).value||'';
+  const text=(qs('#teamsMeetingText')||{}).value||'';
+  const participants=parseTeamsParticipants(text);
+  const extra=`عنوان الاجتماع: ${title}
+تاريخ الاجتماع: ${date}
+الحضور المحتملون: ${participants.join('، ') || 'غير محدد'}
+تفريغ/محادثة Teams:
+${text}
+
+المطلوب من Teams Meeting AI:
+- استخراج الحضور إن وجد.
+- تلخيص محاور الاجتماع أو النقاش.
+- استخراج القرارات.
+- استخراج التوصيات.
+- استخراج المهام والمسؤوليات.
+- تضمين النتائج في الحقول المناسبة داخل النموذج المفتوح.`;
+  closeTeamsAIModal();
+  await requestStructuredAI(extra, 'جاري تحليل اجتماع Teams وتضمينه في النموذج...');
+}
+
+/* ترقية زر الاستكمال السابق ليستخدم المحرك المهيكل بدل النص العام */
+aiComplete = async function(){
+  await requestStructuredAI('', 'جاري توليد مقترحات مهيكلة للتعبئة...');
+};
+
+const delegatedRecordKey=new URLSearchParams(location.search).get('record');
+if(delegatedRecordKey){
+  const requested=visibleForms().find(f=>f.id===delegatedRecordKey);
+  if(requested) current=requested;
+}
+renderNav();renderForm();loadCurrent();bindAutoGrow(qs('#formPage'));autoGrowAll(qs('#formPage'));
+
+
+(function(){
+  function fixWakilPaths(){
+    const correctPath = "./wakil-records.html";
+
+    document.querySelectorAll("iframe").forEach(frame=>{
+      const src = frame.getAttribute("src") || "";
+      if(src.includes("wakil-records.html") && src !== correctPath){
+        frame.setAttribute("src", correctPath);
       }
     });
-    Array.from(docClone.querySelectorAll('script')).forEach(function(x){x.remove();});
-    Array.from(docClone.querySelectorAll('.toolbar,.no-print-note')).forEach(function(x){x.remove();});
-    const head=docClone.querySelector('head');
-    if(head){
-      const meta=document.createElement('meta'); meta.setAttribute('charset','utf-8'); head.prepend(meta);
-      const printStyle=document.createElement('style');
-      printStyle.textContent='@page{size:A4 portrait;margin:0}html,body{width:210mm!important;background:#fff!important}.sheet{margin:0 auto!important;box-shadow:none!important;width:210mm!important;height:297mm!important;break-after:page;page-break-after:always;overflow:hidden!important}.sheet:last-child{break-after:auto;page-break-after:auto}.toolbar,.no-print-note{display:none!important}input,textarea,select{font-weight:900!important;color:#000!important;-webkit-text-fill-color:#000!important}select{appearance:none!important;-webkit-appearance:none!important}';
-      head.appendChild(printStyle);
-      const ttl=head.querySelector('title'); if(ttl) ttl.textContent=title||'زيارة إشرافية';
-    }
-    return '<!DOCTYPE html>\n'+docClone.outerHTML;
-  }catch(e){
-    return '<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>'+(title||'زيارة إشرافية')+'</title></head><body><pre style="font-family:Arial;white-space:pre-wrap">'+__visitReadableSummary(__visitData())+'</pre></body></html>';
+
+    document.querySelectorAll("[onclick]").forEach(el=>{
+      const val = el.getAttribute("onclick") || "";
+      if(val.includes("wakil-records.html")){
+        el.setAttribute(
+          "onclick",
+          val.replace(/['"`][^'"`]*wakil-records\.html['"`]/g, "'" + correctPath + "'")
+        );
+      }
+    });
   }
-}
-function __visitReadableSummary(data){
-  const get=k=>__safeVisitText(data[k]);
-  const lines=[
-    'استمارة زيارة مشرف الإدارة المدرسية',
-    'المدرسة: '+(get('school')||__visitSchoolName()),
-    'مدير/ة المدرسة: '+get('principal'),
-    'المشرف/ـة: '+get('supervisor'),
-    'يوم الزيارة: '+get('visit_day'),
-    'تاريخ الزيارة: '+(get('hijri_date_display')||[get('hijri_day'),get('hijri_month'),get('hijri_year')].filter(Boolean).join('/')),
-    'نقاط القوة: '+get('strengths'),
-    'فرص التحسين: '+get('improvements'),
-    'خطة العمل المقترحة: '+get('action_plan_text')
-  ];
-  return lines.filter(x=>!/:\s*$/.test(x)).join('\n');
-}
-function sendVisitToManagerPortfolio(){
-  autoSave();
-  const data=__visitData();
-  const keys=__managerMeetingKeys();
-  let all=[]; keys.forEach(k=>{ all=all.concat(__readArr(k)); });
-  const title=__nextVisitTitle(all);
-  const date=new Date();
-  const yyyy=date.getFullYear(), mm=String(date.getMonth()+1).padStart(2,'0'), dd=String(date.getDate()).padStart(2,'0');
-  const hh=String(date.getHours()).padStart(2,'0'), mi=String(date.getMinutes()).padStart(2,'0');
-  const summary=__visitReadableSummary(data);
-  const record={
-    id:'supervisor_visit_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
-    source:'supervisor_visit_form',
-    archiveType:'meetingMinutes',
-    title:title,
-    type:'زيارة إشرافية',
-    date: yyyy+'-'+mm+'-'+dd,
-    time: hh+':'+mi,
-    createdBy:'المشرف الزائر',
-    createdByRole:'leadership',
-    schoolId:__visitSchoolId(),
-    schoolName:__visitSchoolName(),
-    participants:[{id:'school_manager',name:'مدير/ة المدرسة',role:'leadership'}],
-    agenda:'استمارة الزيارة الإشرافية المعبأة من رابط الزيارة.\n\n'+summary,
-    recommendations:__safeVisitText(data.improvements)||'تم إرسال استمارة الزيارة الإشرافية إلى محفظة الاجتماعات.',
-    tasks:__safeVisitText(data.action_plan_text)||'',
-    attachments:[{name:title+'.pdf',type:'application/pdf',kind:'generated-from-print-html',printReady:true}],
-    formData:data,
-    minutes:summary,
-    summary:summary,
-    pdfHtml:__visitPrintablePdfHtml(title),
-    officialHtml:__visitPrintablePdfHtml(title),
-    templateHtml:__visitPrintablePdfHtml(title),
-    pdfFileName:title+'.pdf',
-    pdfReady:true,
-    createdAt:new Date().toISOString()
-  };
-  keys.forEach(key=>{
-    const arr=__readArr(key);
-    if(!arr.some(x=>String(x.id)===String(record.id))){ arr.unshift(record); __writeArr(key,arr); }
-  });
-  toast('تم إرسال الاستمارة PDF مطابق للطباعة إلى محفظة اجتماعات مدير/ة المدرسة باسم: '+title);
-}
+
+  document.addEventListener("DOMContentLoaded", fixWakilPaths);
+  window.addEventListener("load", fixWakilPaths);
+
+  setTimeout(fixWakilPaths, 300);
+  setTimeout(fixWakilPaths, 1000);
+  setTimeout(fixWakilPaths, 2500);
+})();

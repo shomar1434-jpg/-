@@ -792,6 +792,109 @@ input[data-table]{
 @media(max-width:900px){.teams-grid{grid-template-columns:1fr}}
 @media print{.ai-structured-badge,.teams-box,.teams-grid,.teams-drop,.structured-map{display:none!important}}
 
+
+.wakil-nav-group-title{margin:14px 0 7px;padding:8px 10px;border-radius:14px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.18);color:#fef3c7;font-size:12px;font-weight:900;letter-spacing:.2px;}
+.nav button[data-category="educational"]{border-right:4px solid #0ea5e9;}
+.nav button[data-category="school_affairs"]{border-right:4px solid #10b981;}
+.nav button[data-category="student_affairs"]{border-right:4px solid #8b5cf6;}
+.nav button[data-category="shared"]{border-right:4px solid #f59e0b;}
+
+
+/* ===== V24: Integrated section layout for on-screen use =====
+   يجعل سجلات الوكيل جزءًا أصيلًا من القسم بدل أن تبدو كنافذة A4 داخلية.
+   قواعد الطباعة الحالية تبقى كما هي دون تغيير. */
+@media screen {
+  html,body{
+    min-height:100%;
+    height:auto!important;
+    overflow:auto!important;
+    background:#fff!important;
+  }
+  .app{
+    min-height:100vh!important;
+    width:100%!important;
+    background:#fff!important;
+    align-items:stretch!important;
+  }
+  .sidebar{
+    min-height:100vh!important;
+    height:100vh!important;
+    border-radius:0!important;
+    box-shadow:none!important;
+  }
+  .main{
+    min-width:0!important;
+    width:100%!important;
+    padding:0!important;
+    margin:0!important;
+    background:#fff!important;
+    overflow:visible!important;
+  }
+  .toolbar{
+    margin:0!important;
+    padding:12px 18px!important;
+    background:#fff!important;
+    border-bottom:1px solid #dbe7e3!important;
+    box-shadow:none!important;
+    position:sticky!important;
+    top:0!important;
+    z-index:30!important;
+  }
+  .page{
+    width:100%!important;
+    max-width:none!important;
+    min-height:0!important;
+    margin:0!important;
+    padding:14px 18px 26px!important;
+    background:#fff!important;
+    border:0!important;
+    box-shadow:none!important;
+    overflow:visible!important;
+  }
+  .sheet,
+  .sheet.first,
+  .sheet.second{
+    width:100%!important;
+    max-width:none!important;
+    height:auto!important;
+    min-height:0!important;
+    max-height:none!important;
+    margin:0 0 14px!important;
+    padding:0!important;
+    background:#fff!important;
+    border:0!important;
+    border-radius:0!important;
+    box-shadow:none!important;
+    overflow:visible!important;
+  }
+  .sheet .official-frame,
+  .official-frame{
+    width:100%!important;
+    height:auto!important;
+    min-height:0!important;
+    max-height:none!important;
+    padding:18px 20px!important;
+    margin:0!important;
+    overflow:visible!important;
+    border:1px solid #c7ddd3!important;
+    border-radius:12px!important;
+    background:#fff!important;
+    box-shadow:none!important;
+  }
+  .sheet-content,
+  .sheet.first .sheet-content,
+  .sheet.second .sheet-content{
+    width:100%!important;
+    height:auto!important;
+    min-height:0!important;
+    max-height:none!important;
+    overflow:visible!important;
+  }
+  .sheet-footer,.page-counter{
+    position:static!important;
+    margin-top:10px!important;
+  }
+}
 </style>
 <script>
 /* inlined wakil-schemas.js */
@@ -1218,10 +1321,26 @@ ${extraText || "لا يوجد"}
 }
 </style>
 
+<script id="gender-neutral-labels-safe">
+/* Hotfix: نظام تسميات خفيف بدون مراقبة مستمرة أو فحص شامل للصفحة.
+   التسميات المحايدة تم تثبيتها داخل النصوص، وهذا السكربت يوفّر قاموسًا فقط للاستخدامات المستقبلية. */
+(function(){
+  window.roleLabels = window.roleLabels || {
+    manager: 'المدير/المديرة',
+    deputy: 'الوكيل/الوكيلة',
+    teacher: 'المعلم/المعلمة',
+    supervisor: 'الموجه/الموجهة',
+    activityLeader: 'رائد/رائدة النشاط',
+    adminEmployee: 'الموظف/الموظفة الإدارية',
+    student: 'الطالب/الطالبة'
+  };
+})();
+</script>
+
 
 <!-- PREMIUM_UI_2026 -->
-<link rel="stylesheet" href="../../premium-ui.css">
-<script defer src="../../premium-ui.js"></script>
+<link rel="stylesheet" href="premium-ui.css">
+<script defer src="premium-ui.js"></script>
 <script src="platform-state-engine.js"></script>
 <script src="platform-persistence-guard.js"></script>
 </head>
@@ -1230,7 +1349,58 @@ ${extraText || "لا يوجد"}
 
 <div class="modal no-print" id="settingsModal"><div class="box"><h2>إعدادات الوكيل المخصصة</h2><div class="settings-grid"><div><label>إدارة التعليم</label><input id="setEdu" placeholder="إدارة التعليم"></div><div><label>مكتب التعليم</label><input id="setOffice" placeholder="مكتب التعليم"></div><div><label>اسم المدرسة</label><input id="setSchool" placeholder="اسم المدرسة"></div><div><label>اسم الوكيل</label><input id="setWakil" placeholder="اسم الوكيل"></div><div><label>اسم المدير</label><input id="setManager" placeholder="اسم المدير"></div><div><label>العام الدراسي</label><input id="setYear" placeholder="1447 هـ"></div><div><label>التوقيع الرقمي للوكيل</label><input type="file" accept="image/png,image/jpeg" onchange="loadImage(event,'setSignaturePreview','signature')"><div class="preview"><img id="setSignaturePreview"></div></div><div><label>الختم الرقمي للمدرسة</label><input type="file" accept="image/png,image/jpeg" onchange="loadImage(event,'setStampPreview','stamp')"><div class="preview"><img id="setStampPreview"></div></div><div><label>توقيع مدير/ة المدرسة</label><input type="file" accept="image/png,image/jpeg" onchange="loadImage(event,'setManagerSignaturePreview','managerSignature')"><div class="preview"><img id="setManagerSignaturePreview"></div></div></div><div style="display:flex;gap:8px;margin-top:12px"><button class="btn" onclick="saveSettings()">حفظ الإعدادات</button><button class="btn gray" onclick="closeSettings()">إغلاق</button></div></div></div>
 <script>
-const FORMS = [{"id": "student-referral", "title": "تحويل طالب للوكيل", "sections": [["بيانات الطالب", ["اسم الطالب", "السجل المدني", "الصف", "الفصل", "المرشد الطلابي", "تاريخ التحويل"]], ["بيانات التحويل", ["اسم المحول", "صفته", "سبب التحويل", "وصف الحالة"]], ["إجراء الوكيل", ["الإجراء المتخذ", "التوصيات", "تاريخ المتابعة"]]], "kind": "student"}, {"id": "repeated-absence-referral", "title": "تحويل طالب متكرر الغياب", "sections": [["بيانات الطالب", ["اسم الطالب", "السجل المدني", "الصف", "الفصل", "ولي الأمر", "رقم التواصل", "تاريخ التحويل"]], ["حصر الغياب", ["عدد أيام الغياب", "آخر يوم حضور", "الأيام المتكررة", "أسباب الغياب حسب الإفادة"]], ["إجراء الوكيل", ["الإجراءات المتخذة", "توصيات الوكيل", "موعد المتابعة"]]], "kind": "student"}, {"id": "daily-duty-report", "title": "تقرير المناوبة اليومي", "sections": [["بيانات اليوم", ["اليوم", "التاريخ", "الفترة", "المناوب الأول", "المناوب الثاني", "المناوب الثالث", "مشرف الانصراف"]], ["ملاحظات المناوبة", ["الحضور العام", "ملاحظات بداية اليوم", "ملاحظات الفسحة", "ملاحظات الانصراف"]], ["الحالات والتوصيات", ["الحالات المرصودة", "الإجراءات الفورية", "التوصيات"]]], "kind": "table"}, {"id": "late-leave-warning", "title": "تنبيه عن تأخر أو انصراف", "sections": [["بيانات المستفيد", ["اسم الطالب / الموظف", "الصف / العمل", "التاريخ", "نوع الحالة", "وقت الحضور أو الانصراف"]], ["تفاصيل الحالة", ["عدد مرات التكرار", "المبررات المقدمة", "الإشعار الموجه"]], ["الإجراء", ["الإجراء النظامي", "توصيات الوكيل"]]], "kind": "notice"}, {"id": "class-visits-plan", "title": "خطة الزيارات الصفية", "sections": [["بيانات الخطة", ["الفصل الدراسي", "الفترة", "الأسبوع", "الهدف العام من الزيارات"]], ["بيانات الزيارة", ["اسم المعلم/ة", "المادة", "الفصل", "تاريخ الزيارة", "الحصة"]], ["متابعة التنفيذ", ["ملحوظات الزيارة", "جوانب القوة", "فرص التحسين", "التوصيات"]]], "kind": "visits"}, {"id": "student-permission", "title": "سجل استئذان الطلاب", "sections": [["بيانات الطالب", ["اسم الطالب", "الصف", "الفصل", "التاريخ", "وقت الخروج", "المستلم", "صلة المستلم"]], ["بيانات الاستئذان", ["سبب الاستئذان", "رقم التواصل", "حالة العودة"]], ["اعتماد وملاحظات", ["موافقة الوكيل", "ملاحظات"]]], "kind": "permission"}, {"id": "staff-permission", "title": "سجل استئذان الموظفين", "sections": [["بيانات الموظف", ["اسم الموظف", "المسمى / التخصص", "التاريخ", "وقت الخروج", "وقت العودة"]], ["بيانات الاستئذان", ["سبب الاستئذان", "مدة الاستئذان", "البديل إن وجد"]], ["اعتماد وملاحظات", ["موافقة المسؤول", "ملاحظات"]]], "kind": "permission"}, {"id": "waiting-register", "title": "سجل الانتظار", "sections": [["بيانات الحصة", ["اليوم", "التاريخ", "الحصة", "الفصل"]], ["بيانات المعلم", ["المعلم الغائب", "المعلم المنفذ", "المادة"]], ["تنفيذ الانتظار", ["موضوع الحصة", "آلية التنفيذ", "ملاحظات"]]], "kind": "waiting"}, {"id": "daily-supervision", "title": "سجل المناوبة والإشراف اليومي", "sections": [["بيانات الإشراف", ["اليوم", "التاريخ", "الفترة", "نقطة الإشراف"]], ["المكلفون بالإشراف", ["المناوبون", "الموقع", "زمن الإشراف"]], ["الحالات والإجراء", ["الحالات المرصودة", "الإجراء المتخذ", "التوصيات"]]], "kind": "supervision"}, {"id": "deduction-late-leave", "title": "قرار حسم تأخر وخروج", "sections": [["بيانات الموظف", ["اسم الموظف", "المسمى الوظيفي", "رقم الهوية", "التاريخ"]], ["بيانات المخالفة", ["نوع الحالة", "وقت التأخر / الخروج", "مدة الحسم", "المستند النظامي"]], ["الإجراء النظامي", ["نص القرار", "الملاحظات"]]], "kind": "decision"}, {"id": "deduction-absence", "title": "قرار حسم غياب", "sections": [["بيانات الموظف", ["اسم الموظف", "المسمى الوظيفي", "رقم الهوية", "تاريخ الغياب"]], ["بيانات الغياب", ["عدد أيام الغياب", "نوع الغياب", "مدة الحسم", "المستند النظامي"]], ["الإجراء النظامي", ["نص القرار", "الملاحظات"]]], "kind": "decision"}, {"id": "late-students-list", "title": "كشف بأسماء الطلاب المتأخرين", "sections": [["بيانات الكشف", ["اليوم", "التاريخ", "الأسبوع", "الفصل الدراسي"]], ["متابعة التأخر", ["عدد الطلاب المتأخرين", "أبرز الأسباب", "الإجراء المتخذ"]], ["التوصيات", ["توصيات الوكيل", "خطة المتابعة"]]], "kind": "late-list"}, {"id": "absence-inquiry", "title": "مساءلة غياب", "sections": [["بيانات الموظف", ["اسم الموظف", "المسمى الوظيفي", "تاريخ الغياب", "مدة الغياب"]], ["إفادة الموظف", ["سبب الغياب حسب الإفادة", "المرفقات", "تاريخ الإفادة"]], ["رأي الإدارة", ["رأي الوكيل", "قرار المدير", "ملاحظات"]]], "kind": "inquiry"}];
+const FORMS = [{"id": "school-timetables","title": "الجداول المدرسية","category": "educational","archiveFolder": "school-timetables","sections": [["بيانات الجدول",["العام الدراسي","الفصل الدراسي","المرحلة","الصفوف المشمولة","تاريخ اعتماد الجدول"]],["متابعة الجدول",["عدد الجداول المعتمدة","آخر تحديث","ملاحظات التعارض","الإجراء المتخذ"]],["اعتماد الجدول",["مسؤول الإعداد","مراجعة الوكيل","اعتماد المدير"]]],"kind": "table"},{"id": "waiting-register","title": "حصص الانتظار","category": "educational","archiveFolder": "waiting-register","sections": [["بيانات الحصة",["اليوم","التاريخ","الحصة","الفصل"]],["بيانات المعلم",["المعلم الغائب","المعلم المنفذ","المادة"]],["تنفيذ الانتظار",["موضوع الحصة","آلية التنفيذ","ملاحظات"]]],"kind": "waiting"},{"id": "daily-supervision","title": "المناوبة والإشراف اليومي","category": "educational","archiveFolder": "daily-supervision","sections": [["بيانات الإشراف",["اليوم","التاريخ","الفترة","نقطة الإشراف"]],["المكلفون بالإشراف",["المناوبون","الموقع","زمن الإشراف"]],["الحالات والإجراء",["الحالات المرصودة","الإجراء المتخذ","التوصيات"]]],"kind": "supervision"},{"id": "daily-duty-report","title": "تقرير المناوبة اليومي","category": "educational","archiveFolder": "daily-duty-report","sections": [["بيانات اليوم",["اليوم","التاريخ","الفترة","المناوب الأول","المناوب الثاني","المناوب الثالث","مشرف الانصراف"]],["ملاحظات المناوبة",["الحضور العام","ملاحظات بداية اليوم","ملاحظات الفسحة","ملاحظات الانصراف"]],["الحالات والتوصيات",["الحالات المرصودة","الإجراءات الفورية","التوصيات"]]],"kind": "table"},{"id": "study-plans","title": "الخطط الدراسية","category": "educational","archiveFolder": "study-plans","sections": [["بيانات الخطة",["العام الدراسي","الفصل الدراسي","المرحلة","الصف","المادة"]],["متابعة الخطة",["نسبة الإنجاز","أبرز ملاحظات التنفيذ","معوقات التنفيذ","الإجراء المتخذ"]],["اعتماد ومتابعة",["اسم المعلم/ة","تاريخ المتابعة","توصيات الوكيل"]]],"kind": "table"},{"id": "teaching-staff-development","title": "دعم وتطوير الهيئة التعليمية","category": "educational","archiveFolder": "teaching-staff-development","sections": [["بيانات البرنامج",["اسم البرنامج","الفئة المستهدفة","الفترة","منفذ البرنامج"]],["أثر الدعم",["الاحتياج التدريبي","الإجراءات المقدمة","مؤشرات التحسن"]],["المتابعة",["توصيات الوكيل","خطة المتابعة","ملاحظات"]]],"kind": "table"},{"id": "teacher-admin-followup","title": "متابعة أعمال المعلمين والإداريين","category": "educational","archiveFolder": "teacher-admin-followup","sections": [["بيانات المتابعة",["الأسبوع","الفترة","الفئة المستهدفة","اسم المسؤول عن المتابعة"]],["عناصر المتابعة",["الأعمال المطلوبة","نسبة الإنجاز","الشواهد","ملاحظات التنفيذ"]],["الإجراءات",["الإجراء المتخذ","التوصيات","موعد المتابعة"]]],"kind": "table"},{"id": "achievement-learning-loss","title": "التحصيل الدراسي والفاقد التعليمي","category": "educational","archiveFolder": "achievement-learning-loss","sections": [["بيانات التحصيل",["الصف","المادة","الفترة","عدد الطلاب"]],["تحليل الفاقد",["مواطن الضعف","نسبة الإتقان","أسباب الفاقد","الفئة المستهدفة"]],["خطة المعالجة",["الإجراء العلاجي","المدة","المسؤول","مؤشرات التحسن"]]],"kind": "table"},{"id": "general-exams-file","title": "ملف الاختبار العام","category": "educational","archiveFolder": "general-exams-file","sections": [["بيانات الاختبارات",["الفصل الدراسي","الفترة الاختبارية","عدد اللجان","عدد الطلاب"]],["متابعة الاستعداد",["الجداول","اللجان","النماذج والمحاضر","حالة التسليم"]],["ملاحظات واعتماد",["أبرز الملاحظات","الإجراءات التصحيحية","توصيات الوكيل"]]],"kind": "table"},{"id": "international-tests-file","title": "ملف الاختبارات الدولية","category": "educational","archiveFolder": "international-tests-file","sections": [["بيانات الاختبار",["اسم الاختبار","الفئة المستهدفة","الفترة","منسق الاختبار"]],["الاستعداد والتنفيذ",["خطة التهيئة","الطلاب المستهدفون","الشواهد","حالة التنفيذ"]],["النتائج والمتابعة",["أبرز النتائج","فرص التحسين","التوصيات"]]],"kind": "table"},{"id": "madrasati-platform","title": "منصة مدرستي","category": "educational","archiveFolder": "madrasati-platform","sections": [["بيانات المتابعة",["الأسبوع","الفترة","الفئة المستهدفة","اسم المسؤول"]],["مؤشرات المنصة",["نسبة الدخول","تفعيل الواجبات","تفعيل الاختبارات","تفعيل الدروس"]],["الإجراءات",["ملاحظات التعثر","الإجراء المتخذ","توصيات الوكيل"]]],"kind": "table"},{"id": "professional-growth","title": "النمو المهني","category": "educational","archiveFolder": "professional-growth","sections": [["بيانات النمو المهني",["الفترة","اسم المعلم/ة","التخصص","نوع البرنامج"]],["ساعات النمو",["عدد الساعات","نوع الرخصة","الحالة","الاحتياج التدريبي"]],["المتابعة",["أثر البرنامج","توصيات الوكيل","ملاحظات"]]],"kind": "table"},{"id": "gifted-file","title": "ملف الموهوبين / الموهوبات","category": "educational","archiveFolder": "gifted-file","sections": [["بيانات الملف",["الفترة","مسؤول الموهوبين","عدد الطلاب المرشحين","عدد البرامج"]],["الرعاية والبرامج",["أسماء البرامج","الشواهد","مؤشرات المشاركة","ملاحظات التنفيذ"]],["التوصيات",["فرص التحسين","الإجراء المتخذ","توصيات الوكيل"]]],"kind": "table"},{"id": "special-education","title": "التربية الخاصة","category": "educational","archiveFolder": "special-education","sections": [["بيانات المستفيدين",["الفترة","الفئة","عدد الطلاب","المعلم/ة المسؤول"]],["متابعة الخدمات",["الخدمات المقدمة","الخطط الفردية","الشواهد","نسبة الإنجاز"]],["المتابعة",["أبرز الاحتياجات","الإجراء المتخذ","توصيات الوكيل"]]],"kind": "table"},{"id": "official-work-register","title": "سجل العمل الرسمي","category": "school_affairs","archiveFolder": "official-work-register","sections": [["بيانات الدوام",["اليوم","التاريخ","الفترة","المسؤول المناوب"]],["حضور الموظفين",["عدد الحاضرين","عدد الغائبين","عدد المتأخرين","ملاحظات الدوام"]],["الإجراءات",["الإجراء المتخذ","توصيات الوكيل","ملاحظات"]]],"kind": "table"},{"id": "staff-permission","title": "استئذان الموظفين","category": "school_affairs","archiveFolder": "staff-permission","sections": [["بيانات الموظف",["اسم الموظف","المسمى / التخصص","التاريخ","وقت الخروج","وقت العودة"]],["بيانات الاستئذان",["سبب الاستئذان","مدة الاستئذان","البديل إن وجد"]],["اعتماد وملاحظات",["موافقة المسؤول","ملاحظات"]]],"kind": "permission"},{"id": "staff-absence-inventory","title": "حصر غياب الموظفين","category": "school_affairs","archiveFolder": "staff-absence-inventory","sections": [["بيانات الحصر",["الفترة","الأسبوع","الشهر","المسؤول عن الحصر"]],["حالات الغياب",["اسم الموظف","تاريخ الغياب","نوع الغياب","المبرر"]],["الإجراءات",["الإجراء المتخذ","متابعة نظام نور / فارس","توصيات الوكيل"]]],"kind": "table"},{"id": "delay-minutes-inventory","title": "حصر دقائق التأخير","category": "school_affairs","archiveFolder": "delay-minutes-inventory","sections": [["بيانات الحصر",["الفترة","الأسبوع","الشهر","المسؤول عن الحصر"]],["حالات التأخير",["اسم الموظف","تاريخ التأخير","وقت الحضور","عدد دقائق التأخير"]],["الإجراءات",["عدد مرات التكرار","الإشعار الموجه","الإجراء النظامي","توصيات الوكيل"]]],"kind": "table"},{"id": "referrals","title": "التحويلات","category": "school_affairs","archiveFolder": "referrals","sections": [["بيانات التحويل",["نوع التحويل","اسم المستفيد","الجهة المحول إليها","تاريخ التحويل"]],["تفاصيل الحالة",["سبب التحويل","الإجراء المطلوب","المرفقات","حالة المتابعة"]],["الإغلاق",["نتيجة التحويل","توصيات الوكيل","ملاحظات"]]],"kind": "table"},{"id": "custody-warehouses-archive","title": "العهد والمستودعات والأرشفة","category": "school_affairs","archiveFolder": "custody-warehouses-archive","sections": [["بيانات العهدة",["نوع العهدة","رقم العهدة","الموقع","المسؤول عنها"]],["متابعة المستودع",["حالة العهدة","تاريخ الجرد","النواقص","الإجراء المتخذ"]],["الأرشفة",["رقم ملف الأرشفة","موقع الحفظ","توصيات الوكيل"]]],"kind": "table"},{"id": "maintenance-cleaning","title": "الصيانة والنظافة","category": "school_affairs","archiveFolder": "maintenance-cleaning","sections": [["بيانات البلاغ",["التاريخ","الموقع","نوع البلاغ","درجة الأولوية"]],["متابعة التنفيذ",["وصف المشكلة","الإجراء المتخذ","الجهة المنفذة","حالة البلاغ"]],["الإغلاق",["تاريخ الإغلاق","ملاحظات الجودة","توصيات الوكيل"]]],"kind": "table"},{"id": "school-transport","title": "النقل المدرسي","category": "school_affairs","archiveFolder": "school-transport","sections": [["بيانات النقل",["الفترة","عدد الحافلات","عدد الطلاب المستفيدين","المتعهد"]],["متابعة يومية",["الحضور والانصراف","الملاحظات المرصودة","الإجراء المتخذ","الشواهد"]],["التوصيات",["ملاحظات السلامة","توصيات الوكيل","موعد المتابعة"]]],"kind": "table"},{"id": "school-canteen","title": "المقصف المدرسي","category": "school_affairs","archiveFolder": "school-canteen","sections": [["بيانات المقصف",["الفترة","المتعهد","المسؤول المتابع","تاريخ الزيارة"]],["متابعة التشغيل",["النظافة","سلامة الأغذية","الأسعار","الملاحظات"]],["الإجراءات",["المخالفة إن وجدت","الإجراء المتخذ","توصيات الوكيل"]]],"kind": "table"},{"id": "facilities","title": "المرافق","category": "school_affairs","archiveFolder": "facilities","sections": [["بيانات المرفق",["اسم المرفق","الموقع","المسؤول عنه","تاريخ المتابعة"]],["حالة المرفق",["النظافة","السلامة","الصيانة المطلوبة","ملاحظات الاستخدام"]],["الإجراءات",["الإجراء المتخذ","تاريخ المتابعة القادم","توصيات الوكيل"]]],"kind": "table"},{"id": "labs-sources","title": "المعامل والمختبرات ومصادر التعلم","category": "school_affairs","archiveFolder": "labs-sources","sections": [["بيانات الموقع",["نوع الموقع","اسم المسؤول","الفترة","تاريخ المتابعة"]],["متابعة التجهيزات",["الأجهزة والأدوات","حالة السلامة","الاستخدام الفعلي","النواقص"]],["الإجراءات",["الإجراء المتخذ","احتياج الدعم","توصيات الوكيل"]]],"kind": "table"},{"id": "admin-teacher-followup","title": "متابعة الإداريين والمعلمين","category": "school_affairs","archiveFolder": "admin-teacher-followup","sections": [["بيانات المتابعة",["الفترة","الفئة المستهدفة","اسم الموظف","المسمى"]],["محاور المتابعة",["الانضباط","إنجاز الأعمال","التعاون","الشواهد"]],["الإجراءات",["جوانب القوة","فرص التحسين","توصيات الوكيل"]]],"kind": "table"},{"id": "visitors-register","title": "سجل الزائرين","category": "school_affairs","archiveFolder": "visitors-register","sections": [["بيانات الزائر",["اسم الزائر","الجهة","التاريخ","وقت الدخول","وقت الخروج"]],["سبب الزيارة",["الغرض من الزيارة","الشخص المقابل","الإجراء المتخذ"]],["ملاحظات",["ملاحظات الأمن والسلامة","توصيات الوكيل"]]],"kind": "table"},{"id": "noor-leaves-followup","title": "متابعة إدخال الإجازات في نظام نور","category": "school_affairs","archiveFolder": "noor-leaves-followup","sections": [["بيانات المتابعة",["الفترة","المسؤول عن الإدخال","عدد الإجازات","تاريخ المراجعة"]],["حالة الإدخال",["الإجازات المدخلة","الإجازات المعلقة","أسباب التعليق","الإجراء المتخذ"]],["اعتماد",["توصيات الوكيل","ملاحظات"]]],"kind": "table"},{"id": "fares-entry-followup","title": "متابعة الإدخال في نظام فارس","category": "school_affairs","archiveFolder": "fares-entry-followup","sections": [["بيانات المتابعة",["الفترة","المسؤول عن الإدخال","نوع البيانات","تاريخ المراجعة"]],["حالة الإدخال",["المدخلات المكتملة","المدخلات المعلقة","أسباب التعليق","الإجراء المتخذ"]],["اعتماد",["توصيات الوكيل","ملاحظات"]]],"kind": "table"},{"id": "summary-print","title": "طباعة الخلاصة","category": "school_affairs","archiveFolder": "summary-print","sections": [["بيانات الخلاصة",["الفترة","نوع الخلاصة","عدد السجلات المشمولة","تاريخ الطباعة"]],["ملخص المؤشرات",["أبرز المنجزات","أبرز الملاحظات","الإجراءات المنفذة"]],["اعتماد",["توصيات الوكيل","ملاحظات المدير","حالة الاعتماد"]]],"kind": "table"},{"id": "student-daily-attendance","title": "متابعة الحضور اليومي للطلاب","category": "student_affairs","archiveFolder": "student-affairs/daily-attendance","sections": [["بيانات المتابعة",["اليوم","التاريخ","الأسبوع","الفصل الدراسي","المسؤول عن المتابعة"]],["إحصاءات الحضور",["عدد الطلاب","عدد الحاضرين","عدد الغائبين","نسبة الحضور","أبرز الملاحظات"]],["الإجراءات",["الإجراء المتخذ","التواصل مع ولي الأمر","توصيات الوكيل"]]],"kind": "table"},{"id": "student-absence-inventory","title": "حصر غياب الطلاب","category": "student_affairs","archiveFolder": "student-affairs/student-absence","sections": [["بيانات الحصر",["الفترة","الأسبوع","الشهر","الصف","الشعبة"]],["حالات الغياب",["اسم الطالب","السجل المدني","عدد أيام الغياب","آخر يوم حضور","المبرر"]],["المتابعة",["الإجراءات المتخذة","إحالة للمرشد الطلابي","موعد المتابعة","توصيات الوكيل"]]],"kind": "student"},{"id": "student-morning-late","title": "حصر التأخر الصباحي للطلاب","category": "student_affairs","archiveFolder": "student-affairs/morning-late","sections": [["بيانات التأخر",["اليوم","التاريخ","الأسبوع","الفصل الدراسي"]],["حالات التأخر",["اسم الطالب","الصف","الشعبة","وقت الحضور","عدد مرات التكرار"]],["الإجراءات",["التنبيه الموجه","التواصل مع ولي الأمر","الإجراء النظامي","توصيات الوكيل"]]],"kind": "late-list"},{"id": "student-behavior-violations","title": "سجل المخالفات السلوكية","category": "student_affairs","archiveFolder": "student-affairs/behavior-violations","sections": [["بيانات الطالب",["اسم الطالب","السجل المدني","الصف","الفصل","تاريخ الحالة"]],["تفاصيل المخالفة",["نوع المخالفة","وصف الحالة","مكان وقوع الحالة","الشهود إن وجدوا"]],["الإجراء التربوي",["الإجراء المتخذ","إحالة للمرشد الطلابي","إشعار ولي الأمر","خطة المتابعة"]]],"kind": "student"},{"id": "student-cases-register","title": "سجل القضايا الطلابية","category": "student_affairs","archiveFolder": "student-affairs/student-cases","sections": [["بيانات القضية",["رقم القضية","تاريخ فتح القضية","اسم الطالب","الصف","درجة السرية"]],["تفاصيل القضية",["وصف الحالة","الأطراف ذات العلاقة","الإجراءات الأولية","المرفقات"]],["الإغلاق والمتابعة",["نتيجة المعالجة","تاريخ الإغلاق","توصيات الوكيل","موعد المتابعة"]]],"kind": "student"},{"id": "special-student-cases","title": "الحالات الخاصة","category": "student_affairs","archiveFolder": "student-affairs/special-cases","sections": [["بيانات الحالة",["اسم الطالب","السجل المدني","الصف","نوع الحالة","تاريخ الرصد"]],["الدعم المقدم",["وصف الاحتياج","الإجراءات الداعمة","الجهات المشاركة","الشواهد"]],["خطة المتابعة",["مسؤول المتابعة","موعد المتابعة","مؤشرات التحسن","توصيات الوكيل"]]],"kind": "student"},{"id": "behavioral-risk-followup","title": "متابعة التعثر السلوكي","category": "student_affairs","archiveFolder": "student-affairs/behavioral-risk","sections": [["بيانات الطالب",["اسم الطالب","الصف","الفصل","الفترة"]],["مؤشرات التعثر",["نوع السلوك المتكرر","عدد مرات التكرار","الأسباب المحتملة","درجة الخطورة"]],["الخطة العلاجية",["الإجراء العلاجي","دور الأسرة","دور المرشد الطلابي","توصيات الوكيل"]]],"kind": "student"},{"id": "student-remedial-plans","title": "متابعة الخطط العلاجية للطلاب","category": "student_affairs","archiveFolder": "student-affairs/remedial-plans","sections": [["بيانات الخطة",["اسم الطالب","الصف","المجال","الفترة","المسؤول عن الخطة"]],["تنفيذ الخطة",["أهداف الخطة","الإجراءات المنفذة","الشواهد","نسبة الإنجاز"]],["قياس الأثر",["مؤشرات التحسن","معوقات التنفيذ","التوصيات","موعد المراجعة"]]],"kind": "table"},{"id": "student-profile","title": "ملف الطالب","category": "student_affairs","archiveFolder": "student-affairs/student-profile","sections": [["بيانات الطالب",["اسم الطالب","السجل المدني","الصف","الفصل","ولي الأمر","رقم التواصل"]],["ملخص المتابعة",["الحضور والغياب","السلوك","التحصيل","الخدمات المقدمة"]],["الإجراءات",["آخر إجراء","التوصيات","موعد المتابعة القادم"]]],"kind": "student"},{"id": "student-guidance-programs","title": "برامج التوجيه والإرشاد","category": "student_affairs","archiveFolder": "student-affairs/guidance-programs","sections": [["بيانات البرنامج",["اسم البرنامج","الفئة المستهدفة","الفترة","منفذ البرنامج"]],["تنفيذ البرنامج",["الأهداف","آلية التنفيذ","عدد المستفيدين","الشواهد"]],["الأثر والتوصيات",["مؤشرات الأثر","فرص التحسين","توصيات الوكيل"]]],"kind": "table"},{"id": "student-services","title": "الخدمات الطلابية والتكافل","category": "student_affairs","archiveFolder": "student-affairs/student-services","sections": [["بيانات الخدمة",["نوع الخدمة","الفئة المستفيدة","الفترة","المسؤول"]],["تفاصيل الخدمة",["عدد المستفيدين","آلية الترشيح","الدعم المقدم","الشواهد"]],["المتابعة",["ملاحظات التنفيذ","الإجراءات التصحيحية","توصيات الوكيل"]]],"kind": "table"},{"id": "parent-communication","title": "سجل التواصل مع أولياء الأمور","category": "student_affairs","archiveFolder": "student-affairs/parent-communication","sections": [["بيانات التواصل",["اسم الطالب","ولي الأمر","رقم التواصل","التاريخ","وسيلة التواصل"]],["موضوع التواصل",["سبب التواصل","ملخص الإفادة","الإجراء المتفق عليه"]],["المتابعة",["موعد المتابعة","نتيجة التواصل","توصيات الوكيل"]]],"kind": "student"},{"id": "family-meetings","title": "محاضر الاجتماعات الأسرية والاستدعاءات","category": "student_affairs","archiveFolder": "student-affairs/family-meetings","sections": [["بيانات الاجتماع",["اسم الطالب","ولي الأمر","التاريخ","الحضور","سبب الاستدعاء"]],["محضر الاجتماع",["ملخص النقاش","التزامات الأسرة","التزامات المدرسة","الإجراءات المتفق عليها"]],["اعتماد ومتابعة",["موعد المتابعة","توصيات الوكيل","حالة الإغلاق"]]],"kind": "student"},{"id": "student-safety-incidents","title": "الحوادث والإصابات والبلاغات الطلابية","category": "student_affairs","archiveFolder": "student-affairs/safety-incidents","sections": [["بيانات الحالة",["التاريخ","الوقت","الموقع","اسم الطالب","الصف"]],["تفاصيل البلاغ",["نوع الحالة","وصف الحادثة","الإجراء الفوري","الجهة التي تم إشعارها"]],["الإغلاق",["الإسعافات أو المعالجة","التواصل مع ولي الأمر","توصيات السلامة","حالة الإغلاق"]]],"kind": "student"},{"id": "student-referral","title": "تحويل طالب للوكيل","category": "shared","archiveFolder": "student-referral","sections": [["بيانات الطالب",["اسم الطالب","السجل المدني","الصف","الفصل","المرشد الطلابي","تاريخ التحويل"]],["بيانات التحويل",["اسم المحول","صفته","سبب التحويل","وصف الحالة"]],["إجراء الوكيل",["الإجراء المتخذ","التوصيات","تاريخ المتابعة"]]],"kind": "student"},{"id": "repeated-absence-referral","title": "تحويل طالب متكرر الغياب","category": "shared","archiveFolder": "repeated-absence-referral","sections": [["بيانات الطالب",["اسم الطالب","السجل المدني","الصف","الفصل","ولي الأمر","رقم التواصل","تاريخ التحويل"]],["حصر الغياب",["عدد أيام الغياب","آخر يوم حضور","الأيام المتكررة","أسباب الغياب حسب الإفادة"]],["إجراء الوكيل",["الإجراءات المتخذة","توصيات الوكيل","موعد المتابعة"]]],"kind": "student"},{"id": "student-permission","title": "سجل استئذان الطلاب","category": "shared","archiveFolder": "student-permission","sections": [["بيانات الطالب",["اسم الطالب","الصف","الفصل","التاريخ","وقت الخروج","المستلم","صلة المستلم"]],["بيانات الاستئذان",["سبب الاستئذان","رقم التواصل","حالة العودة"]],["اعتماد وملاحظات",["موافقة الوكيل","ملاحظات"]]],"kind": "permission"},{"id": "late-students-list","title": "كشف بأسماء الطلاب المتأخرين","category": "shared","archiveFolder": "late-students-list","sections": [["بيانات الكشف",["اليوم","التاريخ","الأسبوع","الفصل الدراسي"]],["متابعة التأخر",["عدد الطلاب المتأخرين","أبرز الأسباب","الإجراء المتخذ"]],["التوصيات",["توصيات الوكيل","خطة المتابعة"]]],"kind": "late-list"},{"id": "late-leave-warning","title": "تنبيه عن تأخر أو انصراف","category": "shared","archiveFolder": "late-leave-warning","sections": [["بيانات المستفيد",["اسم الطالب / الموظف","الصف / العمل","التاريخ","نوع الحالة","وقت الحضور أو الانصراف"]],["تفاصيل الحالة",["عدد مرات التكرار","المبررات المقدمة","الإشعار الموجه"]],["الإجراء",["الإجراء النظامي","توصيات الوكيل"]]],"kind": "notice"},{"id": "deduction-late-leave","title": "قرار حسم تأخر وخروج","category": "shared","archiveFolder": "deduction-late-leave","sections": [["بيانات الموظف",["اسم الموظف","المسمى الوظيفي","رقم الهوية","التاريخ"]],["بيانات المخالفة",["نوع الحالة","وقت التأخر / الخروج","مدة الحسم","المستند النظامي"]],["الإجراء النظامي",["نص القرار","الملاحظات"]]],"kind": "decision"},{"id": "deduction-absence","title": "قرار حسم غياب","category": "shared","archiveFolder": "deduction-absence","sections": [["بيانات الموظف",["اسم الموظف","المسمى الوظيفي","رقم الهوية","تاريخ الغياب"]],["بيانات الغياب",["عدد أيام الغياب","نوع الغياب","مدة الحسم","المستند النظامي"]],["الإجراء النظامي",["نص القرار","الملاحظات"]]],"kind": "decision"},{"id": "absence-inquiry","title": "مساءلة غياب","category": "shared","archiveFolder": "absence-inquiry","sections": [["بيانات الموظف",["اسم الموظف","المسمى الوظيفي","تاريخ الغياب","مدة الغياب"]],["إفادة الموظف",["سبب الغياب حسب الإفادة","المرفقات","تاريخ الإفادة"]],["رأي الإدارة",["رأي الوكيل","قرار المدير","ملاحظات"]]],"kind": "inquiry"}];
+
+const WAKIL_CATEGORY_LABELS = {
+  educational: 'وكيل الشؤون التعليمية',
+  school_affairs: 'وكيل الشؤون المدرسية',
+  student_affairs: 'وكيل شؤون الطلاب',
+  shared: 'السجلات المشتركة'
+};
+const WAKIL_CATEGORY_ORDER = ['educational','school_affairs','student_affairs','shared'];
+const WAKIL_AGENCY_LABELS = {educational:'وكيل/وكيلة الشؤون التعليمية',school_affairs:'وكيل/وكيلة الشؤون المدرسية',student_affairs:'وكيل/وكيلة شؤون الطلاب'};
+function wakilCategoryLabel(cat){return WAKIL_CATEGORY_LABELS[cat] || 'سجلات أخرى'}
+function readJsonSafe(key,fallback){try{return JSON.parse(localStorage.getItem(key)||JSON.stringify(fallback||{}));}catch(e){return fallback||{};}}
+function normalizeAgencyList(v){
+  if(Array.isArray(v)) return v.map(String).map(function(x){return x.trim()}).filter(Boolean).filter(function(x){return x!=='general'});
+  v=String(v||'').trim(); if(!v || v==='general') return [];
+  if(v.charAt(0)==='['){try{return normalizeAgencyList(JSON.parse(v));}catch(e){}}
+  return v.split(/[،,|]/).map(function(x){return x.trim()}).filter(Boolean).filter(function(x){return x!=='general'});
+}
+function currentWakilUser(){
+  var q=new URLSearchParams(location.search||'');
+  var u=readJsonSafe('currentSchoolUser',null)||readJsonSafe('currentUser',null)||readJsonSafe('smart_school_current_session',null)||{};
+  var qp=q.get('agency_type')||q.get('agency_types')||q.get('agent_categories')||'';
+  if(qp){u.agency_type=qp; u.agent_categories=normalizeAgencyList(qp);}
+  return u||{};
+}
+function currentWakilAgencies(){
+  var u=currentWakilUser();
+  var list=normalizeAgencyList(u.agent_categories||u.agency_categories||u.agency_types||u.agency_type||u.agencyType||u.vice_agency_type||u.viceAgencyType||'');
+  if(!list.length){
+    var sid=u.schoolId||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||'default';
+    var map=readJsonSafe('smartSchoolUnifiedOpsV2_vp_agency_map_'+sid,{});
+    var id=String(u.id||''), email=String(u.email||localStorage.getItem('currentUserEmail')||'').toLowerCase();
+    list=normalizeAgencyList((id&&map[id])||(email&&map[email])||'');
+  }
+  return list;
+}
+function currentWakilAgency(){var list=currentWakilAgencies(); return list.length?list.join(','):'general';}
+function allowedWakilCategory(cat){
+  var agencies=currentWakilAgencies();
+  cat=cat||'shared';
+  if(cat==='shared') return true;
+  if(!agencies.length) return true;
+  return agencies.indexOf(cat)>-1;
+}
+function visibleForms(){return FORMS.filter(function(f){return allowedWakilCategory(f.category||'shared');});}
+function formsByCategory(){
+  return WAKIL_CATEGORY_ORDER.map(cat=>({cat,label:wakilCategoryLabel(cat),items:FORMS.filter(f=>(f.category||'shared')===cat && allowedWakilCategory(f.category||'shared'))})).filter(g=>g.items.length);
+}
+function ensureCurrentVisible(){var vf=visibleForms(); if(vf.length && (!current || !allowedWakilCategory(current.category||'shared'))) current=vf[0];}
+function agencyNoticeHtml(){var list=currentWakilAgencies(); var txt=list.length?list.map(function(x){return WAKIL_AGENCY_LABELS[x]||x}).join(' + '):'كل السجلات'; return '<div style="margin:10px 0 14px;padding:10px;border:1px solid #b8d4c8;border-radius:14px;background:#f0fdfa;color:#0f766e;font-size:12px;font-weight:900;line-height:1.8">التصنيف الحالي: '+txt+'<br><span style="color:#64748b;font-weight:800">تظهر السجلات والأرشيف حسب تصنيفات الوكيل المحددة من حساب المدير.</span></div>';}
+
+
 const LOGO_URL='https://salogos.b-cdn.net/logos/svg/1774895141785-5zgexuf8.svg';
 const ASK_AI_URL='https://cijhgvbtrvmmlcssgxht.supabase.co/functions/v1/ASK-AI';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
@@ -1261,8 +1431,28 @@ function isDateField(n){return /تاريخ|اليوم/.test(n)}
 function isLongField(n){return /سبب|وصف|إجراء|إجراءات|توصيات|ملاحظات|ملحوظات|رأي|قرار|إفادة|نص|خطة|آلية|جوانب|فرص|مرفقات|الحالات|هدف|تحسين|متابعة/.test(n)}
 function settings(){try{return JSON.parse(localStorage.getItem('wakil_settings')||'{}')}catch(e){return {}}}
 function formKey(){return 'wakil_form_v3_'+current.id}
-function renderNav(){const nav=qs('#nav');nav.innerHTML='';FORMS.forEach(f=>{const b=document.createElement('button');b.textContent=f.title;b.onclick=()=>selectForm(f.id);if(f.id===current.id)b.className='active';nav.appendChild(b)})}
-function selectForm(id){current=FORMS.find(f=>f.id===id)||FORMS[0];renderNav();renderForm();loadCurrent()}
+function renderNav(){
+  const nav=qs('#nav');
+  nav.innerHTML='';
+  ensureCurrentVisible();
+  nav.insertAdjacentHTML('beforeend', agencyNoticeHtml());
+  formsByCategory().forEach(group=>{
+    const h=document.createElement('div');
+    h.className='wakil-nav-group-title';
+    h.textContent=group.label;
+    nav.appendChild(h);
+    group.items.forEach(f=>{
+      const b=document.createElement('button');
+      b.textContent=f.title;
+      b.dataset.category=f.category||'shared';
+      b.dataset.archiveFolder=f.archiveFolder||f.id;
+      b.onclick=()=>selectForm(f.id);
+      if(f.id===current.id)b.className='active';
+      nav.appendChild(b);
+    });
+  });
+}
+function selectForm(id){current=visibleForms().find(f=>f.id===id)||visibleForms()[0]||FORMS[0];renderNav();renderForm();loadCurrent()}
 function yearOptions(selected=''){let opts='<option value="">اختر العام</option>';for(let y=1445;y<=1466;y++){let v=y+' هـ';opts+=`<option value="${v}" ${selected===v?'selected':''}>${v}</option>`}return opts}
 function semesterOptions(selected=''){return `<option value="">اختر الفصل</option><option ${selected==='الأول'?'selected':''}>الأول</option><option ${selected==='الثاني'?'selected':''}>الثاني</option>`}
 
@@ -1362,7 +1552,7 @@ function approvalBlock(s){
 }
 function renderForm(){
   const s=settings();
-  qs('#currentTitle').textContent=current.title;
+  qs('#currentTitle').textContent=wakilCategoryLabel(current.category||'shared')+' / '+current.title;
   const allSections=current.sections||[];
   const split=Math.max(1, Math.ceil(allSections.length/2));
   const firstSections=allSections.slice(0, split);
@@ -1445,7 +1635,10 @@ function saveCurrent(){
         type: 'WAKIL_RECORD_SAVED',
         payload: {
           formId: current.id,
-          folderId: current.id,
+          folderId: current.archiveFolder || current.id,
+          category: current.category || 'shared',
+          categoryLabel: wakilCategoryLabel(current.category || 'shared'),
+          folderName: current.title,
           title: current.title,
           personName: personName,
           personType: current.kind && String(current.kind).includes('staff')
@@ -1829,12 +2022,17 @@ aiComplete = async function(){
   await requestStructuredAI('', 'جاري توليد مقترحات مهيكلة للتعبئة...');
 };
 
+const delegatedRecordKey=new URLSearchParams(location.search).get('record');
+if(delegatedRecordKey){
+  const requested=visibleForms().find(f=>f.id===delegatedRecordKey);
+  if(requested) current=requested;
+}
 renderNav();renderForm();loadCurrent();bindAutoGrow(qs('#formPage'));autoGrowAll(qs('#formPage'));
 </script>
 <script id="V39_GITHUB_PAGES_WAKIL_FIX">
 (function(){
   function fixWakilPaths(){
-    const correctPath = "./records/wakil/wakil-records.html";
+    const correctPath = "./wakil-records.html";
 
     document.querySelectorAll("iframe").forEach(frame=>{
       const src = frame.getAttribute("src") || "";
@@ -1867,10 +2065,18 @@ renderNav();renderForm();loadCurrent();bindAutoGrow(qs('#formPage'));autoGrowAll
 
 <script src="manual_docking_workspace.js" defer></script>
 
+
+
+<!-- Unified Cloud File Engine v3 -->
+<script src="platform-cloud-session.js"></script>
+<script src="cloud-file-engine.js"></script>
+<script src="cloud-file-bootstrap.js"></script>
+<script src="cloud-upload-hub.js"></script>
+
 <!-- Unified Comprehensive Cloud Storage -->
-<script src="../../platform-cloud-session.js"></script>
-<script src="../../cloud-file-engine.js"></script>
-<script src="../../cloud-file-bootstrap.js"></script>
-<script src="../../cloud-upload-hub.js"></script>
-<script src="../../cloud-file-auto-sync.js"></script>
+<script src="cloud-file-auto-sync.js"></script>
+
+<script src="platform-record-catalog.js"></script>
+<script src="delegated-access-guard.js"></script>
+<script src="school-activity-engine.js"></script>
 </body></html>

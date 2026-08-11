@@ -55,16 +55,18 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
             setTimeout(() => t.remove(), 3000);
         };
 
-        const isManagerAccount = (name, email) => {
-            const n = (name || "").toLowerCase().trim();
-            const e = (email || "").toLowerCase().trim();
-            // التعرف على الحساب كمدير بناءً على الكلمات المفتاحية أو البريد المرتبط (a123456)
-            const isMatch = n === 'admin' || e === 'admin' || e.includes('a123456') || n === 'مدير' || localStorage.getItem('is_admin_session') === 'true';
-            if (isMatch) {
-                localStorage.setItem('is_admin_session', 'true');
-                localStorage.setItem('admin_verified', 'true');
-            }
-            return isMatch;
+        // SECURITY: لا توجد أي صلاحية مدير نظام مبنية على الاسم/البريد/localStorage.
+        const isManagerAccount = () => false;
+
+        const secureSystemAdminLogin = async (email, password) => {
+            if (!window.SmartSchoolSupabase) throw new Error('Supabase غير جاهز');
+            const sb = window.SmartSchoolSupabase.getClient();
+            const login = await sb.auth.signInWithPassword({ email: String(email||'').trim().toLowerCase(), password: String(password||'') });
+            if (login.error || !login.data?.session) throw new Error('بيانات الدخول غير صحيحة');
+            const session = login.data.session;
+            const invoked = await sb.functions.invoke('system-admin', { body:{action:'verify'} });
+            if(invoked.error || !invoked.data?.ok){ await sb.auth.signOut(); throw new Error(invoked.data?.error || invoked.error?.message || 'ليس لديك صلاحية مدير النظام'); }
+            return { session, user: login.data.user };
         };
 
         const openRegistrationModal = () => { closeModal('registration-modal'); document.getElementById('registration-modal').style.display = 'flex'; };
@@ -77,32 +79,8 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
         };
 
         const submitSchoolRequest = async () => {
-            const schoolName = document.getElementById('school-req-school-name').value.trim();
-            const managerName = document.getElementById('school-req-manager-name').value.trim();
-            const email = document.getElementById('school-req-email').value.trim();
-            const password = document.getElementById('school-req-password').value.trim();
-            if (!schoolName || !managerName || !email || !password) { showToast('يرجى تعبئة اسم المدرسة واسم المدير والبريد والرقم السري'); return; }
-            try {
-                if (!window.SmartSchoolSupabase || !window.SmartSchoolSupabase.createSchoolWithManager) throw new Error('جسر Supabase غير جاهز');
-                const result = await window.SmartSchoolSupabase.createSchoolWithManager({ schoolName, managerName, email, password, status: 'active' });
-                const school = result.school;
-                const manager = result.manager;
-                const localUsers = collectLocalUsersForWorkspace();
-                if (!localUsers.some(u => String(u.email||'').toLowerCase() === String(email).toLowerCase())) {
-                    localUsers.push({ ...manager, role:'leadership', isActive:true, status:'active', schoolName:school.schoolName, schoolId:school.id, accountType:'school_manager', isPrimaryManager:true });
-                   
-                    allUsers = localUsers;
-                }
-                const localSchools = JSON.parse(localStorage.getItem('smart_school_schools') || '[]').filter(s => String(s.id||s.schoolId) !== String(school.id));
-                localSchools.push({ id:school.id, schoolId:school.id, schoolName:school.schoolName, managerName:school.managerName, managerEmail:school.managerEmail, status:school.status, registrationLink:school.registrationLink, loginLink:school.loginLink, createdAt:school.createdAt });
-                localStorage.setItem('smart_school_schools', JSON.stringify(localSchools));
-                closeModal('school-request-modal');
-                showToast('تم إنشاء المدرسة وحفظها في Supabase بنجاح');
-                if (document.getElementById('school-management-modal') && document.getElementById('school-management-modal').style.display === 'flex') renderSchoolManagement();
-            } catch (err) {
-                console.error('Supabase school create failed:', err);
-                showToast('فشل حفظ المدرسة في Supabase: ' + (err.message || err));
-            }
+            showToast('إنشاء المدارس متاح فقط من لوحة مدير النظام بعد تسجيل دخول موثق.');
+            closeModal('school-request-modal');
         };
 
         const submitRegistrationRequest = async () => {
@@ -164,30 +142,17 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
         };
 
         const handleAdminDirectEntry = async () => {
-            const n = document.getElementById('user-display-name').value.trim();
             const e = normalizeEmail(document.getElementById('user-madrasati-email').value);
-            
-            if (isManagerAccount(n, e)) {
+            const password = String(document.getElementById('system-admin-password')?.value || '');
+            if(!e || !password){ showToast('أدخل بريد مدير النظام وكلمة المرور'); return; }
+            try{
+                const verified = await secureSystemAdminLogin(e,password);
                 isManagerVerifiedInSession = true;
-                localStorage.setItem('is_admin_session', 'true');
+                sessionStorage.setItem('system_admin_verified','true');
+                localStorage.removeItem('is_admin_session'); localStorage.removeItem('admin_verified');
                 document.getElementById('waiting-screen').classList.add('hidden');
-
-                const tempAdminData = { id: 'root', name: n || 'مدير/ة النظام', email: e || 'admin', microsoftEmail: e || '', role: 'leadership', isActive: true };
-                startApp(tempAdminData);
-
-                try {
-                    const user = await window.ensureAuth();
-                    if (user) {
-                        // حفظ بيانات المدير في المجموعة العامة ليظهر في القائمة
-                        await window.fs.setDoc(window.fs.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'users', user.uid), { ...tempAdminData, id: user.uid }, {merge:true});
-                        currentUser.id = user.uid;
-                        localStorage.setItem('cached_manager_uid', user.uid);
-                    }
-                } catch(err) { console.warn("Background Auth Delayed"); }
-            } else {
-                if (!n || !e) showToast("يرجى إدخال البيانات");
-                else checkUserStatus();
-            }
+                startApp({id:verified.user.id,name:'مدير/ة النظام',email:e,microsoftEmail:e,role:'leadership',isActive:true,isRootAdmin:true});
+            }catch(err){ isManagerVerifiedInSession=false; sessionStorage.removeItem('system_admin_verified'); showToast(err.message||'تم رفض الدخول'); }
         };
 
         const handleRoleSelection = async (role) => {
@@ -213,7 +178,7 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
             try {
                 const n = document.getElementById('user-display-name').value.trim();
                 const e = normalizeEmail(document.getElementById('user-madrasati-email').value);
-                const isRoot = isManagerVerifiedInSession || isManagerAccount(n, e) || localStorage.getItem('is_admin_session') === 'true';
+                const isRoot = isManagerVerifiedInSession && sessionStorage.getItem('system_admin_verified') === 'true';
                 
                 if (isRoot) {
                     document.getElementById('waiting-screen').classList.add('hidden');

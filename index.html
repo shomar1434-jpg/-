@@ -504,9 +504,11 @@ body::after{content:""!important;position:fixed;inset:0;z-index:-1;pointer-event
             <div class="mb-8 space-y-3 max-w-sm mx-auto">
                 <input type="text" id="user-display-name" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-form-type="other" placeholder="اسم المستخدم" 
                        class="w-full p-3 rounded-xl bg-white/10 border border-white/20 text-white text-center outline-none focus:border-teal-400">
+                <input type="password" id="system-admin-password" autocomplete="current-password" placeholder="كلمة مرور مدير النظام"
+                       class="w-full p-3 rounded-xl bg-white/10 border border-white/20 text-white text-center outline-none focus:border-teal-400">
                 
                 <div class="flex items-center justify-between px-2">
-                    <button onclick="openSchoolRequestModal()" class="action-btn text-xs text-slate-300">مدرسة جديدة</button>
+                    <span class="text-[11px] text-slate-400">إنشاء المدارس متاح بعد دخول مدير النظام الموثق فقط</span>
                     <button id="mainLoginBtn" onclick="handleAdminDirectEntry()" class="action-btn bg-teal-600 text-white border-none shadow-lg">دخول</button>
                 </div>
 
@@ -1523,76 +1525,27 @@ document.addEventListener("click", function(e){
       </td>
     </tr>`;
   }
+  async function secureAdminCall(action, payload){
+    const c=sb(); if(!c) throw new Error('Supabase غير جاهز');
+    const session=(await c.auth.getSession()).data.session;
+    if(!session || !session.access_token) throw new Error('يلزم تسجيل دخول مدير النظام');
+    const r=await fetch(SUPABASE_URL + '/functions/v1/system-admin',{method:'POST',headers:{'content-type':'application/json','authorization':'Bearer '+session.access_token,'apikey':SUPABASE_KEY},body:JSON.stringify(Object.assign({action:action},payload||{}))});
+    const data=await r.json().catch(()=>({})); if(!r.ok) throw new Error(data.error||data.details||'رفض الخادم العملية'); return data;
+  }
   async function fetchSchools(){
-    const c=sb();
-    if(c){
-      try{
-        const r=await c.from('schools').select('*').order('created_at',{ascending:false});
-        if(r && !r.error && Array.isArray(r.data)) return r.data;
-      }catch(e){console.warn('تعذر جلب المدارس من Supabase',e);}
-    }
-    try{
-      const keys=['smart_school_schools','schools','school_list']; let out=[];
-      keys.forEach(k=>{try{const v=JSON.parse(localStorage.getItem(k)||'[]'); if(Array.isArray(v)) out=out.concat(v); else if(v&&Array.isArray(v.schools)) out=out.concat(v.schools);}catch(e){}});
-      return out;
-    }catch(e){return [];}
+    try{ const data=await secureAdminCall('list_schools'); return data.schools||[]; }catch(e){ console.warn('رفض جلب المدارس',e); return []; }
   }
   window.renderSchoolManagement = async function(){
-    const body=document.getElementById('schools-table-body');
-    const st=document.getElementById('sm-status');
+    const body=document.getElementById('schools-table-body'),st=document.getElementById('sm-status');
     if(body) body.innerHTML='<tr><td colspan="4" class="p-6 text-center text-slate-400 text-xs">جارٍ تحميل المدارس...</td></tr>';
-    const rows=await fetchSchools();
-    if(st) st.textContent='تم تحميل '+rows.length+' مدرسة. روابط الدخول تعتمد الآن على معرف المدرسة/كودها فقط، ويتم جلب الاسم وبريد المدير من سجل المدرسة.';
-    if(!body) return;
-    body.innerHTML = rows.length ? rows.map(renderSchoolRow).join('') : '<tr><td colspan="4" class="p-6 text-center text-slate-400 text-xs">لا توجد مدارس محفوظة.</td></tr>';
+    try{ const rows=await fetchSchools(); if(st) st.textContent='تم تحميل '+rows.length+' مدرسة عبر بوابة مدير النظام المحمية.'; if(body) body.innerHTML=rows.length?rows.map(renderSchoolRow).join(''):'<tr><td colspan="4" class="p-6 text-center text-slate-400 text-xs">لا توجد مدارس محفوظة.</td></tr>'; }
+    catch(e){ if(st) st.textContent='غير مصرح: '+(e.message||e); if(body) body.innerHTML='<tr><td colspan="4" class="p-6 text-center text-red-600 text-xs">لا يمكن قراءة المدارس دون جلسة مدير نظام موثقة.</td></tr>'; }
   };
   window.createSupabaseSchoolFromPanel = async function(){
-    const name=(document.getElementById('sm-school-name')||{}).value||'';
-    const mName=(document.getElementById('sm-manager-name')||{}).value||'';
-    const email=cleanEmail((document.getElementById('sm-manager-email')||{}).value||'');
-    const password=(document.getElementById('sm-manager-password')||{}).value||'';
-    const st=document.getElementById('sm-status');
-    if(!name||!email){ if(st) st.textContent='يرجى إدخال اسم المدرسة وبريد المدير.'; return; }
-    const c=sb();
-    const code='SCH-'+Math.random().toString(36).slice(2,8).toUpperCase();
-    const payload={school_name:name, school_code:code, manager_name:mName, manager_email:email, status:'active', registration_code:'REG-'+Math.random().toString(36).slice(2,8).toUpperCase()};
-    if(c){
-      try{
-        const ex=await c.from('schools').select('*').or(`manager_email.eq.${email},school_name.eq.${name}`).limit(1);
-        let school=ex && ex.data && ex.data[0];
-        if(!school){ const ins=await c.from('schools').insert(payload).select().single(); if(ins.error) throw ins.error; school=ins.data; }
-        try{ await c.from('users').upsert({email, full_name:mName||name, role:'manager', status:'active', school_id:school.id, password:password||undefined, is_primary_manager:true},{onConflict:'email'}); }catch(e){console.warn('تعذر حفظ مدير المدرسة في users',e);}
-        if(st) st.textContent='تم حفظ المدرسة. استخدم زر رابط الدخول من الجدول.';
-        await renderSchoolManagement();
-        return;
-      }catch(e){ if(st) st.textContent='تعذر الحفظ في Supabase: '+(e.message||e); }
-    }
-    const arr=JSON.parse(localStorage.getItem('smart_school_schools')||'[]');
-    const localSchool=Object.assign(payload,{id:code, schoolId:code, schoolCode:code, password:password||'123456', manager_password:password||'123456'});
-    arr.unshift(localSchool);
-    localStorage.setItem('smart_school_schools',JSON.stringify(arr));
-    try{
-      const users=JSON.parse(localStorage.getItem('smart_school_users')||'[]');
-      users.unshift({
-        id:'local-manager-'+code,
-        name:mName||name,
-        full_name:mName||name,
-        email,
-        password:password||'123456',
-        role:'leadership',
-        status:'active',
-        active:true,
-        isActive:true,
-        isPrimaryManager:true,
-        is_primary_manager:true,
-        schoolId:code,
-        school_id:code,
-        schoolName:name
-      });
-      localStorage.setItem('smart_school_users',JSON.stringify(users));
-    }catch(e){}
-    if(st) st.textContent='تم الحفظ محليًا. استخدم زر رابط الدخول من الجدول. كلمة المرور المحلية الافتراضية عند تركها فارغة: 123456';
-    await renderSchoolManagement();
+    const schoolName=(document.getElementById('sm-school-name')||{}).value||'',managerName=(document.getElementById('sm-manager-name')||{}).value||'',email=cleanEmail((document.getElementById('sm-manager-email')||{}).value||''),password=(document.getElementById('sm-manager-password')||{}).value||'',st=document.getElementById('sm-status');
+    if(!schoolName||!email||password.length<8){if(st)st.textContent='أدخل اسم المدرسة والبريد وكلمة مرور من 8 أحرف على الأقل.';return;}
+    try{await secureAdminCall('create_school',{schoolName,managerName,email,password});if(st)st.textContent='تم إنشاء المدرسة عبر بوابة مدير النظام المحمية.';await renderSchoolManagement();}
+    catch(e){if(st)st.textContent='رفضت العملية: '+(e.message||e);}
   };
   window.fillSchoolPanelFromRequest = window.fillSchoolPanelFromRequest || function(){
     const st=document.getElementById('sm-status'); if(st) st.textContent='لم يتم العثور على نموذج مدرسة جديدة قابل للقراءة تلقائيًا.';

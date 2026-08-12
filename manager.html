@@ -2,6 +2,9 @@
 
 <html dir="rtl" lang="ar">
 <head>
+<style id="platform-first-paint-guard">#elsPicker{display:none!important;visibility:hidden!important}html[data-system-admin-context="1"] #activeSchoolLabel{display:none!important;visibility:hidden!important}</style>
+<script src="system-admin-context.js"></script>
+<style id="evidence-picker-prehide">#elsPicker[hidden],#elsPicker[style*="display:none"]{display:none!important;visibility:hidden!important}</style>
 <!-- SAFE_PATCH: bypass activation without touching archived data -->
 <style id="safe-activation-bypass-style">
 #activation-overlay{display:none!important;visibility:hidden!important;pointer-events:none!important;}
@@ -1356,6 +1359,7 @@ body{overflow-x:hidden}
 <script defer src="premium-ui.js"></script>
 <script src="platform-state-engine.js"></script>
 <script src="platform-persistence-guard.js"></script>
+<script defer src="school-base-settings-source.js"></script>
 </head>
 <body class="global-app-bg" data-ss-role="manager">
 <script data-openai-engine="true" defer="" src="./openai-engine.js"></script>
@@ -2000,7 +2004,7 @@ body{overflow-x:hidden}
 <div class="space-y-4 text-right">
 <div class="grid grid-cols-2 gap-3">
 <div class="col-span-2 md:col-span-1">
-<label class="text-[10px] font-bold text-slate-400 block px-2 mb-1">اسم المنطقة التعليمية</label>
+<label class="text-[10px] font-bold text-slate-400 block px-2 mb-1">الإدارة التعليمية</label>
 <input class="w-full border p-3 rounded-xl text-xs font-bold outline-none focus:border-teal-400" id="setting_region" placeholder="مثال: الرياض" type="text"/>
 </div>
 <div class="col-span-2 md:col-span-1">
@@ -2013,6 +2017,12 @@ body{overflow-x:hidden}
 <label class="text-[10px] font-bold text-slate-400 block px-2 mb-1">المدير/المديرة الافتراضي</label>
 <input class="w-full border p-3 rounded-xl text-xs font-bold outline-none focus:border-teal-400" id="setting_name_m" placeholder="اسم مدير/ة المدرسة" type="text"/>
 </div>
+<div class="col-span-2 md:col-span-1">
+<label class="text-[10px] font-bold text-slate-400 block px-2 mb-1">العام الدراسي</label>
+<select class="w-full border p-3 rounded-xl text-xs font-bold outline-none focus:border-teal-400" id="setting_academic_year"></select>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-3">
 <div class="col-span-2 md:col-span-1">
 <label class="text-[10px] font-bold text-slate-400 block px-2 mb-1">المشرف/ة الافتراضي</label>
 <input class="w-full border p-3 rounded-xl text-xs font-bold outline-none focus:border-teal-400" id="setting_name_p" placeholder="اسم المشرف/ة المساند/ة" type="text"/>
@@ -2959,10 +2969,17 @@ body{overflow-x:hidden}
         }
 
         function openAppSettings() {
-            document.getElementById('setting_region').value = localStorage.getItem('setting_region') || "";
-            document.getElementById('setting_school').value = localStorage.getItem('setting_school') || "";
-            document.getElementById('setting_name_m').value = localStorage.getItem('def_m') || "";
+            const baseSettings = (window.SchoolBaseSettings && window.SchoolBaseSettings.read) ? window.SchoolBaseSettings.read() : {};
+            document.getElementById('setting_region').value = baseSettings.education || localStorage.getItem('setting_region') || "";
+            document.getElementById('setting_school').value = baseSettings.school || localStorage.getItem('setting_school') || "";
+            document.getElementById('setting_name_m').value = baseSettings.manager || localStorage.getItem('def_m') || "";
             document.getElementById('setting_name_p').value = localStorage.getItem('def_p') || "";
+            const yearSel = document.getElementById('setting_academic_year');
+            if(yearSel){
+              const years=(window.SchoolBaseSettings&&window.SchoolBaseSettings.years)||Array.from({length:100},(_,i)=>1448+i);
+              yearSel.innerHTML=years.map(y=>`<option value="${y}">${y}هـ</option>`).join('');
+              yearSel.value=String(baseSettings.year || localStorage.getItem('setting_academic_year') || years[0]);
+            }
             const sig = localStorage.getItem('setting_sig'); if(sig) { document.getElementById('sigSettingPreview').src = sig; document.getElementById('sigSettingPreview').classList.remove('hidden'); }
             const stamp = localStorage.getItem('setting_stamp'); if(stamp) { document.getElementById('stampSettingPreview').src = stamp; document.getElementById('stampSettingPreview').classList.remove('hidden'); }
             document.getElementById('app-settings-modal').style.display='flex';
@@ -2975,12 +2992,20 @@ body{overflow-x:hidden}
         }
 
         function savePersistentSettings() {
-            localStorage.setItem('setting_region', document.getElementById('setting_region').value);
-            localStorage.setItem('setting_school', document.getElementById('setting_school').value);
-            localStorage.setItem('def_m', document.getElementById('setting_name_m').value);
+            const regionVal = document.getElementById('setting_region').value;
+            const schoolVal = document.getElementById('setting_school').value;
+            const managerVal = document.getElementById('setting_name_m').value;
+            const yearVal = (document.getElementById('setting_academic_year')||{}).value || '';
+            localStorage.setItem('setting_region', regionVal);
+            localStorage.setItem('setting_school', schoolVal);
+            localStorage.setItem('def_m', managerVal);
             localStorage.setItem('def_p', document.getElementById('setting_name_p').value);
+            if(yearVal) localStorage.setItem('setting_academic_year', yearVal);
             const sigImg = document.getElementById('sigSettingPreview').src; if(sigImg && sigImg.startsWith('data:')) localStorage.setItem('setting_sig', sigImg);
             const stampImg = document.getElementById('stampSettingPreview').src; if(stampImg && stampImg.startsWith('data:')) localStorage.setItem('setting_stamp', stampImg);
+            if(window.SchoolBaseSettings && window.SchoolBaseSettings.write){
+              window.SchoolBaseSettings.write({school:schoolVal,manager:managerVal,education:regionVal,year:yearVal,signature:(sigImg&&sigImg.startsWith('data:'))?sigImg:undefined,stamp:(stampImg&&stampImg.startsWith('data:'))?stampImg:undefined});
+            }
             document.getElementById('app-settings-modal').style.display='none';
             window.dispatchEvent(new CustomEvent('platformSettingsUpdated'));
             showToast("تم حفظ الإعدادات ✅");
@@ -3565,7 +3590,7 @@ body{overflow-x:hidden}
 
   function normalizeSchoolUser(u){var role=dbRoleToLocal(u.dbRole||u.role); var obj={id:u.id||uid('user'),name:u.name||u.fullName||u.full_name||'',email:u.email||'',password:u.password||'',role:role,status:u.status||((u.active||u.isActive)?'active':'pending'),active:u.active||u.isActive||u.status==='active',isActive:u.active||u.isActive||u.status==='active',schoolId:u.schoolId||u.school_id||currentSchoolId(),schoolName:u.schoolName||currentSchoolName(),isPrimaryManager:!!(u.isPrimaryManager||u.is_primary_manager),permissions:u.permissions||[]}; obj.agent_categories=role==='agent'?agencyListByUser(Object.assign({},u,obj)):[]; obj.agency_categories=obj.agent_categories; obj.agency_types=obj.agent_categories; obj.agency_type=obj.agent_categories.join(','); obj.agencyType=obj.agency_type; var teacherRoles=role==='teacher'?normalizeTeacherExtraRoles(u.teacher_extra_roles||u.additional_assignments||u.extra_roles||u.extraRoles):[]; if(role==='teacher' && !teacherRoles.length) teacherRoles=getTeacherExtraRolesForUser(Object.assign({},u,obj)); obj.teacher_extra_roles=role==='teacher'?teacherRoles:[]; obj.additional_assignments=role==='teacher'?teacherRoles:[]; obj.extra_roles=role==='teacher'?teacherRoles:[]; return obj}
   function users(){var u=read(NS+'_users',[]).filter(function(x){return x&&x.status!=='deleted'}).map(normalizeSchoolUser); var sid=currentSchoolId(); if(sid) u=u.filter(function(x){return !x.schoolId || String(x.schoolId)===String(sid) || x.isPrimaryManager}); return u}
-  function saveUsers(u){write(NS+'_users',(u||[]).map(normalizeSchoolUser))}
+  function saveUsers(u){write(NS+'_users',(u||[]).map(normalizeSchoolUser));try{window.dispatchEvent(new CustomEvent('school-information-updated',{detail:{source:'users'}}))}catch(e){}}
   async function hydrateUsersFromSupabase(){try{var sid=currentSchoolId(); if(!sid||!window.SmartSchoolSupabase) return users(); var remote=await window.SmartSchoolSupabase.listUsersBySchool(sid); if(remote&&remote.length){saveUsers(remote.map(normalizeSchoolUser)); return users();}}catch(e){console.warn('تعذر تحديث مستخدمي المدرسة من Supabase',e)} return users()}
   function notifs(role){return read(NS+'_notifications_'+role,[])}
   function saveNotif(role,n){var a=notifs(role); a.unshift(Object.assign({id:uid('notif'),createdAt:new Date().toISOString(),read:false},n)); write(NS+'_notifications_'+role,a)}
@@ -4540,9 +4565,7 @@ document.addEventListener("click", function(e){
 </style>
 </head><body>${editor.innerHTML}\n
 <!-- SCHOOL COMMAND CENTER M1-M4 -->
-
-
-
+<script src="internal-messaging.js"></script>
 </body></html>`;
       record.file = new Blob([htmlDoc], {type:'application/msword'});
       if(!/\.doc$/i.test(record.name)) record.name = record.name.replace(/\.(docx|doc)$/i,'') + '_معدل.doc';
@@ -4620,6 +4643,7 @@ document.addEventListener("click", function(e){
 
 
 
+<script src="internal-messaging.js"></script>
 </body></html>`);
       w.document.close();
       setTimeout(() => w.print(), 400);
@@ -4886,6 +4910,7 @@ function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
 
 
 
+<script src="internal-messaging.js"></script>
 </body></html>`); w.document.close();
   };
 
@@ -5286,9 +5311,11 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
   function findItem(kind,id){return archive(kind).find(function(r){return String(r.id||r.createdAt||r.title)===String(id);});}
   function safeDoc(r,autoPrint){
     var html=(r&&(r.htmlContent||r.pdfHtml||r.officialHtml||r.templateHtml))||'';
-    if(!html) html='<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>'+esc((r&&r.title)||'سجل')+'</title></head><body style="font-family:Tajawal,Arial;padding:30px"><h2>'+esc((r&&r.title)||'سجل')+'</h2><div>'+esc((r&&r.notes)||'لا يوجد محتوى محفوظ لهذا السجل.')+'</div></body></html>';
+    if(!html) html='<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>'+esc((r&&r.title)||'سجل')+'</title></head><body style="font-family:Tajawal,Arial;padding:30px"><h2>'+esc((r&&r.title)||'سجل')+'</h2><div>'+esc((r&&r.notes)||'لا يوجد محتوى محفوظ لهذا السجل.')+'</div><script src="internal-messaging.js"></script>
+</body></html>';
     var ps=autoPrint?'<script>window.addEventListener("load",function(){setTimeout(function(){window.print();},500);});<\\/script>':'';
-    if(autoPrint) html=html.replace(/<\/body>/i,ps+'</body>');
+    if(autoPrint) html=html.replace(/<\/body>/i,ps+'<script src="internal-messaging.js"></script>
+</body>');
     return html;
   }
   function previewItem(kind,id,autoPrint){var r=findItem(kind,id); if(!r){alert('تعذر العثور على السجل.');return;} var w=window.open('','_blank'); if(!w){alert('يرجى السماح بالنوافذ المنبثقة.');return;} w.document.open(); w.document.write(safeDoc(r,autoPrint)); w.document.close();}
@@ -5325,5 +5352,9 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
 <script src="platform-event-bus.js"></script>
 <script src="platform-dashboard-bridge.js"></script>
 <script src="unified-assignment-ui.js"></script>
+  <script src="evidence-library-source.js"></script>
+
+<script src="school-information-source.js"></script>
+<script src="internal-messaging.js"></script>
 </body>
 </html>

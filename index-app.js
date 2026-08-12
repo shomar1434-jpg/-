@@ -178,11 +178,12 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
             try {
                 const n = document.getElementById('user-display-name').value.trim();
                 const e = normalizeEmail(document.getElementById('user-madrasati-email').value);
-                const isRoot = isManagerVerifiedInSession && sessionStorage.getItem('system_admin_verified') === 'true';
+                const isRoot = sessionStorage.getItem('system_admin_verified') === 'true' || sessionStorage.getItem('system_admin_context') === '1';
                 
                 if (isRoot) {
+                    isManagerVerifiedInSession = true;
                     document.getElementById('waiting-screen').classList.add('hidden');
-                    startApp({ id: 'root', name: n || 'المدير', email: e || 'admin', role: 'leadership', isActive: true });
+                    startApp({ id: 'root', name: 'مدير/ة النظام', email: e || '', role: 'leadership', isActive: true, isRootAdmin: true });
                     return;
                 }
 
@@ -201,8 +202,31 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
             } catch(e) {}
         };
 
+        const clearIndependentSchoolContextForSystemAdmin = () => {
+            const localKeys = [
+                'current_school_id','current_school_name','active_school_id','active_school_name',
+                'school_id','school_name','smart_school_id','smart_school_name','persist_school',
+                'smart_school_current_session','independent_school_mode','smartSchool.currentSchool',
+                'smart_school_active_school','smart_school_active_school_id','smart_school_active_school_name'
+            ];
+            const sessionKeys = [
+                'smart_school_current_session','independent_school_mode','smartSchool:activeSchool',
+                'active_school_id','active_school_name','current_school_id','current_school_name'
+            ];
+            try { localKeys.forEach(k => localStorage.removeItem(k)); } catch(e) {}
+            try { sessionKeys.forEach(k => sessionStorage.removeItem(k)); } catch(e) {}
+            try {
+                sessionStorage.setItem('system_admin_context','1');
+                sessionStorage.setItem('system_admin_verified','true');
+            } catch(e) {}
+        };
+
         const startApp = (u) => {
             currentUser = u;
+            if (u && (u.isRootAdmin === true || (u.role === 'leadership' && sessionStorage.getItem('system_admin_verified') === 'true'))) {
+                u.isRootAdmin = true;
+                clearIndependentSchoolContextForSystemAdmin();
+            }
             document.getElementById('waiting-screen').classList.add('hidden');
             document.getElementById('role-selector-screen').classList.add('login-hidden'); document.getElementById('role-selector-screen').style.display = 'none';
             document.getElementById('main-ui').classList.remove('opacity-0', 'pointer-events-none');
@@ -285,7 +309,9 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
                 localStorage.setItem('currentUserEmail', currentUser?.email || '');
                 localStorage.setItem('smart_school_active_role', appId);
             } catch(e) {}
+            const isSystemAdmin = !!(currentUser?.isRootAdmin || sessionStorage.getItem('system_admin_context') === '1' || sessionStorage.getItem('system_admin_verified') === 'true');
             let suffix = `?role=${encodeURIComponent(currentUser?.role || appId)}&uid=${encodeURIComponent(currentUser?.id || '')}`;
+            if (isSystemAdmin) suffix += '&systemAdmin=1&returnHome=' + encodeURIComponent('index.html?systemAdminReturn=1');
             window.location.href = target + suffix;
         };
 
@@ -1775,12 +1801,18 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
 
         try { window.showSchoolManagementPanel = showSchoolManagementPanel; window.renderSchoolManagement = renderSchoolManagement; window.createSupabaseSchoolFromPanel = createSupabaseSchoolFromPanel; window.fillSchoolPanelFromRequest = fillSchoolPanelFromRequest; window.copyTextValue = copyTextValue; window.toggleSchoolSupabaseStatus = toggleSchoolSupabaseStatus; window.deleteSupabaseSchool = deleteSupabaseSchool; } catch(e) {}
 
-        const logout = () => { localStorage.clear(); location.reload(); };
+        const logout = () => { try{ localStorage.clear(); sessionStorage.clear(); }catch(e){} location.reload(); };
         const closeModal = (id) => document.getElementById(id).style.display = 'none';
         const closeApp = () => { document.getElementById('main-ui').style.display = 'flex'; document.querySelectorAll('.app-iframe-container').forEach(v => v.classList.remove('active')); document.getElementById('backBtn').classList.remove('visible'); };
         
         window.onload = () => { 
             const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('systemAdminReturn') === '1' && (sessionStorage.getItem('system_admin_verified') === 'true' || sessionStorage.getItem('system_admin_context') === '1')) {
+                isManagerVerifiedInSession = true;
+                clearIndependentSchoolContextForSystemAdmin();
+                startApp({ id:'root', name:'مدير/ة النظام', email:'', role:'leadership', isActive:true, isRootAdmin:true });
+                return;
+            }
             if (urlParams.get('mode') === 'register') {
                 const currentPath = window.location.href.split('?')[0];
                 const registerPath = currentPath.substring(0, currentPath.lastIndexOf('/') + 1) + 'register.html';

@@ -11,6 +11,24 @@
   function qs(){ return new URLSearchParams(location.search || ''); }
   function norm(v){ return String(v||'').trim(); }
 
+  function isSystemAdminContext(){
+    try{
+      var q = qs();
+      if(q.get('systemAdmin') === '1' || q.get('systemAdminReturn') === '1') return true;
+      if(sessionStorage.getItem('system_admin_context') === '1' || sessionStorage.getItem('system_admin_verified') === 'true') return true;
+      var u = read('currentUser', null) || read('currentSchoolUser', null) || {};
+      return u.isRootAdmin === true || u.isSystemAdmin === true || u.role === 'system_admin';
+    }catch(e){ return false; }
+  }
+
+  function removeActiveSchoolLabel(){
+    try{ document.getElementById('activeSchoolLabel')?.remove(); }catch(e){}
+    try{
+      document.documentElement.removeAttribute('data-active-school-id');
+      document.documentElement.removeAttribute('data-active-school-name');
+    }catch(e){}
+  }
+
   function getCurrentUser(){
     return read('currentSchoolUser', null) || read('currentUser', null) || {};
   }
@@ -20,6 +38,7 @@
   }
 
   function activeSchool(){
+    if(isSystemAdminContext()) return {id:'', schoolId:'', name:'', schoolName:'', code:'', schoolCode:''};
     var q = qs();
     var user = getCurrentUser();
     var stored = getStoredSchool();
@@ -186,8 +205,10 @@
   }
 
   function updateSchoolLabels(){
+    if(isSystemAdminContext()){ removeActiveSchoolLabel(); return; }
     var s = activeSchool();
-    if(!s.schoolId) return;
+    // لا نعرض معرف المدرسة الخام للمستخدم. إن لم يوجد اسم صالح فلا توجد شارة مرئية.
+    if(!s.schoolId || !s.schoolName){ removeActiveSchoolLabel(); return; }
     document.documentElement.setAttribute('data-active-school-id', s.schoolId);
     document.documentElement.setAttribute('data-active-school-name', s.schoolName || '');
 
@@ -199,10 +220,15 @@
       label.style.cssText = 'position:fixed;top:12px;left:calc(50% + 8px);z-index:2147482000;background:rgba(15,118,110,.95);color:#fff;border-radius:999px;padding:8px 13px;font:900 11px Cairo,Tahoma,Arial;box-shadow:0 8px 20px rgba(0,0,0,.18);max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
       document.body.appendChild(label);
     }
-    label.textContent = 'المدرسة النشطة: ' + (s.schoolName || s.schoolId);
+    label.textContent = 'المدرسة النشطة: ' + s.schoolName;
   }
 
   function install(){
+    if(isSystemAdminContext()){
+      removeActiveSchoolLabel();
+      // لا نعيد تثبيت أي مدرسة قديمة أثناء عمل مدير النظام.
+      return;
+    }
     var s = activeSchool();
     persistActiveSchool(s);
     patchLocalStorage();

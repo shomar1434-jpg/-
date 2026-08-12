@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="ar" dir="rtl">
 <head>
+<style id="platform-first-paint-guard">#elsPicker{display:none!important;visibility:hidden!important}html[data-system-admin-context="1"] #activeSchoolLabel{display:none!important;visibility:hidden!important}</style>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>مركز المعلومات المدرسية</title>
@@ -41,6 +42,7 @@
 <script defer src="premium-ui.js"></script>
 <script src="platform-state-engine.js"></script>
 <script src="platform-persistence-guard.js"></script>
+<script defer src="school-base-settings-source.js"></script>
 </head>
 <body>
   <header class="top noPrint">
@@ -228,10 +230,12 @@
     loadStudents();
   }
   function noorToSection(v){
-    v=safe(v); if(!v) return 'غير محدد';
+    v=toWesternDigits(safe(v)); if(!v) return 'غير محدد';
     v=v.replace(/شعبة|الشعبة|الفصل|فصل|رقم/gi,'').trim();
-    const c=v.replace(/^0+/,'');
-    return sectionMap[v] || sectionMap[c] || v;
+    // في نظام نور «الفصل» هو رقم الشعبة: 1=أ، 2=ب، 3=ج ...
+    const numeric=(v.match(/\d+/)||[])[0]||'';
+    const c=numeric ? String(Number(numeric)) : v.replace(/^0+/,'');
+    return sectionMap[c] || sectionMap[v] || v;
   }
   function toWesternDigits(v){return safe(v).replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d))}
   function normText(v){return toWesternDigits(v).replace(/[إأآا]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/[ـ\u064B-\u0652]/g,'').replace(/[()\[\]{}:،,؛؛\-_/\\]/g,' ').replace(/\s+/g,' ').trim()}
@@ -283,7 +287,7 @@
       Object.entries(row).forEach(([k,v])=>{
         const hk=normHeader(k), tv=safe(v);
         if(!tv) return;
-        if(/صف|مرحله|مرحلة|فصل|مسار|تخصص|مستوى|المستوي|الصفالدراسي|المرحلهالدراسيه/.test(hk)) vals.push(tv);
+        if(/صف|مرحله|مرحلة|مسار|تخصص|مستوى|المستوي|الصفالدراسي|المرحلهالدراسيه/.test(hk)) vals.push(tv); // ملاحظة: عمود «الفصل» في نور يعني الشعبة ولا يستخدم لاستنتاج الصف
         else if(/ثانوي|متوسط|ابتدائي/.test(normText(tv)) && /اول|ثاني|ثالث|رابع|خامس|سادس|1|2|3|4|5|6/.test(normText(tv))) vals.push(tv);
       });
     }
@@ -724,5 +728,8 @@
 
 <script src="platform-record-catalog.js"></script>
 <script src="delegated-access-guard.js"></script>
+  <script src="evidence-library-source.js"></script>
+
+<script src="school-information-source.js"></script>
 </body>
 </html>

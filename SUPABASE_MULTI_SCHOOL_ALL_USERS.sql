@@ -1,4 +1,3 @@
--- تم تعميم هذا النظام لجميع المستخدمين. استخدم الملف SUPABASE_MULTI_SCHOOL_ALL_USERS.sql
 -- تعدد المدارس والأدوار لجميع مستخدمي المنصة
 -- ينفذ مرة واحدة في Supabase SQL Editor. لا يدمج بيانات المدارس؛ العضوية تمنح الوصول فقط.
 create table if not exists public.school_members (

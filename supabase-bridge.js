@@ -392,22 +392,21 @@
 
     if(wantedSchool){
       let scoped = rows.filter(u => String(u.school_id || '') === wantedSchool);
-      if(!scoped.length){
-        const managerCandidate = rows.find(u => String(u.role||'') === 'manager');
-        if(managerCandidate){
-          let allowed = false;
-          let schoolByEmail = null;
-          try{
-            const ms = await sb.from('school_members').select('*').eq('school_id',wantedSchool).or(`email.eq.${email},user_id.eq.${managerCandidate.id}`).maybeSingle();
-            if(ms && ms.data) allowed = true;
-          }catch(e){}
-          try{
-            const schByEmail = await sb.from('schools').select('*').eq('id',wantedSchool).eq('manager_email',email).maybeSingle();
-            if(schByEmail && schByEmail.data){ allowed = true; schoolByEmail = schByEmail.data; }
-          }catch(e){}
-          if(allowed){
-            scoped = [Object.assign({}, managerCandidate, {school_id:wantedSchool, role:'manager', is_primary_manager:true, __schoolOverride:schoolByEmail})];
-          }
+      if(!scoped.length && rows.length){
+        const baseCandidate = rows[0];
+        let member = null;
+        try{
+          let mq = await sb.from('school_members').select('*').eq('school_id',wantedSchool).eq('email',email).neq('status','inactive').limit(1).maybeSingle();
+          if(mq && mq.data) member = mq.data;
+        }catch(e){}
+        if(!member && baseCandidate && baseCandidate.id){
+          try{const mq2=await sb.from('school_members').select('*').eq('school_id',wantedSchool).eq('user_id',baseCandidate.id).neq('status','inactive').limit(1).maybeSingle();if(mq2&&mq2.data)member=mq2.data}catch(e){}
+        }
+        let schoolOverride = null;
+        if(member){try{const sq=await sb.from('schools').select('*').eq('id',wantedSchool).maybeSingle();if(sq&&sq.data)schoolOverride=sq.data}catch(e){}
+          scoped=[Object.assign({},baseCandidate,{id:member.user_id||baseCandidate.id,school_id:wantedSchool,role:member.role||baseCandidate.role,__membershipId:member.id,__schoolOverride:schoolOverride})];
+        }else if(String(baseCandidate.role||'')==='manager'){
+          try{const schByEmail=await sb.from('schools').select('*').eq('id',wantedSchool).eq('manager_email',email).maybeSingle();if(schByEmail&&schByEmail.data)scoped=[Object.assign({},baseCandidate,{school_id:wantedSchool,role:'manager',is_primary_manager:true,__schoolOverride:schByEmail.data})]}catch(e){}
         }
       }
       rows = scoped;

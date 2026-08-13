@@ -1443,7 +1443,10 @@ async function cleanReadinessYearData(){
  const schoolId=currentSchoolId();
  const year=String(state.settings?.year||"1448");
  const schoolName=(state.settings?.school||"هذه المدرسة").trim()||"هذه المدرسة";
- const ok=confirm(`سيتم تنظيف جميع بيانات الجاهزية للعام ${year}هـ في ${schoolName}.\n\nسيتم حذف حالات التنفيذ، الشواهد المرتبطة بالخطة، الإسنادات، المتابعات والملاحظات من بيانات الجاهزية لهذا العام، مع الإبقاء على بيانات المدرسة الأساسية.\n\nهل تريد المتابعة؟`);
+ const archivedYears=(()=>{try{return JSON.parse(localStorage.getItem('smartSchoolAcademicYearsV1')||'[]')}catch(_){return[]}})();
+ const archived=archivedYears.some(x=>String(x.year)===year&&x.status==='archived');
+ if(archived){alert(`العام ${year}هـ مؤرشف ومحمي. لا يمكن تنظيف بيانات سنة مؤرشفة.`);return;}
+ const ok=confirm(`سيتم تنظيف بيانات الجاهزية التجريبية/التشغيلية للعام النشط ${year}هـ في ${schoolName}.\n\nسيتم حذف حالات التنفيذ، الشواهد المرتبطة بالخطة، الإسنادات، المتابعات والملاحظات من بيانات الجاهزية لهذا العام، مع الإبقاء على بيانات المدرسة الأساسية.\n\nهل تريد المتابعة؟`);
  if(!ok)return;
 
  const platform=readPlatformCustomSettings();

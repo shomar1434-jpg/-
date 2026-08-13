@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>نظام الانضباط المدرسي | انضباط المنسوبين</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+body{font-family:Tajawal,sans-serif;background:#f6f8fb}.glass{background:rgba(255,255,255,.92);backdrop-filter:blur(14px)}
+.card{box-shadow:0 12px 35px rgba(15,23,42,.06)} .nav-btn.active{background:#0f766e;color:#fff}
+.badge{border-radius:999px;padding:.25rem .6rem;font-size:.75rem;font-weight:700}.modal-bg{background:rgba(15,23,42,.52)}
+input,select,textarea{outline:none} input:focus,select:focus,textarea:focus{border-color:#14b8a6;box-shadow:0 0 0 3px rgba(20,184,166,.12)}
+@media print{.no-print{display:none!important}body{background:#fff}.card{box-shadow:none}}
+
+/* ===== Official monthly report skin based on wakil official records ===== */
+.official-report-root{--official-green:#006c35;--official-line:#9fb7ad;color:#11221d;font-family:Tajawal,Arial,sans-serif;direction:rtl}
+.official-sheet{width:297mm;min-height:210mm;height:210mm;background:#fff;margin:0 auto 16px;padding:9mm 10mm;border:1px solid #c9d8d1;box-shadow:0 12px 30px rgba(8,60,42,.13);overflow:hidden;position:relative}
+.official-sheet-frame{height:192mm;border:2px solid var(--official-green);padding:6mm;position:relative;overflow:hidden}
+.official-head{display:grid;grid-template-columns:92mm 48mm 92mm;gap:4mm;align-items:center;border-bottom:2px solid var(--official-green);padding-bottom:3mm;margin-bottom:3mm;min-height:29mm}
+.official-side{text-align:center;font-size:12.5px;font-weight:800;line-height:1.7}.official-side .line{display:flex;gap:5px;justify-content:center}.official-side .val{min-width:34mm;border-bottom:1px dotted #667085;color:#006c35;min-height:5mm}
+.official-logo{height:25mm;display:flex;align-items:center;justify-content:center}.official-logo img{max-width:38mm;max-height:24mm;object-fit:contain}.official-logo .fallback{font-weight:900;color:#006c35;font-size:15px;text-align:center}
+.official-title{text-align:center;color:#006c35;border:1px solid #006c35;background:linear-gradient(90deg,#e8f7ef,#fff,#e8f7ef);font-size:18px;font-weight:900;padding:2.2mm;margin-bottom:3mm}
+.official-meta{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--official-line);margin-bottom:3mm;font-size:11px}.official-meta>div{padding:2mm;border-left:1px solid var(--official-line)}.official-meta>div:last-child{border-left:0}.official-meta b{color:#006c35}
+.official-kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:2mm;margin-bottom:3mm}.official-kpi{border:1px solid var(--official-line);text-align:center;padding:2mm;font-size:10px}.official-kpi b{display:block;font-size:15px;color:#006c35;margin-top:1mm}
+.official-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:8.4px}.official-table th{background:#006c35;color:#fff;border:1px solid #006c35;padding:1.1mm .7mm;line-height:1.15}.official-table td{border:1px solid var(--official-line);padding:1mm .7mm;text-align:center;line-height:1.2;word-break:break-word}.official-table td.name{text-align:right;font-weight:800}.official-table tr.total td{font-weight:900;background:#eef8f3;color:#0b3d2b}
+.official-approval{display:grid;grid-template-columns:1fr 1fr 1fr;border:1px solid #006c35;margin-top:2.5mm;height:34mm;overflow:hidden}.official-approval>div{border-left:1px solid var(--official-line);padding:2mm;text-align:center;font-size:10px;font-weight:800}.official-approval>div:last-child{border-left:0}.official-media{height:15mm;display:flex;align-items:center;justify-content:center;overflow:hidden;margin-top:1mm}.official-media img{max-width:95%;max-height:95%;object-fit:contain}.official-sign-line{border-bottom:1px dotted #667085;min-height:6mm;margin:2mm 3mm 0;color:#006c35}
+.official-footer{position:absolute;bottom:7mm;left:16mm;right:16mm;text-align:center;font-size:10.5px;color:#334155;font-weight:800}.official-footer:before,.official-footer:after{content:"";display:inline-block;width:25%;height:1px;background:#006c35;vertical-align:middle;margin:0 8px}.official-page-no{position:absolute;bottom:2.8mm;left:0;right:0;text-align:center;font-size:10.5px;font-weight:800}
+@media print{@page{size:A4 landscape;margin:0}.official-sheet{width:297mm!important;height:210mm!important;margin:0!important;padding:8mm 9mm!important;border:0!important;box-shadow:none!important;break-after:page!important;page-break-after:always!important}.official-sheet:last-child{break-after:avoid!important;page-break-after:avoid!important}.official-sheet-frame{height:194mm!important}.no-print{display:none!important}}
+
+
+/* ===== UI/UX refresh — school platform visual language ===== */
+:root{
+  --ui-primary:#087a5b;--ui-primary-2:#0f9f78;--ui-deep:#0b2f2a;--ui-ink:#16312b;
+  --ui-surface:#ffffff;--ui-bg:#f3f7f5;--ui-line:#dfe9e5;--ui-soft:#ecf7f2;--ui-gold:#c9972f;
+}
+body{background:
+  radial-gradient(circle at 12% 12%,rgba(15,159,120,.07),transparent 24%),
+  radial-gradient(circle at 88% 8%,rgba(8,122,91,.05),transparent 22%),
+  linear-gradient(180deg,#f8fbfa 0%,#f2f7f5 48%,#eef5f2 100%);color:var(--ui-ink)}
+.card{box-shadow:0 14px 40px rgba(12,53,43,.07),0 2px 8px rgba(15,23,42,.03)}
+.glass{background:rgba(255,255,255,.88);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+
+/* Sidebar */
+aside{background:
+  radial-gradient(circle at 20% 0%,rgba(52,211,153,.18),transparent 26%),
+  linear-gradient(180deg,#0c4035 0%,#07382f 48%,#082d27 100%)!important;
+  border-left:1px solid rgba(255,255,255,.08);box-shadow:-18px 0 55px rgba(7,47,39,.14)}
+.platform-brand{padding:4px 2px 2px}.brand-orb{width:48px;height:48px;border-radius:17px;display:grid;place-items:center;position:relative;flex:0 0 auto;
+  background:linear-gradient(145deg,#42d7a4,#10a778);box-shadow:0 10px 25px rgba(16,167,120,.28),inset 0 1px 0 rgba(255,255,255,.35)}
+.brand-orb:after{content:"";position:absolute;inset:6px;border:1px solid rgba(255,255,255,.26);border-radius:13px}.brand-orb span{font-size:20px;font-weight:900}
+.platform-mini-card{padding:13px 14px;border-radius:18px;background:linear-gradient(135deg,rgba(255,255,255,.09),rgba(255,255,255,.045));border:1px solid rgba(255,255,255,.10);box-shadow:inset 0 1px 0 rgba(255,255,255,.08)}
+.platform-live-dot{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:800;background:rgba(16,185,129,.16);color:#c9ffe8;border:1px solid rgba(52,211,153,.18);padding:4px 8px;border-radius:999px}.platform-live-dot i{width:6px;height:6px;border-radius:50%;background:#34d399;box-shadow:0 0 0 4px rgba(52,211,153,.12)}
+.nav{position:relative}.nav-btn{position:relative;overflow:hidden;transition:.22s ease;border:1px solid transparent!important;font-size:13.5px}.nav-btn:before{content:"";display:inline-grid;place-items:center;width:28px;height:28px;margin-left:9px;border-radius:9px;background:rgba(255,255,255,.08);vertical-align:middle;font-size:13px}.nav-btn:nth-child(1):before{content:"⌂"}.nav-btn:nth-child(2):before{content:"＋"}.nav-btn:nth-child(3):before{content:"◎"}.nav-btn:nth-child(4):before{content:"≣"}.nav-btn:nth-child(5):before{content:"▦"}.nav-btn:nth-child(6):before{content:"%"}.nav-btn:nth-child(7):before{content:"↔"}.nav-btn:nth-child(8):before{content:"⇩"}.nav-btn:nth-child(9):before{content:"▤"}.nav-btn:nth-child(10):before{content:"◇"}.nav-btn:nth-child(11):before{content:"⚙"}
+.nav-btn.active{background:linear-gradient(90deg,#fff,#f3fff9)!important;color:#075f48!important;box-shadow:0 10px 24px rgba(0,0,0,.13);border-color:rgba(255,255,255,.6)!important;transform:translateX(-2px)}
+.nav-btn.active:before{background:#e5f8ef;color:#087a5b}.nav-btn:hover:not(.active){background:rgba(255,255,255,.09)!important;transform:translateX(-2px)}
+
+/* Topbar */
+.platform-topbar{border:1px solid rgba(190,211,203,.78)!important;box-shadow:0 16px 45px rgba(8,68,52,.08),inset 0 1px 0 rgba(255,255,255,.75)}
+.topbar-icon{width:48px;height:48px;border-radius:16px;display:grid;place-items:center;color:#fff;font-size:24px;font-weight:900;background:linear-gradient(145deg,#0d8c68,#096c54);box-shadow:0 10px 22px rgba(8,122,91,.22)}
+.module-chip{font-size:10px;font-weight:900;color:#087a5b;background:#e9f7f1;border:1px solid #cceade;border-radius:999px;padding:4px 9px}
+.search-shell{height:44px;display:flex;align-items:center;gap:8px;background:#f7faf9;border:1px solid #dfe9e5;border-radius:14px;padding:0 12px;transition:.2s}.search-shell:focus-within{border-color:#6ec7ac;box-shadow:0 0 0 4px rgba(15,159,120,.08);background:#fff}.search-shell span{color:#7a938b;font-size:18px}.search-shell input{border:0;background:transparent;padding:0;box-shadow:none!important}
+.ui-btn{height:44px;border-radius:14px;padding:0 16px;font-weight:800;display:inline-flex;align-items:center;gap:7px;transition:.2s ease;border:1px solid transparent}.ui-btn:hover{transform:translateY(-1px)}.ui-btn-primary{color:#fff;background:linear-gradient(135deg,#087a5b,#0a9b72);box-shadow:0 10px 22px rgba(8,122,91,.18)}.ui-btn-primary:hover{box-shadow:0 14px 26px rgba(8,122,91,.25)}.ui-btn-soft{background:#edf8f4;border-color:#cfe9df;color:#076b51}.ui-btn-soft:hover{background:#e4f5ee}
+
+/* Hero */
+.dashboard-hero{min-height:230px;border-radius:28px;position:relative;overflow:hidden;display:grid;grid-template-columns:minmax(0,1.55fr) minmax(280px,.75fr);align-items:center;padding:32px 36px;background:
+  radial-gradient(circle at 72% 20%,rgba(255,255,255,.16),transparent 19%),
+  linear-gradient(115deg,#0c4035 0%,#0a6750 48%,#0e8c69 100%);color:#fff;box-shadow:0 22px 55px rgba(8,92,70,.18)}
+.dashboard-hero:before{content:"";position:absolute;width:420px;height:420px;border-radius:50%;border:1px solid rgba(255,255,255,.08);left:-160px;top:-235px}.dashboard-hero:after{content:"";position:absolute;width:250px;height:250px;border-radius:50%;background:rgba(255,255,255,.035);right:34%;bottom:-185px}
+.hero-copy{position:relative;z-index:2;max-width:760px}.hero-kicker{display:inline-flex;padding:5px 10px;border-radius:999px;font-size:11px;font-weight:900;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.12);color:#d9fff0}.hero-copy h2{font-size:clamp(24px,3vw,35px);font-weight:900;line-height:1.3;margin-top:12px;letter-spacing:-.03em}.hero-copy p{font-size:14px;line-height:1.9;color:rgba(255,255,255,.78);margin-top:10px;max-width:650px}.hero-actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:20px}.hero-btn{border-radius:13px;padding:10px 16px;font-size:13px;font-weight:900;transition:.2s}.hero-btn:hover{transform:translateY(-2px)}.hero-btn-main{background:#fff;color:#075d48;box-shadow:0 8px 18px rgba(0,0,0,.12)}.hero-btn-ghost{background:rgba(255,255,255,.09);color:#fff;border:1px solid rgba(255,255,255,.18)}
+.hero-visual{position:relative;min-height:180px;display:grid;place-items:center}.hero-core{width:92px;height:92px;border-radius:30px;display:grid;place-items:center;font-size:36px;font-weight:900;background:linear-gradient(145deg,#dffbef,#fff);color:#087a5b;box-shadow:0 18px 38px rgba(0,0,0,.16);position:relative;z-index:3}.pulse-ring{position:absolute;border-radius:50%;border:1px solid rgba(255,255,255,.18)}.pulse-ring.r1{width:145px;height:145px}.pulse-ring.r2{width:205px;height:205px;border-color:rgba(255,255,255,.09)}.float-pill{position:absolute;padding:6px 10px;border-radius:999px;font-size:11px;font-weight:900;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.16);backdrop-filter:blur(10px)}.float-pill.p1{right:12%;top:15%}.float-pill.p2{left:8%;top:46%}.float-pill.p3{right:13%;bottom:8%}
+
+/* KPI cards */
+.kpi-grid>div{position:relative;overflow:hidden;border:1px solid #dfe9e5!important;border-radius:20px!important;background:linear-gradient(180deg,#fff,#fbfdfc)!important;padding:19px 20px!important;transition:.22s;box-shadow:0 10px 30px rgba(14,56,46,.05)}
+.kpi-grid>div:hover{transform:translateY(-3px);box-shadow:0 18px 34px rgba(14,56,46,.09);border-color:#c9dfd7!important}.kpi-grid>div:before{content:"";position:absolute;top:0;right:0;left:0;height:3px;background:linear-gradient(90deg,#10b981,#0f766e)}
+.kpi-grid>div:nth-child(2):before{background:linear-gradient(90deg,#38bdf8,#0f766e)}.kpi-grid>div:nth-child(3):before{background:linear-gradient(90deg,#f59e0b,#c9972f)}.kpi-grid>div:nth-child(4):before{background:linear-gradient(90deg,#fb7185,#e11d48)}
+.kpi-grid>div>div:first-child{font-weight:700;color:#647b73!important}.kpi-grid>div>div:last-child{color:#17372f;letter-spacing:-.04em}
+
+/* General cards / section headers */
+.view>.bg-white.card,.view>div>.bg-white.card,.view .bg-white.card{border-color:#dfe9e5!important;border-radius:22px!important;background:rgba(255,255,255,.96)!important}.view .border-b{border-color:#e6efeb!important}.view h2,.view h3{color:#17372f}
+.view>div.bg-white.card>div:first-child:not(.overflow-x-auto),.view>.bg-white.card>div:first-child:not(.overflow-x-auto){position:relative}
+.view table{border-collapse:separate;border-spacing:0}.view table thead{box-shadow:inset 0 -1px 0 rgba(0,0,0,.04)}.view table thead.bg-slate-800{background:linear-gradient(90deg,#163d34,#0c5c48)!important}.view table thead.bg-slate-50{background:#f3f8f6!important;color:#48665d!important}.view table th{font-weight:900;letter-spacing:-.01em}.view table td{border-bottom:1px solid #edf2f0}.view table tbody tr{transition:.16s}.view table tbody tr:hover{background:#f5fbf8!important}
+
+/* Form controls */
+.view input,.view select,.view textarea,#staffModal input,#staffModal select{border-color:#dbe7e2!important;background:#fbfdfc!important;border-radius:13px!important;transition:.2s}.view input:hover,.view select:hover,.view textarea:hover{border-color:#bdd5cb!important;background:#fff!important}.view input:focus,.view select:focus,.view textarea:focus{border-color:#67bea4!important;background:#fff!important;box-shadow:0 0 0 4px rgba(15,159,120,.09)!important}
+.view button:not(.ui-btn):not(.hero-btn):not(.nav-btn):not(.mobile-nav-btn){transition:.2s ease}.view button:not(.ui-btn):not(.hero-btn):not(.nav-btn):not(.mobile-nav-btn):hover{transform:translateY(-1px);filter:saturate(1.05)}
+
+/* Monthly statistics emphasis */
+#view-monthly .grid.grid-cols-2.md\:grid-cols-3.xl\:grid-cols-6>div{border-radius:18px!important;border:1px solid #dfe9e5!important;background:linear-gradient(180deg,#fff,#f7fbf9)!important;box-shadow:0 8px 22px rgba(12,53,43,.04)}
+#view-monthly .grid.grid-cols-2.md\:grid-cols-3.xl\:grid-cols-6>div:last-child{background:linear-gradient(135deg,#173c33,#0b5b47)!important;border-color:transparent!important}
+#view-monthly .rounded-2xl.border.p-4{border-color:#dfe9e5!important;background:#fbfdfc!important}
+
+/* Upload zone */
+#view-import label.border-dashed{background:linear-gradient(180deg,#fbfffd,#f2faf6)!important;border-color:#b9d9cc!important;transition:.22s}#view-import label.border-dashed:hover{background:#eef9f4!important;border-color:#54b493!important;box-shadow:0 12px 30px rgba(8,122,91,.07)}
+
+/* Mobile nav */
+@media(max-width:1023px){.mobile-nav-btn{transition:.2s}.mobile-nav-btn:hover{background:rgba(255,255,255,.08)}.platform-topbar{top:8px}.dashboard-hero{grid-template-columns:1fr;padding:26px 24px}.hero-visual{display:none}}
+@media(max-width:640px){main{padding-left:12px!important;padding-right:12px!important}.platform-topbar{border-radius:18px!important}.topbar-icon{width:42px;height:42px;border-radius:14px}.dashboard-hero{border-radius:22px;padding:22px}.hero-copy h2{font-size:24px}.kpi-grid>div{padding:16px!important}.kpi-grid>div>div:last-child{font-size:27px!important}}
+
+/* motion, with accessibility fallback */
+@keyframes softFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+.hero-core{animation:softFloat 4.5s ease-in-out infinite}.float-pill.p1{animation:softFloat 5.2s ease-in-out infinite}.float-pill.p2{animation:softFloat 5.8s ease-in-out infinite reverse}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}.hero-core,.float-pill{animation:none!important}.nav-btn,.view button,.kpi-grid>div{transition:none!important}}
+
+/* Preserve official report print design completely */
+@media print{body{background:#fff!important}.dashboard-hero,.platform-topbar,aside,.mobile-nav-btn{display:none!important}.official-report-root,.official-report-root *{animation:none!important}}
+
+</style>
+
+<!-- Official report export libraries -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+</head>
+<body class="text-slate-800">
+<div class="min-h-screen flex">
+  <aside class="hidden lg:flex w-72 bg-slate-950 text-white p-5 flex-col fixed inset-y-0 right-0 no-print">
+    <div class="platform-brand flex items-center gap-3 mb-8">
+      <div class="brand-orb"><span>✓</span></div>
+      <div class="min-w-0"><div class="font-extrabold text-[15px] tracking-tight">الحضور والانضباط</div><div class="text-xs text-emerald-100/70 mt-0.5">وحدة الإدارة المدرسية الذكية</div></div>
+    </div>
+    <div class="platform-mini-card mb-5">
+      <div class="flex items-center justify-between gap-2"><span class="text-[11px] text-emerald-100/70">حالة الوحدة</span><span class="platform-live-dot"><i></i> جاهزة</span></div>
+      <div class="text-[12px] mt-2 leading-5 text-white/90">إدخال يومي، إحصاءات، حسم وتقارير رسمية في مسار واحد.</div>
+    </div>
+    <nav class="space-y-2">
+      <button class="nav-btn active w-full text-right px-4 py-3 rounded-xl" data-view="dashboard">لوحة اليوم</button>
+      <button class="nav-btn w-full text-right px-4 py-3 rounded-xl text-slate-300 hover:bg-white/10" data-view="daily">الإدخال اليومي</button>
+      <button class="nav-btn w-full text-right px-4 py-3 rounded-xl text-slate-300 hover:bg-white/10" data-view="staff">سجل المنسوبين</button>
+      <button class="nav-btn w-full text-right px-4 py-3 rounded-xl text-slate-300 hover:bg-white/10" data-view="records">سجل الحركات</button>
+      <button class="nav-btn w-full text-right px-4 py-3 rounded-xl text-slate-300 hover:bg-white/10" data-view="monthly">الإحصائية الشهرية</button>
+      <button class="nav-btn w-full text-right px-4 py-3 rounded-xl text-slate-300 hover:bg-white/10" data-view="deductions">نماذج الحسم</button>
+      <button class="nav-btn w-full text-right px-4 py-3 rounded-xl text-slate-300 hover:bg-white/10" data-view="integration">تكامل المنصة</button>
+      <button class="nav-btn w-full text-right px-4 py-3 rounded-xl text-slate-300 hover:bg-white/10" data-view="import" style="display:none">استيراد Excel</button>
+      <button class="nav-btn w-full text-right px-4 py-3 rounded-xl text-slate-300 hover:bg-white/10" data-view="official">التقارير الرسمية</button>
+      <button class="nav-btn w-full text-right px-4 py-3 rounded-xl text-slate-300 hover:bg-white/10" data-view="identity">البيانات الأساسية</button>
+      <button class="nav-btn w-full text-right px-4 py-3 rounded-xl text-slate-300 hover:bg-white/10" data-view="settings">الإعدادات</button>
+    </nav>
+    <div class="mt-auto text-xs text-slate-500 leading-6">لا توجد بيانات افتراضية.<br>يتم إنشاء البيانات بواسطة المستخدم فقط.</div>
+  </aside>
+
+  <div class="lg:hidden fixed bottom-3 left-3 right-3 z-40 no-print">
+    <div class="bg-slate-950/95 backdrop-blur text-white rounded-2xl shadow-2xl border border-white/10 p-2 overflow-x-auto">
+      <div class="flex gap-2 min-w-max">
+        <button class="mobile-nav-btn px-4 py-2.5 rounded-xl bg-teal-700 font-bold text-sm" data-view="dashboard">الرئيسية</button>
+        <button class="mobile-nav-btn px-4 py-2.5 rounded-xl text-slate-200 font-bold text-sm" data-view="daily">الإدخال اليومي</button>
+        <button class="mobile-nav-btn px-4 py-2.5 rounded-xl text-slate-200 font-bold text-sm" data-view="records">الحركات</button>
+        <button class="mobile-nav-btn px-4 py-2.5 rounded-xl text-slate-200 font-bold text-sm" data-view="monthly">الإحصائية الشهرية</button>
+        <button class="mobile-nav-btn px-4 py-2.5 rounded-xl text-slate-200 font-bold text-sm" data-view="deductions">الحسم</button>
+        <button class="mobile-nav-btn px-4 py-2.5 rounded-xl text-slate-200 font-bold text-sm" data-view="staff">المنسوبون</button>
+        <button class="mobile-nav-btn px-4 py-2.5 rounded-xl text-slate-200 font-bold text-sm" data-view="import" style="display:none">Excel</button>
+        <button class="mobile-nav-btn px-4 py-2.5 rounded-xl text-slate-200 font-bold text-sm" data-view="official">التقارير</button>
+        <button class="mobile-nav-btn px-4 py-2.5 rounded-xl text-slate-200 font-bold text-sm" data-view="identity">البيانات الأساسية</button>
+        <button class="mobile-nav-btn px-4 py-2.5 rounded-xl text-slate-200 font-bold text-sm" data-view="settings">الإعدادات</button>
+      </div>
+    </div>
+  </div>
+
+  <main class="flex-1 lg:mr-72 p-4 md:p-7 pb-28 lg:pb-7">
+    <header class="platform-topbar glass card rounded-[22px] p-4 md:p-5 mb-6 flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between sticky top-3 z-20 no-print">
+      <div class="flex items-center gap-4 min-w-0">
+        <div class="topbar-icon">⌁</div>
+        <div class="min-w-0">
+          <div class="flex flex-wrap items-center gap-2"><h1 class="text-xl md:text-2xl font-extrabold tracking-tight">نظام الانضباط المدرسي — انضباط المنسوبين</h1><span class="module-chip">وحدة مشتركة</span></div>
+          <p id="schoolLabel" class="text-sm text-slate-500 mt-1.5 truncate">لم يتم إعداد بيانات الجهة بعد</p>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-2 w-full xl:w-auto items-center"><a href="manager.html" class="border border-slate-200 bg-white text-slate-700 px-4 py-2.5 rounded-xl font-extrabold no-print">← العودة لقسم المدير</a>
+        <div class="search-shell flex-1 xl:flex-none"><span>⌕</span><input id="globalSearch" class="w-full xl:w-64" placeholder="بحث سريع عن موظف..."></div>
+        <button onclick="showView('monthly')" class="ui-btn ui-btn-soft whitespace-nowrap"><span>▦</span> الإحصائية الشهرية</button>
+        <button onclick="showView('daily')" class="ui-btn ui-btn-primary whitespace-nowrap"><span>＋</span> تسجيل حركة</button>
+      </div>
+    </header>
+
+    <section id="view-dashboard" class="view space-y-6">
+      <div class="dashboard-hero no-print">
+        <div class="hero-copy">
+          <span class="hero-kicker">لوحة المتابعة اليومية</span>
+          <h2>صورة فورية للانضباط الوظيفي في المدرسة</h2>
+          <p>تابع الحركات اليومية، راقب المؤشرات، وانتقل مباشرة إلى الإحصاءات والتقارير الرسمية دون تكرار إدخال البيانات.</p>
+          <div class="hero-actions"><button onclick="showView('daily')" class="hero-btn hero-btn-main">تسجيل حركة جديدة</button><button onclick="showView('official')" class="hero-btn hero-btn-ghost">فتح التقارير الرسمية</button></div>
+        </div>
+        <div class="hero-visual" aria-hidden="true">
+          <div class="pulse-ring r1"></div><div class="pulse-ring r2"></div><div class="hero-core">✓</div>
+          <span class="float-pill p1">حضور</span><span class="float-pill p2">تأخر</span><span class="float-pill p3">تقارير</span>
+        </div>
+      </div>
+      <div class="kpi-grid grid grid-cols-2 xl:grid-cols-4 gap-4">
+        <div class="bg-white card border border-slate-200 rounded-2xl p-5"><div class="text-sm text-slate-500">إجمالي المنسوبين</div><div id="kpiStaff" class="text-3xl font-extrabold mt-2">0</div></div>
+        <div class="bg-white card border border-slate-200 rounded-2xl p-5"><div class="text-sm text-slate-500">حركات اليوم</div><div id="kpiToday" class="text-3xl font-extrabold mt-2">0</div></div>
+        <div class="bg-white card border border-slate-200 rounded-2xl p-5"><div class="text-sm text-slate-500">إجمالي دقائق التأخر</div><div id="kpiLate" class="text-3xl font-extrabold mt-2">0</div></div>
+        <div class="bg-white card border border-slate-200 rounded-2xl p-5"><div class="text-sm text-slate-500">غياب بدون عذر</div><div id="kpiAbsent" class="text-3xl font-extrabold mt-2">0</div></div>
+      </div>
+      <div class="grid xl:grid-cols-3 gap-5">
+        <div class="xl:col-span-2 bg-white card border border-slate-200 rounded-2xl overflow-hidden"><div class="p-5 border-b flex justify-between"><div><h2 class="font-extrabold">حركة اليوم</h2><p class="text-xs text-slate-500 mt-1">آخر الحركات المسجلة لهذا اليوم</p></div><button onclick="showView('records')" class="text-sm text-teal-700 font-bold">عرض السجل</button></div><div id="todayList" class="p-5"></div></div>
+        <div class="bg-gradient-to-br from-teal-800 to-slate-900 text-white card rounded-2xl p-6"><div class="text-sm text-teal-100">بدء الاستخدام</div><h3 class="text-xl font-extrabold mt-2">النظام فارغ وجاهز لبياناتك</h3><p class="text-sm text-slate-300 leading-7 mt-3">أضف المنسوبين يدويًا أو استوردهم من ملف Excel، ثم ابدأ تسجيل الحركات اليومية.</p><div class="grid gap-2 mt-5"><button onclick="showView('monthly')" class="bg-teal-500 text-slate-950 rounded-xl py-3 font-extrabold">📊 عرض الإحصائية الشهرية</button><button onclick="showView('import')" class="bg-white text-slate-900 rounded-xl py-3 font-bold">استيراد ملف Excel</button><button onclick="openStaffModal()" class="bg-white/10 border border-white/15 rounded-xl py-3 font-bold">إضافة موظف يدويًا</button></div></div>
+      </div>
+    </section>
+
+    <section id="view-daily" class="view hidden space-y-5">
+      <div class="bg-white card border border-slate-200 rounded-2xl p-6"><div class="flex flex-col md:flex-row justify-between gap-3 mb-5"><div><h2 class="text-xl font-extrabold">الإدخال اليومي</h2><p class="text-sm text-slate-500">تسجيل غياب، تأخر، استئذان أو انصراف مبكر</p></div><input id="recordDate" type="date" class="border border-slate-200 rounded-xl px-4 py-2.5"></div>
+        <form id="recordForm" class="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
+          <label class="text-sm font-bold">الموظف<select id="recordEmployee" required class="mt-2 w-full border border-slate-200 rounded-xl p-3"><option value="">اختر من سجل المنسوبين</option></select></label>
+          <label class="text-sm font-bold">نوع الحركة<select id="recordType" required class="mt-2 w-full border border-slate-200 rounded-xl p-3"><option value="حاضر">حاضر</option><option value="تأخر">تأخر</option><option value="غياب بعذر">غياب بعذر</option><option value="غياب بدون عذر">غياب بدون عذر</option><option value="استئذان">استئذان</option><option value="انصراف مبكر">انصراف مبكر</option></select></label>
+          <label id="minutesWrap" class="text-sm font-bold">المدة بالدقائق<input id="recordMinutes" type="number" min="0" value="0" class="mt-2 w-full border border-slate-200 rounded-xl p-3"></label>
+          <label class="text-sm font-bold">نوع العذر<select id="recordExcuse" class="mt-2 w-full border border-slate-200 rounded-xl p-3"><option value="">بدون تحديد</option><option>مرضي</option><option>اضطراري</option><option>إجازة اعتيادية</option><option>مرافق</option><option>ولادة</option><option>رعاية مولود</option><option>حالة وفاة</option><option>استثنائي</option><option>أخرى</option></select></label>
+          <label class="text-sm font-bold">حالة العذر<select id="recordExcuseStatus" class="mt-2 w-full border border-slate-200 rounded-xl p-3"><option value="">غير محدد</option><option>مقبول</option><option>غير مقبول</option><option>قيد المراجعة</option></select></label>
+          <label class="md:col-span-2 xl:col-span-3 text-sm font-bold">ملاحظات<textarea id="recordNotes" rows="2" class="mt-2 w-full border border-slate-200 rounded-xl p-3" placeholder="ملاحظات اختيارية"></textarea></label>
+          <div class="xl:col-span-4 flex justify-end"><button class="bg-teal-700 hover:bg-teal-800 text-white px-7 py-3 rounded-xl font-extrabold">حفظ الحركة</button></div>
+        </form>
+      </div>
+    </section>
+
+    <section id="view-staff" class="view hidden space-y-5">
+      <div class="bg-white card border border-slate-200 rounded-2xl overflow-hidden"><div class="p-5 border-b flex flex-col sm:flex-row gap-3 justify-between"><div><h2 class="text-xl font-extrabold">سجل المنسوبين</h2><p class="text-sm text-slate-500">لا يحتوي النظام على أي أسماء افتراضية</p></div><div class="flex gap-2"><button onclick="showView('import')" class="border border-slate-200 px-4 py-2 rounded-xl font-bold">استيراد Excel</button><button onclick="openStaffModal()" class="bg-teal-700 text-white px-4 py-2 rounded-xl font-bold">+ إضافة موظف</button></div></div><div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-slate-50 text-slate-600"><tr><th class="p-3 text-right">الرقم الوظيفي</th><th class="p-3 text-right">الاسم</th><th class="p-3 text-right">المسمى</th><th class="p-3 text-right">القسم</th><th class="p-3 text-right">الحالة</th><th class="p-3"></th></tr></thead><tbody id="staffBody"></tbody></table></div></div>
+    </section>
+
+    <section id="view-records" class="view hidden space-y-5">
+      <div class="bg-white card border border-slate-200 rounded-2xl overflow-hidden"><div class="p-5 border-b"><h2 class="text-xl font-extrabold">سجل الحركات</h2><p class="text-sm text-slate-500">سجل تفصيلي قابل للبحث والتصفية</p></div><div class="p-4 grid md:grid-cols-4 gap-3 border-b bg-slate-50"><input id="recordsSearch" class="border border-slate-200 rounded-xl px-3 py-2" placeholder="بحث بالاسم أو الرقم"><select id="recordsType" class="border border-slate-200 rounded-xl px-3 py-2"><option value="">كل الحركات</option><option>حاضر</option><option>تأخر</option><option>غياب بعذر</option><option>غياب بدون عذر</option><option>استئذان</option><option>انصراف مبكر</option></select><input id="recordsFrom" type="date" class="border border-slate-200 rounded-xl px-3 py-2"><input id="recordsTo" type="date" class="border border-slate-200 rounded-xl px-3 py-2"></div><div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-slate-800 text-white"><tr><th class="p-3 text-right">التاريخ</th><th class="p-3 text-right">الموظف</th><th class="p-3 text-right">الحركة</th><th class="p-3 text-right">الدقائق</th><th class="p-3 text-right">العذر</th><th class="p-3 text-right">حالة العذر</th><th class="p-3 text-right">ملاحظات</th></tr></thead><tbody id="recordsBody"></tbody></table></div></div>
+    </section>
+
+    <section id="view-monthly" class="view hidden space-y-5">
+      <div class="bg-white card border border-slate-200 rounded-2xl overflow-hidden">
+        <div class="p-5 border-b flex flex-col xl:flex-row gap-4 justify-between xl:items-center">
+          <div><h2 class="text-xl font-extrabold">الإحصائية الختامية الشهرية</h2><p class="text-sm text-slate-500 mt-1">ملخص شامل لجميع المنسوبين وحركات الغياب والتأخر والاستئذان والانصراف والحسم خلال الشهر المحدد.</p></div>
+          <div class="flex flex-wrap gap-2 no-print"><input id="monthlyPeriod" type="month" class="border border-slate-200 rounded-xl px-4 py-2.5"><button onclick="renderMonthlyReport()" class="bg-teal-700 text-white px-4 py-2.5 rounded-xl font-bold">تحديث الإحصائية</button><button onclick="printMonthlyAsOfficial()" class="border border-slate-200 px-4 py-2.5 rounded-xl font-bold">طباعة الإحصائية الرسمية</button></div>
+        </div>
+        <div id="monthlyReportHeader" class="px-5 pt-5"></div>
+        <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 p-5">
+          <div class="rounded-2xl bg-slate-50 border p-4"><div class="text-xs text-slate-500">إجمالي المنسوبين</div><div id="monKpiStaff" class="text-2xl font-extrabold mt-1">0</div></div>
+          <div class="rounded-2xl bg-slate-50 border p-4"><div class="text-xs text-slate-500">غياب بعذر</div><div id="monKpiExcused" class="text-2xl font-extrabold mt-1">0</div></div>
+          <div class="rounded-2xl bg-slate-50 border p-4"><div class="text-xs text-slate-500">غياب بدون عذر</div><div id="monKpiUnexcused" class="text-2xl font-extrabold mt-1">0</div></div>
+          <div class="rounded-2xl bg-slate-50 border p-4"><div class="text-xs text-slate-500">دقائق التأخر</div><div id="monKpiLate" class="text-2xl font-extrabold mt-1">0</div></div>
+          <div class="rounded-2xl bg-slate-50 border p-4"><div class="text-xs text-slate-500">دقائق الاستئذان/الانصراف</div><div id="monKpiPermission" class="text-2xl font-extrabold mt-1">0</div></div>
+          <div class="rounded-2xl bg-slate-900 text-white p-4"><div class="text-xs text-slate-300">حالات الحسم</div><div id="monKpiDed" class="text-2xl font-extrabold mt-1">0</div></div>
+        </div>
+        <div class="px-5 pb-5 grid md:grid-cols-3 gap-3">
+          <div class="rounded-2xl border p-4"><div class="text-xs text-slate-500">منسوبون لديهم حركات</div><div id="monKpiActive" class="text-xl font-extrabold mt-1">0</div></div>
+          <div class="rounded-2xl border p-4"><div class="text-xs text-slate-500">إجمالي دقائق الحركات الزمنية</div><div id="monKpiTimed" class="text-xl font-extrabold mt-1">0</div></div>
+          <div class="rounded-2xl border p-4"><div class="text-xs text-slate-500">منسوبون بلا حركات</div><div id="monKpiClean" class="text-xl font-extrabold mt-1">0</div></div>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm min-w-[1150px]">
+            <thead class="bg-slate-800 text-white"><tr><th class="p-3 text-right">م</th><th class="p-3 text-right">المنسوب</th><th class="p-3 text-right">المسمى</th><th class="p-3 text-center">غياب بعذر</th><th class="p-3 text-center">غياب بدون عذر</th><th class="p-3 text-center">مرات التأخر</th><th class="p-3 text-center">دقائق التأخر</th><th class="p-3 text-center">الاستئذان</th><th class="p-3 text-center">دقائق الاستئذان</th><th class="p-3 text-center">انصراف مبكر</th><th class="p-3 text-center">دقائق الانصراف</th><th class="p-3 text-center">حالات الحسم</th><th class="p-3 text-center">أيام الحسم</th><th class="p-3 text-center">دقائق الحسم</th></tr></thead>
+            <tbody id="monthlyBody"></tbody>
+            <tfoot id="monthlyFoot" class="bg-slate-100 font-extrabold"></tfoot>
+          </table>
+        </div>
+        <div class="p-5 text-xs text-slate-500 border-t">تحتسب الإحصائية من السجلات الفعلية المحفوظة في النظام للفترة المحددة، وتعرض جميع المنسوبين المسجلين بما في ذلك من لا توجد لهم حركة خلال الشهر.</div>
+      </div>
+    </section>
+
+    <section id="view-deductions" class="view hidden space-y-5">
+      <div class="bg-white card border border-slate-200 rounded-2xl overflow-hidden">
+        <div class="p-5 border-b flex flex-col md:flex-row gap-3 justify-between">
+          <div><h2 class="text-xl font-extrabold">نماذج وسجلات احتساب الحسم</h2><p class="text-sm text-slate-500">تُنشأ تلقائيًا من الحركات المؤهلة ويمكن مزامنتها مع السجلات المشتركة في قسم الوكيل.</p></div>
+          <div class="flex gap-2"><button onclick="rebuildDeductions()" class="border border-slate-200 px-4 py-2 rounded-xl font-bold">إعادة الاحتساب</button><button onclick="syncDeductionsToPlatform()" class="bg-teal-700 text-white px-4 py-2 rounded-xl font-bold">مزامنة مع قسم الوكيل</button></div>
+        </div>
+        <div class="grid md:grid-cols-4 gap-3 p-4 bg-slate-50 border-b">
+          <div class="rounded-xl bg-white border p-4"><div class="text-xs text-slate-500">إجمالي المسودات</div><div id="dedKpiAll" class="text-2xl font-extrabold mt-1">0</div></div>
+          <div class="rounded-xl bg-white border p-4"><div class="text-xs text-slate-500">غياب بدون عذر</div><div id="dedKpiAbs" class="text-2xl font-extrabold mt-1">0</div></div>
+          <div class="rounded-xl bg-white border p-4"><div class="text-xs text-slate-500">دقائق تأخر/انصراف</div><div id="dedKpiMin" class="text-2xl font-extrabold mt-1">0</div></div>
+          <div class="rounded-xl bg-white border p-4"><div class="text-xs text-slate-500">تمت المزامنة</div><div id="dedKpiSynced" class="text-2xl font-extrabold mt-1">0</div></div>
+        </div>
+        <div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-slate-800 text-white"><tr><th class="p-3 text-right">الموظف</th><th class="p-3 text-right">الفترة</th><th class="p-3 text-right">سبب الحسم</th><th class="p-3 text-right">الأيام</th><th class="p-3 text-right">الدقائق</th><th class="p-3 text-right">الحالة</th><th class="p-3 text-right">الإجراء</th></tr></thead><tbody id="deductionsBody"></tbody></table></div>
+      </div>
+    </section>
+
+    <section id="view-integration" class="view hidden space-y-5">
+      <div class="grid xl:grid-cols-2 gap-5">
+        <div class="bg-white card border border-slate-200 rounded-2xl p-6">
+          <div class="flex justify-between items-start gap-3"><div><h2 class="text-xl font-extrabold">مركز المعلومات المدرسي</h2><p class="text-sm text-slate-500 mt-1">المصدر المعتمد للمنسوبين داخل المنصة؛ لا تُنشأ قاعدة أسماء مستقلة داخل هذا القسم.</p></div><span id="bridgeBadge" class="badge bg-amber-50 text-amber-700">وضع مستقل</span></div>
+          <div class="mt-5 rounded-2xl bg-slate-50 border p-4 text-sm leading-7"><div>المصدر الحالي: <b id="staffSourceLabel">السجل المحلي / Excel</b></div><div>آخر مزامنة: <b id="staffSyncLabel">لم تتم</b></div></div>
+          <div class="grid gap-2 mt-4"><button onclick="syncStaffFromPlatform()" class="bg-teal-700 text-white rounded-xl py-3 font-bold">جلب المنسوبين من مركز المعلومات</button><button onclick="clearLocalStaffCache()" class="border border-slate-200 rounded-xl py-3 font-bold">تحديث النسخة المحلية المؤقتة</button></div>
+        </div>
+        <div class="bg-white card border border-slate-200 rounded-2xl p-6">
+          <h2 class="text-xl font-extrabold">السجلات المشتركة — قسم الوكيل</h2><p class="text-sm text-slate-500 mt-1">إنشاء وتعبئة سجلات حسم الغياب والتأخر آليًا.</p>
+          <div class="mt-5 space-y-3 text-sm">
+            <label class="flex items-center gap-3 p-3 rounded-xl border"><input id="autoCreateDed" type="checkbox" class="w-5 h-5" checked><span><b>إنشاء مسودة حسم تلقائيًا</b><div class="text-xs text-slate-500">عند تسجيل غياب بدون عذر أو حركة زمنية مؤهلة.</div></span></label>
+            <label class="flex items-center gap-3 p-3 rounded-xl border"><input id="autoSyncDed" type="checkbox" class="w-5 h-5"><span><b>المزامنة الفورية مع سجلات الوكيل</b><div class="text-xs text-slate-500">تتطلب وجود جسر المنصة وصلاحية الكتابة.</div></span></label>
+          </div>
+          <button onclick="syncDeductionsToPlatform()" class="mt-4 w-full bg-slate-900 text-white rounded-xl py-3 font-bold">مزامنة المسودات الآن</button>
+        </div>
+      </div>
+      <div class="bg-white card border border-slate-200 rounded-2xl p-6"><h3 class="font-extrabold">عقد التكامل المطلوب من المنصة</h3><p class="text-sm text-slate-500 mt-1">عند دمج هذا الملف داخل المنصة، يكفي توفير الكائن <code class="bg-slate-100 px-2 py-1 rounded">window.SchoolPlatformBridge</code> بالوظائف الموضحة أدناه.</p><pre class="mt-4 text-xs leading-6 bg-slate-950 text-slate-200 rounded-2xl p-4 overflow-auto" dir="ltr">getContext() -> { schoolId, userId, role, schoolName, academicYear }
+getSchoolUsers() -> [{ id, name, title, dept, status }]
+upsertSharedDeduction(record) -> { id, status }
+openSharedDeduction(id) -> void</pre></div>
+    </section>
+
+    <section id="view-import" class="view hidden space-y-5">
+      <div class="bg-white card border border-slate-200 rounded-2xl p-6"><h2 class="text-xl font-extrabold">استيراد بيانات المنسوبين من Excel</h2><p class="text-sm text-slate-500 mt-1">ارفع أي ملف XLSX أو XLS أو CSV، ثم طابق الأعمدة قبل الاستيراد.</p><label class="mt-6 border-2 border-dashed border-slate-300 hover:border-teal-500 rounded-2xl p-10 grid place-items-center cursor-pointer bg-slate-50"><input id="excelFile" type="file" accept=".xlsx,.xls,.csv" class="hidden"><div class="text-center"><div class="text-4xl">📥</div><div class="font-extrabold mt-3">اختر ملف Excel</div><div class="text-xs text-slate-500 mt-1">لن يتم استيراد شيء قبل المراجعة والمطابقة</div></div></label><div id="mappingArea" class="hidden mt-6"></div></div>
+    </section>
+
+
+    <section id="view-identity" class="view hidden space-y-5">
+      <div class="bg-white card border border-slate-200 rounded-2xl p-6">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div><h2 class="text-xl font-extrabold">البيانات الأساسية للتقارير الرسمية</h2><p class="text-sm text-slate-500 mt-1">تُحفظ مرة واحدة وتنعكس تلقائيًا على الترويسة والتقارير والإحصاءات والمخرجات الرسمية.</p></div>
+          <span class="badge bg-emerald-50 text-emerald-700 border border-emerald-200">بيانات موحدة لجميع المخرجات</span>
+        </div>
+        <form id="identityForm" class="grid md:grid-cols-3 gap-4 mt-6">
+          <label class="text-sm font-bold">إدارة التعليم<input id="idEdu" class="mt-2 w-full border border-slate-200 rounded-xl p-3" placeholder=""></label>
+          <label class="text-sm font-bold">مكتب التعليم<input id="idOffice" class="mt-2 w-full border border-slate-200 rounded-xl p-3" placeholder=""></label>
+          <label class="text-sm font-bold">اسم المدرسة<input id="idSchool" class="mt-2 w-full border border-slate-200 rounded-xl p-3" placeholder=""></label>
+          <label class="text-sm font-bold">المرحلة<select id="idStage" class="mt-2 w-full border border-slate-200 rounded-xl p-3"><option value="">اختر</option><option>ابتدائية</option><option>متوسطة</option><option>ثانوية</option><option>رياض أطفال</option><option>أخرى</option></select></label>
+          <label class="text-sm font-bold">العام الدراسي<input id="idYear" class="mt-2 w-full border border-slate-200 rounded-xl p-3" placeholder=""></label>
+          <label class="text-sm font-bold">الفصل الدراسي<select id="idTerm" class="mt-2 w-full border border-slate-200 rounded-xl p-3"><option value="">اختر</option><option>الأول</option><option>الثاني</option><option>الثالث</option></select></label>
+          <label class="text-sm font-bold">اسم مدير/ة المدرسة<input id="idManager" class="mt-2 w-full border border-slate-200 rounded-xl p-3"></label>
+          <label class="text-sm font-bold">اسم الوكيل/ة<input id="idDeputy" class="mt-2 w-full border border-slate-200 rounded-xl p-3"></label>
+          <label class="text-sm font-bold">مُعد التقرير<input id="idPrepared" class="mt-2 w-full border border-slate-200 rounded-xl p-3"></label>
+          <label class="text-sm font-bold">الرقم / الرمز المدرسي<input id="idSchoolCode" class="mt-2 w-full border border-slate-200 rounded-xl p-3"></label>
+          <label class="text-sm font-bold">رقم الخطاب / التقرير<input id="idDocNo" class="mt-2 w-full border border-slate-200 rounded-xl p-3"></label>
+          <label class="text-sm font-bold">التاريخ الهجري للنموذج<input id="idHijriDate" class="mt-2 w-full border border-slate-200 rounded-xl p-3" placeholder="مثال: 1448/02/29هـ"></label>
+          <div class="md:col-span-3 grid md:grid-cols-3 gap-4 border-t pt-5 mt-2">
+            <label class="text-sm font-bold">الشعار<input id="idLogo" type="file" accept="image/png,image/jpeg,image/webp" class="mt-2 w-full border border-slate-200 rounded-xl p-2 bg-white"><div id="logoPreview" class="mt-2 h-24 border rounded-xl bg-slate-50 grid place-items-center overflow-hidden text-xs text-slate-400">لا يوجد شعار</div></label>
+            <label class="text-sm font-bold">توقيع مدير/ة المدرسة<input id="idManagerSign" type="file" accept="image/png,image/jpeg,image/webp" class="mt-2 w-full border border-slate-200 rounded-xl p-2 bg-white"><div id="managerSignPreview" class="mt-2 h-24 border rounded-xl bg-slate-50 grid place-items-center overflow-hidden text-xs text-slate-400">لا يوجد توقيع</div></label>
+            <label class="text-sm font-bold">ختم المدرسة<input id="idStamp" type="file" accept="image/png,image/jpeg,image/webp" class="mt-2 w-full border border-slate-200 rounded-xl p-2 bg-white"><div id="stampPreview" class="mt-2 h-24 border rounded-xl bg-slate-50 grid place-items-center overflow-hidden text-xs text-slate-400">لا يوجد ختم</div></label>
+          </div>
+          <div class="md:col-span-3 flex justify-end"><button class="bg-teal-700 text-white px-7 py-3 rounded-xl font-extrabold">حفظ البيانات الأساسية</button></div>
+        </form>
+      </div>
+    </section>
+
+    <section id="view-official" class="view hidden space-y-5">
+      <div class="bg-white card border border-slate-200 rounded-2xl p-6 no-print">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div><h2 class="text-xl font-extrabold">التقارير الرسمية والإحصائية الختامية</h2><p class="text-sm text-slate-500 mt-1">إنشاء نموذج رسمي موحد من بيانات النظام بتنسيق A4 أفقي، ثم تصديره بنفس الهوية إلى Word وExcel وPDF.</p></div>
+          <div class="flex flex-wrap gap-2">
+            <input id="officialPeriod" type="month" class="border border-slate-200 rounded-xl p-2.5">
+            <button onclick="buildOfficialReport()" class="bg-slate-900 text-white px-4 py-2.5 rounded-xl font-bold">تحديث النموذج</button>
+            <button onclick="exportOfficialWord()" class="bg-blue-700 text-white px-4 py-2.5 rounded-xl font-bold">Word</button>
+            <button onclick="exportOfficialExcel()" class="bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-bold">Excel</button>
+            <button onclick="exportOfficialPDF()" class="bg-rose-700 text-white px-4 py-2.5 rounded-xl font-bold">PDF</button>
+            <button onclick="printOfficialReport()" class="border border-slate-300 px-4 py-2.5 rounded-xl font-bold">طباعة</button>
+          </div>
+        </div>
+        <div class="mt-4 p-3 rounded-xl bg-amber-50 text-amber-900 text-sm border border-amber-200">النموذج الرسمي يعتمد البيانات الأساسية المحفوظة. إذا كانت الترويسة ناقصة، انتقل أولًا إلى «البيانات الأساسية».</div>
+      </div>
+      <div id="officialReportHost" class="overflow-x-auto pb-8"></div>
+    </section>
+
+    <section id="view-settings" class="view hidden space-y-5">
+      <div class="bg-white card border border-slate-200 rounded-2xl p-6"><h2 class="text-xl font-extrabold">إعدادات الجهة</h2><div class="grid md:grid-cols-3 gap-4 mt-5"><label class="text-sm font-bold">اسم الجهة / المدرسة<input id="setSchool" class="mt-2 w-full border border-slate-200 rounded-xl p-3"></label><label class="text-sm font-bold">العام الدراسي<input id="setYear" class="mt-2 w-full border border-slate-200 rounded-xl p-3" placeholder="مثال: 1448هـ"></label><label class="text-sm font-bold">وقت بداية الدوام<input id="setStartTime" type="time" value="07:00" class="mt-2 w-full border border-slate-200 rounded-xl p-3"></label></div><div class="flex justify-end mt-5"><button onclick="saveSettings()" class="bg-teal-700 text-white px-6 py-3 rounded-xl font-bold">حفظ الإعدادات</button></div></div>
+      <div class="bg-white card border border-slate-200 rounded-2xl p-6"><h3 class="font-extrabold">قواعد الاحتساب والتنبيهات</h3><p class="text-sm text-slate-500 mt-1">هذه القواعد قابلة للتعديل ولا تُعامل داخل النظام على أنها مرجع نظامي نهائي.</p><div class="grid md:grid-cols-3 gap-4 mt-5"><label class="text-sm font-bold">ساعات يوم العمل<input id="setWorkHours" type="number" step="0.5" value="7" class="mt-2 w-full border border-slate-200 rounded-xl p-3"></label><label class="text-sm font-bold">حد تنبيه التأخر (دقيقة)<input id="setLateAlert" type="number" value="60" class="mt-2 w-full border border-slate-200 rounded-xl p-3"></label><label class="text-sm font-bold">تحويل التأخر إلى يوم بعد (ساعة)<input id="setLateDay" type="number" step="0.5" value="7" class="mt-2 w-full border border-slate-200 rounded-xl p-3"></label></div></div>
+    </section>
+  </main>
+</div>
+
+<div id="staffModal" class="fixed inset-0 hidden items-center justify-center modal-bg z-50 p-4 no-print"><div class="bg-white rounded-2xl w-full max-w-2xl p-6 card"><div class="flex justify-between items-center"><div><h3 class="text-xl font-extrabold">إضافة موظف</h3><p class="text-sm text-slate-500">إدخال يدوي اختياري</p></div><button onclick="closeStaffModal()" class="text-2xl text-slate-400">×</button></div><form id="staffForm" class="grid md:grid-cols-2 gap-4 mt-5"><label class="text-sm font-bold">الرقم الوظيفي / المعرف<input id="staffId" required class="mt-2 w-full border border-slate-200 rounded-xl p-3"></label><label class="text-sm font-bold">الاسم<input id="staffName" required class="mt-2 w-full border border-slate-200 rounded-xl p-3"></label><label class="text-sm font-bold">المسمى الوظيفي<input id="staffTitle" class="mt-2 w-full border border-slate-200 rounded-xl p-3"></label><label class="text-sm font-bold">القسم / المرحلة<input id="staffDept" class="mt-2 w-full border border-slate-200 rounded-xl p-3"></label><label class="text-sm font-bold">رقم الجوال<input id="staffPhone" class="mt-2 w-full border border-slate-200 rounded-xl p-3"></label><label class="text-sm font-bold">الحالة<select id="staffStatus" class="mt-2 w-full border border-slate-200 rounded-xl p-3"><option>على رأس العمل</option><option>إجازة طويلة</option><option>موقوف مؤقتًا</option><option>غير نشط</option></select></label><div class="md:col-span-2 flex justify-end gap-2"><button type="button" onclick="closeStaffModal()" class="border border-slate-200 px-5 py-2.5 rounded-xl">إلغاء</button><button class="bg-teal-700 text-white px-6 py-2.5 rounded-xl font-bold">حفظ</button></div></form></div></div>
+<div id="toast" class="fixed bottom-5 left-5 hidden bg-slate-950 text-white px-5 py-3 rounded-xl shadow-xl z-[60]"></div>
+
+<script src="platform-cloud-session.js"></script>
+<script src="school-information-source.js"></script>
+<script>
+(function(){
+'use strict';
+const safe=v=>String(v==null?'':v).trim();
+const schoolId=()=>safe(localStorage.getItem('platform_file_session_school_id')||localStorage.getItem('active_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||'');
+const userId=()=>safe(localStorage.getItem('platform_file_session_user_id')||'');
+const role=()=>safe(localStorage.getItem('platform_file_session_role')||'manager');
+const year=()=>safe(localStorage.getItem('school_info_academic_year')||localStorage.getItem('academic_year')||'1448');
+function settings(){
+ let o={};for(const k of ['school_custom_settings','manager_custom_settings','smartSchoolCustomSettings','school_settings']){
+  try{const v=JSON.parse(localStorage.getItem(k)||'null');if(v&&typeof v==='object')o=Object.assign(o,v)}catch(_){}
+ }
+ return o;
+}
+function mapStaff(u){
+ return {id:safe(u.id||u.user_id||u.userId||u.email||u.name),name:safe(u.name||u.full_name||u.fullName||u.display_name),title:safe(u.role_label||u.title||u.job_title||u.jobTitle||u.role),dept:safe(u.department||u.dept||''),status:safe(u.status||'على رأس العمل'),email:safe(u.email||'')};
+}
+async function getSchoolUsers(){
+ if(window.SchoolInformationSource?.getStaff){
+   const rows=await window.SchoolInformationSource.getStaff();
+   return (rows||[]).map(mapStaff).filter(x=>x.id&&x.name&&!/مدير.*النظام|system.?admin/i.test(x.title));
+ }
+ return [];
+}
+function deductionKey(){return 'shared_staff_deductions:'+(schoolId()||'anonymous')+':'+year()}
+async function upsertSharedDeduction(record){
+ const rows=JSON.parse(localStorage.getItem(deductionKey())||'[]');
+ const id=safe(record.id||record.sharedId)||('DED-'+Date.now()+'-'+Math.random().toString(36).slice(2,7));
+ const item=Object.assign({},record,{id,school_id:schoolId(),academic_year:record.academicYear||year(),source_module:'attendance-discipline',updated_at:new Date().toISOString()});
+ const i=rows.findIndex(x=>String(x.id)===String(id));
+ if(i>=0)rows[i]=item;else rows.unshift(item);
+ localStorage.setItem(deductionKey(),JSON.stringify(rows));
+ window.dispatchEvent(new CustomEvent('shared-deductions-updated',{detail:{schoolId:schoolId(),record:item}}));
+ return {id,status:'تمت المزامنة'};
+}
+function openSharedDeduction(id){
+ const url='agent.html?shared_deduction='+encodeURIComponent(id)+'&source=attendance-discipline';
+ location.href=url;
+}
+window.SchoolPlatformBridge={
+ getContext(){const s=settings();return {schoolId:schoolId(),userId:userId(),role:role(),schoolName:s.schoolName||s.school||s.name||'',academicYear:year()}},
+ getSchoolUsers,upsertSharedDeduction,openSharedDeduction
+};
+})();
+</script>
+<script>
+const DBKEY='school_attendance_ui_v1';
+const state=JSON.parse(localStorage.getItem(DBKEY)||'{"staff":[],"records":[],"deductions":[],"settings":{},"integration":{}}');
+state.deductions=state.deductions||[]; state.integration=state.integration||{};
+const platformBridge=()=>window.SchoolPlatformBridge||null;
+const platformMode=()=>!!platformBridge();
+let importRows=[], importHeaders=[];
+const today=()=>new Date().toISOString().slice(0,10); document.getElementById('recordDate').value=today();
+let _disciplineCloudTimer=null;
+async function disciplineCloudCall(action,payload){
+ const token=localStorage.getItem('platform_file_session_token')||'';
+ if(!token)return null;
+ const url=(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'');
+ const key=localStorage.getItem('smartSchoolSupabaseAnonKey')||'';
+ const r=await fetch(url+'/functions/v1/platform-discipline?action='+encodeURIComponent(action),{method:'POST',headers:{'content-type':'application/json','apikey':key,'x-platform-session':token},body:JSON.stringify(payload||{})});
+ const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'تعذر مزامنة الانضباط');return j;
+}
+function scheduleDisciplineCloudSave(){
+ clearTimeout(_disciplineCloudTimer);
+ _disciplineCloudTimer=setTimeout(()=>disciplineCloudCall('save',{academicYear:_ctx.academicYear||state.settings.year||'1448',state}).catch(e=>console.warn('[discipline cloud]',e.message)),700);
+}
+function persist(){localStorage.setItem(DBKEY,JSON.stringify(state)); scheduleDisciplineCloudSave(); renderAll()}
+async function loadDisciplineCloud(){
+ try{const j=await disciplineCloudCall('load',{academicYear:_ctx.academicYear||state.settings.year||'1448'});if(j?.state&&typeof j.state==='object'){Object.keys(state).forEach(k=>delete state[k]);Object.assign(state,j.state);state.staff=state.staff||[];state.records=state.records||[];state.deductions=state.deductions||[];state.settings=state.settings||{};state.integration=state.integration||{};localStorage.setItem(DBKEY,JSON.stringify(state));renderAll()}}catch(e){console.warn('[discipline cloud load]',e.message)}
+}
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.remove('hidden');setTimeout(()=>t.classList.add('hidden'),2200)}
+function showView(name){document.querySelectorAll('.view').forEach(v=>v.classList.add('hidden'));const target=document.getElementById('view-'+name);if(target)target.classList.remove('hidden');document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.view===name));document.querySelectorAll('.mobile-nav-btn').forEach(b=>{const on=b.dataset.view===name;b.classList.toggle('bg-teal-700',on);b.classList.toggle('text-white',on);b.classList.toggle('text-slate-200',!on)});if(name==='records')renderRecords();if(name==='monthly')renderMonthlyReport();if(name==='deductions')renderDeductions();if(name==='integration')renderIntegration();window.scrollTo({top:0,behavior:'smooth'});}
+document.querySelectorAll('.nav-btn').forEach(b=>b.onclick=()=>showView(b.dataset.view));
+document.querySelectorAll('.mobile-nav-btn').forEach(b=>b.onclick=()=>showView(b.dataset.view));
+function openStaffModal(){document.getElementById('staffModal').classList.remove('hidden');document.getElementById('staffModal').classList.add('flex')}
+function closeStaffModal(){document.getElementById('staffModal').classList.add('hidden');document.getElementById('staffModal').classList.remove('flex');document.getElementById('staffForm').reset()}
+document.getElementById('staffForm').onsubmit=e=>{e.preventDefault();const id=staffId.value.trim(),name=staffName.value.trim();if(state.staff.some(s=>String(s.id)===id)){toast('الرقم الوظيفي موجود مسبقًا');return}state.staff.push({id,name,title:staffTitle.value.trim(),dept:staffDept.value.trim(),phone:staffPhone.value.trim(),status:staffStatus.value});persist();closeStaffModal();toast('تمت إضافة الموظف')}
+function renderStaff(){staffBody.innerHTML=state.staff.length?state.staff.map(s=>`<tr class="border-t"><td class="p-3">${esc(s.id)}</td><td class="p-3 font-bold">${esc(s.name)}</td><td class="p-3">${esc(s.title||'-')}</td><td class="p-3">${esc(s.dept||'-')}</td><td class="p-3"><span class="badge bg-emerald-50 text-emerald-700">${esc(s.status||'غير محدد')}</span></td><td class="p-3 text-left"><button onclick="removeStaff('${encodeURIComponent(s.id)}')" class="text-rose-600 text-xs font-bold">حذف</button></td></tr>`).join(''):`<tr><td colspan="6" class="p-12 text-center text-slate-400">لا يوجد منسوبون مسجلون بعد</td></tr>`;recordEmployee.innerHTML='<option value="">اختر من سجل المنسوبين</option>'+state.staff.map(s=>`<option value="${escAttr(s.id)}">${esc(s.name)} — ${esc(s.id)}</option>`).join('')}
+function removeStaff(x){const id=decodeURIComponent(x);if(confirm('حذف الموظف من السجل؟')){state.staff=state.staff.filter(s=>String(s.id)!==String(id));persist()}}
+document.getElementById('recordForm').onsubmit=e=>{e.preventDefault();const emp=state.staff.find(s=>String(s.id)===recordEmployee.value);if(!emp){toast('اختر موظفًا');return}const rec={id:crypto.randomUUID?crypto.randomUUID():Date.now().toString(),date:recordDate.value,employeeId:emp.id,type:recordType.value,minutes:Number(recordMinutes.value||0),excuse:recordExcuse.value,excuseStatus:recordExcuseStatus.value,notes:recordNotes.value.trim(),createdAt:new Date().toISOString()};state.records.unshift(rec);createOrUpdateDeductionForRecord(rec);persist();if(document.getElementById('autoSyncDed')?.checked)syncDeductionsToPlatform(true);e.target.reset();recordDate.value=today();recordMinutes.value=0;toast('تم حفظ الحركة')}
+function renderRecords(){const q=(recordsSearch.value||'').trim().toLowerCase(),ty=recordsType.value,fr=recordsFrom.value,to=recordsTo.value;const rows=state.records.filter(r=>{const s=state.staff.find(x=>String(x.id)===String(r.employeeId));const txt=((s?.name||'')+' '+r.employeeId).toLowerCase();return(!q||txt.includes(q))&&(!ty||r.type===ty)&&(!fr||r.date>=fr)&&(!to||r.date<=to)});recordsBody.innerHTML=rows.length?rows.map(r=>{const s=state.staff.find(x=>String(x.id)===String(r.employeeId));return`<tr class="border-t"><td class="p-3">${esc(r.date)}</td><td class="p-3"><b>${esc(s?.name||'غير موجود')}</b><div class="text-xs text-slate-400">${esc(r.employeeId)}</div></td><td class="p-3">${esc(r.type)}</td><td class="p-3">${r.minutes||0}</td><td class="p-3">${esc(r.excuse||'-')}</td><td class="p-3">${esc(r.excuseStatus||'-')}</td><td class="p-3">${esc(r.notes||'-')}</td></tr>`}).join(''):`<tr><td colspan="7" class="p-12 text-center text-slate-400">لا توجد حركات مطابقة</td></tr>`}
+['recordsSearch','recordsType','recordsFrom','recordsTo'].forEach(id=>document.getElementById(id).addEventListener('input',renderRecords));
+function renderDashboard(){kpiStaff.textContent=state.staff.length;const tr=state.records.filter(r=>r.date===today());kpiToday.textContent=tr.length;kpiLate.textContent=state.records.filter(r=>['تأخر','انصراف مبكر','استئذان'].includes(r.type)&&(r.excuseStatus==='غير مقبول'||!r.excuseStatus)).reduce((a,r)=>a+(r.minutes||0),0);kpiAbsent.textContent=state.records.filter(r=>r.type==='غياب بدون عذر').length;todayList.innerHTML=tr.length?tr.slice(0,8).map(r=>{const s=state.staff.find(x=>String(x.id)===String(r.employeeId));return`<div class="flex justify-between gap-3 py-3 border-b last:border-0"><div><div class="font-bold">${esc(s?.name||'غير موجود')}</div><div class="text-xs text-slate-500">${esc(r.type)}${r.minutes?' · '+r.minutes+' دقيقة':''}</div></div><span class="badge bg-slate-100">${esc(r.date)}</span></div>`}).join(''):`<div class="py-10 text-center text-slate-400">لا توجد حركات مسجلة اليوم</div>`}
+function saveSettings(){state.settings={school:setSchool.value.trim(),year:setYear.value.trim(),startTime:setStartTime.value,workHours:Number(setWorkHours.value||7),lateAlert:Number(setLateAlert.value||60),lateDay:Number(setLateDay.value||7)};persist();toast('تم حفظ الإعدادات')}
+function renderSettings(){const s=state.settings||{};setSchool.value=s.school||'';setYear.value=s.year||'';setStartTime.value=s.startTime||'07:00';setWorkHours.value=s.workHours||7;setLateAlert.value=s.lateAlert||60;setLateDay.value=s.lateDay||7;schoolLabel.textContent=(s.school||'لم يتم إعداد بيانات الجهة بعد')+(s.year?' — '+s.year:'')}
+excelFile.onchange=async e=>{const f=e.target.files[0];if(!f)return;const data=await f.arrayBuffer();const wb=XLSX.read(data,{type:'array'});const sh=wb.Sheets[wb.SheetNames[0]];const rows=XLSX.utils.sheet_to_json(sh,{defval:''});if(!rows.length){toast('لم يتم العثور على بيانات');return}importRows=rows;importHeaders=Object.keys(rows[0]);renderMapping()}
+function renderMapping(){const opts='<option value="">— تجاهل —</option>'+importHeaders.map(h=>`<option value="${escAttr(h)}">${esc(h)}</option>`).join('');const fields=[['mapId','الرقم الوظيفي / المعرف'],['mapName','الاسم *'],['mapTitle','المسمى الوظيفي'],['mapDept','القسم / المرحلة'],['mapPhone','رقم الجوال'],['mapStatus','الحالة']];mappingArea.classList.remove('hidden');mappingArea.innerHTML=`<div class="rounded-2xl border border-slate-200 overflow-hidden"><div class="p-4 bg-slate-50 border-b"><b>مطابقة الأعمدة</b><div class="text-xs text-slate-500 mt-1">تم العثور على ${importRows.length} صف. اختر العمود المقابل لكل حقل.</div></div><div class="grid md:grid-cols-2 gap-4 p-5">${fields.map(([id,l])=>`<label class="text-sm font-bold">${l}<select id="${id}" class="mt-2 w-full border border-slate-200 rounded-xl p-3">${opts}</select></label>`).join('')}</div><div class="p-5 border-t flex justify-end"><button onclick="commitImport()" class="bg-teal-700 text-white px-6 py-3 rounded-xl font-bold">مراجعة واستيراد البيانات</button></div></div>`;autoMap()}
+function autoMap(){const patterns={mapId:['الرقم الوظيفي','رقم وظيفي','السجل','المعرف','id'],mapName:['اسم الموظف','الاسم','اسم الموظف / المعلم','name'],mapTitle:['المسمى','الوظيفة','التخصص','المسمى الوظيفي'],mapDept:['القسم','المرحلة','المرحلة / القسم'],mapPhone:['الجوال','رقم الجوال','الهاتف'],mapStatus:['الحالة','حالة الموظف']};Object.entries(patterns).forEach(([id,arr])=>{const h=importHeaders.find(x=>arr.some(p=>String(x).trim().toLowerCase().includes(p.toLowerCase())));if(h)document.getElementById(id).value=h})}
+function commitImport(){const nameCol=mapName.value;if(!nameCol){toast('يجب تحديد عمود الاسم');return}const idCol=mapId.value,titleCol=mapTitle.value,deptCol=mapDept.value,phoneCol=mapPhone.value,statusCol=mapStatus.value;let added=0,skipped=0;importRows.forEach((r,i)=>{const name=String(r[nameCol]??'').trim();if(!name){skipped++;return}const id=String(idCol?r[idCol]:`AUTO-${Date.now()}-${i+1}`).trim();if(state.staff.some(s=>String(s.id)===id)){skipped++;return}state.staff.push({id,name,title:titleCol?String(r[titleCol]??'').trim():'',dept:deptCol?String(r[deptCol]??'').trim():'',phone:phoneCol?String(r[phoneCol]??'').trim():'',status:statusCol?String(r[statusCol]??'').trim():'على رأس العمل'});added++});persist();toast(`تم استيراد ${added} سجل، وتجاوز ${skipped}`);showView('staff')}
+function deductionEligible(r){return r.type==='غياب بدون عذر'||['تأخر','انصراف مبكر','استئذان'].includes(r.type)&&(r.excuseStatus==='غير مقبول'||!r.excuseStatus)}
+function monthKey(date){return String(date||'').slice(0,7)}
+function createOrUpdateDeductionForRecord(r){if(!deductionEligible(r))return;const key=String(r.employeeId)+'|'+monthKey(r.date);let d=state.deductions.find(x=>x.key===key);if(!d){d={id:crypto.randomUUID?crypto.randomUUID():Date.now().toString(),key,employeeId:r.employeeId,period:monthKey(r.date),absenceDays:0,lateMinutes:0,reasons:[],recordIds:[],status:'مسودة',sharedId:'',updatedAt:new Date().toISOString()};state.deductions.unshift(d)}if(!d.recordIds.includes(r.id))d.recordIds.push(r.id);recalculateDeduction(d)}
+function recalculateDeduction(d){const rows=state.records.filter(r=>d.recordIds.includes(r.id)&&deductionEligible(r));d.absenceDays=rows.filter(r=>r.type==='غياب بدون عذر').length;d.lateMinutes=rows.filter(r=>['تأخر','انصراف مبكر','استئذان'].includes(r.type)).reduce((a,r)=>a+Number(r.minutes||0),0);d.reasons=[...new Set(rows.map(r=>r.type))];d.updatedAt=new Date().toISOString()}
+function rebuildDeductions(){state.deductions=[];state.records.forEach(createOrUpdateDeductionForRecord);persist();toast('تمت إعادة احتساب مسودات الحسم')}
+function deductionPayload(d){const emp=state.staff.find(s=>String(s.id)===String(d.employeeId));const ctx=platformBridge()?.getContext?.()||{};return {localId:d.id,schoolId:ctx.schoolId||'',employeeId:d.employeeId,employeeName:emp?.name||'',jobTitle:emp?.title||'',department:emp?.dept||'',period:d.period,absenceDays:d.absenceDays,lateMinutes:d.lateMinutes,reasons:d.reasons,sourceRecordIds:d.recordIds,status:d.status,academicYear:ctx.academicYear||state.settings.year||'',generatedAt:new Date().toISOString(),sourceModule:'attendance-discipline'} }
+async function syncDeductionsToPlatform(silent=false){const b=platformBridge();if(!b?.upsertSharedDeduction){if(!silent)toast('الوحدة تعمل مستقلًا؛ جسر سجلات الوكيل غير متصل');return}let ok=0,fail=0;for(const d of state.deductions){try{const res=await b.upsertSharedDeduction(deductionPayload(d));d.sharedId=res?.id||d.sharedId;d.status=res?.status||'تمت المزامنة';ok++}catch(e){d.status='تعذر المزامنة';fail++}}persist();if(!silent)toast(`تمت مزامنة ${ok} مسودة${fail?`، وتعذر ${fail}`:''}`)}
+function openDeduction(id){const d=state.deductions.find(x=>x.id===id);if(!d)return;const b=platformBridge();if(d.sharedId&&b?.openSharedDeduction){b.openSharedDeduction(d.sharedId);return}const p=deductionPayload(d);const w=window.open('','_blank');w.document.write(`<html dir="rtl"><head><meta charset="utf-8"><title>نموذج احتساب حسم</title><style>body{font-family:Arial;padding:32px;direction:rtl}table{width:100%;border-collapse:collapse}td,th{border:1px solid #ccc;padding:10px}h1{font-size:22px}</style></head><body><h1>مسودة نموذج احتساب حسم الغياب والتأخر</h1><table><tr><th>الموظف</th><td>${esc(p.employeeName)}</td></tr><tr><th>المسمى</th><td>${esc(p.jobTitle)}</td></tr><tr><th>الفترة</th><td>${esc(p.period)}</td></tr><tr><th>غياب بدون عذر</th><td>${p.absenceDays} يوم</td></tr><tr><th>دقائق التأخر/الانصراف</th><td>${p.lateMinutes} دقيقة</td></tr><tr><th>المصدر</th><td>نظام الانضباط المدرسي — انضباط المنسوبين</td></tr></table><p style="margin-top:24px">هذه مسودة مولدة آليًا وتخضع للاعتماد وفق صلاحيات وإجراءات المنصة.</p><script>window.print()<\/script></body></html>`);w.document.close()}
+function monthlySummaryForEmployee(employeeId,period){
+  const rs=state.records.filter(r=>String(r.employeeId)===String(employeeId)&&monthKey(r.date)===period);
+  const ds=(state.deductions||[]).filter(d=>String(d.employeeId)===String(employeeId)&&d.period===period);
+  const sum=(type)=>rs.filter(r=>r.type===type).reduce((a,r)=>a+Number(r.minutes||0),0);
+  return {
+    excused:rs.filter(r=>r.type==='غياب بعذر').length,
+    unexcused:rs.filter(r=>r.type==='غياب بدون عذر').length,
+    lateCount:rs.filter(r=>r.type==='تأخر').length,
+    lateMinutes:sum('تأخر'),
+    permissionCount:rs.filter(r=>r.type==='استئذان').length,
+    permissionMinutes:sum('استئذان'),
+    earlyCount:rs.filter(r=>r.type==='انصراف مبكر').length,
+    earlyMinutes:sum('انصراف مبكر'),
+    deductionCases:ds.length,
+    deductionDays:ds.reduce((a,d)=>a+Number(d.absenceDays||0),0),
+    deductionMinutes:ds.reduce((a,d)=>a+Number(d.lateMinutes||0),0),
+    movementCount:rs.length
+  }
+}
+function renderMonthlyReport(){
+  if(!window.monthlyPeriod)return;
+  if(!monthlyPeriod.value)monthlyPeriod.value=today().slice(0,7);
+  const period=monthlyPeriod.value;
+  const rows=state.staff.map((s,i)=>({staff:s,index:i+1,...monthlySummaryForEmployee(s.id,period)}));
+  const total=(k)=>rows.reduce((a,r)=>a+Number(r[k]||0),0);
+  const active=rows.filter(r=>r.movementCount>0).length;
+  const clean=rows.length-active;
+  const timed=total('lateMinutes')+total('permissionMinutes')+total('earlyMinutes');
+  monKpiStaff.textContent=rows.length;
+  monKpiExcused.textContent=total('excused');
+  monKpiUnexcused.textContent=total('unexcused');
+  monKpiLate.textContent=total('lateMinutes');
+  monKpiPermission.textContent=total('permissionMinutes')+total('earlyMinutes');
+  monKpiDed.textContent=total('deductionCases');
+  monKpiActive.textContent=active;
+  monKpiTimed.textContent=timed+' د';
+  monKpiClean.textContent=clean;
+  const school=state.settings?.school||'الجهة / المدرسة';
+  const year=state.settings?.year||'';
+  monthlyReportHeader.innerHTML=`<div class="rounded-2xl border bg-slate-50 p-4 flex flex-col md:flex-row md:items-center justify-between gap-2"><div><div class="font-extrabold">${esc(school)}</div><div class="text-xs text-slate-500 mt-1">الإحصائية الختامية الشهرية للحضور والانضباط${year?' — '+esc(year):''}</div></div><div class="badge bg-white border text-slate-700">الفترة: ${esc(period)}</div></div>`;
+  monthlyBody.innerHTML=rows.length?rows.map(r=>`<tr class="border-t hover:bg-slate-50"><td class="p-3">${r.index}</td><td class="p-3"><b>${esc(r.staff.name||'')}</b><div class="text-xs text-slate-400">${esc(r.staff.id||'')}</div></td><td class="p-3">${esc(r.staff.title||'')}</td><td class="p-3 text-center">${r.excused||'-'}</td><td class="p-3 text-center ${r.unexcused?'text-red-700 font-bold bg-red-50':''}">${r.unexcused||'-'}</td><td class="p-3 text-center">${r.lateCount||'-'}</td><td class="p-3 text-center">${r.lateMinutes||'-'}</td><td class="p-3 text-center">${r.permissionCount||'-'}</td><td class="p-3 text-center">${r.permissionMinutes||'-'}</td><td class="p-3 text-center">${r.earlyCount||'-'}</td><td class="p-3 text-center">${r.earlyMinutes||'-'}</td><td class="p-3 text-center">${r.deductionCases||'-'}</td><td class="p-3 text-center">${r.deductionDays||'-'}</td><td class="p-3 text-center">${r.deductionMinutes||'-'}</td></tr>`).join(''):`<tr><td colspan="14" class="p-12 text-center text-slate-400">لا يوجد منسوبون مسجلون حتى الآن</td></tr>`;
+  monthlyFoot.innerHTML=rows.length?`<tr><td class="p-3" colspan="3">الإجمالي</td><td class="p-3 text-center">${total('excused')}</td><td class="p-3 text-center">${total('unexcused')}</td><td class="p-3 text-center">${total('lateCount')}</td><td class="p-3 text-center">${total('lateMinutes')}</td><td class="p-3 text-center">${total('permissionCount')}</td><td class="p-3 text-center">${total('permissionMinutes')}</td><td class="p-3 text-center">${total('earlyCount')}</td><td class="p-3 text-center">${total('earlyMinutes')}</td><td class="p-3 text-center">${total('deductionCases')}</td><td class="p-3 text-center">${total('deductionDays')}</td><td class="p-3 text-center">${total('deductionMinutes')}</td></tr>`:'';
+}
+function renderDeductions(){const rows=state.deductions||[];if(window.dedKpiAll){dedKpiAll.textContent=rows.length;dedKpiAbs.textContent=rows.reduce((a,d)=>a+d.absenceDays,0);dedKpiMin.textContent=rows.reduce((a,d)=>a+d.lateMinutes,0);dedKpiSynced.textContent=rows.filter(d=>d.sharedId||d.status==='تمت المزامنة').length}if(window.deductionsBody)deductionsBody.innerHTML=rows.length?rows.map(d=>{const e=state.staff.find(s=>String(s.id)===String(d.employeeId));return `<tr class="border-t"><td class="p-3"><b>${esc(e?.name||'غير موجود')}</b><div class="text-xs text-slate-400">${esc(d.employeeId)}</div></td><td class="p-3">${esc(d.period)}</td><td class="p-3">${esc(d.reasons.join('، '))}</td><td class="p-3">${d.absenceDays}</td><td class="p-3">${d.lateMinutes}</td><td class="p-3"><span class="badge ${d.sharedId?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'}">${esc(d.status)}</span></td><td class="p-3"><button onclick="openDeduction('${d.id}')" class="text-teal-700 font-bold">فتح / إصدار</button></td></tr>`}).join(''):`<tr><td colspan="7" class="p-12 text-center text-slate-400">لا توجد حركات مؤهلة للحسم حتى الآن</td></tr>`}
+async function syncStaffFromPlatform(){const b=platformBridge();if(!b?.getSchoolUsers){toast('مركز المعلومات غير متصل في الوضع المستقل');return}try{const users=await b.getSchoolUsers();state.staff=(users||[]).map(u=>({id:String(u.id??u.userId??''),name:String(u.name??u.fullName??''),title:String(u.title??u.jobTitle??''),dept:String(u.dept??u.department??''),phone:String(u.phone??''),status:String(u.status??'على رأس العمل'),source:'school-information-center'})).filter(x=>x.id&&x.name);state.integration.staffSyncAt=new Date().toISOString();persist();toast(`تم جلب ${state.staff.length} مستخدمًا من مركز المعلومات`)}catch(e){toast('تعذر جلب بيانات مركز المعلومات') }}
+function clearLocalStaffCache(){if(platformMode()){state.staff=[];persist();syncStaffFromPlatform()}else{toast('هذه العملية مخصصة لوضع المنصة')}}
+function renderIntegration(){const b=platformBridge();if(window.bridgeBadge){bridgeBadge.textContent=b?'متصل بالمنصة':'وضع مستقل';bridgeBadge.className='badge '+(b?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700');staffSourceLabel.textContent=b?'مركز المعلومات المدرسي':'السجل المحلي / Excel';staffSyncLabel.textContent=state.integration.staffSyncAt?new Date(state.integration.staffSyncAt).toLocaleString('ar-SA'):'لم تتم';if(b?.getContext){try{const c=b.getContext();if(c?.schoolName){state.settings.school=c.schoolName}if(c?.academicYear){state.settings.year=c.academicYear}}catch(e){}}}if(window.autoCreateDed)autoCreateDed.checked=state.integration.autoCreateDed!==false;if(window.autoSyncDed)autoSyncDed.checked=!!state.integration.autoSyncDed}
+function saveIntegrationFlags(){state.integration.autoCreateDed=window.autoCreateDed?autoCreateDed.checked:true;state.integration.autoSyncDed=window.autoSyncDed?autoSyncDed.checked:false;localStorage.setItem(DBKEY,JSON.stringify(state))}
+document.addEventListener('change',e=>{if(e.target?.id==='autoCreateDed'||e.target?.id==='autoSyncDed')saveIntegrationFlags()})
+function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))} function escAttr(v){return esc(v).replace(/`/g,'&#96;')}
+function renderAll(){renderStaff();renderRecords();renderDashboard();renderSettings();renderDeductions();renderIntegration();renderMonthlyReport()}
+globalSearch.addEventListener('input',()=>{const q=globalSearch.value.trim().toLowerCase();if(!q)return;showView('staff');[...staffBody.querySelectorAll('tr')].forEach(tr=>tr.style.display=tr.innerText.toLowerCase().includes(q)?'':'none')});
+renderAll();
+if(platformMode()){setTimeout(async()=>{await loadDisciplineCloud();await syncStaffFromPlatform()},100);}
+
+
+// ===== Official identity + multi-format monthly reports =====
+state.identity=state.identity||{};
+function fileToDataUrl(file){return new Promise((resolve,reject)=>{if(!file){resolve('');return}const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(file)})}
+function setPreview(elId,data,label){const el=document.getElementById(elId);if(!el)return;el.innerHTML=data?`<img src="${data}" style="max-width:95%;max-height:95%;object-fit:contain">`:`<span class="text-xs text-slate-400">${label}</span>`}
+function loadIdentityForm(){const x=state.identity||{};const map={idEdu:'edu',idOffice:'office',idSchool:'school',idStage:'stage',idYear:'year',idTerm:'term',idManager:'manager',idDeputy:'deputy',idPrepared:'prepared',idSchoolCode:'schoolCode',idDocNo:'docNo',idHijriDate:'hijriDate'};Object.entries(map).forEach(([id,k])=>{const e=document.getElementById(id);if(e)e.value=x[k]||''});setPreview('logoPreview',x.logo,'لا يوجد شعار');setPreview('managerSignPreview',x.managerSign,'لا يوجد توقيع');setPreview('stampPreview',x.stamp,'لا يوجد ختم')}
+if(document.getElementById('identityForm'))document.getElementById('identityForm').onsubmit=async e=>{e.preventDefault();const old=state.identity||{};state.identity={...old,edu:idEdu.value.trim(),office:idOffice.value.trim(),school:idSchool.value.trim(),stage:idStage.value,year:idYear.value.trim(),term:idTerm.value,manager:idManager.value.trim(),deputy:idDeputy.value.trim(),prepared:idPrepared.value.trim(),schoolCode:idSchoolCode.value.trim(),docNo:idDocNo.value.trim(),hijriDate:idHijriDate.value.trim()};const lf=idLogo.files[0],mf=idManagerSign.files[0],sf=idStamp.files[0];if(lf)state.identity.logo=await fileToDataUrl(lf);if(mf)state.identity.managerSign=await fileToDataUrl(mf);if(sf)state.identity.stamp=await fileToDataUrl(sf);state.settings=state.settings||{};if(state.identity.school)state.settings.school=state.identity.school;if(state.identity.year)state.settings.year=state.identity.year;persist();loadIdentityForm();toast('تم حفظ البيانات الأساسية وربطها بالتقارير')}
+function officialRows(period){return state.staff.map((s,i)=>({staff:s,index:i+1,...monthlySummaryForEmployee(s.id,period)}))}
+function officialTotals(rows){const t=k=>rows.reduce((a,r)=>a+Number(r[k]||0),0);return {staff:rows.length,excused:t('excused'),unexcused:t('unexcused'),lateCount:t('lateCount'),lateMinutes:t('lateMinutes'),permissionCount:t('permissionCount'),permissionMinutes:t('permissionMinutes'),earlyCount:t('earlyCount'),earlyMinutes:t('earlyMinutes'),deductionCases:t('deductionCases'),deductionDays:t('deductionDays'),deductionMinutes:t('deductionMinutes')}}
+function periodArabic(period){if(!period)return'';const [y,m]=period.split('-');const names=['','يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];return `${names[Number(m)]||m} ${y}`}
+function officialHeader(identity){return `<div class="official-head"><div class="official-side"><div>المملكة العربية السعودية</div><div>وزارة التعليم</div><div class="line"><span>إدارة التعليم:</span><span class="val">${esc(identity.edu||'')}</span></div><div class="line"><span>مكتب التعليم:</span><span class="val">${esc(identity.office||'')}</span></div></div><div class="official-logo">${identity.logo?`<img src="${identity.logo}">`:`<div class="fallback">وزارة التعليم</div>`}</div><div class="official-side"><div class="line"><span>المدرسة:</span><span class="val">${esc(identity.school||'')}</span></div><div class="line"><span>المرحلة:</span><span class="val">${esc(identity.stage||'')}</span></div><div class="line"><span>الرقم المدرسي:</span><span class="val">${esc(identity.schoolCode||'')}</span></div><div class="line"><span>التاريخ:</span><span class="val">${esc(identity.hijriDate||'')}</span></div></div></div>`}
+function officialTableHead(){return `<thead><tr><th style="width:5%">م</th><th style="width:18%">اسم المنسوب/ة</th><th style="width:10%">المسمى</th><th>غياب بعذر</th><th>غياب بدون عذر</th><th>مرات التأخر</th><th>دقائق التأخر</th><th>مرات الاستئذان</th><th>دقائق الاستئذان</th><th>انصراف مبكر</th><th>دقائق الانصراف</th><th>حالات الحسم</th><th>أيام الحسم</th><th>دقائق الحسم</th></tr></thead>`}
+function officialRowHtml(r){return `<tr><td>${r.index}</td><td class="name">${esc(r.staff.name||'')}</td><td>${esc(r.staff.title||'')}</td><td>${r.excused||0}</td><td>${r.unexcused||0}</td><td>${r.lateCount||0}</td><td>${r.lateMinutes||0}</td><td>${r.permissionCount||0}</td><td>${r.permissionMinutes||0}</td><td>${r.earlyCount||0}</td><td>${r.earlyMinutes||0}</td><td>${r.deductionCases||0}</td><td>${r.deductionDays||0}</td><td>${r.deductionMinutes||0}</td></tr>`}
+function officialTotalRow(t){return `<tr class="total"><td colspan="3">الإجمالي</td><td>${t.excused}</td><td>${t.unexcused}</td><td>${t.lateCount}</td><td>${t.lateMinutes}</td><td>${t.permissionCount}</td><td>${t.permissionMinutes}</td><td>${t.earlyCount}</td><td>${t.earlyMinutes}</td><td>${t.deductionCases}</td><td>${t.deductionDays}</td><td>${t.deductionMinutes}</td></tr>`}
+function officialApprovals(identity){return `<div class="official-approval"><div>إعداد التقرير<div class="official-sign-line">${esc(identity.prepared||'')}</div></div><div>الوكيل/ة<div class="official-sign-line">${esc(identity.deputy||'')}</div></div><div>مدير/ة المدرسة<div class="official-sign-line">${esc(identity.manager||'')}</div><div class="official-media">${identity.managerSign?`<img src="${identity.managerSign}">`:''}${identity.stamp?`<img src="${identity.stamp}">`:''}</div></div></div>`}
+function buildOfficialReport(){const input=document.getElementById('officialPeriod');if(!input)return;if(!input.value)input.value=today().slice(0,7);const period=input.value;const rows=officialRows(period),tot=officialTotals(rows),identity=state.identity||{};const perPage=10;const chunks=[];if(!rows.length)chunks.push([]);else for(let i=0;i<rows.length;i+=perPage)chunks.push(rows.slice(i,i+perPage));const host=document.getElementById('officialReportHost');host.innerHTML=`<div id="officialReportRoot" class="official-report-root">${chunks.map((chunk,pi)=>`<section class="official-sheet"><div class="official-sheet-frame">${officialHeader(identity)}<div class="official-title">الإحصائية الختامية الشهرية للحضور والانضباط الوظيفي</div><div class="official-meta"><div><b>الشهر:</b> ${esc(periodArabic(period))}</div><div><b>العام الدراسي:</b> ${esc(identity.year||'')}</div><div><b>الفصل:</b> ${esc(identity.term||'')}</div><div><b>رقم التقرير:</b> ${esc(identity.docNo||'')}</div></div>${pi===0?`<div class="official-kpis"><div class="official-kpi">عدد المنسوبين<b>${tot.staff}</b></div><div class="official-kpi">غياب بدون عذر<b>${tot.unexcused}</b></div><div class="official-kpi">دقائق التأخر<b>${tot.lateMinutes}</b></div><div class="official-kpi">دقائق الاستئذان والانصراف<b>${tot.permissionMinutes+tot.earlyMinutes}</b></div><div class="official-kpi">حالات الحسم<b>${tot.deductionCases}</b></div></div>`:''}<table class="official-table">${officialTableHead()}<tbody>${chunk.length?chunk.map(officialRowHtml).join(''):`<tr><td colspan="14" style="padding:12mm">لا توجد بيانات مسجلة لهذه الفترة</td></tr>`}${pi===chunks.length-1?officialTotalRow(tot):''}</tbody></table>${pi===chunks.length-1?officialApprovals(identity):''}<div class="official-footer">نظام الانضباط المدرسي — انضباط المنسوبين — إحصائية شهرية ختامية</div><div class="official-page-no">${pi+1} / ${chunks.length}</div></div></section>`).join('')}</div>`;return {period,rows,tot,identity}}
+function downloadBlob(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},700)}
+function reportCssForExport(){return `<style>@page{size:A4 landscape;margin:0}body{margin:0;background:#fff;font-family:Arial,Tajawal,sans-serif;direction:rtl;color:#11221d}.official-report-root{--official-green:#006c35;--official-line:#9fb7ad}.official-sheet{width:297mm;height:210mm;background:#fff;padding:8mm 9mm;box-sizing:border-box;position:relative;overflow:hidden;page-break-after:always}.official-sheet:last-child{page-break-after:avoid}.official-sheet-frame{height:192mm;border:2px solid #006c35;padding:6mm;box-sizing:border-box;position:relative;overflow:hidden}.official-head{display:grid;grid-template-columns:92mm 48mm 92mm;gap:4mm;align-items:center;border-bottom:2px solid #006c35;padding-bottom:3mm;margin-bottom:3mm;min-height:29mm}.official-side{text-align:center;font-size:10pt;font-weight:700;line-height:1.7}.official-side .line{display:flex;gap:5px;justify-content:center}.official-side .val{min-width:34mm;border-bottom:1px dotted #667085;color:#006c35;min-height:5mm}.official-logo{height:25mm;display:flex;align-items:center;justify-content:center}.official-logo img{max-width:38mm;max-height:24mm;object-fit:contain}.official-logo .fallback{font-weight:800;color:#006c35;font-size:12pt;text-align:center}.official-title{text-align:center;color:#006c35;border:1px solid #006c35;background:#eef8f3;font-size:14pt;font-weight:800;padding:2.2mm;margin-bottom:3mm}.official-meta{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid #9fb7ad;margin-bottom:3mm;font-size:8.5pt}.official-meta>div{padding:2mm;border-left:1px solid #9fb7ad}.official-meta>div:last-child{border-left:0}.official-meta b{color:#006c35}.official-kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:2mm;margin-bottom:3mm}.official-kpi{border:1px solid #9fb7ad;text-align:center;padding:2mm;font-size:8pt}.official-kpi b{display:block;font-size:12pt;color:#006c35;margin-top:1mm}.official-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:7.2pt}.official-table th{background:#006c35;color:#fff;border:1px solid #006c35;padding:1.1mm .7mm;line-height:1.15}.official-table td{border:1px solid #9fb7ad;padding:1mm .7mm;text-align:center;line-height:1.2}.official-table td.name{text-align:right;font-weight:700}.official-table tr.total td{font-weight:800;background:#eef8f3}.official-approval{display:grid;grid-template-columns:1fr 1fr 1fr;border:1px solid #006c35;margin-top:2.5mm;height:34mm;overflow:hidden}.official-approval>div{border-left:1px solid #9fb7ad;padding:2mm;text-align:center;font-size:8pt;font-weight:700}.official-approval>div:last-child{border-left:0}.official-media{height:15mm;display:flex;align-items:center;justify-content:center;overflow:hidden;margin-top:1mm}.official-media img{max-width:45%;max-height:95%;object-fit:contain}.official-sign-line{border-bottom:1px dotted #667085;min-height:6mm;margin:2mm 3mm 0;color:#006c35}.official-footer{position:absolute;bottom:7mm;left:16mm;right:16mm;text-align:center;font-size:8pt;color:#334155;font-weight:700}.official-page-no{position:absolute;bottom:2.8mm;left:0;right:0;text-align:center;font-size:8pt;font-weight:700}</style>`}
+function exportOfficialWord(){buildOfficialReport();const root=document.getElementById('officialReportRoot');if(!root)return;const html=`<!doctype html><html dir="rtl"><head><meta charset="utf-8">${reportCssForExport()}</head><body>${root.outerHTML}</body></html>`;downloadBlob(new Blob(['\ufeff',html],{type:'application/msword'}),`الإحصائية_الشهرية_${officialPeriod.value}.doc`);toast('تم إنشاء ملف Word')}
+function exportOfficialExcel(){const {period,rows,tot,identity}=buildOfficialReport();const head=`<tr><th colspan="14">المملكة العربية السعودية - وزارة التعليم</th></tr><tr><th colspan="14">${esc(identity.edu||'')} | ${esc(identity.office||'')} | ${esc(identity.school||'')}</th></tr><tr><th colspan="14">الإحصائية الختامية الشهرية للحضور والانضباط الوظيفي - ${esc(periodArabic(period))}</th></tr>`;const table=`<table border="1">${head}${officialTableHead()}<tbody>${rows.map(officialRowHtml).join('')}${officialTotalRow(tot)}</tbody></table>`;const html=`<!doctype html><html dir="rtl"><head><meta charset="utf-8"><style>table{border-collapse:collapse;font-family:Arial}th{background:#006c35;color:white}td,th{padding:6px;text-align:center}.name{text-align:right}.total{font-weight:bold;background:#eef8f3}</style></head><body>${table}</body></html>`;downloadBlob(new Blob(['\ufeff',html],{type:'application/vnd.ms-excel'}),`الإحصائية_الشهرية_${period}.xls`);toast('تم إنشاء ملف Excel')}
+async function exportOfficialPDF(){buildOfficialReport();const root=document.getElementById('officialReportRoot');if(!root)return;if(!(window.html2canvas&&window.jspdf)){toast('تعذر تحميل مكتبة PDF؛ استخدم زر الطباعة وحفظ PDF');printOfficialReport();return}const {jsPDF}=window.jspdf;const pdf=new jsPDF('l','mm','a4');const sheets=[...root.querySelectorAll('.official-sheet')];for(let i=0;i<sheets.length;i++){const canvas=await html2canvas(sheets[i],{scale:2,useCORS:true,backgroundColor:'#ffffff'});const img=canvas.toDataURL('image/jpeg',0.96);if(i>0)pdf.addPage();pdf.addImage(img,'JPEG',0,0,297,210,'','FAST')}pdf.save(`الإحصائية_الشهرية_${officialPeriod.value}.pdf`);toast('تم إنشاء ملف PDF')}
+function printMonthlyAsOfficial(){const src=document.getElementById('monthlyPeriod');const dst=document.getElementById('officialPeriod');if(src&&dst&&src.value)dst.value=src.value;buildOfficialReport();printOfficialReport()}
+function printOfficialReport(){buildOfficialReport();const root=document.getElementById('officialReportRoot');if(!root)return;const w=window.open('','_blank');w.document.write(`<!doctype html><html dir="rtl"><head><meta charset="utf-8"><title>الإحصائية الشهرية الرسمية</title>${reportCssForExport()}</head><body>${root.outerHTML}<script>window.onload=()=>window.print()<\/script></body></html>`);w.document.close()}
+if(document.getElementById('officialPeriod'))document.getElementById('officialPeriod').value=today().slice(0,7);
+// extend showView without replacing original logic
+const __oldShowView=showView;showView=function(name){__oldShowView(name);if(name==='identity')loadIdentityForm();if(name==='official')buildOfficialReport()}
+loadIdentityForm();
+</script>
+</body>
+</html>

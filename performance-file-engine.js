@@ -13,14 +13,14 @@
   var PRINT_ID='ss-performance-print-root-v3';
   var MOE_LOGO='https://salogos.b-cdn.net/logos/svg/1774895141785-5zgexuf8.svg';
   var ROLE=inferRole();
-  var ROLE_LABEL={manager:'مدير/ة المدرسة',agent:'وكيل/ة المدرسة',teacher:'المعلم/ة',student_advisor:'الموجه/ة الطلابي/ة',activity_leader:'رائد/ة النشاط',administrative_employee:'الموظف/ة الإداري/ة'}[ROLE]||'الموظف/ة';
+  var ROLE_LABEL={manager:'مدير/ة المدرسة',agent:'وكيل/ة المدرسة',teacher:'المعلم/ة',health_advisor:'الموجه الصحي',kindergarten_teacher:'معلمة رياض الأطفال',student_advisor:'الموجه/الموجهة الطلابية',activity_leader:'رائد/ة النشاط',administrative_employee:'الموظف/ة الإداري/ة'}[ROLE]||'الموظف/ة';
   var PROFILE_KEY='ss_performance_profile_v3_'+ROLE;
 
   function inferRole(){
     var p=(location.pathname||'').toLowerCase();
     if(/administrative_employee|admin_employee/.test(p)) return 'administrative_employee';
     if(/activity_leader/.test(p)) return 'activity_leader';
-    if(/student_advisor/.test(p)) return 'student_advisor';
+    if(/health_advisor/.test(p)) return 'health_advisor'; if(/kindergarten_teacher/.test(p)) return 'kindergarten_teacher'; if(/student_advisor/.test(p)) return 'student_advisor';
     if(/manager/.test(p)) return 'manager';
     if(/agent|wakil/.test(p)) return 'agent';
     if(/teacher/.test(p)) return 'teacher';

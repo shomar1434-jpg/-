@@ -9,7 +9,7 @@
     path.includes('teacher') ? 'teacher' :
     path.includes('student_advisor') ? 'student_advisor' : 'section';
 
-  const LABEL = ROLE === 'agent' ? 'الوكيل' : ROLE === 'teacher' ? 'المعلم' : 'الموجه/ة الطلابي/ة';
+  const LABEL = ROLE === 'agent' ? 'الوكيل' : ROLE === 'teacher' ? 'المعلم' : 'الموجه/الموجهة الطلابية';
   const DB_NAME = 'section_records_repository_safe_' + ROLE;
   const STORE = 'files';
   const FOLDERS_KEY = DB_NAME + '_library_folders_v1';

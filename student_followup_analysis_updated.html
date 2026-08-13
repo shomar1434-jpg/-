@@ -4,7 +4,7 @@
 <style id="platform-first-paint-guard">#elsPicker{display:none!important;visibility:hidden!important}html[data-system-admin-context="1"] #activeSchoolLabel{display:none!important;visibility:hidden!important}</style>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>تحليل بيانات الطلاب - الموجه الطلابي</title>
+  <title>تحليل بيانات الطلاب - الموجه/الموجهة الطلابية</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
     :root{
@@ -53,12 +53,16 @@
 <script src="platform-state-engine.js"></script>
 <script src="platform-persistence-guard.js"></script>
 <script defer src="school-base-settings-source.js"></script>
-</head>
+<style id="uw-verified-back-style">
+.uw-verified-title-back{display:inline-flex!important;align-items:center!important;justify-content:center!important;vertical-align:middle!important;margin-inline-end:10px!important;width:36px!important;height:36px!important;border-radius:11px!important;background:#f1f5f9!important;color:#0f766e!important;border:1px solid #cbd5e1!important;text-decoration:none!important;font-size:20px!important;font-weight:900!important}
+.uw-verified-title-back:hover{background:#e6fffb!important}
+@media print{.uw-verified-title-back{display:none!important}}
+</style></head>
 <body>
 <div class="app">
   <header class="hero">
     <div class="hero-top">
-      <div class="brand"><div class="logo">📊</div><div><h1>نظام الإدارة المدرسية الذكي – تحليل بيانات الطلاب</h1><div class="subtitle">مركز الموجه/ة الطلابي/ة لتشخيص التعثر، قياس الفاقد، تحليل فجوة الأداء، وبناء خطط علاجية قابلة للمتابعة.</div></div></div>
+      <div class="brand"><div class="logo">📊</div><div><h1><a id="uwVerifiedBack" class="uw-verified-title-back no-print" href="student_advisor.html" title="العودة إلى واجهة القسم الرئيسية" aria-label="العودة إلى واجهة القسم الرئيسية">←</a>نظام الإدارة المدرسية الذكي – تحليل بيانات الطلاب</h1><div class="subtitle">مركز الموجه/الموجهة الطلابية لتشخيص التعثر، قياس الفاقد، تحليل فجوة الأداء، وبناء خطط علاجية قابلة للمتابعة.</div></div></div>
       <div class="hero-actions no-print"><button class="btn" onclick="window.print()">طباعة التقرير</button><button class="btn ghost" onclick="downloadReport()">حفظ ملخص JSON</button><button class="btn dark dev-hidden" onclick="loadSample()">بيانات تجريبية</button></div>
     </div>
     <div class="data-bar no-print" id="advisorDataFlowBar">
@@ -88,7 +92,7 @@
     <button class="tab" data-tab="entry">إدخال يدوي</button>
   </nav>
 
-  <div class="print-title"><h2>تقرير تحليل بيانات الطلاب وخطط التحسين</h2><p>الموجه/ة الطلابي/ة – منصة الإدارة المدرسية الذكية</p></div>
+  <div class="print-title"><h2>تقرير تحليل بيانات الطلاب وخطط التحسين</h2><p>الموجه/الموجهة الطلابية – منصة الإدارة المدرسية الذكية</p></div>
 
   <section id="overview" class="section active">
     <div class="grid kpis" id="kpiGrid"></div>
@@ -211,7 +215,7 @@
   function by(arr,key){return arr.reduce((m,r)=>{const k=typeof key==='function'?key(r):r[key];(m[k]||(m[k]=[])).push(r);return m;},{});} function uniq(a){return [...new Set(a.filter(Boolean))];}
   function risk(r){let score=0; if(n(r.current)<n(document.getElementById('riskThreshold').value)) score+=40; if((n(r.previous)-n(r.current))>=10) score+=20; if(n(r.absence)>=6) score+=18; if(n(r.late)>=3) score+=10; if(n(r.behavior)>0) score+=12; return Math.min(100,score);} function level(avgv){return avgv>=80?'متفوق':avgv>=60?'مستقر':avgv>=50?'مهدد بالتعثر':'متعثر';}
   function weakSubject(list){const grouped=by(list,'subject');let best='',val=101;Object.keys(grouped).forEach(s=>{let a=avg(grouped[s].map(r=>r.current));if(a<val){val=a;best=s;}});return [best,val];}
-  function planFor(studentRows){const [sub,val]=weakSubject(studentRows);const ab=Math.max(...studentRows.map(r=>n(r.absence)));const late=Math.max(...studentRows.map(r=>n(r.late)));let reason=[]; if(val<60) reason.push('ضعف تحصيلي في '+sub); if(ab>=6) reason.push('غياب مؤثر'); if(late>=3) reason.push('تأخر صباحي متكرر'); if(!reason.length) reason.push('متابعة تحسين واستدامة'); return {subject:sub, reason:reason.join(' + '), action: val<50?'برنامج علاجي مكثف من 3 حصص أسبوعيًا مع قياس قصير نهاية كل أسبوع':'دعم علاجي موجه وحل واجبات مهارية قصيرة مع متابعة أسبوعية', owner:'الموجه/ة الطلابي/ة + معلم/ة المادة + ولي الأمر', duration: val<50?'4 أسابيع':'أسبوعان', indicator:'ارتفاع الدرجة إلى 70% فأكثر أو تحسن لا يقل عن 15 نقطة'};}
+  function planFor(studentRows){const [sub,val]=weakSubject(studentRows);const ab=Math.max(...studentRows.map(r=>n(r.absence)));const late=Math.max(...studentRows.map(r=>n(r.late)));let reason=[]; if(val<60) reason.push('ضعف تحصيلي في '+sub); if(ab>=6) reason.push('غياب مؤثر'); if(late>=3) reason.push('تأخر صباحي متكرر'); if(!reason.length) reason.push('متابعة تحسين واستدامة'); return {subject:sub, reason:reason.join(' + '), action: val<50?'برنامج علاجي مكثف من 3 حصص أسبوعيًا مع قياس قصير نهاية كل أسبوع':'دعم علاجي موجه وحل واجبات مهارية قصيرة مع متابعة أسبوعية', owner:'الموجه/الموجهة الطلابية + معلم/ة المادة + ولي الأمر', duration: val<50?'4 أسابيع':'أسبوعان', indicator:'ارتفاع الدرجة إلى 70% فأكثر أو تحسن لا يقل عن 15 نقطة'};}
   function save(){if(demoPreview)return; localStorage.setItem(storeKey,JSON.stringify(cleanRows(rows)));}
   function looksLikeOldDemo(list){const demoNames=['أحمد السلمي','سلمان الحربي','محمد الزهراني','عبدالله الغامدي','خالد العتيبي','فهد المطيري','ماجد القحطاني','بندر الشهراني'];return Array.isArray(list)&&list.length===16&&list.every(r=>demoNames.includes(r.name));}
   function inferTestType(r){if(r.testType&&r.testType!=='غير محدد')return r.testType; if(n(r.pre)||n(r.post))return 'اختبار قبلي/بعدي'; if(n(r.previous)||n(r.current))return 'مقارنة سابقة/حالية'; return '';}
@@ -430,9 +434,9 @@
         <form id="tcForm" class="tc-panel">
           <div class="tc-form-layout">
             <div class="tc-form-main">
-              <div class="tc-form-hint"><span>💡</span><div>يرجى تعبئة البيانات بدقة؛ ستظهر هذه المدخلات لاحقًا في مؤشرات الموجه الطلابي، ومصفوفة الضعف، وملف الطالب الذكي.</div></div>
+              <div class="tc-form-hint"><span>💡</span><div>يرجى تعبئة البيانات بدقة؛ ستظهر هذه المدخلات لاحقًا في مؤشرات الموجه/الموجهة الطلابية، ومصفوفة الضعف، وملف الطالب الذكي.</div></div>
               <div class="tc-section">
-                <div class="tc-section-title"><span class="num">1</span><div><b>بيانات الاختبار والتحصيل</b><small>هذه البيانات هي أساس مؤشرات القياس داخل تحليل بيانات الموجه الطلابي.</small></div></div>
+                <div class="tc-section-title"><span class="num">1</span><div><b>بيانات الاختبار والتحصيل</b><small>هذه البيانات هي أساس مؤشرات القياس داخل تحليل بيانات الموجه/الموجهة الطلابية.</small></div></div>
                 <div class="tc-grid">
                   <div class="tc-field"><label>اسم المعلم/ة <span class="tc-required">*</span></label><input id="tTeacher" required placeholder="اكتب اسم المعلم/ة"></div>
                   <div class="tc-field"><label>نوع الاختبار <span class="tc-required">*</span></label><select id="tType"><option>اختبار تشخيصي</option><option>اختبار فتري</option><option>اختبار قبلي</option><option>اختبار بعدي</option><option>اختبار نهاية وحدة</option><option>قياس مهارة</option></select></div>
@@ -474,11 +478,11 @@
                   <div class="tc-field tc-col-span-2"><label>سبب التعثر</label><select id="tWeakReason"><option>ضعف مهاري</option><option>غياب متكرر</option><option>ضعف دافعية</option><option>صعوبات تعلم</option><option>ضعف تأسيسي</option><option>أسباب أخرى</option></select></div>
                   <div class="tc-field tc-col-span-4"><label>التوصية العلاجية من المعلم/ة</label><textarea id="tRecommendation" placeholder="الإجراء المقترح، أو ما تم تنفيذه، أو احتياج الطالب."></textarea></div>
                 </div>
-                <div class="tc-metric-note" style="margin-top:14px">سيتم حفظ المدخلات في صندوق استقبال الموجه الطلابي، ثم تظهر في لوحة التعثر ومصفوفة الضعف وملف الطالب الذكي بعد الترحيل أو الحفظ المباشر.</div>
+                <div class="tc-metric-note" style="margin-top:14px">سيتم حفظ المدخلات في صندوق استقبال الموجه/الموجهة الطلابية، ثم تظهر في لوحة التعثر ومصفوفة الضعف وملف الطالب الذكي بعد الترحيل أو الحفظ المباشر.</div>
               </div>
             </div>
             <aside class="tc-form-aside">
-              <div class="tc-aside-card"><b>آلية العمل</b><p>المعلم يعبئ النتائج، ثم تنتقل البيانات إلى مركز تحليل الموجه الطلابي لعرض مؤشرات التعثر والفجوة وخطط التحسين.</p></div>
+              <div class="tc-aside-card"><b>آلية العمل</b><p>المعلم يعبئ النتائج، ثم تنتقل البيانات إلى مركز تحليل الموجه/الموجهة الطلابية لعرض مؤشرات التعثر والفجوة وخطط التحسين.</p></div>
               <div class="tc-aside-card"><b>خطوات مختصرة</b><div class="tc-mini-steps"><div><i>1</i> بيانات الاختبار</div><div><i>2</i> مؤشرات الفصل</div><div><i>3</i> الطالب المستهدف</div><div><i>4</i> الحفظ والإرسال</div></div></div>
               <div class="tc-aside-card"><b>ملاحظة مهمة</b><p>لرفع كشوف درجات كاملة أو مقارنة شعب وصفوف متعددة، استخدم رفع Excel داخل صفحة الموجه. هذا الرابط مخصص للمدخلات النوعية والتفصيلية من المعلمين.</p></div>
             </aside>

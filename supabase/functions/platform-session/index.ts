@@ -2,7 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-platform-session',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
@@ -88,6 +88,49 @@ const loginMatches = (row: Record<string, unknown>, login: string) => {
   return fields.some((field) => lower(row?.[field]) === wanted);
 };
 
+
+const activeSession = async (admin: any, rawToken: string) => {
+  if (!rawToken) return null;
+  const hash = await sha256(rawToken);
+  const q = await admin.from('platform_sessions').select('*').eq('session_token_hash', hash).eq('status','active').limit(1).maybeSingle();
+  if (q.error || !q.data) return null;
+  if (q.data.expires_at && Date.parse(q.data.expires_at) <= Date.now()) return null;
+  return q.data;
+};
+
+const membershipsForIdentity = async (admin: any, session: any) => {
+  const uq = await admin.from('users').select('*').eq('id', session.user_id).limit(1).maybeSingle();
+  const identity = uq.data || {};
+  const email = lower(identity.email || identity.microsoft_email || '');
+  const rows: any[] = [];
+  const add = (a:any[]) => (a||[]).forEach(x=>{ if(x && activeStatus(x.status)) rows.push(x); });
+  try { const q=await admin.from('school_members').select('*').eq('user_id',session.user_id); if(!q.error)add(q.data); } catch(_){}
+  if(email){
+    try { const q=await admin.from('school_members').select('*').eq('email',email); if(!q.error)add(q.data); } catch(_){}
+    try { const q=await admin.from('school_members').select('*').eq('microsoft_email',email); if(!q.error)add(q.data); } catch(_){}
+  }
+  const byKey = new Map<string,any>(); rows.forEach(r=>byKey.set(`${r.school_id}|${lower(r.role)}`,r));
+  if(email){
+    try { const q=await admin.from('users').select('*').eq('email',email).limit(1000); if(!q.error)(q.data||[]).forEach((u:any)=>{if(activeStatus(u.status)){const k=`${u.school_id}|${lower(u.role)}`;if(!byKey.has(k))byKey.set(k,{id:`user:${u.id}`,school_id:u.school_id,user_id:u.id,email,role:u.role,status:u.status,__userRow:u});}}); } catch(_){}
+  }
+  const memberships=[...byKey.values()].filter((r:any)=>r.school_id);
+  const ids=[...new Set(memberships.map((r:any)=>r.school_id))];
+  const schools=new Map<string,any>();
+  if(ids.length){const sq=await admin.from('schools').select('*').in('id',ids);if(!sq.error)(sq.data||[]).forEach((x:any)=>schools.set(String(x.id),x));}
+  return memberships.map((m:any)=>{const school=schools.get(String(m.school_id))||{};return {membershipId:String(m.id||''),schoolId:String(m.school_id||''),schoolName:text(school.school_name||school.schoolName),schoolCode:text(school.school_code||school.schoolCode),role:text(m.role||identity.role||session.role||'member'),roleLabel:text(m.role_label||''),userId:String(m.user_id||m.__userRow?.id||session.user_id),status:text(m.status||'active'),isPrimary:Boolean(m.is_primary||m.is_primary_manager)};}).filter((m:any)=>m.schoolId && activeStatus(schools.get(m.schoolId)?.status||'active'));
+};
+
+const issueSession = async (admin:any, userId:string, schoolId:string, role:string, previousSessionId?:string) => {
+  const rawToken = `${crypto.randomUUID()}${crypto.randomUUID()}`;
+  const tokenHash = await sha256(rawToken);
+  const now = new Date().toISOString();
+  const expiresAt = new Date(Date.now()+12*60*60*1000).toISOString();
+  if(previousSessionId) await admin.from('platform_sessions').update({status:'revoked',revoked_at:now}).eq('id',previousSessionId);
+  const ins=await admin.from('platform_sessions').insert({session_token_hash:tokenHash,user_id:userId,school_id:schoolId,role,status:'active',expires_at:expiresAt,last_seen_at:now}).select('id').single();
+  if(ins.error) throw new Error(ins.error.message);
+  return {token:rawToken,expiresAt,userId,schoolId,role};
+};
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS_HEADERS });
@@ -120,20 +163,28 @@ Deno.serve(async (request) => {
     const password = text(payload?.password);
     const schoolRef = text(payload?.schoolId);
 
-    if (!login || !password || !schoolRef) {
-      return json(
-        {
-          error: 'بيانات الجلسة غير مكتملة',
-          code: 'SESSION_INPUT_INCOMPLETE',
-          requestId,
-        },
-        400,
-      );
+    const requestedAction = lower(payload?.action || 'login');
+    if (requestedAction === 'login' && (!login || !password || !schoolRef)) {
+      return json({error:'بيانات الجلسة غير مكتملة',code:'SESSION_INPUT_INCOMPLETE',requestId},400);
     }
 
     const admin = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
+
+    const action = lower(payload?.action || 'login');
+    if (action === 'memberships' || action === 'switch') {
+      const rawSession = text(request.headers.get('x-platform-session'));
+      const currentSession = await activeSession(admin, rawSession);
+      if (!currentSession) return json({error:'جلسة المنصة غير صالحة أو منتهية',code:'SESSION_INVALID',requestId},401);
+      const memberships = await membershipsForIdentity(admin,currentSession);
+      if(action === 'memberships') return json({memberships,current:{schoolId:currentSession.school_id,userId:currentSession.user_id,role:currentSession.role},requestId});
+      const targetSchool=text(payload?.schoolId), targetRole=lower(payload?.role), membershipId=text(payload?.membershipId);
+      const allowed=memberships.find((m:any)=>(!membershipId||m.membershipId===membershipId)&&m.schoolId===targetSchool&&(!targetRole||lower(m.role)===targetRole));
+      if(!allowed) return json({error:'الحساب غير مرتبط بالمدرسة أو الدور المطلوب',code:'MEMBERSHIP_NOT_ALLOWED',requestId},403);
+      const next=await issueSession(admin,allowed.userId||currentSession.user_id,allowed.schoolId,allowed.role,currentSession.id);
+      return json({...next,membershipId:allowed.membershipId,schoolName:allowed.schoolName,schoolCode:allowed.schoolCode,requestId});
+    }
 
     let school: Record<string, any> | null = null;
     if (isUuid(schoolRef)) {
@@ -231,6 +282,33 @@ Deno.serve(async (request) => {
         return passwordMatches(candidate, password);
       }) || null;
 
+    let resolvedMembership: any = null;
+    // إذا لم يوجد سجل مستخدم مستقل داخل المدرسة المختارة، نتحقق من عضوية نفس الهوية في school_members.
+    if (!user) {
+      const allUsersResult = await admin.from('users').select('*').limit(5000);
+      if (!allUsersResult.error) {
+        const identityCandidates = (allUsersResult.data || []).filter(
+          (row: Record<string, unknown>) => activeStatus(row.status) && loginMatches(row, login),
+        );
+        const identityUser = identityCandidates.find((candidate: Record<string, unknown>) => {
+          if (authUser) return text(candidate.id) === text(authUser.id) || lower(candidate.email) === normalizedLogin;
+          return passwordMatches(candidate, password);
+        }) || null;
+        if (identityUser) {
+          try {
+            let mq = await admin.from('school_members').select('*').eq('school_id', school.id).eq('user_id', identityUser.id).limit(1).maybeSingle();
+            if ((!mq.data || mq.error) && lower(identityUser.email)) {
+              mq = await admin.from('school_members').select('*').eq('school_id', school.id).eq('email', lower(identityUser.email)).limit(1).maybeSingle();
+            }
+            if (!mq.error && mq.data && activeStatus(mq.data.status)) {
+              resolvedMembership = mq.data;
+              user = { ...identityUser, id: mq.data.user_id || identityUser.id, school_id: school.id, role: mq.data.role || identityUser.role };
+            }
+          } catch (_) {}
+        }
+      }
+    }
+
     if (!user) {
       console.warn('[platform-session]', requestId, 'user_not_resolved', {
         login: normalizedLogin,
@@ -238,14 +316,7 @@ Deno.serve(async (request) => {
         authValidated: Boolean(authUser),
         candidateCount: candidates.length,
       });
-      return json(
-        {
-          error: 'بيانات الدخول غير صحيحة أو الحساب غير مرتبط بهذه المدرسة',
-          code: 'USER_NOT_RESOLVED',
-          requestId,
-        },
-        401,
-      );
+      return json({error:'بيانات الدخول غير صحيحة أو الحساب غير مرتبط بهذه المدرسة',code:'USER_NOT_RESOLVED',requestId},401);
     }
 
     if (!isUuid(user.id)) {
@@ -259,7 +330,7 @@ Deno.serve(async (request) => {
       );
     }
 
-    const membership = await admin
+    const membership = resolvedMembership ? { data: resolvedMembership, error: null } : await admin
       .from('school_members')
       .select('*')
       .eq('school_id', school.id)
@@ -281,7 +352,7 @@ Deno.serve(async (request) => {
       console.warn('[platform-session]', requestId, 'membership_lookup_warning', membership.error);
     }
 
-    const role = text(user.role || membership.data?.role || 'member');
+    const role = text(membership.data?.role || user.role || 'member');
     const rawToken = `${crypto.randomUUID()}${crypto.randomUUID()}`;
     const tokenHash = await sha256(rawToken);
     const now = new Date().toISOString();

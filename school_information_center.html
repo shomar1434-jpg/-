@@ -1,7 +1,17 @@
 <!doctype html>
 <html lang="ar" dir="rtl">
 <head>
-<style id="platform-first-paint-guard">#elsPicker{display:none!important;visibility:hidden!important}html[data-system-admin-context="1"] #activeSchoolLabel{display:none!important;visibility:hidden!important}</style>
+<style id="platform-first-paint-guard">#elsPicker{display:none!important;visibility:hidden!important}html[data-system-admin-context="1"] #activeSchoolLabel{display:none!important;visibility:hidden!important}
+.integrationStatusCard{margin:16px 0 0;background:linear-gradient(135deg,#0f172a,#0f766e);color:#fff;border-radius:26px;padding:18px 20px;box-shadow:0 18px 38px rgba(15,23,42,.15)}
+.integrationStatusHead{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.integrationStatusHead h3{margin:0;font-size:17px}.integrationStatusHead p{margin:5px 0 0;color:rgba(255,255,255,.76);font-size:12px;font-weight:700}
+.integrationStats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:16px}
+.integrationMini{background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.14);border-radius:18px;padding:12px;text-align:center}
+.integrationMini b{display:block;font-size:23px}.integrationMini span{display:block;font-size:11px;color:rgba(255,255,255,.72);font-weight:800;margin-top:3px}
+.integrationRefresh{border:1px solid rgba(255,255,255,.28);background:#fff;color:#0f766e;border-radius:13px;padding:10px 14px;font-weight:900;cursor:pointer}
+.integrationFlow{margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.13);font-size:12px;color:rgba(255,255,255,.82);line-height:1.8}
+@media(max-width:800px){.integrationStats{grid-template-columns:repeat(2,1fr)}}
+</style>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>مركز المعلومات المدرسية</title>
@@ -58,6 +68,25 @@
 
   <main class="wrap">
     <div id="statusBox" class="note">يعرض هذا المركز بيانات المدرسة النشطة فقط حسب school_id. عند التجربة محليًا يمكن تفعيل وضع التطوير المحلي دون رفع GitHub.</div>
+<section id="centralIntegrationStatus" class="integrationStatusCard noPrint">
+  <div class="integrationStatusHead">
+    <div>
+      <h3>حالة التكامل مع المنصة</h3>
+      <p>مركز المعلومات هو مصدر البيانات المركزي. لا تحتاج الأقسام إلى تصدير يدوي للبيانات؛ فهي تقرأ المصدر مباشرة عند الحاجة.</p>
+    </div>
+    <button class="integrationRefresh" type="button" onclick="refreshCentralInformationProvider()">↻ تحديث البيانات في المنصة</button>
+  </div>
+  <div class="integrationStats">
+    <div class="integrationMini"><b id="cipStudents">0</b><span>الطلاب</span></div>
+    <div class="integrationMini"><b id="cipStaff">0</b><span>المنسوبون</span></div>
+    <div class="integrationMini"><b id="cipTeachers">0</b><span>المعلمون</span></div>
+    <div class="integrationMini"><b id="cipPages">0</b><span>الصفحات المرتبطة</span></div>
+    <div class="integrationMini"><b id="cipStatus">...</b><span>حالة المصدر</span></div>
+  </div>
+  <div class="integrationFlow">المصدر المركزي ← الطلاب والمنسوبون ← السجلات واللجان والمجالس والقرارات والتقارير ← التحديث التلقائي عند تغير البيانات.</div>
+  <div class="integrationFlow">آخر تحديث: <strong id="cipUpdatedAt">لم يتم بعد</strong></div>
+</section>
+
 
     <section id="devModeBox" class="devbox hidden noPrint">
       <h3>وضع التجربة المحلية</h3>
@@ -732,5 +761,37 @@
 
 <script src="school-information-source.js"></script>
 <script src="internal-messaging.js"></script>
+
+<script id="central-information-provider-ui">
+(function(){
+ async function paint(){
+   const s=window.SchoolInformationSource;
+   if(!s)return;
+   try{
+     const snap=await s.getSnapshot();
+     const $=id=>document.getElementById(id);
+     if($('cipStudents'))$('cipStudents').textContent=snap.counts.students;
+     if($('cipStaff'))$('cipStaff').textContent=snap.counts.staff;
+     if($('cipTeachers'))$('cipTeachers').textContent=snap.counts.teachers;
+     if($('cipPages'))$('cipPages').textContent='61';
+     if($('cipStatus'))$('cipStatus').textContent='متصل';
+     if($('cipUpdatedAt'))$('cipUpdatedAt').textContent=snap.updatedAt?new Date(snap.updatedAt).toLocaleString('ar-SA'):'جاهز';
+   }catch(e){
+     const el=document.getElementById('cipStatus');if(el)el.textContent='تعذر الاتصال';
+   }
+ }
+ window.refreshCentralInformationProvider=async function(){
+   if(window.SchoolInformationSource){
+     await SchoolInformationSource.refresh();
+     try{window.dispatchEvent(new CustomEvent('school-information-updated',{detail:{source:'school_information_center',at:new Date().toISOString()}}))}catch(_){}
+     await paint();
+   }
+ };
+ window.addEventListener('school-information-ready',paint);
+ window.addEventListener('school-information-change',paint);
+ window.addEventListener('school-information-updated',paint);
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',paint,{once:true});else paint();
+})();
+</script>
 </body>
 </html>

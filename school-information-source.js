@@ -8,10 +8,11 @@ const CFG={
 };
 const SECTION_MAP={'1':'أ','2':'ب','3':'ج','4':'د','5':'هـ','6':'و','7':'ز','8':'ح','9':'ط','10':'ي','11':'ك','12':'ل'};
 const ROLE_AR={manager:'مدير/ة المدرسة',school_manager:'مدير/ة المدرسة',agent:'وكيل/ة',deputy:'وكيل/ة',teacher:'معلم/ة',student_advisor:'موجه/ة طلابي/ة',counselor:'موجه/ة طلابي/ة',activity_leader:'رائد/ة النشاط',admin_employee:'موظف/ة إداري/ة',administrative_employee:'موظف/ة إداري/ة',employee:'موظف/ة',principal:'مدير/ة المدرسة'};
-const state={students:[],staff:[],loaded:false,loading:null,schoolId:'',year:''};
+const state={students:[],staff:[],loaded:false,loading:null,schoolId:'',year:'',updatedAt:'',version:'2.0.0'};
 const safe=v=>String(v==null?'':v).trim();
 const norm=v=>safe(v).replace(/[إأآا]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/[ـ\u064B-\u0652]/g,'').replace(/\s+/g,' ').toLowerCase();
 const readJson=k=>{try{return JSON.parse(localStorage.getItem(k)||sessionStorage.getItem(k)||'null')}catch(_){return null}};
+const infoChannel=(()=>{try{return new BroadcastChannel('smart-school-information')}catch(_){return null}})();
 function schoolId(){
   const q=new URLSearchParams(location.search),u=readJson('currentSchoolUser')||readJson('currentUser')||readJson('loggedUser')||{},s=readJson('smartSchool.currentSchool')||readJson('active_school')||readJson('activeSchool')||{};
   return safe(q.get('schoolId')||q.get('school_id')||localStorage.getItem('active_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||localStorage.getItem('smart_school_id')||s.id||s.school_id||u.school_id||u.schoolId||'');
@@ -53,10 +54,36 @@ async function load(force){
     const [cs,cu]=await Promise.all([cloudStudents(),cloudStaff()]);
     state.students=dedupe([...studentLocal(),...cs].map(mapStudent).filter(x=>x.name&&!/محذوف/.test(norm(x.status))),x=>safe(x.student_number||x.national_id)||norm(x.name)+'|'+norm(x.grade)+'|'+norm(x.section));
     state.staff=dedupe([...staffLocal(),...cu].map(mapStaff).filter(x=>x.name),x=>safe(x.id)||norm(x.email)||norm(x.name)+'|'+norm(x.role));
-    state.loaded=true;state.loading=null;refreshLists();return state;
+    state.loaded=true;state.loading=null;state.updatedAt=new Date().toISOString();refreshLists();emit('school-information-ready',snapshot());emit('school-information-change',snapshot());return state;
   })();return state.loading;
 }
 function teachers(){return state.staff.filter(x=>/teacher|معلم/.test(norm(x.role+' '+x.role_label)))}
+function snapshot(){
+  return {
+    schoolId:state.schoolId||schoolId(),
+    academicYear:state.year||year(),
+    students:state.students.slice(),
+    staff:state.staff.slice(),
+    teachers:teachers().slice(),
+    counts:{students:state.students.length,staff:state.staff.length,teachers:teachers().length},
+    updatedAt:state.updatedAt||'',
+    version:state.version
+  };
+}
+function findStudent(q){
+  q=norm(q); if(!q)return null;
+  return state.students.find(x=>[x.id,x.student_number,x.national_id,x.name].some(v=>norm(v)===q))||null;
+}
+function findStaff(q){
+  q=norm(q); if(!q)return null;
+  return state.staff.find(x=>[x.id,x.email,x.name].some(v=>norm(v)===q))||null;
+}
+function emit(name,detail){
+  const payload=detail||snapshot();
+  try{window.dispatchEvent(new CustomEvent(name,{detail:payload}))}catch(_){}
+  if(name==='school-information-updated'){try{infoChannel&&infoChannel.postMessage({type:'updated',schoolId:schoolId(),academicYear:year(),at:new Date().toISOString()})}catch(_){}}
+}
+
 function fieldText(el){
   let t=[el.id,el.name,el.placeholder,el.getAttribute('aria-label'),el.dataset&&el.dataset.label].filter(Boolean).join(' ');
   if(el.id){const l=document.querySelector('label[for="'+CSS.escape(el.id)+'"]');if(l)t+=' '+l.textContent}
@@ -81,7 +108,7 @@ function refreshLists(){
   document.querySelectorAll('[data-sic-kind]').forEach(fillSelectIfNeeded);
 }
 function escAttr(v){return safe(v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
-function fillSelectIfNeeded(el){if(el.tagName!=='SELECT')return;const k=el.dataset.sicKind,rows=k==='student'?state.students:k==='teacher'?teachers():state.staff;if(!rows.length)return;const existing=new Set([...el.options].map(o=>norm(o.value||o.textContent)));rows.forEach(x=>{if(existing.has(norm(x.name)))return;const o=document.createElement('option');o.value=x.name;o.textContent=x.name+(k!=='student'&&x.role_label?' — '+x.role_label:'');o.dataset.sicId=x.id;el.appendChild(o);existing.add(norm(x.name))})}
+function fillSelectIfNeeded(el){if(el.tagName!=='SELECT')return;const k=el.dataset.sicKind,rows=k==='student'?state.students:k==='teacher'?teachers():state.staff;if(!rows.length)return;const existing=new Set([...el.options].map(o=>norm(o.value||o.textContent)));rows.forEach(x=>{if(existing.has(norm(x.name)))return;const o=document.createElement('option');o.value=x.name;o.textContent=x.name+(k!=='student'&&x.role_label?' — '+x.role_label:'');o.dataset.sicId=x.id;o.dataset.sicManaged='1';el.dataset.sicSource='central';el.appendChild(o);existing.add(norm(x.name))})}
 function findBySemantic(root,patterns){
   const els=[...root.querySelectorAll('input:not([type]),input[type="text"],input[type="search"],input[type="number"],select,textarea')];return els.find(e=>patterns.some(p=>p.test(fieldText(e))));
 }
@@ -98,13 +125,29 @@ function autofill(el,k){
 }
 function enhance(el){
   if(!el||el.nodeType!==1||el.dataset.sicEnhanced)return; if(!/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName))return;
-  const k=kind(el);if(!k)return;el.dataset.sicEnhanced='1';el.dataset.sicKind=k;el.title=(el.title?el.title+' — ':'')+'المصدر: مركز المعلومات المدرسية';
+  const k=kind(el);if(!k)return;el.dataset.sicEnhanced='1';el.dataset.sicKind=k;el.dataset.sicSource='central';el.title=(el.title?el.title+' — ':'')+'المصدر: مركز المعلومات المدرسية';
   if(el.tagName==='INPUT'&&['text','search',''].includes(el.type)){el.setAttribute('list',k==='student'?'sicStudentsList':k==='teacher'?'sicTeachersList':'sicStaffList')}
   else fillSelectIfNeeded(el);
   el.addEventListener('focus',()=>load(false).then(()=>{if(el.tagName==='SELECT')fillSelectIfNeeded(el)}));el.addEventListener('change',()=>autofill(el,k));
 }
 function scan(root){if(!root)return;if(root.matches&&root.matches('input,select,textarea'))enhance(root);root.querySelectorAll&&root.querySelectorAll('input,select,textarea').forEach(enhance)}
-function boot(){ensureDatalist('sicStudentsList');ensureDatalist('sicTeachersList');ensureDatalist('sicStaffList');scan(document);load(false);new MutationObserver(ms=>ms.forEach(m=>m.addedNodes.forEach(n=>{if(n.nodeType===1)scan(n)}))).observe(document.documentElement,{childList:true,subtree:true});window.addEventListener('storage',e=>{if(/schoolInformationCenter|school_information_center|sic_students|users|school_users/i.test(e.key||''))load(true)});window.addEventListener('school-information-updated',()=>load(true));}
-window.SchoolInformationSource={load,getStudents:async()=>{await load(false);return state.students.slice()},getStaff:async()=>{await load(false);return state.staff.slice()},getTeachers:async()=>{await load(false);return teachers().slice()},noorSection,refresh:()=>load(true),state};
+function boot(){ensureDatalist('sicStudentsList');ensureDatalist('sicTeachersList');ensureDatalist('sicStaffList');scan(document);load(false);
+if(infoChannel)infoChannel.onmessage=e=>{if(e.data&&e.data.type==='updated'){state.loaded=false;load(true)}};new MutationObserver(ms=>ms.forEach(m=>m.addedNodes.forEach(n=>{if(n.nodeType===1)scan(n)}))).observe(document.documentElement,{childList:true,subtree:true});window.addEventListener('storage',e=>{if(/schoolInformationCenter|school_information_center|sic_students|users|school_users/i.test(e.key||''))load(true)});window.addEventListener('school-information-updated',()=>{state.loaded=false;load(true)});}
+window.SchoolInformationSource={
+  load,
+  getStudents:async()=>{await load(false);return state.students.slice()},
+  getStaff:async()=>{await load(false);return state.staff.slice()},
+  getTeachers:async()=>{await load(false);return teachers().slice()},
+  getSnapshot:async()=>{await load(false);return snapshot()},
+  findStudent:async q=>{await load(false);return findStudent(q)},
+  findStaff:async q=>{await load(false);return findStaff(q)},
+  getSchoolId:schoolId,
+  getAcademicYear:year,
+  noorSection,
+  refresh:async()=>{const s=await load(true);emit('school-information-updated',snapshot());return s},
+  notifyUpdated:()=>{state.loaded=false;emit('school-information-updated',snapshot());return load(true)},
+  state,
+  version:'2.0.0'
+};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })();

@@ -26,7 +26,7 @@
     var t=clean(document.title||'')+' '+clean((document.querySelector('h1,h2,.section-title,.page-title')||{}).innerText||'');
     if(p.indexOf('manager')>-1 || /مدير|المدير|القيادة/.test(t)) return 'قسم المدير/المديرة';
     if(p.indexOf('agent')>-1 || p.indexOf('wakil')>-1 || /وكيل|الوكيل/.test(t)) return 'قسم الوكيل/الوكيلة';
-    if(p.indexOf('teacher')>-1 || /معلم|المعلم/.test(t)) return 'قسم المعلم/المعلمة';
+    if(p.indexOf('health_advisor')>-1 || /الموجه الصحي/.test(t)) return 'قسم الموجه الصحي'; if(p.indexOf('kindergarten_teacher')>-1 || /معلمة رياض الأطفال/.test(t)) return 'قسم معلمة رياض الأطفال'; if(p.indexOf('teacher')>-1 || /معلم|المعلم/.test(t)) return 'قسم المعلم/المعلمة';
     if(p.indexOf('student_advisor')>-1 || /موجه|مرشد|التوجيه/.test(t)) return 'قسم الموجه/الموجهة الطلابي/ة';
     if(p.indexOf('activity')>-1 || /رائد النشاط|رائدة النشاط|النشاط/.test(t)) return 'قسم رائد/رائدة النشاط';
     return clean(t)||'القسم الحالي';
@@ -35,8 +35,8 @@
     var r=String(role||'').toLowerCase();
     if(/manager|leadership/.test(r)) return 'مدير/مديرة المدرسة';
     if(/agent|agency|wakil/.test(r)) return 'وكيل/وكيلة المدرسة';
-    if(/teacher|performance/.test(r)) return 'معلم/معلمة';
-    if(/advisor|student/.test(r)) return 'موجه/موجهة طلابي/ة';
+    if(/health_advisor/.test(r)) return 'الموجه الصحي'; if(/kindergarten_teacher/.test(r)) return 'معلمة رياض الأطفال'; if(/teacher|performance/.test(r)) return 'معلم/معلمة';
+    if(/advisor|student/.test(r)) return 'موجه/موجهة طلابية';
     if(/activity/.test(r)) return 'رائد/رائدة النشاط';
     return role||'مستخدم/ة';
   }

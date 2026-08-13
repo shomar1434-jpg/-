@@ -32,8 +32,8 @@
     role = String(role || '').trim();
     if(['leadership','manager','مدير','قسم المدير/المديرة'].includes(role)) return 'manager';
     if(['agency','agent','وكيل','قسم الوكيل/الوكيلة','قسم الوكيل/الوكيلة/ة'].includes(role)) return 'agent';
-    if(['performance','teacher','معلم','قسم المعلم/المعلمة','قسم المعلم/المعلمة/ة'].includes(role)) return 'teacher';
-    if(['student_advisor','advisor','موجه','موجه طلابي','قسم الموجه'].includes(role)) return 'student_advisor';
+    if(['health_advisor','موجه صحي','الموجه الصحي','قسم الموجه الصحي'].includes(role)) return 'health_advisor'; if(['kindergarten_teacher','معلمة رياض أطفال','معلمة رياض الأطفال','قسم معلمة رياض الأطفال'].includes(role)) return 'kindergarten_teacher'; if(['performance','teacher','معلم','قسم المعلم/المعلمة','قسم المعلم/المعلمة/ة'].includes(role)) return 'teacher';
+    if(['student_advisor','advisor','موجه','موجه/موجهة طلابية','قسم الموجه'].includes(role)) return 'student_advisor';
     if(role === 'owner') return 'owner';
     return role || 'teacher';
   }

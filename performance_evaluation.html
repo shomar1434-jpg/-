@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>نظام تقييم الأداء الوظيفي</title>
+  <link rel="stylesheet" href="performance-evaluation-assets/app.css" />
+<style id="platform-performance-integration-style">
+.integration-cards code{direction:ltr}
+@media print{.sidebar,.topbar,.modal-actions,.no-print{display:none!important}.main{margin:0!important}.app-shell{display:block!important}}
+</style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">أ</div>
+        <div><strong>الأداء الوظيفي</strong><span>منظومة القياس والتطوير المهني</span></div>
+      </div>
+      <nav class="nav">
+        <button class="nav-item active" data-view="dashboard"><span class="nav-icon">⌂</span><span>لوحة الأداء</span></button>
+        <button class="nav-item" data-view="employees"><span class="nav-icon">♙</span><span>الموظفون</span></button>
+        <button class="nav-item" data-view="evaluations"><span class="nav-icon">✓</span><span>التقييمات</span></button>
+        <button class="nav-item" data-view="inbox"><span class="nav-icon">✉</span><span>المراسلات الداخلية</span></button>
+        <button class="nav-item" data-view="settings"><span class="nav-icon">⚙</span><span>إعدادات الربط</span></button>
+      </nav>
+      <div class="side-note">مصدر المستخدمين: <b id="sourceBadge">غير مرتبط</b></div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="title-cluster">
+          <span class="section-kicker">إدارة المدرسة · التطوير المهني</span>
+          <h1 id="pageTitle">لوحة الأداء الوظيفي</h1>
+          <p id="pageSubtitle">إدارة تقييمات الأداء الوظيفي حسب الوصف الوظيفي.</p>
+        </div>
+        <div class="top-actions">
+          <button class="btn ghost" onclick="window.location.href='manager.html'">العودة لقسم المدير</button>
+          <button class="btn primary" id="syncBtn">تحديث بيانات مركز المعلومات</button>
+          <button class="btn primary" id="importBtn" style="display:none">استيراد بيانات</button>
+          <input id="fileInput" type="file" accept=".json,.csv" hidden />
+        </div>
+      </header>
+
+      <section id="view-dashboard" class="view active">
+        <article class="welcome-hero">
+          <div class="welcome-copy">
+            <span class="hero-badge">نظام التقييم المهني</span>
+            <h2>متابعة الأداء الوظيفي بصورة موحدة وواضحة</h2>
+            <p>إدارة دورة التقييم من بيانات الموظف إلى البطاقة الرسمية النهائية، مع ربط النموذج تلقائيًا بالوصف الوظيفي.</p>
+            <div class="hero-points"><span>✓ نماذج معتمدة حسب الدور</span><span>✓ احتساب تلقائي</span><span>✓ بطاقة رسمية نهائية</span></div>
+          </div>
+          <div class="hero-emblem"><div class="hero-ring"><strong>أداء</strong><small>وظيفي</small></div></div>
+        </article>
+        <div class="kpi-grid">
+          <article class="kpi"><div class="kpi-icon">♙</div><div><span>إجمالي الموظفين</span><strong id="kpiEmployees">0</strong><small>المسجلون في مركز المعلومات</small></div></article>
+          <article class="kpi"><div class="kpi-icon">✓</div><div><span>تم تقييمهم</span><strong id="kpiCompleted">0</strong><small>بطاقات معتمدة</small></div></article>
+          <article class="kpi"><div class="kpi-icon">◷</div><div><span>قيد التقييم</span><strong id="kpiInProgress">0</strong><small>مسودات تحت الإجراء</small></div></article>
+          <article class="kpi"><div class="kpi-icon">✉</div><div><span>تم الإرسال</span><strong id="kpiSent">0</strong><small>وصلت للمراسلات الداخلية</small></div></article>
+        </div>
+
+        <div class="panel-grid">
+          <article class="panel wide">
+            <div class="panel-head"><div><h2>حالة التقييمات</h2><p>ملخص مباشر لحالة جميع العاملين.</p></div></div>
+            <div id="statusBars" class="status-bars"></div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h2>النماذج المتاحة</h2><p>يحدد النظام النموذج تلقائيًا من الوصف الوظيفي.</p></div></div>
+            <div id="templateList" class="template-list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="view-employees" class="view">
+        <article class="panel">
+          <div class="panel-head wrap">
+            <div><h2>موظفو المدرسة</h2><p>لا يتم إنشاء أسماء داخل النظام؛ البيانات تأتي من مركز المعلومات المدرسي.</p></div>
+            <div class="filters">
+              <input id="employeeSearch" class="input" placeholder="بحث بالاسم أو الوصف الوظيفي" />
+              <select id="roleFilter" class="input"><option value="">كل الأوصاف الوظيفية</option></select>
+            </div>
+          </div>
+          <div id="employeePerformanceCards" class="employee-performance-grid"></div>
+          <div class="table-wrap employee-table-secondary">
+            <table>
+              <thead><tr><th>الموظف</th><th>الوصف الوظيفي</th><th>النموذج</th><th>الحالة</th><th></th></tr></thead>
+              <tbody id="employeesTable"></tbody>
+            </table>
+          </div>
+          <div id="employeesEmpty" class="empty-state">
+            <div class="empty-icon">◎</div><h3>لا توجد بيانات مستخدمين بعد</h3>
+            <p>اربط الوحدة بمركز المعلومات المدرسي، أو استخدم الاستيراد لاختبار النظام دون إدخال بيانات افتراضية.</p>
+          </div>
+        </article>
+      </section>
+
+      <section id="view-evaluations" class="view">
+        <article class="panel">
+          <div class="panel-head"><div><h2>سجل التقييمات</h2><p>المسودات والبطاقات المعتمدة والمرسلة.</p></div></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>الموظف</th><th>النموذج</th><th>النتيجة</th><th>التقدير</th><th>الحالة</th><th>آخر تحديث</th><th></th></tr></thead>
+              <tbody id="evaluationsTable"></tbody>
+            </table>
+          </div>
+          <div id="evaluationsEmpty" class="empty-state compact"><h3>لا توجد تقييمات بعد</h3><p>ابدأ من صفحة الموظفين.</p></div>
+        </article>
+      </section>
+
+      <section id="view-inbox" class="view">
+        <article class="panel">
+          <div class="panel-head"><div><h2>المراسلات الداخلية</h2><p>بطاقات الأداء المرسلة عبر نظام المراسلات الداخلية للمنصة.</p></div></div>
+          <div style="margin-bottom:14px"><button class="btn primary" onclick="window.location.href='internal_messages.html?return_to=performance_evaluation.html'">فتح مركز المراسلات الداخلية</button></div><div id="messagesList" class="messages-list"></div>
+          <div id="messagesEmpty" class="empty-state compact"><h3>لا توجد رسائل أداء وظيفي</h3><p>عند إرسال بطاقة لموظف ستظهر هنا في وضع الاختبار المحلي.</p></div>
+        </article>
+      </section>
+
+      <section id="view-settings" class="view">
+        <div class="panel-grid">
+          <article class="panel wide">
+            <div class="panel-head"><div><h2>عقد التكامل</h2><p>الوحدة مرتبطة بمركز المعلومات المدرسية والمراسلات الداخلية والحفظ السحابي للمدرسة الحالية.</p></div></div>
+            <div class="integration-cards">
+              <div class="integration-card"><b>مركز المعلومات المدرسي</b><code>window.schoolInfoCenter.getUsers()</code><span>يعيد مصفوفة المستخدمين مع الاسم والوصف الوظيفي والمعرف.</span></div>
+              <div class="integration-card"><b>المراسلات الداخلية</b><code>window.platformMessenger.send(message)</code><span>يرسل بطاقة الأداء إلى صندوق وارد الموظف.</span></div>
+              <div class="integration-card"><b>الجلسة الحالية</b><code>window.platformSession.getContext()</code><span>يوفر school_id و manager_id والعام الدراسي.</span></div>
+            </div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h2>بيئة الاختبار</h2><p>تنظيف بيانات تقييم العام الحالي لهذه المدرسة.</p></div></div>
+            <button class="btn danger block" id="clearLocalBtn">تنظيف تقييمات العام الحالي</button>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal" id="evaluationModal" aria-hidden="true">
+    <div class="modal-card evaluation-modal-card">
+      <div class="modal-head">
+        <div><span class="eyebrow" id="evalRole"></span><h2 id="evalName">تقييم الأداء الوظيفي</h2><p id="evalTemplateTitle"></p></div>
+        <button class="icon-btn" data-close="evaluationModal">×</button>
+      </div>
+      <div class="progress-row"><span>اكتمال التقييم</span><div class="progress"><i id="evalProgressBar"></i></div><b id="evalProgressText">0%</b></div>
+      <div id="criteriaContainer" class="criteria-list"></div>
+      <div class="score-summary">
+        <div><span>الدرجة المئوية</span><strong id="scorePercent">0%</strong></div>
+        <div><span>التقدير العام</span><strong id="scoreGrade">—</strong></div>
+        <div><span>الحالة</span><strong id="scoreStatus">مسودة</strong></div>
+      </div>
+      <label class="note-field"><span>ملاحظات المدير</span><textarea id="managerNotes" rows="3" placeholder="ملاحظات اختيارية تظهر في بطاقة الأداء"></textarea></label>
+      <div class="modal-actions">
+        <button class="btn ghost" id="saveDraftBtn">حفظ كمسودة</button>
+        <button class="btn primary" id="approveBtn">اعتماد التقييم وإنشاء البطاقة</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="cardModal" aria-hidden="true">
+    <div class="modal-card card-modal-card">
+      <div class="modal-head no-print"><div><span class="eyebrow">بطاقة الأداء الوظيفي</span><h2>البطاقة المعتمدة</h2></div><button class="icon-btn" data-close="cardModal">×</button></div>
+      <div id="performanceCard" class="performance-card"></div>
+      <div class="modal-actions no-print"><button class="btn ghost" id="printCardBtn">طباعة / حفظ PDF</button><button class="btn primary" id="sendCardBtn">إرسال إلى الموظف/الموظفة</button></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <script src="school-base-settings-source.js"></script>
+  <script src="platform-cloud-session.js"></script>
+  <script src="school-information-source.js"></script>
+  <script src="internal-messaging.js"></script>
+  <script src="performance-evaluation-assets/integration.js"></script>
+  <script src="performance-evaluation-assets/templates.js"></script>
+  <script src="performance-evaluation-assets/app.js"></script>
+</body>
+</html>

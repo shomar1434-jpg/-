@@ -1,0 +1,2796 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<style id="platform-first-paint-guard">#elsPicker{display:none!important;visibility:hidden!important}html[data-system-admin-context="1"] #activeSchoolLabel{display:none!important;visibility:hidden!important}</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>سجل معلمة رياض الأطفال الشامل</title>
+    
+    <!-- Tailwind CSS for modern aesthetics -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        emerald: {
+                            50: '#ecfdf5',
+                            100: '#d1fae5',
+                            200: '#a7f3d0',
+                            600: '#059669',
+                            700: '#047857',
+                            800: '#065f46',
+                            900: '#064e3b',
+                            950: '#022c22',
+                        },
+                        amber: {
+                            400: '#fbbf24',
+                            500: '#f59e0b',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Cairo', 'Tajawal', 'ui-sans-serif', 'system-ui'],
+                    }
+                }
+            }
+        }
+    </script>
+
+
+    <!-- ربط سجل معلمة رياض الأطفال الشامل بمنصة الإدارة المدرسية ومركز المعلومات -->
+    <script src="supabase-bridge.js"></script>
+    <script defer src="active_school_scope.js"></script>
+    <script defer src="school_isolation_guard.js?v=teacher-comprehensive"></script>
+
+    <!-- Google Arabic Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;900&family=Tajawal:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+
+    <!-- =========================================================================
+         APPLICATION ALGORITHM & LOCALSTORAGE ENGINE (Alpine JS Data definition)
+         Must be defined BEFORE Alpine.js initializes
+         ========================================================================= -->
+    <script>
+        function followUpApp() {
+            return {
+                // Shared app settings across stages
+                globalMetadata: {
+                    school: 'مدرسة القمم الأهلية',
+                    semester: 'الفصل الدراسي الثالث',
+                    year: '1447 هـ',
+                    startDate: '2026-08-30', // Default start date (Sunday)
+                    dateSystem: 'hijri' // 'hijri' or 'gregorian'
+                },
+
+                // Multi-class database structure
+                classes: [],
+
+                // Active selections
+                selectedStage: 'all',
+                currentClassId: '',
+                activeTab: 'dashboard',
+                selectedWeek: 1,
+                selectedCategory: 'all',
+                selectedDay: 0, // Active day offset (0: Sunday, 1: Monday, etc.)
+                speedEntryMode: 'list', // 'list' for Class view, 'card' for Student card view
+
+                // User Interactive Notifications
+                notification: null,
+                newStudentName: '',
+                bulkStudentNames: '',
+                speedIndex: 0,
+
+                // Dialog Modals
+                isBulkModalOpen: false,
+                isSettingsModalOpen: false,
+                isNewClassModalOpen: false,
+
+                // Prompt Modals Helper
+                confirmModal: {
+                    isOpen: false,
+                    message: '',
+                    callback: null
+                },
+                alertModal: {
+                    isOpen: false,
+                    message: ''
+                },
+
+                // نموذج ربط السجل بمركز المعلومات المدرسية بدلاً من إدخال الطلاب يدوياً
+                centerImportForm: {
+                    stage: 'middle',
+                    grade: '',
+                    track: '',
+                    section: '',
+                    subject: '',
+                    teacher: 'أستاذ المادة'
+                },
+                centerImportStatus: 'جاهز للاستيراد من مركز المعلومات المدرسية',
+                centerDiscoveredClasses: [],
+                centerSelectedClassKey: '',
+
+                // Temp storage for new class (kept internally for backward compatibility, but UI now uses Center Import only)
+                newClassForm: {
+                    name: '',
+                    stage: 'middle',
+                    subject: '',
+                    teacher: ''
+                },
+
+                // Core Configurations
+                stagesMeta: {
+                    primary: { label: 'المرحلة الابتدائية', icon: '🎒', color: 'bg-indigo-600' },
+                    middle: { label: 'المرحلة المتوسطة', icon: '🏫', color: 'bg-emerald-600' },
+                    high: { label: 'المرحلة الثانوية', icon: '🎓', color: 'bg-amber-600' }
+                },
+
+
+                // المراحل المعروضة في الواجهة تُستخرج من الصفوف المستوردة فعلياً من مركز المعلومات
+                get availableStageEntries() {
+                    const ordered = ['primary', 'middle', 'high'];
+                    const used = new Set((this.classes || []).map(cls => cls.stage).filter(Boolean));
+                    return ordered
+                        .filter(key => used.has(key))
+                        .map(key => [key, this.stagesMeta[key] || { label: key, icon: '🏷️', color: 'bg-slate-600' }]);
+                },
+
+                get activeClassStageLabel() {
+                    if (!this.activeClass) return '—';
+                    return this.stagesMeta[this.activeClass.stage]?.label || this.activeClass.stage || '—';
+                },
+
+                classDisplayName(cls) {
+                    if (!cls) return '—';
+                    const grade = cls.grade || cls.name || 'صف غير محدد';
+                    const track = cls.track ? ` - ${cls.track}` : '';
+                    const section = cls.section ? ` (${cls.section})` : '';
+                    return `${grade}${track}${section}`;
+                },
+
+                // Weekdays in order starting from Sunday
+                weekDays: [
+                    { name: 'الأحد', short: 'الأحد', offset: 0 },
+                    { name: 'الاثنين', short: 'الاثنين', offset: 1 },
+                    { name: 'الثلاثاء', short: 'الثلاثاء', offset: 2 },
+                    { name: 'الأربعاء', short: 'الأربعاء', offset: 3 },
+                    { name: 'الخميس', short: 'الخميس', offset: 4 }
+                ],
+
+                // Categories aligned with Ministry of Education standards and colors shown in image_1b907b.png
+                categoryMeta: {
+                    attendance: { label: 'الحضور', icon: '📅', color: 'bg-amber-50 border-amber-200 text-amber-800' },
+                    participation: { label: 'المشاركة', icon: '🙋‍♂️', color: 'bg-purple-50 border-purple-200 text-purple-800' },
+                    homework: { label: 'الواجبات والمهام', icon: '📝', color: 'bg-emerald-50 border-emerald-200 text-emerald-800' },
+                    booksTools: { label: 'الكتاب والأدوات', icon: '📚', color: 'bg-blue-50 border-blue-200 text-blue-800' },
+                    behavior: { label: 'الانضباط', icon: '🛡️', color: 'bg-orange-50 border-orange-200 text-orange-800' }
+                },
+
+                // اختبارات التحصيل والتحليل العلاجي المرتبطة بنفس طلاب مركز المعلومات
+                assessmentConfig: {
+                    diagnostic: { label: 'قبلي / تشخيصي', short: 'قبلي', max: 20, color: 'bg-sky-50 text-sky-800 border-sky-200' },
+                    period1: { label: 'الفترة الأولى', short: 'ف1', max: 20, color: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
+                    period2: { label: 'الفترة الثانية', short: 'ف2', max: 20, color: 'bg-amber-50 text-amber-800 border-amber-200' },
+                    final: { label: 'نهاية الفصل', short: 'نهائي', max: 40, color: 'bg-violet-50 text-violet-800 border-violet-200' }
+                },
+
+                assessmentStatusMeta: {
+                    mastered: { label: 'متقن', icon: '🟢', color: 'text-emerald-700 bg-emerald-50 border-emerald-200', recommendation: 'تعزيز وتحفيز مع أنشطة إثرائية قصيرة.' },
+                    good: { label: 'جيد', icon: '🔵', color: 'text-blue-700 bg-blue-50 border-blue-200', recommendation: 'استمرار المتابعة مع واجبات تطبيقية منتظمة.' },
+                    support: { label: 'يحتاج دعم', icon: '🟡', color: 'text-amber-700 bg-amber-50 border-amber-200', recommendation: 'خطة معالجة قصيرة ومتابعة أسبوعية لمهارات الضعف.' },
+                    struggling: { label: 'متعثر', icon: '🔴', color: 'text-rose-700 bg-rose-50 border-rose-200', recommendation: 'خطة علاجية فردية، تواصل مع ولي الأمر، وإشعار الموجه/الموجهة الطلابية عند استمرار التعثر.' }
+                },
+
+                // Computed Property to flatten student records into clean structural rows
+                // This prevents multiple nested templates inside HTML table elements, solving Alpine.js crashes
+                get flatRows() {
+                    let rows = [];
+                    this.students.forEach((student, index) => {
+                        Object.keys(this.categoryMeta).forEach((catKey, catIndex) => {
+                            rows.push({
+                                studentId: student.id,
+                                studentName: student.name,
+                                studentIndex: index,
+                                catKey: catKey,
+                                catIndex: catIndex,
+                                meta: this.categoryMeta[catKey],
+                                records: student.records
+                            });
+                        });
+                    });
+                    return rows;
+                },
+
+                // Auto-calculation of date strings based on selected starting Sunday
+                getFormattedDate(week, dayOffset) {
+                    if (!this.globalMetadata.startDate) return '—';
+                    try {
+                        let parts = this.globalMetadata.startDate.split('-');
+                        let date = new Date(parts[0], parts[1] - 1, parts[2]);
+                        
+                        // Add weeks offset + days offset
+                        let totalDaysOffset = (week - 1) * 7 + dayOffset;
+                        date.setDate(date.getDate() + totalDaysOffset);
+                        
+                        if (this.globalMetadata.dateSystem === 'hijri') {
+                            return date.toLocaleDateString('ar-SA-u-ca-islamic', { day: 'numeric', month: 'numeric' }) + ' هـ';
+                        } else {
+                            return date.toLocaleDateString('ar-SA', { day: 'numeric', month: 'numeric' }) + ' م';
+                        }
+                    } catch(e) {
+                        return '—';
+                    }
+                },
+
+                // Initialization Cycle (Standard Alpine.js V3 auto-init with safety fallbacks)
+                init() {
+                    const savedGlobal = localStorage.getItem('followup_global_v3');
+                    if (savedGlobal) {
+                        this.globalMetadata = Object.assign({
+                            school: 'مدرسة القمم الأهلية',
+                            semester: 'الفصل الدراسي الثالث',
+                            year: '1447 هـ',
+                            startDate: '2026-08-30',
+                            dateSystem: 'hijri'
+                        }, JSON.parse(savedGlobal));
+                    }
+
+                    const savedClasses = localStorage.getItem('followup_classes_v3');
+                    if (savedClasses) {
+                        try {
+                            const parsedClasses = JSON.parse(savedClasses) || [];
+                            const hasOldDemoData = parsedClasses.some(c => ['class-middle-1','class-high-1','class-primary-1'].includes(c.id));
+                            // تنظيف البيانات الوهمية السابقة حتى يبدأ سجل معلمة رياض الأطفال من مركز المعلومات فقط
+                            this.classes = hasOldDemoData ? [] : this.migrateLegacyStudentRecords(parsedClasses);
+                            if (hasOldDemoData) {
+                                localStorage.removeItem('followup_current_class_id_v3');
+                                this.showNotification('تم تنظيف بيانات السجل الوهمية السابقة، استخدم الاستيراد من مركز المعلومات', 'info');
+                            }
+                        } catch (e) {
+                            this.classes = [];
+                        }
+                    } else {
+                        this.classes = [];
+                    }
+
+                    const savedClassId = localStorage.getItem('followup_current_class_id_v3');
+                    if (savedClassId && this.classes.find(c => c.id === savedClassId)) {
+                        this.currentClassId = savedClassId;
+                    } else if (this.classes.length > 0) {
+                        this.currentClassId = this.classes[0].id;
+                    } else {
+                        this.currentClassId = '';
+                    }
+
+                    // Watch states manually inside alpine to trigger storage updates
+                    this.$watch('classes', value => this.saveData());
+                    this.$watch('globalMetadata', value => this.saveData());
+                    this.$watch('currentClassId', value => {
+                        localStorage.setItem('followup_current_class_id_v3', value);
+                        this.speedIndex = 0; // Reset index when changing classes
+                    });
+                },
+
+                // ترحيل بيانات النسخ السابقة: تحويل المحادثة واللغة إلى الكتاب والأدوات عند وجود بيانات محفوظة سابقاً
+                migrateLegacyStudentRecords(classes) {
+                    return (classes || []).map(cls => ({
+                        ...cls,
+                        students: (cls.students || []).map(student => {
+                            const records = student.records || {};
+                            Object.values(records).forEach(weekRec => {
+                                Object.values(weekRec || {}).forEach(dayRec => {
+                                    if (dayRec && dayRec.booksTools === undefined && dayRec.speaking !== undefined) {
+                                        dayRec.booksTools = dayRec.speaking;
+                                    }
+                                });
+                            });
+                            return { ...student, records };
+                        })
+                    }));
+                },
+
+                // لا توجد بيانات وهمية: مصدر الطلاب الرسمي هو مركز المعلومات المدرسية فقط
+                getDefaultMockDatabase() {
+                    return [];
+                },
+
+                stageLabelToKey(label) {
+                    const text = (label || '').toString();
+                    if (text.includes('ابتد')) return 'primary';
+                    if (text.includes('متوسط')) return 'middle';
+                    if (text.includes('ثانو')) return 'high';
+                    return this.centerImportForm.stage || 'middle';
+                },
+
+                normalizeCenterStudent(raw, idx = 0) {
+                    const name = raw.student_name || raw.studentName || raw.name || raw.full_name || raw['اسم الطالب'] || raw['الطالب'] || raw['الاسم'] || '';
+                    const studentNumber = raw.student_number || raw.studentNumber || raw.national_id || raw.nationalId || raw.id_number || raw.identity || raw['السجل المدني'] || raw['رقم السجل المدني'] || raw['رقم الهوية'] || raw['رقم الطالب'] || raw['رقم نور'] || raw['الهوية'] || '';
+                    const stageValue = raw.stage || raw.stage_name || raw['المرحلة'] || raw['المرحلة الدراسية'] || raw.level || raw['المرحلة/الصف'] || '';
+                    const gradeValue = raw.grade || raw.grade_name || raw.class_name || raw.class || raw['الصف'] || raw['الصف الدراسي'] || raw['المرحلة/الصف'] || raw['المرحلة'] || '';
+                    return {
+                        id: raw.id ? `center-${raw.id}` : `center-${studentNumber || Date.now()}-${idx}`,
+                        centerStudentId: raw.id || '',
+                        student_number: studentNumber,
+                        name: (name || '').toString().trim(),
+                        stage: (stageValue || '').toString().trim(),
+                        grade: (gradeValue || '').toString().trim(),
+                        track_name: raw.track_name || raw.track || raw.path || raw['المسار'] || '',
+                        section_name: raw.section_name || raw.section || raw.division || raw.classroom || raw['الشعبة'] || raw['الفصل'] || raw['الصف/الشعبة'] || '',
+                        records: raw.records || {},
+                        assessments: raw.assessments || this.defaultAssessments()
+                    };
+                },
+
+                getCenterStudentsFromLocalSources() {
+                    // ربط محلي موحد مع مركز المعلومات المدرسية دون التأثير على أي قسم آخر.
+                    // يعتمد على نفس مفاتيح التخزين التي أثبتت نجاحها في أعمال الاختبارات.
+                    const windowSources = [
+                        window.schoolInformationCenterStudents,
+                        window.SCHOOL_INFORMATION_CENTER_STUDENTS,
+                        window.SCHOOL_CENTER_STUDENTS,
+                        window.centerStudents
+                    ].filter(Array.isArray);
+                    if (windowSources.length) return windowSources[0];
+
+                    const getActiveSchoolId = () => {
+                        try {
+                            const active = (window.ActiveSchoolScope && window.ActiveSchoolScope.get) ? window.ActiveSchoolScope.get() : {};
+                            return active.schoolId || active.id || localStorage.getItem('active_school_id') || localStorage.getItem('school_id') || 'DEV_SCHOOL';
+                        } catch (e) {
+                            return localStorage.getItem('active_school_id') || localStorage.getItem('school_id') || 'DEV_SCHOOL';
+                        }
+                    };
+                    const activeSchoolId = getActiveSchoolId();
+                    const yearRaw = (localStorage.getItem('school_info_academic_year') || this.globalMetadata?.year || localStorage.getItem('school_academic_year') || '1447').toString();
+                    const year = (yearRaw.match(/\d{4}/) || [yearRaw])[0];
+                    const keys = [
+                        `schoolInformationCenter:${activeSchoolId}:${year}`,
+                        `school_information_center:${activeSchoolId}:${year}`,
+                        `sic_students:${activeSchoolId}:${year}`,
+                        `school_information_center_students:${activeSchoolId}`,
+                        'school_information_center_students',
+                        'schoolInformationCenterStudents',
+                        'school_information_students',
+                        'school_center_students',
+                        'sic_students_cache',
+                        'students_center_cache',
+                        'teacher_import_students',
+                        'students'
+                    ];
+                    for (const key of keys) {
+                        try {
+                            const value = localStorage.getItem(key);
+                            if (!value) continue;
+                            const parsed = JSON.parse(value);
+                            const rows = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.students) ? parsed.students : (Array.isArray(parsed.data) ? parsed.data : []));
+                            if (rows.length) {
+                                this.centerImportStatus = `تم العثور على ${rows.length} طالب/طالبة في مركز المعلومات المحلي.`;
+                                return rows;
+                            }
+                        } catch (e) {}
+                    }
+                    return [];
+                },
+
+                async fetchStudentsFromSupabaseIfAvailable() {
+                    // قراءة واسعة وآمنة من Supabase: لا نفلتر بالمرحلة/الصف قبل معرفة الصفوف؛
+                    // لأن جدول students قد يحفظ stage بصيغة "ثانوي" و grade بصيغة "الأول الثانوي".
+                    // التصفية والتجميع تتم محلياً بعد الجلب حتى يظهر كل صف وشعبة للمعلمة رياض الأطفال.
+                    const client = window.supabaseClient || window.schoolSupabaseClient || window._supabaseClient || window.supabase || null;
+                    if (!client || !client.from) return [];
+                    try {
+                        const active = (window.ActiveSchoolScope && window.ActiveSchoolScope.get) ? window.ActiveSchoolScope.get() : {};
+                        const activeSchoolId = active.schoolId || active.id || localStorage.getItem('active_school_id') || localStorage.getItem('school_id') || '';
+                        let query = client.from('students').select('*');
+                        if (activeSchoolId) query = query.eq('school_id', activeSchoolId);
+                        const result = await query.order('student_name', { ascending: true });
+                        if (result.error) throw result.error;
+                        const rows = result.data || [];
+                        if (rows.length) this.centerImportStatus = `تم جلب ${rows.length} طالب/طالبة من مركز المعلومات السحابي.`;
+                        return rows;
+                    } catch (e) {
+                        console.warn('تعذر جلب الطلاب من Supabase:', e);
+                        return [];
+                    }
+                },
+
+                classNameFromImport(form) {
+                    const stageText = this.stagesMeta[form.stage]?.label || form.stage;
+                    const trackText = form.track ? ` - ${form.track}` : '';
+                    const sectionText = form.section ? ` (${form.section})` : '';
+                    return `${form.grade || stageText}${trackText}${sectionText}`.trim();
+                },
+
+                groupCenterStudentsForTeacher(rows) {
+                    const normalized = (rows || []).map((s, idx) => this.normalizeCenterStudent(s, idx)).filter(s => s.name);
+                    const groupsMap = new Map();
+                    const stageKeyFromStudent = (s) => this.stageLabelToKey(s.stage || s.grade || '') || this.centerImportForm.stage || 'middle';
+                    normalized.forEach(s => {
+                        const stage = stageKeyFromStudent(s);
+                        const grade = (s.grade || s.stage || 'صف غير محدد').toString().trim();
+                        const track = (s.track_name || '').toString().trim();
+                        const section = (s.section_name || '').toString().trim();
+                        const key = [stage, grade, track, section].join('||');
+                        if (!groupsMap.has(key)) {
+                            groupsMap.set(key, { key, stage, grade, track, section, count: 0 });
+                        }
+                        groupsMap.get(key).count += 1;
+                    });
+                    return Array.from(groupsMap.values()).sort((a, b) => `${a.stage} ${a.grade} ${a.section}`.localeCompare(`${b.stage} ${b.grade} ${b.section}`, 'ar'));
+                },
+
+                async discoverInformationCenterClasses() {
+                    this.centerImportStatus = 'جاري فتح بيانات مركز المعلومات...';
+                    let rows = await this.fetchStudentsFromSupabaseIfAvailable();
+                    if (!rows.length) rows = this.getCenterStudentsFromLocalSources();
+                    this.centerDiscoveredClasses = this.groupCenterStudentsForTeacher(rows);
+                    if (!this.centerDiscoveredClasses.length) {
+                        this.centerSelectedClassKey = '';
+                        this.centerImportStatus = 'لم يتم العثور على صفوف في مركز المعلومات. تأكد من استيراد الطلاب أولاً في مركز المعلومات.';
+                        this.showAlert('لم يتم العثور على صفوف مستوردة من مركز المعلومات.');
+                        return;
+                    }
+                    this.centerSelectedClassKey = this.centerDiscoveredClasses[0].key;
+                    this.applyCenterDiscoveredClass();
+                    this.centerImportStatus = `تم التعرف على ${this.centerDiscoveredClasses.length} صف/شعبة من مركز المعلومات وتوزيع الطلاب عليها تلقائياً. اختر الصف من القائمة، أدخل اسم المادة، ثم اضغط إنشاء سجل الصف لتظهر بطاقته ويرتبط بالسجلات.`;
+                    this.showNotification('تم التعرف على الصفوف وتوزيع الطلاب حسب الشعب من مركز المعلومات.', 'success');
+                },
+
+                applyCenterDiscoveredClass() {
+                    const group = (this.centerDiscoveredClasses || []).find(g => g.key === this.centerSelectedClassKey);
+                    if (!group) return;
+                    this.centerImportForm.stage = group.stage || this.centerImportForm.stage || 'middle';
+                    this.centerImportForm.grade = group.grade || '';
+                    this.centerImportForm.track = group.track || '';
+                    this.centerImportForm.section = group.section || '';
+                },
+
+                async importClassFromInformationCenter() {
+                    if (!this.centerImportForm.grade.trim() || !this.centerImportForm.subject.trim()) {
+                        this.showAlert('يرجى تحديد الصف واسم المادة قبل إنشاء سجل معلمة رياض الأطفال من مركز المعلومات.');
+                        return;
+                    }
+
+                    this.applyCenterDiscoveredClass();
+                    this.centerImportStatus = 'جاري جلب طلاب الصف المختار من مركز المعلومات...';
+                    let sourceStudents = await this.fetchStudentsFromSupabaseIfAvailable();
+                    if (!sourceStudents.length) sourceStudents = this.getCenterStudentsFromLocalSources();
+
+                    const form = this.centerImportForm;
+                    const stageLabel = this.stagesMeta[form.stage]?.label || '';
+                    const normalizeText = value => (value || '').toString().replace(/\s+/g, ' ').trim();
+                    const includesMatch = (value, wanted) => {
+                        const a = normalizeText(value);
+                        const b = normalizeText(wanted);
+                        return !b || a === b || a.includes(b) || b.includes(a);
+                    };
+                    const filtered = sourceStudents
+                        .map((s, idx) => this.normalizeCenterStudent(s, idx))
+                        .filter(s => !s.student_status || ['نشط', 'active', 'فعال', ''].includes(String(s.student_status).trim()))
+                        .filter(s => !form.stage || this.stageLabelToKey(s.stage || s.grade) === form.stage || includesMatch(s.stage || s.grade, stageLabel.replace('المرحلة ', '')))
+                        .filter(s => !form.grade || includesMatch(s.grade || s.stage, form.grade))
+                        .filter(s => !form.track || includesMatch(s.track_name, form.track))
+                        .filter(s => !form.section || includesMatch(s.section_name, form.section))
+                        .filter(s => s.name);
+
+                    if (!filtered.length) {
+                        this.centerImportStatus = 'لم يتم العثور على طلاب مطابقين للخيارات المحددة. تأكد من حفظ بيانات الطلاب في مركز المعلومات أولاً.';
+                        this.showAlert('لم يتم العثور على طلاب مطابقين من مركز المعلومات. يمكن لاحقاً ربط الصفحة مباشرة بـ Supabase داخل المنصة.');
+                        return;
+                    }
+
+                    const classObj = {
+                        id: `center-class-${Date.now()}`,
+                        source: 'information_center',
+                        stage: form.stage,
+                        name: this.classNameFromImport(form),
+                        grade: form.grade,
+                        track: form.track,
+                        section: form.section,
+                        subject: form.subject.trim(),
+                        teacher: form.teacher.trim() || 'أستاذ المادة',
+                        students: filtered
+                    };
+
+                    this.classes = this.classes.filter(c => !(c.source === 'information_center' && c.grade === classObj.grade && c.track === classObj.track && c.section === classObj.section && c.subject === classObj.subject));
+                    this.classes.push(classObj);
+                    this.currentClassId = classObj.id;
+                    this.selectedStage = classObj.stage;
+                    this.activeTab = 'students';
+                    this.saveData();
+                    this.centerImportStatus = `تم إنشاء سجل للصف واستيراد ${filtered.length} طالباً من مركز المعلومات.`;
+                    this.showNotification(this.centerImportStatus, 'success');
+                },
+
+                async handleInformationCenterTopImport() {
+                    // يفتح تبويب إدارة الطلاب والفصول ثم يحمل الصفوف فعلياً من مركز المعلومات.
+                    this.activeTab = 'students';
+                    await this.$nextTick();
+                    const panel = document.getElementById('teacherInformationCenterImportPanel');
+                    if (panel && panel.scrollIntoView) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    await this.discoverInformationCenterClasses();
+                    setTimeout(() => {
+                        const subjectInput = document.getElementById('teacherCenterSubjectInput');
+                        if (subjectInput && subjectInput.focus) subjectInput.focus();
+                    }, 120);
+                },
+
+                clearTeacherRegisterLocalData() {
+                    this.showConfirm('سيتم تنظيف بيانات السجل المحلي فقط. لن يتم حذف أي طالب من مركز المعلومات المدرسية أو Supabase. هل تريد المتابعة؟', () => {
+                        this.classes = [];
+                        this.currentClassId = '';
+                        localStorage.removeItem('followup_current_class_id_v3');
+                        this.saveData();
+                        this.showNotification('تم تنظيف بيانات السجل المحلي بنجاح', 'info');
+                    });
+                },
+
+                saveData() {
+                    localStorage.setItem('followup_classes_v3', JSON.stringify(this.classes));
+                    localStorage.setItem('followup_global_v3', JSON.stringify(this.globalMetadata));
+                },
+
+                // Notification Alerts Engine
+                showNotification(message, type = 'success') {
+                    this.notification = { message, type };
+                    setTimeout(() => {
+                        this.notification = null;
+                    }, 3000);
+                },
+
+                showAlert(message) {
+                    this.alertModal.message = message;
+                    this.alertModal.isOpen = true;
+                },
+
+                showConfirm(message, callback) {
+                    this.confirmModal.message = message;
+                    this.confirmModal.callback = callback;
+                    this.confirmModal.isOpen = true;
+                },
+
+                executeConfirm() {
+                    if (this.confirmModal.callback) {
+                        this.confirmModal.callback();
+                    }
+                    this.confirmModal.isOpen = false;
+                },
+
+                // Active Class Resolvers
+                get activeClass() {
+                    let cls = this.classes.find(c => c.id === this.currentClassId);
+                    if (!cls && this.classes.length > 0) {
+                        cls = this.classes[0];
+                    }
+                    return cls || null;
+                },
+
+                get students() {
+                    return this.activeClass ? this.activeClass.students : [];
+                },
+
+                defaultAssessments() {
+                    return { diagnostic: '', period1: '', period2: '', final: '' };
+                },
+
+                getAssessmentScore(student, type) {
+                    return (student && student.assessments && student.assessments[type] !== undefined) ? student.assessments[type] : '';
+                },
+
+                setAssessmentScore(studentId, type, value) {
+                    const max = this.assessmentConfig[type]?.max || 100;
+                    let clean = value === '' || value === null ? '' : Number(value);
+                    if (clean !== '') {
+                        if (isNaN(clean)) clean = '';
+                        else clean = Math.max(0, Math.min(max, clean));
+                    }
+                    this.classes = this.classes.map(cls => {
+                        if (cls.id !== this.currentClassId) return cls;
+                        return {
+                            ...cls,
+                            students: cls.students.map(student => {
+                                if (student.id !== studentId) return student;
+                                return {
+                                    ...student,
+                                    assessments: {
+                                        ...this.defaultAssessments(),
+                                        ...(student.assessments || {}),
+                                        [type]: clean
+                                    }
+                                };
+                            })
+                        };
+                    });
+                },
+
+                assessmentSummary(student) {
+                    const assessments = { ...this.defaultAssessments(), ...(student.assessments || {}) };
+                    let earned = 0;
+                    let possible = 0;
+                    Object.keys(this.assessmentConfig).forEach(type => {
+                        const value = assessments[type];
+                        if (value !== '' && value !== null && value !== undefined && !isNaN(Number(value))) {
+                            earned += Number(value);
+                            possible += this.assessmentConfig[type].max;
+                        }
+                    });
+                    const percentage = possible ? Math.round((earned / possible) * 100) : 0;
+                    let statusKey = 'struggling';
+                    if (percentage >= 85) statusKey = 'mastered';
+                    else if (percentage >= 70) statusKey = 'good';
+                    else if (percentage >= 50) statusKey = 'support';
+                    const diagnostic = Number(assessments.diagnostic || 0);
+                    const finalScore = Number(assessments.final || 0);
+                    const improvement = (assessments.diagnostic !== '' && assessments.final !== '') ? Math.round(((finalScore / this.assessmentConfig.final.max) - (diagnostic / this.assessmentConfig.diagnostic.max)) * 100) : null;
+                    return {
+                        earned,
+                        possible,
+                        percentage,
+                        statusKey,
+                        status: this.assessmentStatusMeta[statusKey],
+                        improvement
+                    };
+                },
+
+                get assessmentStats() {
+                    const base = { mastered: 0, good: 0, support: 0, struggling: 0, average: 0, counted: 0 };
+                    if (!this.students.length) return base;
+                    let total = 0;
+                    this.students.forEach(student => {
+                        const summary = this.assessmentSummary(student);
+                        base[summary.statusKey] += 1;
+                        total += summary.percentage;
+                        base.counted += 1;
+                    });
+                    base.average = base.counted ? Math.round(total / base.counted) : 0;
+                    return base;
+                },
+
+                generateTreatmentPlan(student) {
+                    const summary = this.assessmentSummary(student);
+                    const name = student?.name || 'الطالب';
+                    let message = `خطة مقترحة للطالب: ${name}
+`;
+                    message += `نسبة التحصيل: ${summary.percentage}% - الحالة: ${summary.status.label}
+`;
+                    message += `الإجراء المقترح: ${summary.status.recommendation}`;
+                    if (summary.improvement !== null) message += `
+مؤشر التحسن بين التشخيصي والنهائي: ${summary.improvement > 0 ? '+' : ''}${summary.improvement}%`;
+                    this.showAlert(message);
+                },
+
+                // تحليل بيانات موحد: يدمج الاختبارات مع الرصد اليومي من نفس مصدر طلاب السجل
+                assessmentTypeAverage(type) {
+                    const exam = this.assessmentConfig[type];
+                    if (!exam || !this.students.length) return 0;
+                    let total = 0, count = 0;
+                    this.students.forEach(student => {
+                        const value = this.getAssessmentScore(student, type);
+                        if (value !== '' && value !== null && value !== undefined && !isNaN(Number(value))) {
+                            total += (Number(value) / exam.max) * 100;
+                            count++;
+                        }
+                    });
+                    return count ? Math.round(total / count) : 0;
+                },
+
+                get assessmentTrend() {
+                    return Object.keys(this.assessmentConfig).map(type => ({
+                        type,
+                        label: this.assessmentConfig[type].label,
+                        short: this.assessmentConfig[type].short,
+                        average: this.assessmentTypeAverage(type),
+                        max: this.assessmentConfig[type].max
+                    }));
+                },
+
+                dailyCategoryRateForStudent(student, category) {
+                    let total = 0, ok = 0;
+                    Object.values(student?.records || {}).forEach(weekRec => {
+                        Object.values(weekRec || {}).forEach(dayRec => {
+                            if (!dayRec) return;
+                            if (dayRec[category] !== undefined) {
+                                total++;
+                                if (dayRec[category]) ok++;
+                            }
+                        });
+                    });
+                    return total ? Math.round((ok / total) * 100) : 0;
+                },
+
+                dailyCategoryRate(category) {
+                    if (!this.students.length) return 0;
+                    let total = 0, ok = 0;
+                    this.students.forEach(student => {
+                        Object.values(student.records || {}).forEach(weekRec => {
+                            Object.values(weekRec || {}).forEach(dayRec => {
+                                if (!dayRec) return;
+                                if (dayRec[category] !== undefined) {
+                                    total++;
+                                    if (dayRec[category]) ok++;
+                                }
+                            });
+                        });
+                    });
+                    return total ? Math.round((ok / total) * 100) : 0;
+                },
+
+                unifiedStudentAnalysis(student) {
+                    const exam = this.assessmentSummary(student);
+                    const attendance = this.dailyCategoryRateForStudent(student, 'attendance');
+                    const participation = this.dailyCategoryRateForStudent(student, 'participation');
+                    const homework = this.dailyCategoryRateForStudent(student, 'homework');
+                    const booksTools = this.dailyCategoryRateForStudent(student, 'booksTools');
+                    const behavior = this.dailyCategoryRateForStudent(student, 'behavior');
+                    const dailyAverage = Math.round((attendance + participation + homework + booksTools + behavior) / 5);
+                    const combined = Math.round((exam.percentage * 0.65) + (dailyAverage * 0.35));
+                    const reasons = [];
+                    if (exam.percentage < 50) reasons.push('تعثر تحصيلي');
+                    else if (exam.percentage < 70) reasons.push('ضعف تحصيلي');
+                    if (attendance && attendance < 80) reasons.push('حضور منخفض');
+                    if (homework && homework < 75) reasons.push('واجبات غير مكتملة');
+                    if (participation && participation < 60) reasons.push('مشاركة ضعيفة');
+                    if (behavior && behavior < 80) reasons.push('انضباط يحتاج متابعة');
+                    let status = 'متقن';
+                    let badge = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                    if (combined < 50 || exam.percentage < 50) { status = 'متعثر'; badge = 'bg-rose-50 text-rose-700 border-rose-200'; }
+                    else if (combined < 70 || reasons.length) { status = 'يحتاج دعم'; badge = 'bg-amber-50 text-amber-700 border-amber-200'; }
+                    else if (combined < 85) { status = 'جيد'; badge = 'bg-blue-50 text-blue-700 border-blue-200'; }
+                    return { exam, attendance, participation, homework, booksTools, behavior, dailyAverage, combined, reasons, status, badge };
+                },
+
+                get unifiedDataStats() {
+                    const base = {
+                        students: this.students.length,
+                        examAverage: this.assessmentStats.average,
+                        mastery: 0,
+                        attendance: this.dailyCategoryRate('attendance'),
+                        homework: this.dailyCategoryRate('homework'),
+                        participation: this.dailyCategoryRate('participation'),
+                        behavior: this.dailyCategoryRate('behavior'),
+                        atRisk: 0,
+                        improving: 0
+                    };
+                    if (!this.students.length) return base;
+                    let mastery = 0;
+                    this.students.forEach(student => {
+                        const a = this.unifiedStudentAnalysis(student);
+                        if (a.exam.percentage >= 80) mastery++;
+                        if (a.status === 'متعثر' || a.status === 'يحتاج دعم') base.atRisk++;
+                        if (a.exam.improvement !== null && a.exam.improvement > 0) base.improving++;
+                    });
+                    base.mastery = Math.round((mastery / this.students.length) * 100);
+                    return base;
+                },
+
+                get unifiedRiskRows() {
+                    return this.students
+                        .map(student => ({ student, analysis: this.unifiedStudentAnalysis(student) }))
+                        .sort((a, b) => a.analysis.combined - b.analysis.combined)
+                        .slice(0, 12);
+                },
+
+                get dataAnalysisRecommendations() {
+                    const s = this.unifiedDataStats;
+                    const recs = [];
+                    if (!s.students) return ['استورد طلاب الصف من مركز المعلومات ثم أدخل الرصد والدرجات لعرض التوصيات.'];
+                    if (s.examAverage < 70) recs.push('تنفيذ خطة معالجة للمهارات الأساسية وربطها بنتائج الاختبارات السابقة واللاحقة.');
+                    if (s.attendance && s.attendance < 85) recs.push('متابعة الغياب لأنه مؤثر مباشر في نتائج الطلاب المتعثرين.');
+                    if (s.homework && s.homework < 75) recs.push('تفعيل واجبات قصيرة علاجية وقياس أثرها أسبوعياً.');
+                    if (s.participation && s.participation < 65) recs.push('رفع المشاركة الصفية باستراتيجيات تعلم نشط للطلاب منخفضي التفاعل.');
+                    if (s.atRisk > 0) recs.push(`إعداد قائمة دعم لعدد ${s.atRisk} طالب/طالبة وربطها بخطة معالجة قصيرة.`);
+                    if (!recs.length) recs.push('مؤشرات الصف مستقرة، ينصح بالاستمرار في التعزيز والأنشطة الإثرائية.');
+                    return recs;
+                },
+
+                get leaderboard() {
+                    if (this.students.length === 0) return [];
+                    return this.students
+                        .map(student => {
+                            let totalPoints = 0;
+                            let count = 0;
+                            Object.values(student.records).forEach(weekRec => {
+                                Object.values(weekRec).forEach(dayRec => {
+                                    if (dayRec.attendance) { totalPoints += 100; count++; }
+                                    if (dayRec.participation) { totalPoints += 100; count++; }
+                                    if (dayRec.homework) { totalPoints += 100; count++; }
+                                    if (dayRec.booksTools) { totalPoints += 100; count++; }
+                                    if (dayRec.behavior) { totalPoints += 100; count++; }
+                                });
+                            });
+                            const studentAvg = count > 0 ? Math.round(totalPoints / count) : 0;
+                            return { ...student, studentAvg };
+                        })
+                        .sort((a, b) => b.studentAvg - a.studentAvg)
+                        .slice(0, 5);
+                },
+
+                // Filter Classes List according to UI active stages
+                filteredClasses() {
+                    if (this.selectedStage === 'all') return this.classes;
+                    return this.classes.filter(c => c.stage === this.selectedStage);
+                },
+
+                // Calculated stats for Class Performance Dashboard
+                get stats() {
+                    let totalAttendance = 0;
+                    let presentCount = 0;
+                    let totalParticipation = 0;
+                    let highParticipationCount = 0;
+                    let totalHomework = 0;
+                    let completedHomeworkCount = 0;
+                    let totalBooksTools = 0;
+                    let booksToolsReadyCount = 0;
+                    let totalBehavior = 0;
+                    let behavioralDisciplineCount = 0;
+
+                    this.students.forEach(student => {
+                        Object.keys(student.records).forEach(week => {
+                            const weekRecord = student.records[week];
+                            if (!weekRecord) return;
+                            
+                            Object.keys(weekRecord).forEach(day => {
+                                const record = weekRecord[day];
+                                if (!record) return;
+
+                                totalAttendance++;
+                                if (record.attendance) presentCount++;
+
+                                totalParticipation++;
+                                if (record.participation) highParticipationCount++;
+
+                                totalHomework++;
+                                if (record.homework) completedHomeworkCount++;
+
+                                totalBooksTools++;
+                                if (record.booksTools) booksToolsReadyCount++;
+
+                                totalBehavior++;
+                                if (record.behavior) behavioralDisciplineCount++;
+                            });
+                        });
+                    });
+
+                    const rates = {
+                        attendance: totalAttendance ? Math.round((presentCount / totalAttendance) * 100) : 0,
+                        participation: totalParticipation ? Math.round((highParticipationCount / totalParticipation) * 100) : 0,
+                        homework: totalHomework ? Math.round((completedHomeworkCount / totalHomework) * 100) : 0,
+                        booksTools: totalBooksTools ? Math.round((booksToolsReadyCount / totalBooksTools) * 100) : 0,
+                        behavior: totalBehavior ? Math.round((behavioralDisciplineCount / totalBehavior) * 100) : 0,
+                    };
+
+                    const overallAverage = Math.round(
+                        (rates.attendance + rates.participation + rates.homework + rates.booksTools + rates.behavior) / 5
+                    );
+
+                    return { rates, overallAverage };
+                },
+
+                // Get single day record value with safe chains
+                getRecordValue(studentId, week, day, category) {
+                    let student = this.students.find(s => s.id === studentId);
+                    if (!student || !student.records) return false;
+                    if (!student.records[week]) return false;
+                    if (!student.records[week][day]) return false;
+                    return !!student.records[week][day][category];
+                },
+
+                // Toggle dynamic record values securely
+                toggleRecordValue(studentId, week, day, category) {
+                    this.classes = this.classes.map(cls => {
+                        if (cls.id === this.currentClassId) {
+                            const updatedStudents = cls.students.map(student => {
+                                if (student.id === studentId) {
+                                    let records = { ...student.records };
+                                    if (!records[week]) records[week] = {};
+                                    if (!records[week][day]) records[week][day] = {};
+                                    records[week][day][category] = !records[week][day][category];
+                                    return { ...student, records };
+                                }
+                                return student;
+                            });
+                            return { ...cls, students: updatedStudents };
+                        }
+                        return cls;
+                    });
+                },
+
+                // Mark all students on selected week & day for a specific category (Bulk Action)
+                markAllOnSelectedDay(category, value) {
+                    this.classes = this.classes.map(cls => {
+                        if (cls.id === this.currentClassId) {
+                            const updatedStudents = cls.students.map(student => {
+                                let records = { ...student.records };
+                                if (!records[this.selectedWeek]) records[this.selectedWeek] = {};
+                                if (!records[this.selectedWeek][this.selectedDay]) records[this.selectedWeek][this.selectedDay] = {};
+                                records[this.selectedWeek][this.selectedDay][category] = value;
+                                return { ...student, records };
+                            });
+                            return { ...cls, students: updatedStudents };
+                        }
+                        return cls;
+                    });
+                    this.showNotification('تم تطبيق الإجراء الجماعي بنجاح على الصف');
+                },
+
+                addStudent() {
+                    if (!this.newStudentName.trim() || !this.currentClassId) return;
+                    const newStudent = {
+                        id: `student-${Date.now()}`,
+                        name: this.newStudentName.trim(),
+                        records: {}
+                    };
+
+                    this.classes = this.classes.map(cls => {
+                        if (cls.id === this.currentClassId) {
+                            return { ...cls, students: [...cls.students, newStudent] };
+                        }
+                        return cls;
+                    });
+
+                    const addedName = this.newStudentName;
+                    this.newStudentName = '';
+                    this.showNotification(`تم إضافة الطالب "${addedName}" بنجاح!`);
+                },
+
+                addBulkStudents() {
+                    const names = this.bulkStudentNames
+                        .split('\n')
+                        .map(name => name.trim())
+                        .filter(name => name.length > 0);
+
+                    if (names.length === 0 || !this.currentClassId) return;
+
+                    const newStudents = names.map((name, idx) => ({
+                        id: `student-bulk-${Date.now()}-${idx}`,
+                        name: name,
+                        records: {}
+                    }));
+
+                    this.classes = this.classes.map(cls => {
+                        if (cls.id === this.currentClassId) {
+                            return { ...cls, students: [...cls.students, ...newStudents] };
+                        }
+                        return cls;
+                    });
+
+                    this.bulkStudentNames = '';
+                    this.isBulkModalOpen = false;
+                    this.showNotification(`تم إضافة ${names.length} طلاب بنجاح!`);
+                },
+
+                promptDeleteStudent(id, name) {
+                    this.showConfirm(`تحذير: هل أنت متأكد من حذف الطالب "${name}"؟ سيتم مسح كافة سجلاته التقييمية نهائياً!`, () => {
+                        this.classes = this.classes.map(cls => {
+                            if (cls.id === this.currentClassId) {
+                                return { ...cls, students: cls.students.filter(student => student.id !== id) };
+                            }
+                            return cls;
+                        });
+                        this.showNotification(`تم حذف الطالب "${name}"`, 'error');
+                    });
+                },
+
+                createClass() {
+                    if (!this.newClassForm.name.trim() || !this.newClassForm.subject.trim()) {
+                        this.showAlert('يرجى ملء جميع الحقول المطلوبة لتسجيل الصف');
+                        return;
+                    }
+
+                    const newClassObj = {
+                        id: `class-${Date.now()}`,
+                        stage: this.newClassForm.stage,
+                        name: this.newClassForm.name.trim(),
+                        subject: this.newClassForm.subject.trim(),
+                        teacher: this.newClassForm.teacher.trim() || 'معلمة رياض الأطفال المادة',
+                        students: []
+                    };
+
+                    this.classes.push(newClassObj);
+                    this.currentClassId = newClassObj.id;
+                    this.selectedStage = this.newClassForm.stage;
+                    this.isNewClassModalOpen = false;
+                    
+                    this.newClassForm = { name: '', stage: 'middle', subject: '', teacher: '' };
+                    this.showNotification(`تم إنشاء الصف "${newClassObj.name}" بنجاح!`);
+                    this.activeTab = 'students';
+                },
+
+                promptDeleteClass(classId, className) {
+                    if (this.classes.length <= 1) {
+                        this.showAlert('يجب الإبقاء على صف دراسي نشط واحد على الأقل داخل قاعدة بيانات السجل!');
+                        return;
+                    }
+
+                    this.showConfirm(`تحذير هام جداً: هل أنت متأكد من حذف صف "${className}" بالكامل؟ سيتم مسح سجلات الطلاب وكافة درجات التقييمات التابعة له فوراً وبشكل لا يمكن التراجع عنه!`, () => {
+                        const remaining = this.classes.filter(c => c.id !== classId);
+                        this.classes = remaining;
+                        this.currentClassId = remaining[0].id;
+                        this.selectedStage = remaining[0].stage;
+                        this.showNotification(`تم حذف صف "${className}"`, 'error');
+                    });
+                },
+
+                promptClearAllRecords() {
+                    this.showConfirm(`هل أنت متأكد من مسح جميع درجات صف المتابعة الحالي (${this.activeClass?.name})؟ لن يتم التراجع عن هذه الخطوة بعد التأكيد.`, () => {
+                        this.classes = this.classes.map(cls => {
+                            if (cls.id === this.currentClassId) {
+                                const cleared = cls.students.map(s => ({ ...s, records: {} }));
+                                return { ...cls, students: cleared };
+                            }
+                            return cls;
+                        });
+                        this.showNotification('تم تصفير جميع درجات الصف النشط بنجاح', 'info');
+                    });
+                },
+
+                promptClearAllData() {
+                    this.showConfirm(`خطر: هل أنت متأكد من تصفير ومسح قاعدة البيانات الشاملة؟ سيؤدي ذلك لمسح جميع فصولك، والطلاب المسجلين، والدرجات، وإرجاع السجل لضبط المصنع الأصلي!`, () => {
+                        this.classes = [];
+                        this.currentClassId = '';
+                        this.selectedStage = 'all';
+                        this.globalMetadata = {
+                            school: 'مدرسة جديدة',
+                            semester: 'الفصل الدراسي الثالث',
+                            year: '1447 هـ',
+                            startDate: '2026-08-30',
+                            dateSystem: 'hijri'
+                        };
+                        this.saveData();
+                        this.showNotification('تم مسح السجل بالكامل وتهيئته', 'error');
+                    });
+                },
+
+                // JSON Backup Exporter
+                exportData() {
+                    const payload = {
+                        classes: this.classes,
+                        globalMetadata: this.globalMetadata
+                    };
+                    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(payload));
+                    const downloadAnchor = document.createElement('a');
+                    downloadAnchor.setAttribute("href", dataStr);
+                    downloadAnchor.setAttribute("download", `سجل_متابعة_المراحل_الشامل_الاحتياطي.json`);
+                    document.body.appendChild(downloadAnchor);
+                    downloadAnchor.click();
+                    downloadAnchor.remove();
+                    this.showNotification('تم تصدير ملف النسخة الاحتياطية بنجاح لمجلد تنزيلاتك!');
+                },
+
+                // JSON Backup Importer
+                importData(event) {
+                    const fileReader = new FileReader();
+                    if (event.target.files.length === 0) return;
+                    
+                    fileReader.readAsText(event.target.files[0], "UTF-8");
+                    fileReader.onload = (e) => {
+                        try {
+                            const parsed = JSON.parse(e.target.result);
+                            if (parsed.classes && parsed.globalMetadata) {
+                                this.classes = parsed.classes;
+                                this.globalMetadata = parsed.globalMetadata;
+                                if (parsed.classes.length > 0) {
+                                    this.currentClassId = parsed.classes[0].id;
+                                    this.selectedStage = parsed.classes[0].stage;
+                                }
+                                this.saveData();
+                                this.showNotification('تم استيراد قاعدة البيانات الاحتياطية ومزامنة كافة الصفوف!', 'success');
+                            } else {
+                                this.showAlert('الملف المرفق غير متوافق مع نظام السجل الحالي.');
+                            }
+                        } catch (err) {
+                            this.showAlert('فشل استيراد الملف، تأكد من سلامة ملف JSON الاحتياطي.');
+                        }
+                    };
+                }
+            };
+        }
+    </script>
+
+    <!-- Alpine.js Loader with DEFER to ensure DOM compiles perfectly and scripts aren't blocked -->
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    <style>
+        /* Hide scrollbars for slick aesthetics */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        
+        body {
+            font-family: 'Cairo', 'Tajawal', sans-serif;
+        }
+
+        /* Printing configuration for official A4 sizes */
+        @media print {
+            @page {
+                size: A4 portrait;
+                margin: 8mm;
+            }
+            html, body {
+                width: 210mm !important;
+                min-height: 297mm !important;
+                background-color: #fff !important;
+                color: #000 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                overflow: visible !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            .print\:hidden { display: none !important; }
+            .print\:border-none { border: none !important; }
+            .print\:shadow-none { box-shadow: none !important; }
+            .print\:p-0 { padding: 0 !important; }
+            .print\:m-0 { margin: 0 !important; }
+
+            .official-print-page {
+                width: 194mm !important;
+                max-width: 194mm !important;
+                margin: 0 auto !important;
+                padding: 0 !important;
+                border: none !important;
+                border-radius: 0 !important;
+                box-shadow: none !important;
+                overflow: visible !important;
+                page-break-after: auto;
+            }
+            .print-header-grid {
+                display: grid !important;
+                grid-template-columns: 1fr 86px 1fr !important;
+                align-items: center !important;
+                gap: 10px !important;
+                border-bottom: 2px solid #065f46 !important;
+                padding-bottom: 4mm !important;
+                margin-bottom: 4mm !important;
+            }
+            .print-header-right { text-align: center !important; line-height: 1.8 !important; }
+            .print-header-left { text-align: right !important; line-height: 1.8 !important; justify-self: stretch !important; }
+            .moe-print-logo { width: 72px !important; height: 72px !important; object-fit: contain !important; display: block !important; margin: 0 auto 2mm auto !important; }
+            .print-title-block { margin: 4mm 0 !important; }
+            .print-info-grid {
+                display: grid !important;
+                grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+                gap: 2mm !important;
+                padding: 2.5mm !important;
+                margin-bottom: 4mm !important;
+                border: 1px solid #cbd5e1 !important;
+                border-radius: 3mm !important;
+                background: #f8fafc !important;
+                font-size: 9px !important;
+            }
+            .print-table-wrap {
+                border: none !important;
+                border-radius: 0 !important;
+                overflow: visible !important;
+                page-break-inside: auto !important;
+            }
+            table {
+                width: 100% !important;
+                table-layout: fixed !important;
+                border-collapse: collapse !important;
+                border-spacing: 0 !important;
+                font-size: 8.5px !important;
+                border: 1px solid #000 !important;
+                page-break-inside: auto !important;
+            }
+            thead { display: table-header-group !important; }
+            tfoot { display: table-footer-group !important; }
+            tr { page-break-inside: avoid !important; break-inside: avoid !important; }
+            th, td {
+                padding: 2.2px 3.2px !important;
+                border: 1px solid #000 !important;
+                vertical-align: middle !important;
+                word-break: break-word !important;
+            }
+            .print-signatures {
+                display: grid !important;
+                grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+                gap: 28mm !important;
+                margin-top: 8mm !important;
+                padding-top: 4mm !important;
+                border-top: 1px solid #cbd5e1 !important;
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+            }
+        }
+    </style>
+<script id="gender-neutral-labels-safe">
+/* Hotfix: نظام تسميات خفيف بدون مراقبة مستمرة أو فحص شامل للصفحة.
+   التسميات المحايدة تم تثبيتها داخل النصوص، وهذا السكربت يوفّر قاموسًا فقط للاستخدامات المستقبلية. */
+(function(){
+  window.roleLabels = window.roleLabels || {
+    manager: 'المدير/المديرة',
+    deputy: 'الوكيل/الوكيلة',
+    teacher: 'معلمة رياض الأطفال',
+    supervisor: 'الموجه/الموجهة',
+    activityLeader: 'رائد/رائدة النشاط',
+    adminEmployee: 'الموظف/الموظفة الإدارية',
+    student: 'الطالب/الطالبة'
+  };
+})();
+</script>
+
+
+<!-- PREMIUM_UI_2026 -->
+<link rel="stylesheet" href="premium-ui.css">
+<script defer src="premium-ui.js"></script>
+
+<script>window.CLOUD_STATE_CONFIG={moduleKey:'teacher_comprehensive',scope:'user',keys:['followup_global_v3', 'followup_classes_v3'],prefixes:[]};</script>
+<script src="platform-state-engine.js"></script>
+<script src="platform-persistence-guard.js"></script>
+<script defer src="school-base-settings-source.js"></script>
+<style id="uw-verified-back-style">
+.uw-verified-title-back{display:inline-flex!important;align-items:center!important;justify-content:center!important;vertical-align:middle!important;margin-inline-end:10px!important;width:36px!important;height:36px!important;border-radius:11px!important;background:#f1f5f9!important;color:#0f766e!important;border:1px solid #cbd5e1!important;text-decoration:none!important;font-size:20px!important;font-weight:900!important}
+.uw-verified-title-back:hover{background:#e6fffb!important}
+@media print{.uw-verified-title-back{display:none!important}}
+</style></head>
+<body data-platform-role="kindergarten_teacher" class="bg-slate-50 text-slate-800 min-h-screen" 
+      x-data="followUpApp()">
+
+    <!-- =========================================================================
+         GLOBAL INTERACTIVE DIALOGS & MODALS
+         ========================================================================= -->
+    
+    <!-- Custom Confirm Modal -->
+    <div class="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4 animate-fadeIn"
+         x-show="confirmModal.isOpen"
+         x-transition
+         style="display: none;">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+            <div class="flex items-center gap-3 text-rose-600">
+                <span class="text-2xl">⚠️</span>
+                <h3 class="font-bold text-lg text-slate-800">تأكيد الإجراء</h3>
+            </div>
+            <p class="text-xs text-slate-600 leading-relaxed" x-text="confirmModal.message"></p>
+            <div class="flex justify-end gap-2 pt-2">
+                <button type="button"
+                        @click="confirmModal.isOpen = false"
+                        class="bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 rounded-lg text-xs font-bold transition">
+                    إلغاء
+                </button>
+                <button type="button"
+                        @click="executeConfirm()"
+                        class="bg-rose-600 hover:bg-rose-700 text-white px-5 py-2 rounded-lg text-xs font-bold transition">
+                    موافق، استمر
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Alert Modal -->
+    <div class="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4 animate-fadeIn"
+         x-show="alertModal.isOpen"
+         x-transition
+         style="display: none;">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+            <div class="flex items-center gap-3 text-amber-500">
+                <span class="text-2xl">ℹ️</span>
+                <h3 class="font-bold text-lg text-slate-800">تنبيه النظام</h3>
+            </div>
+            <p class="text-xs text-slate-600 leading-relaxed" x-text="alertModal.message"></p>
+            <div class="flex justify-end pt-2">
+                <button type="button"
+                        @click="alertModal.isOpen = false"
+                        class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-lg text-xs font-bold transition">
+                    حسناً
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification Banner -->
+    <div class="fixed bottom-6 left-6 z-50" 
+         x-show="notification !== null" 
+         x-transition 
+         style="display: none;">
+        <div class="px-5 py-3 rounded-lg shadow-xl text-white font-bold text-sm flex items-center gap-2"
+             :class="notification?.type === 'error' ? 'bg-rose-600' : (notification?.type === 'info' ? 'bg-blue-600' : 'bg-emerald-600')">
+            <span x-text="notification?.type === 'error' ? '⚠️' : '✅'"></span>
+            <span x-text="notification?.message"></span>
+        </div>
+    </div>
+
+    <!-- =========================================================================
+         HEADER & BRANDING SECTION
+         ========================================================================= -->
+    <header class="bg-gradient-to-l from-emerald-950 via-emerald-800 to-teal-950 text-white shadow-md print:hidden">
+        <div class="container mx-auto px-4 py-4 flex flex-col md:flex-row items-center justify-between gap-4">
+            
+            <div class="flex items-center gap-4">
+                <div class="bg-white p-2 rounded-lg shadow-inner flex items-center justify-center">
+                    <svg class="w-12 h-12 text-emerald-800" viewBox="0 0 100 100" fill="currentColor">
+                        <path d="M50,10 L90,30 L90,40 L50,60 L10,40 L10,30 Z" fill="#059669"/>
+                        <path d="M50,65 L85,45 L85,55 L50,75 L15,55 L15,45 Z" fill="#D97706"/>
+                        <path d="M50,80 L80,63 L80,70 L50,88 L20,70 L20,63 Z" fill="#047857"/>
+                        <circle cx="50" cy="35" r="5" fill="#1e293b"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <span class="bg-amber-500 text-slate-900 text-[10px] font-extrabold px-2 py-0.5 rounded">متعدد الصفوف والأسابيع (19 أسبوع)</span>
+                        <span class="text-emerald-300 text-xs font-semibold" x-text="globalMetadata.school"></span>
+                    </div>
+                    <h1 class="text-lg md:text-2xl font-black mt-1"><a id="uwVerifiedBack" class="uw-verified-title-back no-print" href="kindergarten_teacher.html" title="العودة إلى واجهة القسم الرئيسية" aria-label="العودة إلى واجهة القسم الرئيسية">←</a>سجل معلمة رياض الأطفال الشامل</h1>
+                    <p class="text-xs text-emerald-100 opacity-90">رصد يومي موزع (من الأحد إلى الخميس) للفصل الدراسي كاملاً (19 أسبوعاً)</p>
+                </div>
+            </div>
+
+            <!-- Header Performance Statistics -->
+            <div class="flex items-center gap-6 bg-emerald-950/40 p-3 rounded-xl border border-emerald-700/30">
+                <div class="text-center font-sans">
+                    <span class="block text-[10px] text-emerald-300 font-sans">أداء الصف النشط</span>
+                    <span class="text-lg font-bold text-amber-400 font-sans" x-text="stats.overallAverage + '%'"></span>
+                </div>
+                <div class="w-px h-8 bg-emerald-700/50"></div>
+                <div class="text-center font-sans">
+                    <span class="block text-[10px] text-emerald-300 font-sans font-medium">الصفوف الكلية</span>
+                    <span class="text-lg font-bold text-white font-sans" x-text="classes.length + ' صفوف'"></span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- =========================================================================
+         TOP LEVEL STAGE FILTER & ACTIVE CLASS CONTROL ROW
+         ========================================================================= -->
+    <section class="bg-slate-900 text-white py-3.5 px-4 shadow-md sticky top-0 z-40 print:hidden border-b border-slate-800">
+        <div class="container mx-auto flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
+            
+            <!-- Stage Filter Selectors -->
+            <div class="flex items-center gap-2 overflow-x-auto pb-1 lg:pb-0 no-scrollbar">
+                <span class="text-xs font-bold text-slate-400 whitespace-nowrap ml-2">المرحلة التعليمية:</span>
+                <button @click="selectedStage = 'all'"
+                        class="px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer"
+                        :class="selectedStage === 'all' ? 'bg-slate-700 text-white shadow-inner border border-slate-600' : 'text-slate-300 hover:bg-slate-800'">
+                    🌐 الكل (<span x-text="classes.length"></span>)
+                </button>
+                <template x-for="entry in availableStageEntries" :key="entry[0]">
+                    <button @click="selectedStage = entry[0]"
+                            class="px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap flex items-center gap-1.5 cursor-pointer"
+                            :class="selectedStage === entry[0] ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-300 hover:bg-slate-800'">
+                        <span x-text="entry[1].icon"></span>
+                        <span x-text="entry[1].label + ' (' + classes.filter(c => c.stage === entry[0]).length + ')'"></span>
+                    </button>
+                </template>
+                <template x-if="availableStageEntries.length === 0">
+                    <span class="text-xs text-amber-300 font-bold px-3 py-1.5 rounded-lg bg-slate-800">لا توجد مراحل مستوردة بعد</span>
+                </template>
+            </div>
+
+            <!-- Active Class Selector drop-down -->
+            <div class="flex flex-wrap items-center gap-3">
+                <div class="flex items-center gap-2 bg-slate-800 p-1.5 rounded-xl border border-slate-700 flex-1 lg:flex-none">
+                    <span class="text-xs text-slate-400 font-bold px-1 whitespace-nowrap">الصف النشط:</span>
+                    <select x-model="currentClassId"
+                            class="bg-slate-950 text-white text-xs font-bold rounded-lg px-2.5 py-1.5 border-none focus:ring-emerald-500 w-full lg:w-48 cursor-pointer">
+                        <template x-for="cls in filteredClasses()" :key="cls.id">
+                            <option :value="cls.id" x-text="(stagesMeta[cls.stage]?.icon || '🏷️') + ' ' + classDisplayName(cls)"></option>
+                        </template>
+                    </select>
+                </div>
+
+                <button @click="handleInformationCenterTopImport()"
+                        class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-xl text-xs font-bold shadow-md transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap">
+                    <span>🔗</span>
+                    <span>استيراد من مركز المعلومات</span>
+                </button>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- Secondary Metadata Context Banner -->
+    <section class="bg-emerald-950 text-emerald-100 py-2.5 px-4 text-xs font-medium print:hidden shadow-inner">
+        <div class="container mx-auto flex flex-wrap items-center justify-between gap-2">
+            <template x-if="activeClass !== null">
+                <div class="flex flex-wrap items-center gap-x-6 gap-y-1">
+                    <span>📚 <strong class="text-white">المادة الحالية:</strong> <span x-text="activeClass.subject"></span></span>
+                    <span>🏫 <strong class="text-white">الصف:</strong> <span x-text="classDisplayName(activeClass)"></span></span>
+                    <span>🎓 <strong class="text-white">المرحلة:</strong> <span x-text="activeClassStageLabel"></span></span>
+                    <span>👨‍🏫 <strong class="text-white">معلمة رياض الأطفال:</strong> <span x-text="activeClass.teacher"></span></span>
+                    <span>📅 <strong class="text-white">الفصل:</strong> <span x-text="globalMetadata.semester"></span></span>
+                    <span>🏛️ <strong class="text-white">العام:</strong> <span x-text="globalMetadata.year"></span></span>
+                </div>
+            </template>
+            <template x-if="activeClass === null">
+                <span class="text-amber-400 font-bold">لا يوجد صف دراسي نشط حالياً، يرجى تهيئة صف جديد.</span>
+            </template>
+            <button @click="isSettingsModalOpen = true"
+                    class="bg-emerald-800 hover:bg-emerald-700 text-white px-3 py-1 rounded border border-emerald-600 transition text-xs flex items-center gap-1 font-semibold cursor-pointer">
+                ⚙️ تعديل الترويسة ومزامنة الأيام
+            </button>
+        </div>
+    </section>
+
+    <!-- =========================================================================
+         NAVIGATION TAB BAR
+         ========================================================================= -->
+    <nav class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm print:hidden">
+        <div class="container mx-auto px-4 flex overflow-x-auto no-scrollbar gap-1">
+            <button @click="activeTab = 'dashboard'"
+                    class="py-3 px-4 font-semibold text-sm border-b-2 transition duration-150 flex items-center gap-2 whitespace-nowrap cursor-pointer"
+                    :class="activeTab === 'dashboard' ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50' : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50'">
+                📊 ملخص الأداء العام (19 أسبوع)
+            </button>
+            <button @click="activeTab = 'grid'"
+                    class="py-3 px-4 font-semibold text-sm border-b-2 transition duration-150 flex items-center gap-2 whitespace-nowrap cursor-pointer"
+                    :class="activeTab === 'grid' ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50' : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50'">
+                📋 سجل الرصد اليومي الشامل (الأحد-الخميس)
+            </button>
+            <button @click="activeTab = 'speed-entry'"
+                    class="py-3 px-4 font-semibold text-sm border-b-2 transition duration-150 flex items-center gap-2 whitespace-nowrap cursor-pointer"
+                    :class="activeTab === 'speed-entry' ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50' : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50'">
+                ⚡ وضع الرصد السريع الصفي
+            </button>
+            <button @click="activeTab = 'assessments'"
+                    class="py-3 px-4 font-semibold text-sm border-b-2 transition duration-150 flex items-center gap-2 whitespace-nowrap cursor-pointer"
+                    :class="activeTab === 'assessments' ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50' : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50'">
+                📊 الاختبارات وتحليل البيانات
+            </button>
+            <button @click="activeTab = 'students'"
+                    class="py-3 px-4 font-semibold text-sm border-b-2 transition duration-150 flex items-center gap-2 whitespace-nowrap cursor-pointer"
+                    :class="activeTab === 'students' ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50' : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50'">
+                👥 إدارة الطلاب والفصول
+            </button>
+            <button @click="activeTab = 'print'"
+                    class="py-3 px-4 font-semibold text-sm border-b-2 transition duration-150 flex items-center gap-2 whitespace-nowrap cursor-pointer"
+                    :class="activeTab === 'print' ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50' : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50'">
+                🖨️ طباعة المسيرات والتقارير
+            </button>
+        </div>
+    </nav>
+
+    <!-- =========================================================================
+         MAIN APPLICATION DISPLAY
+         ========================================================================= -->
+    <main class="container mx-auto px-4 py-6">
+
+        <!-- =========================================================================
+             1. TAB: DASHBOARD
+           ========================================================================= -->
+        <div x-show="activeTab === 'dashboard'" class="space-y-6 animate-fadeIn">
+            
+            <!-- Alert if empty class -->
+            <template x-if="students.length === 0">
+                <div class="bg-amber-50 border-r-4 border-amber-500 p-4 rounded-md shadow-sm">
+                    <h3 class="font-bold text-amber-800 mb-1 text-sm">⚠️ الصف الحالي "<span x-text="activeClass?.name"></span>" خالٍ من الطلاب!</h3>
+                    <p class="text-xs text-amber-700">تفضل بالتوجه لعلامة تبويب <strong>"إدارة الطلاب والفصول"</strong> واستيراد الصف من مركز المعلومات المدرسية.</p>
+                </div>
+            </template>
+
+            <!-- Metric Cards Panel -->
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+                
+                <!-- Attendance Card -->
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                    <div>
+                        <span class="text-xl">📅</span>
+                        <span class="block text-xs font-bold text-slate-400 mt-1">التقيد بالحضور</span>
+                    </div>
+                    <div class="mt-3">
+                        <span class="text-2xl font-black text-slate-800 font-sans" x-text="stats.rates.attendance + '%'"></span>
+                        <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden mt-1.5">
+                            <div class="bg-emerald-500 h-full rounded-full" :style="'width: ' + stats.rates.attendance + '%'"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Participation Card -->
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                    <div>
+                        <span class="text-xl">🙋‍♂️</span>
+                        <span class="block text-xs font-bold text-slate-400 mt-1">المشاركة والتفاعل</span>
+                    </div>
+                    <div class="mt-3">
+                        <span class="text-2xl font-black text-slate-800 font-sans" x-text="stats.rates.participation + '%'"></span>
+                        <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden mt-1.5">
+                            <div class="bg-blue-500 h-full rounded-full" :style="'width: ' + stats.rates.participation + '%'"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Homework Card -->
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                    <div>
+                        <span class="text-xl">📝</span>
+                        <span class="block text-xs font-bold text-slate-400 mt-1">إنجاز الواجبات</span>
+                    </div>
+                    <div class="mt-3">
+                        <span class="text-2xl font-black text-slate-800 font-sans" x-text="stats.rates.homework + '%'"></span>
+                        <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden mt-1.5">
+                            <div class="bg-violet-500 h-full rounded-full" :style="'width: ' + stats.rates.homework + '%'"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Books/Tools Card -->
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                    <div>
+                        <span class="text-xl">📚</span>
+                        <span class="block text-xs font-bold text-slate-400 mt-1">الكتاب والأدوات</span>
+                    </div>
+                    <div class="mt-3">
+                        <span class="text-2xl font-black text-slate-800 font-sans" x-text="stats.rates.booksTools + '%'"></span>
+                        <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden mt-1.5">
+                            <div class="bg-amber-500 h-full rounded-full" :style="'width: ' + stats.rates.booksTools + '%'"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Discipline Behavior Card -->
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm col-span-2 md:col-span-1 flex flex-col justify-between">
+                    <div>
+                        <span class="text-xl">🛡️</span>
+                        <span class="block text-xs font-bold text-slate-400 mt-1">الانضباط السلوكي</span>
+                    </div>
+                    <div class="mt-3">
+                        <span class="text-2xl font-black text-slate-800 font-sans" x-text="stats.rates.behavior + '%'"></span>
+                        <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden mt-1.5">
+                            <div class="bg-rose-500 h-full rounded-full" :style="'width: ' + stats.rates.behavior + '%'"></div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Graphs & Standings Section -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                
+                <!-- Performance Bar Charts -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm lg:col-span-2">
+                    <div class="flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
+                        <div>
+                            <h3 class="font-bold text-slate-800 text-md">📊 ملخص الأداء العام للمهارات والالتزام لصف <span x-text="activeClass?.name"></span></h3>
+                            <p class="text-xs text-slate-500">تمثيل بياني تفاعلي يطابق الهيكل التنظيمي المعتمد بالوزارة</p>
+                        </div>
+                        <span class="text-xs bg-emerald-50 text-emerald-700 font-bold px-2 py-1 rounded">محدث تلقائياً</span>
+                    </div>
+
+                    <div class="h-64 flex items-end justify-between gap-2 px-2 pt-6">
+                        
+                        <!-- Col 1: Attendance -->
+                        <div class="flex-1 flex flex-col items-center group h-full justify-end font-sans">
+                            <div class="text-xs font-bold mb-2 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-800 text-white px-2 py-0.5 rounded-md absolute -translate-y-12" x-text="stats.rates.attendance + '%'"></div>
+                            <div class="w-12 bg-emerald-100 rounded-t-lg relative overflow-hidden transition-all duration-500 hover:shadow-md" :style="'height: ' + Math.max(stats.rates.attendance, 2) + '%'">
+                                <div class="absolute inset-0 bg-gradient-to-t from-emerald-600 to-emerald-400 rounded-t-lg"></div>
+                            </div>
+                            <span class="text-xs font-semibold text-slate-700 mt-3 truncate w-full text-center">التقيد بالحضور</span>
+                        </div>
+
+                        <!-- Col 2: Participation -->
+                        <div class="flex-1 flex flex-col items-center group h-full justify-end font-sans">
+                            <div class="text-xs font-bold mb-2 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-800 text-white px-2 py-0.5 rounded-md absolute -translate-y-12" x-text="stats.rates.participation + '%'"></div>
+                            <div class="w-12 bg-blue-100 rounded-t-lg relative overflow-hidden transition-all duration-500 hover:shadow-md" :style="'height: ' + Math.max(stats.rates.participation, 2) + '%'">
+                                <div class="absolute inset-0 bg-gradient-to-t from-blue-600 to-blue-400 rounded-t-lg"></div>
+                            </div>
+                            <span class="text-xs font-semibold text-slate-700 mt-3 truncate w-full text-center">المشاركة والتفاعل</span>
+                        </div>
+
+                        <!-- Col 3: Homework -->
+                        <div class="flex-1 flex flex-col items-center group h-full justify-end font-sans">
+                            <div class="text-xs font-bold mb-2 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-800 text-white px-2 py-0.5 rounded-md absolute -translate-y-12" x-text="stats.rates.homework + '%'"></div>
+                            <div class="w-12 bg-violet-100 rounded-t-lg relative overflow-hidden transition-all duration-500 hover:shadow-md" :style="'height: ' + Math.max(stats.rates.homework, 2) + '%'">
+                                <div class="absolute inset-0 bg-gradient-to-t from-violet-600 to-violet-400 rounded-t-lg"></div>
+                            </div>
+                            <span class="text-xs font-semibold text-slate-700 mt-3 truncate w-full text-center">إنجاز المهام</span>
+                        </div>
+
+                        <!-- Col 4: Books and Tools -->
+                        <div class="flex-1 flex flex-col items-center group h-full justify-end font-sans">
+                            <div class="text-xs font-bold mb-2 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-800 text-white px-2 py-0.5 rounded-md absolute -translate-y-12" x-text="stats.rates.booksTools + '%'"></div>
+                            <div class="w-12 bg-amber-100 rounded-t-lg relative overflow-hidden transition-all duration-500 hover:shadow-md" :style="'height: ' + Math.max(stats.rates.booksTools, 2) + '%'">
+                                <div class="absolute inset-0 bg-gradient-to-t from-amber-500 to-amber-400 rounded-t-lg"></div>
+                            </div>
+                            <span class="text-xs font-semibold text-slate-700 mt-3 truncate w-full text-center">الكتاب والأدوات</span>
+                        </div>
+
+                        <!-- Col 5: Behavior -->
+                        <div class="flex-1 flex flex-col items-center group h-full justify-end font-sans">
+                            <div class="text-xs font-bold mb-2 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-800 text-white px-2 py-0.5 rounded-md absolute -translate-y-12" x-text="stats.rates.behavior + '%'"></div>
+                            <div class="w-12 bg-rose-100 rounded-t-lg relative overflow-hidden transition-all duration-500 hover:shadow-md" :style="'height: ' + Math.max(stats.rates.behavior, 2) + '%'">
+                                <div class="absolute inset-0 bg-gradient-to-t from-rose-600 to-rose-400 rounded-t-lg"></div>
+                            </div>
+                            <span class="text-xs font-semibold text-slate-700 mt-3 truncate w-full text-center">الانضباط السلوكي</span>
+                        </div>
+
+                    </div>
+
+                    <div class="border-t border-slate-100 mt-4 pt-3 flex justify-between text-[10px] text-slate-400">
+                        <span>0% أداء متدني</span>
+                        <span>50% أداء متوسط</span>
+                        <span>100% أداء متميز ومثالي</span>
+                    </div>
+                </div>
+
+                <!-- Leaderboard Side Column -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
+                    <div class="mb-4 border-b border-slate-100 pb-3">
+                        <h3 class="font-bold text-slate-800 text-md">🏆 لوحة الصدارة لصف <span x-text="activeClass?.name"></span></h3>
+                        <p class="text-xs text-slate-500">الطلاب الأكثر التزاماً وتفاعلاً</p>
+                    </div>
+
+                    <div class="flex-1 space-y-3 overflow-y-auto max-h-64 pr-1">
+                        <template x-if="students.length === 0">
+                            <div class="text-center py-8 text-slate-400 text-xs font-medium">لا يوجد طلاب لعرضهم</div>
+                        </template>
+                        <template x-if="students.length > 0">
+                            <template x-for="(student, index) in leaderboard" :key="student.id">
+                                <div class="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100 animate-fadeIn font-sans">
+                                    <div class="flex items-center gap-2 font-semibold">
+                                        <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
+                                              :class="index === 0 ? 'bg-amber-100 text-amber-800' : (index === 1 ? 'bg-slate-200 text-slate-800' : (index === 2 ? 'bg-amber-50 text-amber-600' : 'bg-slate-100 text-slate-600'))"
+                                              x-text="index + 1"></span>
+                                        <span class="text-xs font-bold text-slate-700 truncate max-w-[120px]" x-text="student.name"></span>
+                                    </div>
+                                    <div class="flex items-center gap-1.5 font-bold">
+                                        <span class="text-xs font-bold text-emerald-600 font-sans" x-text="student.studentAvg + '%'"></span>
+                                        <span class="text-xs text-slate-400 font-medium">تقييم</span>
+                                    </div>
+                                </div>
+                            </template>
+                        </template>
+                    </div>
+
+                    <button @click="activeTab = 'grid'" 
+                            class="mt-4 w-full py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg text-xs font-bold transition text-center cursor-pointer font-sans">
+                        انتقل لجدول رصد الدرجات اليومي ←
+                    </button>
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- =========================================================================
+             2. TAB: INTERACTIVE DAILY GRID (THE OVERVIEW GRID)
+           ========================================================================= -->
+        <div x-show="activeTab === 'grid'" class="space-y-4 animate-fadeIn" style="display: none;">
+            
+            <!-- Controls Ribbon for Daily grid -->
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col lg:flex-row items-center justify-between gap-4">
+                
+                <!-- Target Week Selector -->
+                <div class="flex items-center gap-2 w-full lg:w-auto">
+                    <label class="text-xs font-bold text-slate-500 whitespace-nowrap">الرصد للأسبوع:</label>
+                    <select x-model.number="selectedWeek"
+                            class="bg-slate-50 border border-slate-300 text-emerald-900 text-xs font-black rounded-lg p-2 focus:ring-emerald-500 focus:border-emerald-500 w-full lg:w-48 cursor-pointer">
+                        <template x-for="w in 19" :key="w">
+                            <option :value="w" x-text="'الأسبوع الدراسي ' + w"></option>
+                        </template>
+                    </select>
+                </div>
+
+                <!-- Date Config Settings -->
+                <div class="flex flex-wrap items-center gap-3 w-full lg:w-auto justify-end">
+                    
+                    <div class="flex items-center gap-1 bg-slate-50 p-1.5 rounded-lg border border-slate-200">
+                        <label class="text-[11px] font-bold text-slate-500 pl-1 font-semibold">بداية الفصل (أول أحد):</label>
+                        <input type="date" 
+                               x-model="globalMetadata.startDate" 
+                               class="bg-white border border-slate-300 rounded text-xs font-bold p-1 text-slate-700 cursor-pointer" />
+                    </div>
+
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-xs font-bold text-slate-500">نظام التقويم:</span>
+                        <div class="inline-flex rounded-md shadow-sm">
+                            <button @click="globalMetadata.dateSystem = 'hijri'"
+                                    type="button"
+                                    class="px-3 py-1.5 text-xs font-bold rounded-r-lg border border-slate-200 cursor-pointer animate-fadeIn"
+                                    :class="globalMetadata.dateSystem === 'hijri' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 hover:bg-slate-50'">
+                                هجري
+                            </button>
+                            <button @click="globalMetadata.dateSystem = 'gregorian'"
+                                    type="button"
+                                    class="px-3 py-1.5 text-xs font-bold rounded-l-lg border-y border-l border-slate-200 cursor-pointer animate-fadeIn"
+                                    :class="globalMetadata.dateSystem === 'gregorian' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 hover:bg-slate-50'">
+                                ميلادي
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+            <!-- Highly advanced daily follow-up grid exactly matching PDF schema (Sunday to Thursday) with NO overlap -->
+            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="p-4 bg-slate-50/50 border-b border-slate-200 flex flex-col md:flex-row gap-2 justify-between items-stretch md:items-center">
+                    <span class="text-xs font-extrabold text-emerald-800 flex items-center gap-2">
+                        <span>📋 كشف رصد صف:</span>
+                        <span class="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full text-[10px]" x-text="activeClass?.name"></span>
+                    </span>
+                    <span class="text-[11px] font-bold text-slate-500 font-semibold">
+                        مزامنة التواريخ للأسبوع الدراسي ( <span x-text="selectedWeek" class="text-emerald-700"></span> ) من الأحد إلى الخميس
+                    </span>
+                </div>
+                
+                <!-- Fixed Height Scrollable Table with properly aligned sticky cells -->
+                <div class="overflow-auto max-h-[700px]">
+                    <table class="w-full text-right border-collapse text-xs table-fixed">
+                        <thead>
+                            <!-- Top level header with Weeks spanning across 5 columns -->
+                            <tr class="bg-slate-100 border-b border-slate-300 text-slate-700 text-xs font-black">
+                                <th class="py-3 px-3 w-12 min-w-[48px] text-center border-l border-slate-200 sticky top-0 right-0 z-40 bg-slate-100" rowspan="2">م.</th>
+                                <th class="py-3 px-4 text-right w-48 min-w-[192px] sticky top-0 right-12 z-40 bg-slate-100 border-l border-slate-200" rowspan="2">اسم الطالب</th>
+                                <th class="py-3 px-3 text-center border-l border-slate-200 w-32 sticky top-0 z-30 bg-slate-100" rowspan="2">المتابعة اليومية</th>
+                                
+                                <th class="py-2.5 px-3 text-center border-l border-slate-200 bg-emerald-800 text-white sticky top-0 z-20" colspan="5">
+                                    <div class="text-xs font-extrabold">الأسبوع الدراسي ( <span x-text="selectedWeek"></span> )</div>
+                                </th>
+                            </tr>
+                            
+                            <!-- Subheader mapping individual days -->
+                            <tr class="bg-slate-50 border-b border-slate-300 text-slate-700 text-[11px] font-black">
+                                <template x-for="day in weekDays" :key="day.offset">
+                                    <th class="py-2 px-2 text-center border-l border-slate-200 sticky top-[41px] z-30 bg-slate-50">
+                                        <div class="font-black text-slate-800" x-text="day.name"></div>
+                                        <div class="text-[10px] text-slate-500 font-sans font-medium mt-0.5" x-text="getFormattedDate(selectedWeek, day.offset)"></div>
+                                    </th>
+                                </template>
+                            </tr>
+                        </thead>
+                        
+                        <tbody class="divide-y divide-slate-300">
+                            <!-- Clean x-show row for empty student list, preventing template hoisting issues -->
+                            <tr x-show="students.length === 0">
+                                <td colSpan="8" class="text-center py-10 text-sm text-slate-400 font-semibold font-sans bg-white">
+                                    لا توجد قائمة طلاب مستوردة لهذا الصف. يرجى التوجه لعلامة تبويب "إدارة الطلاب والفصول" واستيراد الطلاب من مركز المعلومات المدرسية.
+                                </td>
+                            </tr>
+                            
+                            <!-- Single template list iteration based on computed flatRows for total stability and zero Alpine runtime errors -->
+                            <template x-for="row in flatRows" :key="row.studentId + '-' + row.catKey">
+                                <tr class="hover:bg-slate-50/50 transition border-slate-200 font-semibold"
+                                    :class="row.catIndex === 4 ? 'border-b-2 border-slate-400 bg-slate-50/10' : 'border-b border-dashed border-slate-200'">
+                                    
+                                    <!-- Sticky student index with custom styling -->
+                                    <td x-show="row.catIndex === 0" 
+                                        class="py-4 px-3 text-center font-extrabold text-slate-400 border-l border-slate-300 align-middle bg-slate-100/90 sticky right-0 z-10 w-12 min-w-[48px]" 
+                                        rowspan="5" 
+                                        x-text="row.studentIndex + 1"></td>
+                                        
+                                    <!-- Sticky student name with no overlap -->
+                                    <td x-show="row.catIndex === 0" 
+                                        class="py-4 px-4 font-black text-slate-900 border-l border-slate-300 align-middle bg-white sticky right-12 z-10 w-48 min-w-[192px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]" 
+                                        rowspan="5">
+                                        <div class="truncate max-w-[170px]" x-text="row.studentName"></div>
+                                    </td>
+
+                                    <!-- Category Label Column -->
+                                    <td class="py-1.5 px-3 border-l border-slate-200 font-extrabold text-[10px] w-32 animate-fadeIn" :class="row.meta.color">
+                                        <span x-text="row.meta.icon + ' ' + row.meta.label"></span>
+                                    </td>
+
+                                    <!-- 5 weekday interactive checkbox cells -->
+                                    <template x-for="day in weekDays" :key="day.offset">
+                                        <td class="py-1 px-1 border-l border-slate-200 text-center align-middle cursor-pointer hover:bg-slate-100/50 transition-colors animate-fadeIn"
+                                            @click="toggleRecordValue(row.studentId, selectedWeek, day.offset, row.catKey)">
+                                            <div class="flex items-center justify-center min-h-[26px]">
+                                                <!-- Responsive Custom Checkbox indicator matching the PDF look -->
+                                                <template x-if="getRecordValue(row.studentId, selectedWeek, day.offset, row.catKey)">
+                                                    <span class="w-5 h-5 flex items-center justify-center text-white rounded border text-[11px] font-black shadow-inner animate-scaleUp"
+                                                          :class="row.catKey === 'attendance' ? 'bg-emerald-600 border-emerald-700' :
+                                                                  (row.catKey === 'participation' ? 'bg-fuchsia-600 border-fuchsia-700' :
+                                                                  (row.catKey === 'homework' ? 'bg-teal-600 border-teal-700' :
+                                                                  (row.catKey === 'booksTools' ? 'bg-sky-600 border-sky-700' : 'bg-amber-600 border-amber-700')))">
+                                                        ✓
+                                                    </span>
+                                                </template>
+                                                <template x-if="!getRecordValue(row.studentId, selectedWeek, day.offset, row.catKey)">
+                                                    <span class="w-5 h-5 block rounded border-2 border-dashed border-slate-300 bg-white hover:border-emerald-500 transition-colors"></span>
+                                                </template>
+                                            </div>
+                                        </td>
+                                    </template>
+
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+
+            </div>
+
+            <!-- Table footnote and clears -->
+            <div class="flex justify-between items-center text-xs text-slate-500 px-1">
+                <span>* يتم حفظ كافة الرصودات اليومية تلقائياً في ذاكرة المتصفح النشط.</span>
+                <button @click="promptClearAllRecords()"
+                        class="text-rose-600 hover:text-rose-700 font-bold flex items-center gap-1 cursor-pointer">
+                    🗑️ مسح وتصفير درجات صف المتابعة الحالي بالكامل
+                </button>
+            </div>
+
+        </div>
+
+        <!-- =========================================================================
+             3. TAB: SPEED ENTRY MODE (UPDATED AND ALIGNED TO DAILY LESSON WORKFLOW)
+           ========================================================================= -->
+        <div x-show="activeTab === 'speed-entry'" class="space-y-6 animate-fadeIn" style="display: none;">
+            
+            <!-- Target Week & Lesson Day Selection Header -->
+            <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between">
+                <div>
+                    <h2 class="text-base font-black text-slate-800">⚡ الرصد السريع اليومي لحصة اليوم</h2>
+                    <p class="text-xs text-slate-500 mt-0.5 font-semibold">اختر الأسبوع واليوم الدراسي الحالي، ثم ابدأ برصد طلابك واحداً تلو الآخر بكل سهولة.</p>
+                </div>
+                
+                <!-- Display Mode Selection -->
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold text-slate-500">طريقة العرض:</span>
+                    <div class="inline-flex rounded-md shadow-sm">
+                        <button @click="speedEntryMode = 'list'"
+                                type="button"
+                                class="px-3.5 py-1.5 text-xs font-bold rounded-r-lg border border-slate-200 cursor-pointer animate-fadeIn"
+                                :class="speedEntryMode === 'list' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 hover:bg-slate-50'">
+                            📱 قائمة الصف
+                        </button>
+                        <button @click="speedEntryMode = 'card'"
+                                type="button"
+                                class="px-3.5 py-1.5 text-xs font-bold rounded-l-lg border-y border-l border-slate-200 cursor-pointer animate-fadeIn"
+                                :class="speedEntryMode === 'card' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 hover:bg-slate-50'">
+                            👤 طالب تلو الآخر
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Top Interactive Date and Week selectors -->
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col lg:flex-row gap-4 justify-between items-stretch lg:items-center">
+                
+                <div class="flex flex-wrap items-center gap-4">
+                    <!-- Week selector -->
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-xs font-extrabold text-slate-600">الأسبوع:</span>
+                        <select x-model.number="selectedWeek" class="bg-slate-50 border border-slate-300 rounded-lg text-xs font-black p-2 cursor-pointer focus:ring-emerald-500">
+                            <template x-for="w in 19" :key="w">
+                                <option :value="w" x-text="'الأسبوع ' + w"></option>
+                            </template>
+                        </select>
+                    </div>
+
+                    <!-- Horizontal Tab for Weekdays selection -->
+                    <div class="flex items-center gap-1">
+                        <span class="text-xs font-extrabold text-slate-600 pl-1">اليوم الدراسي النشط:</span>
+                        <div class="inline-flex rounded-md shadow-sm">
+                            <template x-for="day in weekDays" :key="day.offset">
+                                <button @click="selectedDay = day.offset"
+                                        type="button"
+                                        class="px-3 py-2 text-xs font-black border-y border-l border-slate-200 first:rounded-r-lg last:rounded-l-lg last:border-l cursor-pointer transition animate-fadeIn"
+                                        :class="selectedDay === day.offset ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 hover:bg-slate-50'">
+                                    <span x-text="day.name"></span>
+                                </button>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Display date info -->
+                <div class="text-center lg:text-left bg-emerald-50 text-emerald-800 text-xs font-black px-4 py-2 rounded-xl border border-emerald-100 flex items-center justify-center gap-2">
+                    <span>🗓️ تاريخ اليوم المختار:</span>
+                    <span class="font-sans" x-text="getFormattedDate(selectedWeek, selectedDay)"></span>
+                </div>
+
+            </div>
+
+            <!-- VIEW 1: FULL CLASS LIST ASSESSMENT ROW-BY-ROW -->
+            <div x-show="speedEntryMode === 'list'" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden animate-fadeIn" style="display: none;">
+                <!-- Group Actions Bar -->
+                <div class="p-4 bg-slate-50 border-b border-slate-200 flex flex-col md:flex-row gap-3 items-center justify-between">
+                    <div>
+                        <span class="text-xs font-extrabold text-slate-600">⚡ إجراءات جماعية سريعة لصف ( <span x-text="activeClass?.name" class="text-emerald-700"></span> ) لليوم المختار:</span>
+                        <p class="text-[10px] text-slate-400 mt-0.5 font-semibold">تتيح رصد الحالة لكامل الفصل دفعة واحدة ثم تعديل الطلاب المستثنين يدوياً.</p>
+                    </div>
+                    
+                    <div class="flex flex-wrap gap-2">
+                        <button @click="markAllOnSelectedDay('attendance', true)" class="bg-amber-50 hover:bg-amber-100 text-amber-800 text-[11px] font-black px-3 py-1.5 rounded-lg border border-amber-200 transition flex items-center gap-1 cursor-pointer">
+                            📅 رصد الكل حضور
+                        </button>
+                        <button @click="markAllOnSelectedDay('participation', true)" class="bg-purple-50 hover:bg-purple-100 text-purple-800 text-[11px] font-black px-3 py-1.5 rounded-lg border border-purple-200 transition flex items-center gap-1 cursor-pointer">
+                            🙋‍♂️ رصد الكل مشارك
+                        </button>
+                        <button @click="markAllOnSelectedDay('homework', true)" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[11px] font-black px-3 py-1.5 rounded-lg border border-emerald-200 transition flex items-center gap-1 cursor-pointer">
+                            📝 رصد الكل أنجز الواجب
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Student List with Inline Evaluation Elements -->
+                <div class="divide-y divide-slate-100">
+                    <template x-if="students.length === 0">
+                        <div class="text-center py-10 text-sm text-slate-400 font-semibold font-sans bg-white">لا يوجد طلاب مسجلين بصف المتابعة حالياً.</div>
+                    </template>
+                    <template x-if="students.length > 0">
+                        <template x-for="(student, idx) in students" :key="student.id">
+                            <div class="p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-slate-50/50 transition">
+                                
+                                <!-- Student Name -->
+                                <div class="flex items-center gap-3">
+                                    <span class="text-xs font-bold text-slate-400 w-6 text-center font-sans font-bold" x-text="idx + 1"></span>
+                                    <span class="text-xs font-black text-slate-800" x-text="student.name"></span>
+                                </div>
+
+                                <!-- Checklist Category Buttons aligned on school day -->
+                                <div class="grid grid-cols-5 gap-1.5 md:flex md:items-center">
+                                    <template x-for="(meta, catKey) in categoryMeta" :key="catKey">
+                                        <button @click="toggleRecordValue(student.id, selectedWeek, selectedDay, catKey)"
+                                                class="py-2 px-3 rounded-lg text-[10px] font-black border transition cursor-pointer flex flex-col items-center gap-1 justify-center min-w-[75px]"
+                                                :class="getRecordValue(student.id, selectedWeek, selectedDay, catKey) ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'">
+                                            <span x-text="meta.icon"></span>
+                                            <span x-text="meta.label"></span>
+                                        </button>
+                                    </template>
+                                </div>
+
+                            </div>
+                        </template>
+                    </template>
+                </div>
+            </div>
+
+            <!-- VIEW 2: ONE STUDENT AT A TIME VIEW (ALIGNED TO SINGLE DAY) -->
+            <div x-show="speedEntryMode === 'card'" class="bg-white p-6 rounded-2xl border border-slate-200 shadow-md space-y-6 relative overflow-hidden animate-fadeIn" style="display: none;">
+                
+                <!-- Progress bar -->
+                <div class="absolute top-0 left-0 right-0 h-1.5 bg-slate-100">
+                    <div class="h-full bg-emerald-600 transition-all duration-300"
+                         :style="'width: ' + (((speedIndex + 1) / Math.max(students.length, 1)) * 100) + '%'"></div>
+                </div>
+
+                <!-- Progress Header -->
+                <div class="flex justify-between items-center pt-2">
+                    <span class="text-xs bg-slate-100 px-2.5 py-1 rounded font-bold text-slate-500 font-sans">
+                        طالب <span x-text="speedIndex + 1"></span> من أصل <span x-text="students.length"></span> ( <span x-text="activeClass?.name"></span> )
+                    </span>
+                    <span class="text-xs text-slate-400 font-bold" x-text="'الأسبوع ' + selectedWeek + ' - ' + weekDays.find(d => d.offset === selectedDay)?.name"></span>
+                </div>
+
+                <!-- Selected Student Name Box -->
+                <div class="text-center py-5 bg-emerald-50/50 rounded-xl border border-emerald-100/40">
+                    <h3 class="text-xl md:text-2xl font-black text-emerald-950" x-text="students[speedIndex]?.name"></h3>
+                </div>
+
+                <!-- Large Checkbox Buttons for the 5 categories on the selected day -->
+                <div class="space-y-3">
+                    <template x-for="(meta, catKey) in categoryMeta" :key="catKey">
+                        <button @click="toggleRecordValue(students[speedIndex].id, selectedWeek, selectedDay, catKey)"
+                                class="w-full flex items-center justify-between p-4 rounded-xl border-2 transition-all duration-150 text-right cursor-pointer"
+                                :class="getRecordValue(students[speedIndex].id, selectedWeek, selectedDay, catKey) ? 'bg-emerald-50 border-emerald-500 shadow-sm' : 'bg-white border-slate-200 hover:bg-slate-50'">
+                            <div class="flex items-center gap-3">
+                                <span class="text-xl p-2 rounded-lg" :class="meta.color" x-text="meta.icon"></span>
+                                <span class="font-black text-xs text-slate-800" x-text="meta.label"></span>
+                            </div>
+                            <div class="flex items-center">
+                                <template x-if="getRecordValue(students[speedIndex].id, selectedWeek, selectedDay, catKey)">
+                                    <span class="w-6 h-6 flex items-center justify-center text-white bg-emerald-600 rounded-full text-xs font-bold shadow-sm">✓</span>
+                                </template>
+                                <template x-if="!getRecordValue(students[speedIndex].id, selectedWeek, selectedDay, catKey)">
+                                    <span class="w-6 h-6 block rounded-full border-2 border-slate-300 bg-white"></span>
+                                </template>
+                            </div>
+                        </button>
+                    </template>
+                </div>
+
+                <!-- Step Navigation -->
+                <div class="flex justify-between items-center pt-4 border-t border-slate-100">
+                    <button @click="if (speedIndex > 0) speedIndex--"
+                            :disabled="speedIndex === 0"
+                            class="px-4 py-2.5 rounded-xl font-bold text-xs transition flex items-center gap-1 cursor-pointer font-sans"
+                            :class="speedIndex === 0 ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'">
+                        ⏮️ الطالب السابق
+                    </button>
+                    
+                    <button @click="if (speedIndex < students.length - 1) speedIndex++"
+                            :disabled="speedIndex === students.length - 1"
+                            class="px-5 py-2.5 rounded-xl font-bold text-xs transition flex items-center gap-1 cursor-pointer font-sans"
+                            :class="speedIndex === students.length - 1 ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-emerald-600 text-white hover:bg-emerald-700'">
+                        الطالب التالي ⏭️
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- =========================================================================
+             4. TAB: ASSESSMENTS & ACADEMIC ANALYSIS
+           ========================================================================= -->
+        <div x-show="activeTab === 'assessments'" class="space-y-6 animate-fadeIn" style="display: none;">
+            <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-lg font-black text-slate-800">📈 الاختبارات والتحليل وخطة المعالجة</h2>
+                    <p class="text-xs text-slate-500 mt-1">ترتبط هذه الصفحة بنفس طلاب الصف المستوردين من مركز المعلومات، وتُستخدم لاحقاً لتحليل التعثر وبناء خطط المعالجة.</p>
+                </div>
+                <div class="text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-100 px-4 py-2 rounded-xl">
+                    الصف النشط: <span x-text="activeClass?.name || 'لا يوجد صف مستورد'"></span>
+                </div>
+            </div>
+
+            <template x-if="students.length === 0">
+                <div class="bg-amber-50 border-r-4 border-amber-500 p-4 rounded-md shadow-sm">
+                    <h3 class="font-bold text-amber-800 mb-1 text-sm">⚠️ لا توجد قائمة طلاب مرتبطة بالاختبارات</h3>
+                    <p class="text-xs text-amber-700">استورد الصف أولاً من تبويب <strong>إدارة الطلاب والفصول</strong>، وستظهر أسماء الطلاب هنا تلقائياً لإدخال الدرجات.</p>
+                </div>
+            </template>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden">
+                    <span class="absolute top-3 left-3 w-6 h-6 rounded-full bg-rose-500 shadow-lg"></span>
+                    <div class="text-3xl font-black text-slate-900 font-sans" x-text="assessmentStats.struggling"></div>
+                    <div class="text-xs font-bold text-slate-500 mt-1">طلاب متعثرون</div>
+                </div>
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden">
+                    <span class="absolute top-3 left-3 w-6 h-6 rounded-full bg-amber-400 shadow-lg"></span>
+                    <div class="text-3xl font-black text-slate-900 font-sans" x-text="assessmentStats.support"></div>
+                    <div class="text-xs font-bold text-slate-500 mt-1">يحتاجون إلى دعم</div>
+                </div>
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden">
+                    <span class="absolute top-3 left-3 w-6 h-6 rounded-full bg-emerald-500 shadow-lg"></span>
+                    <div class="text-3xl font-black text-slate-900 font-sans" x-text="assessmentStats.mastered"></div>
+                    <div class="text-xs font-bold text-slate-500 mt-1">متقنون</div>
+                </div>
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden">
+                    <span class="absolute top-3 left-3 text-2xl">📉</span>
+                    <div class="text-3xl font-black text-slate-900 font-sans" x-text="assessmentStats.average + '%'"></div>
+                    <div class="text-xs font-bold text-slate-500 mt-1">متوسط الأداء</div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="p-4 bg-slate-50 border-b border-slate-200 flex flex-col md:flex-row justify-between gap-2">
+                    <div>
+                        <h3 class="font-bold text-slate-800">جدول رصد درجات الاختبارات</h3>
+                        <p class="text-[11px] text-slate-500 mt-1">الدرجات الافتراضية: قبلي/تشخيصي 20، الفترة الأولى 20، الفترة الثانية 20، نهاية الفصل 40.</p>
+                    </div>
+                    <span class="text-[11px] bg-blue-50 text-blue-700 border border-blue-100 px-3 py-1 rounded-full font-bold self-start">الحفظ تلقائي داخل السجل المحلي للصف</span>
+                </div>
+                <div class="overflow-auto max-h-[680px]">
+                    <table class="w-full text-right border-collapse text-xs min-w-[980px]">
+                        <thead class="bg-slate-100 text-slate-700 font-black sticky top-0 z-10">
+                            <tr>
+                                <th class="py-3 px-3 border-l border-slate-200 w-12 text-center">م</th>
+                                <th class="py-3 px-4 border-l border-slate-200 min-w-[220px]">اسم الطالب</th>
+                                <template x-for="(exam, type) in assessmentConfig" :key="type">
+                                    <th class="py-3 px-3 border-l border-slate-200 text-center min-w-[120px]">
+                                        <div x-text="exam.label"></div>
+                                        <div class="text-[10px] text-slate-500 font-sans" x-text="'من ' + exam.max"></div>
+                                    </th>
+                                </template>
+                                <th class="py-3 px-3 border-l border-slate-200 text-center">المتوسط</th>
+                                <th class="py-3 px-3 border-l border-slate-200 text-center">الحالة</th>
+                                <th class="py-3 px-4 border-l border-slate-200 min-w-[260px]">التوصية</th>
+                                <th class="py-3 px-3 text-center">إجراء</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            <template x-if="students.length === 0">
+                                <tr><td colspan="10" class="py-8 text-center text-slate-400 font-bold">لا توجد بيانات طلاب مرتبطة بالصف النشط.</td></tr>
+                            </template>
+                            <template x-for="(student, idx) in students" :key="student.id">
+                                <tr class="hover:bg-slate-50">
+                                    <td class="py-2 px-3 border-l border-slate-100 text-center font-bold text-slate-400" x-text="idx + 1"></td>
+                                    <td class="py-2 px-4 border-l border-slate-100 font-black text-slate-800">
+                                        <div x-text="student.name"></div>
+                                        <div class="text-[10px] text-slate-400 font-sans" x-show="student.student_number" x-text="'رقم الطالب: ' + student.student_number"></div>
+                                    </td>
+                                    <template x-for="(exam, type) in assessmentConfig" :key="type">
+                                        <td class="py-2 px-2 border-l border-slate-100 text-center">
+                                            <input type="number" min="0" :max="exam.max"
+                                                   :value="getAssessmentScore(student, type)"
+                                                   @input="setAssessmentScore(student.id, type, $event.target.value)"
+                                                   class="w-20 mx-auto text-center border border-slate-300 rounded-lg py-1.5 text-xs font-bold focus:ring-emerald-500 focus:border-emerald-500" />
+                                        </td>
+                                    </template>
+                                    <td class="py-2 px-3 border-l border-slate-100 text-center font-black font-sans" x-text="assessmentSummary(student).percentage + '%'"></td>
+                                    <td class="py-2 px-3 border-l border-slate-100 text-center">
+                                        <span class="px-2 py-1 rounded-full border text-[11px] font-black" :class="assessmentSummary(student).status.color" x-text="assessmentSummary(student).status.icon + ' ' + assessmentSummary(student).status.label"></span>
+                                    </td>
+                                    <td class="py-2 px-4 border-l border-slate-100 text-[11px] text-slate-600 leading-relaxed" x-text="assessmentSummary(student).status.recommendation"></td>
+                                    <td class="py-2 px-3 text-center">
+                                        <button @click="generateTreatmentPlan(student)" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-lg text-[11px] font-black transition">خطة معالجة</button>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- =========================================================================
+             5. TAB: UNIFIED DATA ANALYSIS & IMPACT MEASUREMENT
+           ========================================================================= -->
+        <div x-show="activeTab === 'assessments'" class="space-y-6 animate-fadeIn" style="display: none;">
+            <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-lg font-black text-slate-800">📊 تحليل البيانات وقياس الأثر داخل نفس القسم</h2>
+                    <p class="text-xs text-slate-500 mt-1">هذا القسم يدمج درجات الاختبارات مع الرصد اليومي من نفس سجل الطالب دون ملف تحليل منفصل، ليكون سجل معلمة رياض الأطفال هو المصدر الوحيد للمتابعة والتحليل.</p>
+                </div>
+                <div class="flex flex-wrap gap-2 text-xs font-bold">
+                    <span class="bg-emerald-50 text-emerald-700 border border-emerald-100 px-3 py-2 rounded-xl">الصف: <span x-text="activeClass?.name || 'غير محدد'"></span></span>
+                    <span class="bg-slate-50 text-slate-600 border border-slate-100 px-3 py-2 rounded-xl">المادة: <span x-text="activeClass?.subject || '—'"></span></span>
+                </div>
+            </div>
+
+            <template x-if="students.length === 0">
+                <div class="bg-amber-50 border-r-4 border-amber-500 p-4 rounded-md shadow-sm">
+                    <h3 class="font-bold text-amber-800 mb-1 text-sm">⚠️ لا توجد بيانات للتحليل</h3>
+                    <p class="text-xs text-amber-700">استورد الصف من مركز المعلومات، ثم أدخل الرصد والاختبارات ليظهر تحليل البيانات وقياس الأثر.</p>
+                </div>
+            </template>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden">
+                    <span class="absolute top-3 left-3 text-2xl">📈</span>
+                    <div class="text-3xl font-black text-slate-900 font-sans" x-text="unifiedDataStats.examAverage + '%'"></div>
+                    <div class="text-xs font-bold text-slate-500 mt-1">متوسط الاختبارات</div>
+                </div>
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden">
+                    <span class="absolute top-3 left-3 text-2xl">🎯</span>
+                    <div class="text-3xl font-black text-slate-900 font-sans" x-text="unifiedDataStats.mastery + '%'"></div>
+                    <div class="text-xs font-bold text-slate-500 mt-1">نسبة الإتقان</div>
+                </div>
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden">
+                    <span class="absolute top-3 left-3 text-2xl">📅</span>
+                    <div class="text-3xl font-black text-slate-900 font-sans" x-text="unifiedDataStats.attendance + '%'"></div>
+                    <div class="text-xs font-bold text-slate-500 mt-1">مؤشر الحضور</div>
+                </div>
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden">
+                    <span class="absolute top-3 left-3 text-2xl">🚨</span>
+                    <div class="text-3xl font-black text-slate-900 font-sans" x-text="unifiedDataStats.atRisk"></div>
+                    <div class="text-xs font-bold text-slate-500 mt-1">طلاب يحتاجون متابعة</div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm lg:col-span-2">
+                    <div class="flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
+                        <div>
+                            <h3 class="font-bold text-slate-800">قياس الأثر بين الاختبارات</h3>
+                            <p class="text-xs text-slate-500 mt-1">يعتمد على نفس درجات تبويب الاختبارات والتحليل: قبلي، فترة أولى، فترة ثانية، نهاية الفصل.</p>
+                        </div>
+                        <span class="text-[11px] bg-blue-50 text-blue-700 border border-blue-100 px-3 py-1 rounded-full font-bold">مصدر واحد للبيانات</span>
+                    </div>
+                    <div class="space-y-4">
+                        <template x-for="item in assessmentTrend" :key="item.type">
+                            <div>
+                                <div class="flex items-center justify-between text-xs font-bold mb-1">
+                                    <span x-text="item.label"></span>
+                                    <span class="font-sans text-emerald-700" x-text="item.average + '%'"></span>
+                                </div>
+                                <div class="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
+                                    <div class="h-full rounded-full bg-emerald-600 transition-all" :style="'width:' + Math.min(100, item.average) + '%'"></div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-5 text-xs font-bold">
+                        <div class="bg-slate-50 border border-slate-100 p-3 rounded-xl">الواجبات: <span class="font-sans text-emerald-700" x-text="unifiedDataStats.homework + '%'"></span></div>
+                        <div class="bg-slate-50 border border-slate-100 p-3 rounded-xl">المشاركة: <span class="font-sans text-emerald-700" x-text="unifiedDataStats.participation + '%'"></span></div>
+                        <div class="bg-slate-50 border border-slate-100 p-3 rounded-xl">الانضباط: <span class="font-sans text-emerald-700" x-text="unifiedDataStats.behavior + '%'"></span></div>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                    <h3 class="font-bold text-slate-800 mb-3">التوصيات الذكية</h3>
+                    <ul class="space-y-2 text-xs text-slate-600 leading-relaxed list-disc pr-5">
+                        <template x-for="rec in dataAnalysisRecommendations" :key="rec">
+                            <li x-text="rec"></li>
+                        </template>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="p-4 bg-slate-50 border-b border-slate-200 flex flex-col md:flex-row justify-between gap-2">
+                    <div>
+                        <h3 class="font-bold text-slate-800">قائمة الطلاب حسب مؤشر الخطر المبكر</h3>
+                        <p class="text-[11px] text-slate-500 mt-1">المؤشر يجمع: الاختبارات 65% + الرصد اليومي 35%، مع إظهار أسباب الدعم لكل طالب.</p>
+                    </div>
+                </div>
+                <div class="overflow-auto max-h-[620px]">
+                    <table class="w-full text-right border-collapse text-xs min-w-[980px]">
+                        <thead class="bg-slate-100 text-slate-700 font-black sticky top-0 z-10">
+                            <tr>
+                                <th class="py-3 px-3 border-l border-slate-200 w-12 text-center">م</th>
+                                <th class="py-3 px-4 border-l border-slate-200 min-w-[220px]">اسم الطالب</th>
+                                <th class="py-3 px-3 border-l border-slate-200 text-center">الاختبارات</th>
+                                <th class="py-3 px-3 border-l border-slate-200 text-center">الحضور</th>
+                                <th class="py-3 px-3 border-l border-slate-200 text-center">الواجبات</th>
+                                <th class="py-3 px-3 border-l border-slate-200 text-center">المشاركة</th>
+                                <th class="py-3 px-3 border-l border-slate-200 text-center">المؤشر العام</th>
+                                <th class="py-3 px-3 border-l border-slate-200 text-center">الحالة</th>
+                                <th class="py-3 px-4 min-w-[260px]">سبب التوصية</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            <template x-if="students.length === 0">
+                                <tr><td colspan="9" class="py-8 text-center text-slate-400 font-bold">لا توجد بيانات طلاب للتحليل.</td></tr>
+                            </template>
+                            <template x-for="(row, idx) in unifiedRiskRows" :key="row.student.id">
+                                <tr class="hover:bg-slate-50">
+                                    <td class="py-2 px-3 border-l border-slate-100 text-center font-bold text-slate-400" x-text="idx + 1"></td>
+                                    <td class="py-2 px-4 border-l border-slate-100 font-black text-slate-800">
+                                        <div x-text="row.student.name"></div>
+                                        <div class="text-[10px] text-slate-400 font-sans" x-show="row.student.student_number" x-text="'رقم الطالب: ' + row.student.student_number"></div>
+                                    </td>
+                                    <td class="py-2 px-3 border-l border-slate-100 text-center font-sans font-black" x-text="row.analysis.exam.percentage + '%'"></td>
+                                    <td class="py-2 px-3 border-l border-slate-100 text-center font-sans font-black" x-text="row.analysis.attendance + '%'"></td>
+                                    <td class="py-2 px-3 border-l border-slate-100 text-center font-sans font-black" x-text="row.analysis.homework + '%'"></td>
+                                    <td class="py-2 px-3 border-l border-slate-100 text-center font-sans font-black" x-text="row.analysis.participation + '%'"></td>
+                                    <td class="py-2 px-3 border-l border-slate-100 text-center font-sans font-black" x-text="row.analysis.combined + '%'"></td>
+                                    <td class="py-2 px-3 border-l border-slate-100 text-center">
+                                        <span class="px-2 py-1 rounded-full border text-[11px] font-black" :class="row.analysis.badge" x-text="row.analysis.status"></span>
+                                    </td>
+                                    <td class="py-2 px-4 text-[11px] text-slate-600 leading-relaxed" x-text="row.analysis.reasons.length ? row.analysis.reasons.join('، ') : 'لا توجد مؤشرات خطر واضحة'"></td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- =========================================================================
+             4. TAB: STUDENTS & CLASSES MANAGER
+           ========================================================================= -->
+        <div x-show="activeTab === 'students'" class="space-y-8 animate-fadeIn" style="display: none;">
+            
+            <!-- Information Center Import Panel -->
+            <div id="teacherInformationCenterImportPanel" class="bg-white p-5 rounded-2xl border border-emerald-100 shadow-sm">
+                <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-4">
+                    <div>
+                        <h3 class="font-bold text-slate-800 text-lg">🔗 استيراد الصفوف من مركز المعلومات المدرسية</h3>
+                        <p class="text-xs text-slate-500 mt-1">معلمة رياض الأطفال لا يضيف الطلاب يدوياً؛ يتم إنشاء سجل الصف من بيانات مركز المعلومات الرسمية.</p>
+                    </div>
+                    <button @click="clearTeacherRegisterLocalData()"
+                            class="bg-rose-50 hover:bg-rose-100 text-rose-700 px-4 py-2 rounded-xl text-xs font-black border border-rose-100 transition">
+                        🧹 تنظيف السجل المحلي
+                    </button>
+                </div>
+
+                <template x-if="centerDiscoveredClasses.length > 0">
+                    <div class="mb-4 p-3 rounded-xl bg-blue-50 border border-blue-100">
+                        <label class="block text-[11px] font-black text-blue-900 mb-2">اختر الصف/الشعبة المستوردة من مركز المعلومات</label>
+                        <select x-model="centerSelectedClassKey" @change="applyCenterDiscoveredClass()" class="w-full bg-white border border-blue-200 rounded-lg p-2.5 text-xs font-bold text-blue-950">
+                            <template x-for="grp in centerDiscoveredClasses" :key="grp.key">
+                                <option :value="grp.key" x-text="`${stagesMeta[grp.stage]?.label || grp.stage} - ${grp.grade}${grp.track ? ' - ' + grp.track : ''}${grp.section ? ' - شعبة ' + grp.section : ''} (${grp.count} طالب)`"></option>
+                            </template>
+                        </select>
+                    </div>
+                </template>
+
+                <div class="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-bold text-slate-500">المرحلة</label>
+                        <select x-model="centerImportForm.stage" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs font-bold">
+                            <option value="primary">المرحلة الابتدائية</option>
+                            <option value="middle">المرحلة المتوسطة</option>
+                            <option value="high">المرحلة الثانوية</option>
+                        </select>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-bold text-slate-500">الصف</label>
+                        <input x-model="centerImportForm.grade" type="text" placeholder="مثال: الأول المتوسط" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs font-bold">
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-bold text-slate-500">المسار</label>
+                        <input x-model="centerImportForm.track" type="text" placeholder="اختياري للثانوي" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs font-bold">
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-bold text-slate-500">الشعبة</label>
+                        <input x-model="centerImportForm.section" type="text" placeholder="أ / ب / ج" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs font-bold">
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-bold text-slate-500">المادة</label>
+                        <input id="teacherCenterSubjectInput" x-model="centerImportForm.subject" type="text" placeholder="اسم المادة" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs font-bold">
+                    </div>
+                    <button @click="importClassFromInformationCenter()"
+                            class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs font-black transition shadow-sm">
+                        📥 إنشاء سجل الصف
+                    </button>
+                </div>
+                <div class="mt-3 text-[11px] font-bold px-3 py-2 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-100" x-text="centerImportStatus"></div>
+            </div>
+
+            <!-- Cards of Registered Classes -->
+            <div>
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h3 class="font-bold text-slate-800 text-lg">📁 لوحة الفصول الدراسية والمواد</h3>
+                        <p class="text-xs text-slate-500">بطاقات الصفوف المستوردة من مركز المعلومات بنفس توزيع المعلومات الرسمي</p>
+                    </div>
+                </div>
+
+                <template x-if="classes.length === 0">
+                    <div class="bg-white border border-dashed border-slate-300 rounded-2xl p-10 text-center text-slate-400 text-sm font-bold">
+                        لا توجد فصول مستوردة بعد. استخدم نموذج "استيراد الصفوف من مركز المعلومات المدرسية" لإنشاء أول سجل.
+                    </div>
+                </template>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4" x-show="classes.length > 0">
+                    <template x-for="cls in classes" :key="cls.id">
+                        <div class="p-5 rounded-2xl border transition duration-150 flex flex-col justify-between"
+                             :class="cls.id === currentClassId ? 'bg-white border-emerald-500 shadow-md ring-2 ring-emerald-500/10' : 'bg-white border-slate-200 shadow-sm hover:border-slate-300'">
+                            <div>
+                                <div class="flex justify-between items-start">
+                                    <span class="text-xs bg-slate-100 px-2 py-0.5 rounded font-extrabold text-slate-500 flex items-center gap-1">
+                                        <span x-text="stagesMeta[cls.stage]?.icon || '🏷️'"></span>
+                                        <span x-text="stagesMeta[cls.stage]?.label || cls.stage"></span>
+                                    </span>
+                                    <template x-if="cls.id === currentClassId">
+                                        <span class="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full">نشط الآن</span>
+                                    </template>
+                                </div>
+
+                                <h4 class="font-black text-slate-800 text-base mt-3" x-text="classDisplayName(cls)"></h4>
+                                <div class="text-xs text-slate-500 mt-1 space-y-0.5">
+                                    <div>📚 <strong>المادة:</strong> <span x-text="cls.subject"></span></div>
+                                    <div>👨‍🏫 <strong>معلمة رياض الأطفال:</strong> <span x-text="cls.teacher"></span></div>
+                                    <template x-if="cls.track"><div>🧭 <strong>المسار:</strong> <span x-text="cls.track"></span></div></template>
+                                    <template x-if="cls.section"><div>🏷️ <strong>الشعبة:</strong> <span x-text="cls.section"></span></div></template>
+                                </div>
+                            </div>
+
+                            <div class="border-t border-slate-100 mt-4 pt-3 flex items-center justify-between">
+                                <span class="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-lg font-sans"
+                                      x-text="'👥 ' + cls.students.length + ' طالب مسجل'"></span>
+                                <button @click="currentClassId = cls.id; selectedStage = cls.stage; showNotification('تم فتح سجل ' + cls.name)"
+                                        class="text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1.5 rounded-lg transition cursor-pointer">
+                                    📂 فتح السجل
+                                </button>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- Students Directory list: view only -->
+            <div class="pt-2 border-t border-slate-200 font-sans">
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center font-sans">
+                        <div>
+                            <h3 class="font-bold text-slate-800 text-sm">👥 قائمة طلاب: <span x-text="activeClass ? classDisplayName(activeClass) : 'لا يوجد صف نشط'" class="font-bold"></span></h3>
+                            <p class="text-[10px] text-slate-400 font-sans font-semibold">إجمالي طلاب الصف: <span x-text="students.length" class="font-sans font-bold"></span> طلاب</p>
+                        </div>
+                        <span class="text-[11px] text-emerald-700 font-sans font-bold">قائمة عرض ورصد فقط؛ التعديل والحذف من مركز المعلومات المدرسية.</span>
+                    </div>
+
+                    <div class="divide-y divide-slate-100 max-h-96 overflow-y-auto pr-1">
+                        <template x-if="students.length === 0">
+                            <div class="text-center py-12 text-slate-400 text-xs font-sans font-semibold">لا توجد قائمة طلاب مستوردة للصف النشط.</div>
+                        </template>
+                        <template x-if="students.length > 0">
+                            <template x-for="(student, idx) in students" :key="student.id">
+                                <div class="flex items-center justify-between p-3.5 hover:bg-slate-50 transition font-sans">
+                                    <div class="flex items-center gap-3 font-sans">
+                                        <span class="text-xs font-bold text-slate-400 w-6 text-center font-sans font-semibold" x-text="idx + 1"></span>
+                                        <div>
+                                            <span class="text-xs font-bold text-slate-800" x-text="student.name"></span>
+                                            <div class="text-[10px] text-slate-400" x-show="student.student_number" x-text="'رقم الطالب: ' + student.student_number"></div>
+                                        </div>
+                                    </div>
+                                    <span class="text-[10px] text-slate-400 bg-slate-50 border border-slate-100 px-2 py-1 rounded-lg">مصدره مركز المعلومات</span>
+                                </div>
+                            </template>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Database Backup Tools -->
+            <div class="bg-slate-100 p-5 rounded-2xl border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4 font-sans font-medium">
+                <div>
+                    <h4 class="font-bold text-xs text-slate-700 font-sans font-bold">💾 حفظ وتصدير قاعدة بيانات السجل لجميع المراحل والصفوف</h4>
+                    <p class="text-[11px] text-slate-500 mt-0.5 font-sans">يمكنك حفظ كشوفات كافة فصولك ودرجات طلابك في ملف خارجي آمن ونقله لحسابات أخرى أو الاحتفاظ بنسخة احتياطية.</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button @click="exportData()"
+                            class="bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-2 rounded text-xs font-bold transition cursor-pointer">
+                        📤 تصدير ملف النسخة (.json)
+                    </button>
+                    <label class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-2 rounded text-xs font-bold transition cursor-pointer flex items-center font-bold">
+                        📥 استيراد ملف نسخة
+                        <input type="file"
+                               accept=".json"
+                               @change="importData($event)"
+                               class="hidden" />
+                    </label>
+                </div>
+            </div>
+
+            <!-- Danger Red Zone reset box -->
+            <div class="border border-rose-200 bg-rose-50 p-4 rounded-xl flex items-center justify-between font-sans">
+                <div>
+                    <h4 class="font-bold text-xs text-rose-800 font-sans font-bold">⚠️ تصفير قاعدة البيانات الشاملة</h4>
+                    <p class="text-[11px] text-rose-600 font-sans font-medium">سيتم مسح السجلات المحلية للمعلمة رياض الأطفال فقط دون التأثير على مركز المعلومات المدرسية أو بيانات الطلاب في Supabase.</p>
+                </div>
+                <button @click="promptClearAllData()"
+                        class="bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded text-xs font-bold transition cursor-pointer font-bold animate-fadeIn">
+                    🚨 تصفير وتهيئة شاملة
+                </button>
+            </div>
+
+        </div>
+
+        <!-- =========================================================================
+             5. TAB: OFFICIAL MINISTRY PRINT REPORT
+           ========================================================================= -->
+        <div x-show="activeTab === 'print'" class="space-y-6 animate-fadeIn" style="display: none;">
+            
+            <!-- Controls Ribbon -->
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4 print:hidden font-sans font-semibold">
+                <div>
+                    <h3 class="font-bold text-slate-800 text-md">🖨️ تجهيز كشف المتابعة الرسمي للطباعة</h3>
+                    <p class="text-xs text-slate-500 mt-1 font-semibold">يتوافق التقرير الحالي تماماً مع نموذج ورقة المتابعة الرسمية لوزارة التعليم ومقاس ورقة A4.</p>
+                </div>
+                
+                <div class="flex items-center gap-3">
+                    <div class="flex items-center gap-1.5 font-bold">
+                        <span class="text-xs text-slate-500 font-bold">طباعة تقرير الأسبوع:</span>
+                        <select x-model.number="selectedWeek"
+                                class="bg-slate-50 border border-slate-300 rounded text-xs font-bold p-1.5 cursor-pointer">
+                            <template x-for="w in 19" :key="w">
+                                <option :value="w" x-text="'الأسبوع ' + w"></option>
+                            </template>
+                        </select>
+                    </div>
+
+                    <button @click="window.print()"
+                            class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition shadow-sm cursor-pointer font-bold">
+                        🖨️ بدء الطباعة / تصدير PDF
+                    </button>
+                </div>
+            </div>
+
+            <!-- Printable Official A4 Document (Exact Mirror of PDF image_1bfcc0.png) -->
+            <div class="official-print-page bg-white p-8 rounded-2xl border border-slate-200 shadow-md max-w-4xl mx-auto print:border-none print:shadow-none print:p-0 print:m-0">
+                
+                <!-- MoE Official Print Header -->
+                <div class="print-header-grid flex justify-between items-center border-b-2 border-emerald-800 pb-4">
+                    <div class="print-header-right text-center space-y-1 font-semibold">
+                        <h4 class="text-sm font-black text-emerald-950">المملكة العربية السعودية</h4>
+                        <h4 class="text-xs font-bold text-slate-700">وزارة التعليم</h4>
+                        <h4 class="text-xs font-bold text-slate-600">إدارة التعليم</h4>
+                        <h4 class="text-xs font-semibold text-slate-600" x-text="globalMetadata.school || 'اسم المدرسة'"></h4>
+                    </div>
+                    
+                    <div class="text-center font-sans">
+                        <img class="moe-print-logo mx-auto" src="https://salogos.b-cdn.net/logos/svg/1774895141785-5zgexuf8.svg" alt="شعار وزارة التعليم">
+                    </div>
+
+                    <div class="print-header-left text-right space-y-0.5 text-xs text-slate-600 font-semibold">
+                        <div><strong>اليوم / التاريخ:</strong> <span x-text="new Date().toLocaleDateString('ar-SA')"></span></div>
+                        <div><strong>المادة:</strong> <span x-text="activeClass?.subject || '........'"></span></div>
+                        <div><strong>الصف / الشعبة:</strong> <span x-text="activeClass?.name || '........'"></span></div>
+                        <div><strong>الأسبوع:</strong> <span x-text="selectedWeek"></span></div>
+                    </div>
+                </div>
+
+                <!-- Report Title -->
+                <div class="print-title-block text-center my-6 space-y-1">
+                    <h2 class="text-base font-black text-slate-800">سجل متابعة وتقويم الطلاب اليومي لجميع المهارات والسلوك</h2>
+                    <p class="text-xs text-slate-500 font-semibold font-medium">الأسبوع الدراسي المستهدف: ( <span x-text="selectedWeek" class="font-bold"></span> )</p>
+                </div>
+
+                <!-- Info Grid -->
+                <div class="print-info-grid grid grid-cols-2 md:grid-cols-4 gap-3 bg-slate-50 p-3 rounded-lg border border-slate-200 mb-6 text-xs font-semibold">
+                    <div><strong>الفصل الدراسي:</strong> <span x-text="globalMetadata.semester"></span></div>
+                    <div><strong>معلمة رياض الأطفال المادة:</strong> <span x-text="activeClass?.teacher || '................'"></span></div>
+                    <div><strong>المرحلة الدراسية:</strong> <span x-text="activeClass ? stagesMeta[activeClass.stage]?.label : '................'"></span></div>
+                    <div><strong>العام الدراسي:</strong> <span x-text="globalMetadata.year"></span></div>
+                </div>
+
+                <!-- Official Grid Sheet Table printable version -->
+                <div class="print-table-wrap border border-slate-400 rounded overflow-hidden">
+                    <table class="w-full text-right border-collapse text-[10px]">
+                        <thead>
+                            <tr class="bg-slate-100 border-b-2 border-slate-400 text-slate-700 font-black">
+                                <th class="py-1 px-1.5 w-10 text-center border-l border-slate-400">م</th>
+                                <th class="py-1 px-2 border-l border-slate-400 text-right min-w-[120px]">اسم الطالب</th>
+                                <th class="py-1 px-1.5 border-l border-slate-400 text-center w-20">المتابعة</th>
+                                <template x-for="day in weekDays" :key="day.offset">
+                                    <th class="py-1 px-1 border-l border-slate-400 text-center w-24">
+                                        <div class="font-black" x-text="day.name"></div>
+                                        <div class="text-[8px] text-slate-500 font-sans font-bold" x-text="getFormattedDate(selectedWeek, day.offset)"></div>
+                                    </th>
+                                </template>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-400">
+                            <!-- Safe static placeholder when no students are added -->
+                            <tr x-show="students.length === 0">
+                                <td colSpan="8" class="text-center py-6 text-slate-400 font-sans font-semibold bg-white">لا يوجد بيانات للطباعة في هذا الصف حالياً</td>
+                            </tr>
+                            
+                            <!-- Clean flatRow implementation for printable report -->
+                            <template x-for="row in flatRows" :key="'print-' + row.studentId + '-' + row.catKey">
+                                <tr class="border-slate-400 animate-fadeIn font-semibold" :class="row.catIndex === 4 ? 'border-b-2 border-slate-400 bg-slate-50/10' : 'border-b border-dashed border-slate-200'">
+                                    
+                                    <!-- Sticky student index with custom styling -->
+                                    <td x-show="row.catIndex === 0" 
+                                        class="py-2 px-1 text-center font-bold text-slate-800 border-l border-slate-400 align-middle bg-slate-50/50 w-10 font-sans" 
+                                        rowspan="5" 
+                                        x-text="row.studentIndex + 1"></td>
+                                        
+                                    <!-- Sticky student name with no overlap -->
+                                    <td x-show="row.catIndex === 0" 
+                                        class="py-2 px-2 border-l border-slate-400 font-black text-slate-900 align-middle bg-white w-48" 
+                                        rowspan="5" 
+                                        x-text="row.studentName"></td>
+                                    
+                                    <td class="py-1 px-1 border-l border-slate-400 font-bold" x-text="row.meta.label"></td>
+                                    
+                                    <template x-for="day in weekDays" :key="day.offset">
+                                        <td class="py-1 px-1 border-l border-slate-400 text-center align-middle font-sans">
+                                            <span x-text="getRecordValue(row.studentId, selectedWeek, day.offset, row.catKey) ? '✓' : '—'" 
+                                                  :class="getRecordValue(row.studentId, selectedWeek, day.offset, row.catKey) ? 'text-emerald-700 font-black text-xs font-sans' : 'text-slate-300 font-sans'"></span>
+                                        </td>
+                                    </template>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Print Signatures Section -->
+                <div class="print-signatures grid grid-cols-2 gap-16 mt-12 pt-6 border-t border-slate-300 text-xs text-center font-bold font-semibold">
+                    <div class="space-y-4">
+                        <span>توقيع معلمة رياض الأطفال:</span>
+                        <div class="text-slate-400 font-normal">.................................</div>
+                    </div>
+                    <div class="space-y-4">
+                        <span>مدير / مديرة المدرسة:</span>
+                        <div class="text-slate-400 font-normal">.................................</div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- =========================================================================
+         BULK ADD STUDENTS MODAL
+         ========================================================================= -->
+    <div class="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4 animate-scaleUp animate-fadeIn"
+         x-show="isBulkModalOpen"
+         x-transition
+         style="display: none;">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4">
+            
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 class="font-bold text-slate-800 text-md">📥 استيراد جماعي لأسماء الطلاب</h3>
+                <button @click="isBulkModalOpen = false"
+                        class="text-slate-400 hover:text-slate-600 font-bold cursor-pointer text-lg">✕</button>
+            </div>
+
+            <p class="text-xs text-slate-500 font-semibold">
+                أنت تستورد الطلاب لصف ( <strong class="text-emerald-700" x-text="activeClass?.name"></strong> ). ضع كل اسم في سطر مستقل:
+            </p>
+            
+            <textarea rows="8"
+                      x-model="bulkStudentNames"
+                      placeholder="مثال:&#10;أحمد بن محمد عسيري&#10;علي بن حسين الحربي&#10;سلمان بن تركي الغامدي"
+                      class="w-full bg-slate-50 border border-slate-300 text-slate-700 text-xs rounded-lg p-3 focus:ring-emerald-500 focus:border-emerald-500"></textarea>
+
+            <div class="flex gap-2 justify-end pt-2 font-semibold">
+                <button @click="isBulkModalOpen = false"
+                        class="bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer">
+                    إلغاء
+                </button>
+                <button @click="addBulkStudents()"
+                        class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-lg text-xs font-bold transition cursor-pointer font-bold animate-fadeIn">
+                    حفظ وإدراج لـ <span x-text="activeClass?.name"></span>
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- =========================================================================
+         EDIT GLOBAL CONFIG/SETTINGS MODAL
+         ========================================================================= -->
+    <div class="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4 animate-scaleUp animate-fadeIn"
+         x-show="isSettingsModalOpen"
+         x-transition
+         style="display: none;">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4">
+            
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 class="font-bold text-slate-800 text-md">⚙️ تعديل بيانات الترويسة والتواريخ</h3>
+                <button @click="isSettingsModalOpen = false"
+                        class="text-slate-400 hover:text-slate-600 font-bold cursor-pointer text-lg">✕</button>
+            </div>
+
+            <div class="space-y-4">
+                
+                <div class="space-y-1">
+                    <label class="text-xs font-bold text-slate-600">اسم المدرسة:</label>
+                    <input type="text"
+                           x-model="globalMetadata.school"
+                           class="w-full bg-slate-50 border border-slate-300 text-slate-700 text-xs rounded-lg p-2.5" />
+                </div>
+
+                <div class="grid grid-cols-2 gap-4 font-sans font-semibold">
+                    <div class="space-y-1">
+                        <label class="text-xs font-bold text-slate-600 font-sans">الفصل الدراسي الحالي:</label>
+                        <select x-model="globalMetadata.semester"
+                                class="w-full bg-slate-50 border border-slate-300 text-slate-700 text-xs rounded-lg p-2.5 cursor-pointer">
+                            <option value="الفصل الدراسي الأول">الفصل الدراسي الأول</option>
+                            <option value="الفصل الدراسي الثاني">الفصل الدراسي الثاني</option>
+                            <option value="الفصل الدراسي الثالث">الفصل الدراسي الثالث</option>
+                        </select>
+                    </div>
+
+                    <div class="space-y-1">
+                        <label class="text-xs font-bold text-slate-600 font-sans">العام الدراسي:</label>
+                        <input type="text"
+                               x-model="globalMetadata.year"
+                               class="w-full bg-slate-50 border border-slate-300 text-slate-700 text-xs rounded-lg p-2.5" />
+                    </div>
+                </div>
+
+                <div class="space-y-1">
+                    <label class="text-xs font-bold text-slate-600 font-semibold">تاريخ أول يوم أحد في الفصل الدراسي (ميلادي):</label>
+                    <input type="date"
+                           x-model="globalMetadata.startDate"
+                           class="w-full bg-slate-50 border border-slate-300 text-slate-700 text-xs rounded-lg p-2.5 cursor-pointer" />
+                </div>
+
+                <!-- Update active class details -->
+                <template x-if="activeClass !== null">
+                    <div class="p-4 bg-emerald-50 rounded-xl border border-emerald-100 space-y-3 font-semibold">
+                        <h4 class="font-bold text-xs text-emerald-950 font-bold">✏️ تعديل بيانات الصف النشط الحالي:</h4>
+                        
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="space-y-1">
+                                <label class="text-[10px] font-bold text-slate-600 font-sans">اسم الصف:</label>
+                                <input type="text"
+                                       x-model="activeClass.name"
+                                       class="w-full bg-white border border-slate-300 text-slate-700 text-xs rounded-lg p-2" />
+                            </div>
+
+                            <div class="space-y-1">
+                                <label class="text-[10px] font-bold text-slate-600 font-sans">اسم المادة:</label>
+                                <input type="text"
+                                       x-model="activeClass.subject"
+                                       class="w-full bg-white border border-slate-300 text-slate-700 text-xs rounded-lg p-2" />
+                            </div>
+
+                            <div class="space-y-1 col-span-2">
+                                <label class="text-[10px] font-bold text-slate-600 font-sans">اسم معلمة رياض الأطفال:</label>
+                                <input type="text"
+                                       x-model="activeClass.teacher"
+                                       class="w-full bg-white border border-slate-300 text-slate-700 text-xs rounded-lg p-2" />
+                            </div>
+                        </div>
+                    </div>
+                </template>
+
+            </div>
+
+            <div class="flex gap-2 justify-end pt-3 font-semibold">
+                <button @click="saveData(); isSettingsModalOpen = false; showNotification('تم حفظ التغييرات ومزامنة التواريخ')"
+                        class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-lg text-xs font-bold transition cursor-pointer font-bold animate-fadeIn">
+                    حفظ التغييرات ومزامنة السجل
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- =========================================================================
+         CREATE NEW CLASS MODAL
+         ========================================================================= -->
+    <div class="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4 animate-scaleUp animate-fadeIn"
+         x-show="isNewClassModalOpen"
+         x-transition
+         style="display: none;">
+        <form @submit.prevent="createClass()" 
+              class="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4">
+            
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 class="font-bold text-slate-800 text-md">➕ إضافة صف دراسي ومرحلة جديدة</h3>
+                <button type="button" 
+                        @click="isNewClassModalOpen = false"
+                        class="text-slate-400 hover:text-slate-600 font-bold cursor-pointer text-lg">✕</button>
+            </div>
+
+            <div class="space-y-4">
+                
+                <div class="space-y-1">
+                    <label class="text-xs font-bold text-slate-600">المرحلة التعليمية:</label>
+                    <div class="grid grid-cols-3 gap-2">
+                        <template x-for="(stage, key) in stagesMeta" :key="key">
+                            <button type="button"
+                                    @click="newClassForm.stage = key"
+                                    class="py-3.5 px-2 rounded-xl text-xs font-bold border transition duration-150 flex flex-col items-center gap-1 cursor-pointer"
+                                    :class="newClassForm.stage === key ? 'border-emerald-600 bg-emerald-50 text-emerald-800 shadow shadow-inner' : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600'">
+                                <span class="text-xl" x-text="stage.icon"></span>
+                                <span x-text="stage.label"></span>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+
+                <div class="space-y-1">
+                    <label class="text-xs font-bold text-slate-600">اسم الصف / الفصل:</label>
+                    <input type="text"
+                           required
+                           placeholder="مثال: الصف الثاني المتوسط (ب)"
+                           x-model="newClassForm.name"
+                           class="w-full bg-slate-50 border border-slate-300 text-slate-700 text-xs rounded-lg p-3 focus:ring-emerald-500" />
+                </div>
+
+                <div class="space-y-1">
+                    <label class="text-xs font-bold text-slate-600">اسم المادة الملقاة:</label>
+                    <input type="text"
+                           required
+                           placeholder="مثال: المهارات الرقمية، علوم، رياضيات..."
+                           x-model="newClassForm.subject"
+                           class="w-full bg-slate-50 border border-slate-300 text-slate-700 text-xs rounded-lg p-3 focus:ring-emerald-500" />
+                </div>
+
+                <div class="space-y-1">
+                    <label class="text-xs font-bold text-slate-600">اسم معلمة رياض الأطفال المادة:</label>
+                    <input type="text"
+                           placeholder="مثال: أستاذ المادة"
+                           x-model="newClassForm.teacher"
+                           class="w-full bg-slate-50 border border-slate-300 text-slate-700 text-xs rounded-lg p-3 focus:ring-emerald-500" />
+                </div>
+
+            </div>
+
+            <div class="flex gap-2 justify-end pt-3 border-t border-slate-100 font-semibold">
+                <button type="button"
+                        @click="isNewClassModalOpen = false"
+                        class="bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2.5 rounded-lg text-xs font-bold transition cursor-pointer">
+                    إلغاء
+                </button>
+                <button type="submit"
+                        class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-lg text-xs font-bold transition cursor-pointer font-bold animate-fadeIn">
+                    إنشاء الصف وبدء استخدامه
+                </button>
+            </div>
+
+        </form>
+    </div>
+
+    <!-- Custom CSS styles -->
+    <style>
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes scaleUp {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        .animate-fadeIn { animation: fadeIn 0.3s ease-out forwards; }
+        .animate-scaleUp { animation: scaleUp 0.2s ease-out forwards; }
+    </style>
+
+<!-- Unified Cloud File Engine v3 -->
+<script src="platform-cloud-session.js"></script>
+<script src="cloud-file-engine.js"></script>
+<script src="cloud-file-bootstrap.js"></script>
+<script src="cloud-upload-hub.js"></script>
+
+<!-- Unified Comprehensive Cloud Storage -->
+<script src="cloud-file-auto-sync.js"></script>
+
+<script src="platform-record-catalog.js"></script>
+<script src="delegated-access-guard.js"></script>
+<script src="school-activity-engine.js"></script>
+  <script src="evidence-library-source.js"></script>
+
+<script src="school-information-source.js"></script>
+<script src="internal-messaging.js"></script>
+<script defer src="unified_workspace.js"></script>
+</body>
+</html>

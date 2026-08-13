@@ -19,7 +19,7 @@
     return {key:'unclassified',label:'غير مصنف',icon:'🗂️',modules:[],keywords:[]};
   }
   function sourceLabel(file){
-    const m={manager_records:'سجلات المدير',manager_library:'مكتبة المدير',manager_library_records:'سجلات المدير',teacher_records:'سجلات المعلم',teacher_library:'مكتبة المعلم',student_advisor:'الموجه الطلابي',student_advisor_records:'سجلات الموجه الطلابي',counselor_library:'مكتبة الموجه',school_readiness:'الجاهزية المدرسية',activity:'النشاط الطلابي',activity_leader_records:'سجلات النشاط',administrative_employee:'الأداء الوظيفي',meeting_minutes:'الاجتماعات',self_evaluation_records:'التقويم الذاتي',external_evaluation_archive:'التقويم الخارجي',health_guidance:'التوجيه الصحي',exams:'الاختبارات'};
+    const m={manager_records:'سجلات المدير',manager_library:'مكتبة المدير',manager_library_records:'سجلات المدير',teacher_records:'سجلات المعلم',teacher_library:'مكتبة المعلم',student_advisor:'الموجه/الموجهة الطلابية',student_advisor_records:'سجلات الموجه/الموجهة الطلابية',counselor_library:'مكتبة الموجه',school_readiness:'الجاهزية المدرسية',activity:'النشاط الطلابي',activity_leader_records:'سجلات النشاط',administrative_employee:'الأداء الوظيفي',meeting_minutes:'الاجتماعات',self_evaluation_records:'التقويم الذاتي',external_evaluation_archive:'التقويم الخارجي',health_guidance:'التوجيه الصحي',exams:'الاختبارات'};
     return m[file.module_key]||file.module_key||'مصدر غير محدد';
   }
   function academicYear(file){const m=meta(file);const vals=[m.academic_year,m.academicYear,m.year,m.school_year,file.academic_year];for(const x of vals){const n=String(x||'').match(/14\d{2}/);if(n)return n[0]}const path=String(file.storage_path||'');const p=path.match(/(?:^|\/)(14\d{2})(?:\/|$)/);return p?p[1]:'unknown';}

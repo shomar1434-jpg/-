@@ -42,7 +42,26 @@
   'teacher_records_student_work.html':{moduleKey:'teacher_student_work',ownershipScope:'user',recordType:'record'},
   'teacher_section_library.html':{moduleKey:'teacher_library',ownershipScope:'user',recordType:'library'},
   'teacher_weekly_tasks.html':{moduleKey:'teacher_weekly_tasks',ownershipScope:'user',recordType:'task'},
-  'wakil-records.html':{moduleKey:'vice_principal_library',ownershipScope:'user',recordType:'library'}
+ 
+ 'health_advisor.html':{moduleKey:'health_advisor_workspace',ownershipScope:'user',recordType:'workspace'},
+ 'health_advisor_comprehensive_record.html':{moduleKey:'health_advisor_comprehensive_record',ownershipScope:'user',recordType:'performance_file'},
+ 'health_advisor_data_analysis.html':{moduleKey:'health_advisor_data_analysis',ownershipScope:'user',recordType:'analysis'},
+ 'health_advisor_records_attendance.html':{moduleKey:'health_advisor_attendance_records',ownershipScope:'user',recordType:'record'},
+ 'health_advisor_records_index.html':{moduleKey:'health_advisor_records',ownershipScope:'user',recordType:'archive'},
+ 'health_advisor_records_participation.html':{moduleKey:'health_advisor_participation_records',ownershipScope:'user',recordType:'record'},
+ 'health_advisor_records_student_work.html':{moduleKey:'health_advisor_student_work',ownershipScope:'user',recordType:'record'},
+ 'health_advisor_section_library.html':{moduleKey:'health_advisor_library',ownershipScope:'user',recordType:'library'},
+ 'health_advisor_weekly_tasks.html':{moduleKey:'health_advisor_weekly_tasks',ownershipScope:'user',recordType:'task'},
+ 'kindergarten_teacher.html':{moduleKey:'kindergarten_teacher_workspace',ownershipScope:'user',recordType:'workspace'},
+ 'kindergarten_teacher_comprehensive_record.html':{moduleKey:'kindergarten_teacher_comprehensive_record',ownershipScope:'user',recordType:'performance_file'},
+ 'kindergarten_teacher_data_analysis.html':{moduleKey:'kindergarten_teacher_data_analysis',ownershipScope:'user',recordType:'analysis'},
+ 'kindergarten_teacher_records_attendance.html':{moduleKey:'kindergarten_teacher_attendance_records',ownershipScope:'user',recordType:'record'},
+ 'kindergarten_teacher_records_index.html':{moduleKey:'kindergarten_teacher_records',ownershipScope:'user',recordType:'archive'},
+ 'kindergarten_teacher_records_participation.html':{moduleKey:'kindergarten_teacher_participation_records',ownershipScope:'user',recordType:'record'},
+ 'kindergarten_teacher_records_student_work.html':{moduleKey:'kindergarten_teacher_student_work',ownershipScope:'user',recordType:'record'},
+ 'kindergarten_teacher_section_library.html':{moduleKey:'kindergarten_teacher_library',ownershipScope:'user',recordType:'library'},
+ 'kindergarten_teacher_weekly_tasks.html':{moduleKey:'kindergarten_teacher_weekly_tasks',ownershipScope:'user',recordType:'task'},
+ 'wakil-records.html':{moduleKey:'vice_principal_library',ownershipScope:'user',recordType:'library'}
  };
  const context=map[page]||null;
  window.CloudFilePageContext=context;

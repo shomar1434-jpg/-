@@ -270,37 +270,47 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
         };
 
         const renderGrid = (role) => {
-            const grid = document.getElementById('apps-grid');
-            if (!grid) return;
-            grid.innerHTML = '';
-            const apps = role === 'leadership'
-                ? ['leadership', 'agency', 'performance', 'student_advisor', 'activity_leader', 'administrative_employee']
-                : [role];
-            const meta = {
-                leadership: { title: 'قسم مدير/ة النظام', icon: '🏛️', tone: 'blue' },
-                agency: { title: 'قسم الوكيل/ة', icon: '👥', tone: 'purple' },
-                performance: { title: 'قسم المعلم/المعلمة', icon: '👨‍🏫', tone: 'green' },
-                administrative_employee: { title: 'قسم الموظف/ة الإداري/ة', icon: '💼', tone: 'teal' },
-                activity_leader: { title: 'قسم رائد/ة النشاط', icon: '🏃', tone: 'orange' },
-                student_advisor: { title: 'قسم الموجه/ة الطلابي/ة', icon: '🧭', tone: 'violet' }
-            };
-            apps.forEach(appId => {
-                const item = meta[appId] || { title: appId, icon: '📌', tone: 'teal' };
-                const card = document.createElement('div');
-                card.className = "app-card text-center cursor-pointer shadow-lg hover:shadow-2xl transition-all hover:scale-105";
-                card.innerHTML = `
-                    <div class="role-icon role-${item.tone}">${item.icon}</div>
-                    <h2 class="font-bold text-xl text-slate-800">${item.title}</h2>
-                    <p class="text-[10px] text-teal-600 mt-2 font-bold">نظام نشط ومؤمن ✅</p>
-                    <button class="mt-6 bg-teal-700 text-white px-6 py-2 rounded-xl w-full font-bold shadow-md">دخول</button>
-                `;
-                card.onclick = () => launchApp(appId);
-                grid.appendChild(card);
-            });
-        };
+    const grid = document.getElementById('apps-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    const isSystemAdmin = !!(
+        currentUser?.isRootAdmin ||
+        currentUser?.role === 'owner' ||
+        sessionStorage.getItem('system_admin_context') === '1' ||
+        sessionStorage.getItem('system_admin_verified') === 'true'
+    );
+    const apps = role === 'leadership'
+        ? ['leadership','agency','performance','health_advisor','kindergarten_teacher','student_advisor','activity_leader','administrative_employee']
+        : [role];
+    if (role === 'leadership' && isSystemAdmin) apps.push('school_management');
+    const meta = {
+        leadership:{title:'قسم مدير/ة النظام',icon:'🏛️',tone:'blue'},
+        agency:{title:'قسم الوكيل/ة',icon:'👥',tone:'purple'},
+        performance:{title:'قسم المعلم/المعلمة',icon:'👨‍🏫',tone:'green'},
+        administrative_employee:{title:'قسم الموظف/ة الإداري/ة',icon:'💼',tone:'teal'},
+        activity_leader:{title:'قسم رائد/ة النشاط',icon:'🏃',tone:'orange'},
+        student_advisor:{title:'قسم الموجه/الموجهة الطلابية',icon:'🧭',tone:'violet'},
+        health_advisor:{title:'قسم الموجه الصحي',icon:'🩺',tone:'teal'},
+        kindergarten_teacher:{title:'قسم معلمة رياض الأطفال',icon:'🧸',tone:'orange'},
+        school_management:{title:'إدارة المدارس',icon:'🏫',tone:'green',desc:'إدارة المدارس المستقلة والحسابات'}
+    };
+    apps.forEach(appId=>{
+        const item=meta[appId]||{title:appId,icon:'📌',tone:'teal'};
+        const card=document.createElement('div');
+        card.className='app-card text-center cursor-pointer shadow-lg transition-all'+(appId==='school_management'?' school-management-card':'');
+        card.innerHTML=`<div><div class="role-icon role-${item.tone}">${item.icon}</div><h2 class="font-bold text-xl text-slate-800">${item.title}</h2><p class="text-[10px] text-teal-600 mt-2 font-bold">${item.desc||'نظام نشط ومؤمن ✅'}</p><button class="mt-6 bg-teal-700 text-white px-6 py-2 rounded-xl w-full font-bold shadow-md">${appId==='school_management'?'إدارة':'دخول'}</button></div>`;
+        card.onclick=()=>launchApp(appId);
+        grid.appendChild(card);
+    });
+};
+const launchApp = (appId) => {
+    if (appId === 'school_management') {
+        if (typeof showSchoolManagementPanel === 'function') showSchoolManagementPanel();
+        else showToast('تعذر فتح إدارة المدارس الآن');
+        return;
+    }
 
-        const launchApp = (appId) => {
-            const files = { 'leadership': 'manager.html', 'agency': 'agent.html', 'performance': 'teacher.html', 'student_advisor': 'student_advisor.html', 'activity_leader': 'activity_leader.html', 'administrative_employee': 'administrative_employee_portal.html' };
+            const files = { 'leadership': 'manager.html', 'agency': 'agent.html', 'performance': 'teacher.html', 'health_advisor': 'health_advisor.html', 'kindergarten_teacher': 'kindergarten_teacher.html', 'student_advisor': 'student_advisor.html', 'activity_leader': 'activity_leader.html', 'administrative_employee': 'administrative_employee_portal.html' };
             const target = files[appId];
             if (!target) return showToast('لم يتم العثور على ملف القسم');
             try {
@@ -316,7 +326,7 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
         };
 
         const roleLabel = (role) => {
-            const labels = { leadership: 'قسم مدير/ة النظام', agency: 'قسم الوكيل/الوكيلة/ة', performance: 'قسم المعلم/المعلمة/ة', student_advisor: 'قسم الموجه/ة الطلابي/ة', activity_leader: 'قسم رائد/ة النشاط', administrative_employee: 'قسم الموظف/ة الإداري/ة' };
+            const labels = { leadership: 'قسم مدير/ة النظام', agency: 'قسم الوكيل/الوكيلة/ة', performance: 'قسم المعلم/المعلمة', health_advisor: 'قسم الموجه الصحي', kindergarten_teacher: 'قسم معلمة رياض الأطفال', student_advisor: 'قسم الموجه/الموجهة الطلابية', activity_leader: 'قسم رائد/ة النشاط', administrative_employee: 'قسم الموظف/ة الإداري/ة' };
             return labels[role] || role || 'غير محدد';
         };
 
@@ -462,7 +472,7 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
             if (['leadership', 'manager', 'admin', 'مدير', 'مديرة', 'مدير', 'مديرة', 'المدير', 'المديرة'].includes(v)) return 'leadership';
             if (['agency', 'agent', 'vice', 'وكيل', 'وكيلة', 'الوكيل', 'الوكيلة'].includes(v)) return 'agency';
             if (['performance', 'teacher', 'معلم', 'معلمة', 'المعلم', 'المعلمة'].includes(v)) return 'performance';
-            if (['student_advisor','advisor','counselor','موجه','موجهة','الموجه','الموجهة','موجه طلابي','موجهة طلابية'].includes(v)) return 'student_advisor';
+            if (['student_advisor','advisor','counselor','موجه','موجهة','الموجه','الموجهة','موجه/موجهة طلابية','موجهة طلابية'].includes(v)) return 'student_advisor';
             if (['activity_leader','activity','leader','رائد','رائدة','رائد النشاط','رائدة النشاط'].includes(v)) return 'activity_leader';
             return 'performance';
         };
@@ -596,7 +606,7 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
             if (currentUser?.role === 'agency' && role !== 'performance') {
                 return showToast('صلاحية الوكيل/ة تشمل متابعة المعلمين/المعلمات فقط');
             }
-            const titleMap = { leadership: '🏛️ قائمة قسم مدير/ة النظام', agency: '📑 قائمة قسم الوكيل/الوكيلة/ة', performance: '👨‍🏫 قائمة قسم المعلم/المعلمة/ة', student_advisor: '🧭 قائمة قسم الموجه/ة الطلابي/ة', activity_leader: '🏃 قائمة قسم رائد/ة النشاط' };
+            const titleMap = { leadership: '🏛️ قائمة قسم مدير/ة النظام', agency: '📑 قائمة قسم الوكيل/الوكيلة/ة', performance: '👨‍🏫 قائمة قسم المعلم/المعلمة/ة', student_advisor: '🧭 قائمة قسم الموجه/الموجهة الطلابية', activity_leader: '🏃 قائمة قسم رائد/ة النشاط' };
             document.getElementById('role-list-title').innerText = titleMap[role] || 'القائمة';
             const container = document.getElementById('role-list-container');
             container.innerHTML = '';

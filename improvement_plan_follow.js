@@ -74,7 +74,7 @@
   function roleName(r){
     r = String(r || '');
     if (/agent/.test(r)) return 'الوكيل';
-    if (/student_advisor/.test(r)) return 'الموجه الطلابي';
+    if (/student_advisor/.test(r)) return 'الموجه/الموجهة الطلابية';
     if (/activity_leader/.test(r)) return 'رائد النشاط';
     if (/teacher|performance/.test(r)) return 'المعلم';
     return 'المستخدم';

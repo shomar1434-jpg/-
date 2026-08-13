@@ -63,6 +63,38 @@
     return payload;
   }
 
+  async function sessionAction(action, body = {}) {
+    if (!valid()) throw new Error('جلسة المنصة السحابية غير صالحة للتبديل.');
+    const response = await fetch(`${url()}/functions/v1/platform-session`, {
+      method: 'POST',
+      headers: {'content-type':'application/json',apikey:key(),'x-platform-session':token()},
+      body: JSON.stringify({...body, action}),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(payload.error || 'تعذر تحديث سياق المدرسة');
+      error.code = payload.code || `HTTP_${response.status}`;
+      throw error;
+    }
+    return payload;
+  }
+
+  async function memberships() {
+    return sessionAction('memberships');
+  }
+
+  async function switchSchool(targetSchoolId, targetRole = '', membershipId = '') {
+    const payload = await sessionAction('switch', {schoolId:targetSchoolId, role:targetRole, membershipId});
+    if (!payload.token) throw new Error('لم تُنشأ جلسة سحابية للمدرسة المختارة.');
+    localStorage.setItem(TOKEN_KEY, payload.token);
+    localStorage.setItem(EXPIRES_KEY, payload.expiresAt || '');
+    localStorage.setItem(USER_KEY, payload.userId || '');
+    localStorage.setItem(SCHOOL_KEY, payload.schoolId || '');
+    localStorage.setItem(ROLE_KEY, payload.role || '');
+    window.dispatchEvent(new CustomEvent('platform-cloud-session-ready',{detail:{userId:payload.userId||'',schoolId:payload.schoolId||'',role:payload.role||'',expiresAt:payload.expiresAt||'',membershipId:payload.membershipId||''}}));
+    return payload;
+  }
+
   function token() {
     return localStorage.getItem(TOKEN_KEY) || '';
   }
@@ -110,6 +142,8 @@
 
   window.PlatformCloudSession = {
     open,
+    memberships,
+    switchSchool,
     token,
     expiresAt,
     userId,

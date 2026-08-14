@@ -79,7 +79,22 @@
     try{localStorage.removeItem('manual_docking_workspace_state_v1');localStorage.removeItem('manual_docking_focus_mode_v1')}catch(e){}
   }
 
+  function isSystemAdminContext(){
+    try{
+      var qp=new URLSearchParams(location.search||'');
+      if(qp.get('systemAdmin')==='1'||qp.get('systemAdminReturn')==='1') return true;
+      if(qp.get('returnHome')&&/index\.html/i.test(qp.get('returnHome'))) return true;
+      if(sessionStorage.getItem('system_admin_context')==='1'||sessionStorage.getItem('system_admin_verified')==='true') return true;
+    }catch(e){}
+    return false;
+  }
+  function systemAdminHome(){
+    try{var qp=new URLSearchParams(location.search||'');var r=qp.get('returnHome');if(r&&/index\.html/i.test(r))return r;}catch(e){}
+    return 'index.html?systemAdminReturn=1';
+  }
+
   function roleRoot(){
+    if(isSystemAdminContext()) return systemAdminHome();
     try{
       var qp=new URLSearchParams(location.search||'');
       var rt=qp.get('return_to')||qp.get('returnTo')||'';
@@ -121,7 +136,21 @@
     if(!host) return;
     var home=document.createElement('a');home.id='uwHomeHeader';home.className='uw-session-btn home';home.href=roleRoot();home.innerHTML='🏠 <span>الرئيسية</span>';
     var exit=document.createElement('button');exit.id='uwExitHeader';exit.type='button';exit.className='uw-session-btn exit';exit.innerHTML='⏻ <span>الخروج</span>';
-    exit.addEventListener('click',function(){
+    exit.addEventListener('click',async function(){
+      if(isSystemAdminContext()){
+        try{
+          var sb=window.SmartSchoolSupabase&&window.SmartSchoolSupabase.getClient&&window.SmartSchoolSupabase.getClient();
+          if(sb&&sb.auth&&sb.auth.signOut) await sb.auth.signOut();
+        }catch(e){}
+        try{
+          sessionStorage.removeItem('system_admin_context');
+          sessionStorage.removeItem('system_admin_verified');
+          localStorage.removeItem('is_admin_session');
+          localStorage.removeItem('admin_verified');
+        }catch(e){}
+        location.replace('index.html');
+        return;
+      }
       try{ if(window.PlatformCloudSession&&typeof window.PlatformCloudSession.clear==='function') window.PlatformCloudSession.clear(); }catch(e){}
       try{
         ['smart_school_active_school_id','smart_school_active_membership_id','smart_school_active_role','active_school_id','active_school_name','current_school_id','current_school_name','currentRole','user_role']

@@ -115,6 +115,7 @@ if(mode==='supervisor'){renderSupervisorPortal()}else{document.getElementById('s
 <script src="internal-messaging.js"></script>
 
 <script defer src="unified_workspace.js"></script>
+<script defer src="school_navigation_guard.js"></script>
 
 <!-- Agent Core V2: school/role/year scoped -->
 <script src="agent-role-profiles.js"></script>
@@ -129,7 +130,19 @@ if(mode==='supervisor'){renderSupervisorPortal()}else{document.getElementById('s
   if(document.getElementById('schoolAgentVisibleLauncher'))return;
   var b=document.createElement('button');b.id='schoolAgentVisibleLauncher';b.type='button';b.setAttribute('aria-label','فتح وكيل المدرسة الذكي');
   b.innerHTML='<span class="sai-orb">✦</span><span><b>الوكيل الذكي</b><small>اسأل · حلّل · أنشئ مسودة</small></span>';
-  b.onclick=function(){if(window.openSchoolAgentV2)window.openSchoolAgentV2();else if(window.openTopAiCenter)window.openTopAiCenter();else alert('جارٍ تحميل الوكيل الذكي، حاول مرة أخرى بعد لحظة.');};
+  b.onclick=function(){
+      var tries=0;
+      function go(){
+        tries++;
+        try{
+          if(window.openSchoolAgentV2){window.openSchoolAgentV2();return;}
+          if(window.openTopAiCenter){window.openTopAiCenter();return;}
+        }catch(err){console.error('[SchoolAgentLauncher]',err);}
+        if(tries<12){setTimeout(go,120);return;}
+        alert('تعذر فتح الوكيل الذكي. أعد تحميل الصفحة ثم حاول مرة أخرى.');
+      }
+      go();
+    };
   document.body.appendChild(b);
   if(!document.getElementById('school-agent-visible-launcher-style')){var st=document.createElement('style');st.id='school-agent-visible-launcher-style';st.textContent='#schoolAgentVisibleLauncher{position:fixed;left:22px;bottom:22px;z-index:2147481000;border:1px solid rgba(255,255,255,.65);background:linear-gradient(135deg,#073b4c,#0f766e);color:#fff;border-radius:18px;padding:10px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 16px 38px rgba(15,118,110,.28);font-family:inherit;cursor:pointer;direction:rtl;text-align:right}#schoolAgentVisibleLauncher .sai-orb{width:38px;height:38px;border-radius:13px;background:rgba(255,255,255,.16);display:grid;place-items:center;font-size:20px}#schoolAgentVisibleLauncher b{display:block;font-size:13px}#schoolAgentVisibleLauncher small{display:block;font-size:9px;opacity:.78;margin-top:2px}@media(max-width:700px){#schoolAgentVisibleLauncher{left:12px;bottom:12px;padding:9px}#schoolAgentVisibleLauncher small{display:none}}';document.head.appendChild(st);}
  }

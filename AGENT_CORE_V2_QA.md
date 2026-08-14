@@ -1,0 +1,100 @@
+# تقرير الاختبار النهائي — Agent Core V2
+
+- الاختبارات الناجحة: **89**
+- الاختبارات الفاشلة: **0**
+- صفحات HTML: **85**
+- الصفحات المدمج بها الوكيل: **80**
+- كتل JavaScript التنفيذية المفحوصة: **308**
+- أخطاء JavaScript: **0**
+
+## النتائج
+
+- ✅ required:agent-role-profiles.js
+- ✅ required:agent-section-adapters.js
+- ✅ required:agent-core-v2.js
+- ✅ required:openai-engine.js
+- ✅ required:top-ai-center.js
+- ✅ required:SUPABASE_AGENT_CORE_V2.sql
+- ✅ required:supabase/functions/platform-agent/index.ts
+- ✅ required:.github/workflows/deploy-supabase-functions.yml
+- ✅ node:agent-role-profiles.js
+- ✅ node:agent-section-adapters.js
+- ✅ node:agent-core-v2.js
+- ✅ node:openai-engine.js
+- ✅ node:top-ai-center.js
+- ✅ browser:no-openai-direct-endpoint
+- ✅ browser:no-api-key-storage
+- ✅ engine:no-set-key
+- ✅ context:schoolId
+- ✅ context:membershipId
+- ✅ context:role
+- ✅ context:academicYear
+- ✅ context:academicYearStatus
+- ✅ context:delegated
+- ✅ context:cloud-session-school-guard
+- ✅ context:archived-year-write-block
+- ✅ context:school-switch-listener
+- ✅ actions:proposeAction
+- ✅ actions:approveAction
+- ✅ actions:rejectAction
+- ✅ actions:fill_fields
+- ✅ actions:create_task_draft
+- ✅ actions:task-existing-service
+- ✅ actions:server-propose-only
+- ✅ cloud-action:memory_list
+- ✅ cloud-action:memory_add
+- ✅ cloud-action:memory_delete
+- ✅ cloud-action:history_messages
+- ✅ cloud-action:history
+- ✅ cloud:conversation-reopen
+- ✅ cloud:school-memory-role-restricted
+- ✅ role-profile:leadership
+- ✅ role-profile:agency
+- ✅ role-profile:performance
+- ✅ role-profile:student_advisor
+- ✅ role-profile:health_advisor
+- ✅ role-profile:activity_leader
+- ✅ role-profile:kindergarten_teacher
+- ✅ role-profile:administrative_employee
+- ✅ edge:role-tool-matrix
+- ✅ edge:own-row-filter
+- ✅ edge:school-query-scope
+- ✅ edge:service-session-validation
+- ✅ edge:server-openai-key
+- ✅ edge:responses-api
+- ✅ edge:store-false
+- ✅ sql:agent_conversations
+- ✅ sql:agent_messages
+- ✅ sql:agent_memories
+- ✅ sql:agent_audit_log
+- ✅ sql:rls
+- ✅ workflow:path
+- ✅ workflow:deploy
+- ✅ pages:integrated-count — 80
+- ✅ pages:no-integration-errors — []
+- ✅ main-role-agent:manager.html
+- ✅ main-role-multischool:manager.html
+- ✅ main-role-agent:agent.html
+- ✅ main-role-multischool:agent.html
+- ✅ main-role-agent:teacher.html
+- ✅ main-role-multischool:teacher.html
+- ✅ main-role-agent:student_advisor.html
+- ✅ main-role-multischool:student_advisor.html
+- ✅ main-role-agent:health_advisor.html
+- ✅ main-role-multischool:health_advisor.html
+- ✅ main-role-agent:activity_leader.html
+- ✅ main-role-multischool:activity_leader.html
+- ✅ main-role-agent:kindergarten_teacher.html
+- ✅ main-role-multischool:kindergarten_teacher.html
+- ✅ main-role-agent:administrative_employee_portal.html
+- ✅ main-role-multischool:administrative_employee_portal.html
+- ✅ regression:kg-no-assessments-tab
+- ✅ regression:kg-no-visible-assessments
+- ✅ regression:discipline-edit
+- ✅ regression:discipline-delete
+- ✅ regression:discipline-landscape
+- ✅ regression:health-folder-number
+- ✅ regression:annual-year-page
+- ✅ inline-js:count — 308
+- ✅ inline-js:no-failures — []
+- ✅ html:no-agent-code-visible — []

@@ -40,7 +40,16 @@ function history(){
 }
 function audit(){const rows=JSON.parse(localStorage.getItem('school_agent_v2_audit')||'[]').slice(0,100),body=$('#av2Body');body.innerHTML=`<div class="av2-card"><h4>سجل الأمان والتدقيق</h4><p>يعرض العمليات الأخيرة للوكيل محليًا. العمليات السحابية تُسجل كذلك في جدول تدقيق الوكيل عند تفعيل قاعدة البيانات.</p></div><div class="av2-list" style="margin-top:12px">${rows.map(x=>`<div class="av2-item"><b>${esc(x.event)}</b><div class="meta">${esc(x.at)} · ${esc(x.schoolId)} · ${esc(x.role)}</div></div>`).join('')}</div>`}
 function render(tab){setActive(tab);const titles={brief:'الموجز الذكي',chat:'الوكيل المدرسي',page:'تحليل الصفحة الحالية',search:'بحث المدرسة',file:'تحليل ملف',actions:'الإجراءات الآمنة',memory:'الذاكرة المؤسسية',history:'سجل المحادثات',audit:'سجل الأمان'};$('#av2Title').textContent=titles[tab]||'School Agent V2';if(tab==='brief')brief();else if(tab==='chat')chat();else if(tab==='page')pageAnalysis();else if(tab==='search')search();else if(tab==='file')fileMode();else if(tab==='actions')actions();else if(tab==='memory')memory();else if(tab==='history')history();else audit()}
-function open(){if(!ready())return alert('نواة الوكيل ما زالت قيد التحميل. أعد المحاولة بعد لحظة.');make();$('#av2Context').innerHTML=contextHtml();$('#agentV2Modal').classList.add('open');render('brief');AgentCoreV2.audit('ui.open',{page:location.pathname})}
+function open(){
+ try{
+   if(!ready()){boot();return alert('الوكيل الذكي ما زال قيد التحميل. انتظر لحظة ثم أعد المحاولة.');}
+   make();
+   const modal=$('#agentV2Modal'); if(!modal) throw new Error('تعذر إنشاء نافذة الوكيل');
+   const ctx=$('#av2Context'); if(ctx)ctx.innerHTML=contextHtml();
+   modal.classList.add('open'); render('brief');
+   try{AgentCoreV2.audit('ui.open',{page:location.pathname})}catch(_){}
+ }catch(e){console.error('[AgentV2 open]',e);alert('تعذر فتح الوكيل الذكي: '+(e?.message||e));}
+}
 function close(){$('#agentV2Modal')?.classList.remove('open')}
 function boot(){if(!ready()){setTimeout(boot,80);return}make()}
 window.addEventListener('smart-school-context-changing',()=>{activeConv='';close()});window.addEventListener('smart-school-context-changed',()=>{activeConv='';const c=$('#av2Context');if(c&&ready())c.innerHTML=contextHtml()});if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();window.openTopAiCenter=open;window.openSchoolAgentV2=open;

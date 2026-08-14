@@ -95,7 +95,18 @@
     if(/kindergarten_teacher/.test(FILE)) return 'kindergarten_teacher.html';
     if(/teacher/.test(FILE)) return 'teacher.html';
     if(/administrative_employee|admin_employee/.test(FILE)) return 'administrative_employee_portal.html';
-    return 'index.html';
+    try{
+      var ar=String(localStorage.getItem('smart_school_active_role')||localStorage.getItem('platform_file_session_role')||'').toLowerCase();
+      if(/leadership|manager|principal|مدير/.test(ar)) return 'manager.html';
+      if(/agency|agent|wakil|deputy|وكيل/.test(ar)) return 'agent.html';
+      if(/student_advisor|counselor|موجه/.test(ar)) return 'student_advisor.html';
+      if(/health_advisor|health|صحي/.test(ar)) return 'health_advisor.html';
+      if(/kindergarten|رياض/.test(ar)) return 'kindergarten_teacher.html';
+      if(/activity|نشاط/.test(ar)) return 'activity_leader.html';
+      if(/administrative|admin_staff|إداري/.test(ar)) return 'administrative_employee_portal.html';
+      if(/teacher|performance|معلم/.test(ar)) return 'teacher.html';
+    }catch(e){}
+    return 'school-login.html';
   }
 
   function addHeaderActions(){
@@ -111,11 +122,12 @@
     var home=document.createElement('a');home.id='uwHomeHeader';home.className='uw-session-btn home';home.href=roleRoot();home.innerHTML='🏠 <span>الرئيسية</span>';
     var exit=document.createElement('button');exit.id='uwExitHeader';exit.type='button';exit.className='uw-session-btn exit';exit.innerHTML='⏻ <span>الخروج</span>';
     exit.addEventListener('click',function(){
-      var old=document.getElementById('ssExit');
-      if(old){old.click();return}
-      if(typeof window.openExitModal==='function'){window.openExitModal();return}
-      if(typeof window.exitApp==='function'){window.exitApp();return}
-      location.href='index.html';
+      try{ if(window.PlatformCloudSession&&typeof window.PlatformCloudSession.clear==='function') window.PlatformCloudSession.clear(); }catch(e){}
+      try{
+        ['smart_school_active_school_id','smart_school_active_membership_id','smart_school_active_role','active_school_id','active_school_name','current_school_id','current_school_name','currentRole','user_role']
+          .forEach(function(k){localStorage.removeItem(k);sessionStorage.removeItem(k);});
+      }catch(e){}
+      location.replace('school-login.html');
     });
     if(settings){host.insertBefore(home,settings);host.insertBefore(exit,settings)} else {host.appendChild(home);host.appendChild(exit)}
   }

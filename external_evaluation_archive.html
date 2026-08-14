@@ -402,32 +402,89 @@ function openSmartCardForVisit(){const v=getVisitorVisit()||getCurrentVisit();if
 function renderVisitStatusPanel(){const box=document.getElementById('visitStatusPanel');if(!box)return;const visitor=getVisitorVisit();const v=visitor||getCurrentVisit();const invalid=v.status==='invalid';const closed=v.status==='closed';const active=v.status==='active';const cls=invalid?'status-closed':closed?'status-closed':active?'status-active':'status-draft';const label=invalid?'رابط غير صالح':closed?'مغلقة':active?'نشطة':'مسودة';const url=(!invalid&&!closed)?getVisitUrl(v):'';const qr=url?'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data='+encodeURIComponent(url):'';box.innerHTML=`<div class="visit-control-card"><h3>تشغيل الزيارة</h3><span class="status-pill ${cls}">● ${label}</span><p class="sub">رقم الزيارة: <b>${esc(v.number||'—')}</b></p>${visitor?'<p class="sub">أنت الآن في وضع الفريق الزائر؛ المحتوى للقراءة فقط.</p>':'<div class="portal-actions"><button class="btn" onclick="startCurrentVisit()">بدء الزيارة</button><button class="btn red" onclick="closeCurrentVisit()">إغلاق الزيارة</button><button class="btn gray" onclick="createNewVisit()">إنشاء زيارة جديدة</button><button class="btn gold" onclick="regenerateVisitLink()">تحديث الرابط وQR</button><button class="btn blue" onclick="setPlatformBaseUrl()">ضبط رابط المنصة</button></div><p class="sub">إنشاء زيارة جديدة يغلق الزيارة السابقة ويؤرشفها تلقائيًا. تحديث الرابط يغير رمز الدخول لنفس الزيارة فقط.</p>'}</div><div class="visit-code-card"><h3>رابط وQR دخول الفريق</h3>${url?`<img class="qr-img" src="${qr}" alt="QR"><div class="visit-link-box">${esc(url)}</div><div class="portal-actions" style="justify-content:center"><button class="btn gray" onclick="copyVisitLink()">نسخ الرابط</button><button class="btn blue" onclick="openSmartCardForVisit()">فتح بطاقة التقييم</button></div>`:'<p class="sub">لا يوجد رابط صالح لهذه الزيارة. يجب أن تكون الزيارة نشطة وغير مغلقة.</p>'}</div>`}
 function activateTab(tabId){document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));const b=document.querySelector(`.tab[data-tab="${tabId}"]`);if(b)b.classList.add('active');const p=document.getElementById(tabId);if(p)p.classList.add('active')}
 const visitAccessSources=[
-  {role:'قسم المدير',icon:'🏫',items:[
-    ['manager_self_eval','سجلات متابعة التقويم الذاتي'],
-    ['manager_self_archive','أرشيف التقويم الذاتي'],
-    ['manager_library','مكتبة القسم'],
-    ['manager_operational','الخطة التشغيلية'],
-    ['manager_indicators','بوابة التميز والمؤشرات'],
-    ['manager_smart_card','بطاقة فريق التقويم الخارجي الذكية'],
-    ['institutional_evidence_portfolio','محفظة الشواهد المؤسسية المعتمدة']
+  {role:'قسم المدير/المديرة',icon:'🏫',items:[
+    ['manager_records','سجلات مدير/مديرة المدرسة','manager_records.html'],
+    ['manager_performance','تقييم الأداء الوظيفي','performance_evaluation.html'],
+    ['manager_readiness','جاهزية المدرسة','school_readiness.html'],
+    ['manager_discipline','الانضباط الوظيفي للمنسوبين','staff_discipline.html'],
+    ['manager_information','مركز المعلومات المدرسية','school_information_center.html'],
+    ['manager_command','مركز الإدارة المدرسية الذكي','school_command_center.html'],
+    ['manager_dashboard','لوحة متابعة الأداء المدرسي','school-performance-dashboard.html'],
+    ['manager_exams','إدارة أعمال الاختبارات','manager_exams_management.html'],
+    ['manager_year_archive','إدارة العام الدراسي والأرشفة السنوية','academic_year_management.html'],
+    ['manager_operational','الخطة التشغيلية ومؤشرات التنفيذ','manager.html'],
+    ['manager_self_eval','سجلات متابعة التقويم الذاتي','manager.html'],
+    ['manager_self_archive','أرشيف التقويم الذاتي','manager.html'],
+    ['manager_library','مكتبة قسم المدير','manager.html'],
+    ['manager_indicators','بوابة التميز والمؤشرات','manager.html'],
+    ['manager_smart_card','بطاقة فريق التقويم الخارجي الذكية','external_evaluation_archive.html'],
+    ['institutional_evidence_portfolio','محفظة الشواهد المؤسسية المعتمدة','external_evaluation_archive.html']
   ]},
-  {role:'قسم الوكيل',icon:'🧭',items:[
-    ['agent_teacher_followup','متابعة أعمال المعلمين'],
-    ['agent_weekly_archive','أرشيف الأسابيع'],
-    ['agent_attendance','الحضور والانضباط'],
-    ['agent_reports','تقارير الوكيل وشواهده']
+  {role:'قسم الوكيل/الوكيلة',icon:'🧭',items:[
+    ['agent_records','سجلات الوكيل التفاعلية','wakil-records.html'],
+    ['agent_teacher_followup','متابعة أعمال المعلمين الأسبوعية','deputy_weekly_teacher_followup.html'],
+    ['agent_exams','إدارة أعمال الاختبارات','agent_exams_management.html'],
+    ['agent_attendance','الحضور والانضباط والمتابعة','agent.html'],
+    ['agent_weekly_archive','أرشيف الأعمال والأسابيع','agent.html'],
+    ['agent_reports','تقارير الأداء الوظيفي وشواهد الوكيل','agent.html'],
+    ['agent_performance_archive','أرشيف مجالات الأداء الوظيفي','agent.html'],
+    ['agent_meetings','الاجتماعات ومحاضرها','meeting_minutes_template.html']
   ]},
   {role:'قسم الموجه/الموجهة الطلابية',icon:'🧩',items:[
-    ['advisor_analytics','تحليل بيانات الموجه'],
-    ['advisor_risk','خطط التعثر والمتابعة'],
-    ['advisor_cases','ملفات الحالات وفق الصلاحية'],
-    ['advisor_programs','البرامج العلاجية والإرشادية']
+    ['advisor_records','سجلات الموجه الطلابي','student_advisor_records.html'],
+    ['advisor_analytics','تحليل بيانات الطلاب','student_followup_analysis_updated.html'],
+    ['advisor_risk','خطط التعثر والمتابعة','student_advisor.html'],
+    ['advisor_cases','ملفات الحالات وفق الصلاحية','student_advisor.html'],
+    ['advisor_programs','البرامج الإرشادية وقياس الأثر','student_advisor.html'],
+    ['advisor_reports','تقارير الأداء الوظيفي','student_advisor.html'],
+    ['advisor_archive','أرشيف مجالات الأداء الوظيفي','student_advisor.html'],
+    ['advisor_meetings','الاجتماعات والمحاضر','meeting_minutes_template.html']
   ]},
-  {role:'قسم المعلم',icon:'📚',items:[
-    ['teacher_record','سجل المعلم الشامل'],
-    ['teacher_weekly_evidence','الأعمال الأسبوعية والشواهد'],
-    ['teacher_grades','تحليلات الدرجات'],
-    ['teacher_improvement','خطط التحسين الصفية']
+  {role:'قسم المعلم/المعلمة',icon:'📚',items:[
+    ['teacher_record','سجل المعلم الشامل','teacher_comprehensive_record.html'],
+    ['teacher_weekly_evidence','الأعمال الأسبوعية والشواهد','teacher_weekly_tasks.html'],
+    ['teacher_attendance','سجلات الحضور والمتابعة','teacher_records_attendance.html'],
+    ['teacher_participation','سجلات المشاركة','teacher_records_participation.html'],
+    ['teacher_student_work','سجلات أعمال الطلاب','teacher_records_student_work.html'],
+    ['teacher_reports','تقارير الأداء الوظيفي','teacher.html'],
+    ['teacher_archive','أرشيف مجالات الأداء الوظيفي','teacher.html'],
+    ['teacher_improvement','خطط التحسين المهنية','teacher.html'],
+    ['teacher_meetings','الاجتماعات والمحاضر','meeting_minutes_template.html']
+  ]},
+  {role:'قسم الموجه/الموجهة الصحي',icon:'🩺',items:[
+    ['health_record','السجل الصحي الشامل','health_advisor_comprehensive_record.html'],
+    ['health_weekly','الأعمال الأسبوعية والشواهد','health_advisor_weekly_tasks.html'],
+    ['health_attendance','سجلات الحضور والمتابعة','health_advisor_records_attendance.html'],
+    ['health_participation','سجلات المشاركة والبرامج','health_advisor_records_participation.html'],
+    ['health_student_work','سجلات الأعمال والشواهد','health_advisor_records_student_work.html'],
+    ['health_reports','تقارير الأداء الوظيفي','health_advisor.html'],
+    ['health_archive','أرشيف مجالات الأداء الوظيفي','health_advisor.html'],
+    ['health_meetings','الاجتماعات والمحاضر','meeting_minutes_template.html']
+  ]},
+  {role:'قسم معلمة رياض الأطفال',icon:'🧸',items:[
+    ['kg_record','السجل الشامل لمعلمة رياض الأطفال','kindergarten_teacher_comprehensive_record.html'],
+    ['kg_weekly','الأعمال الأسبوعية والشواهد','kindergarten_teacher_weekly_tasks.html'],
+    ['kg_attendance','سجلات الحضور والمتابعة','kindergarten_teacher_records_attendance.html'],
+    ['kg_participation','سجلات المشاركة','kindergarten_teacher_records_participation.html'],
+    ['kg_student_work','سجلات أعمال الأطفال والشواهد','kindergarten_teacher_records_student_work.html'],
+    ['kg_reports','تقارير الأداء الوظيفي','kindergarten_teacher.html'],
+    ['kg_archive','أرشيف مجالات الأداء الوظيفي','kindergarten_teacher.html'],
+    ['kg_meetings','الاجتماعات والمحاضر','meeting_minutes_template.html']
+  ]},
+  {role:'قسم رائد/رائدة النشاط',icon:'🏅',items:[
+    ['activity_records','سجلات النشاط المدرسي','activity_leader_records.html'],
+    ['activity_programs','البرامج والمبادرات والأنشطة','activity_leader.html'],
+    ['activity_evidence','الشواهد وقياس الأثر','activity_leader.html'],
+    ['activity_reports','تقارير الأداء الوظيفي','activity_leader.html'],
+    ['activity_archive','أرشيف مجالات الأداء الوظيفي','activity_leader.html'],
+    ['activity_meetings','الاجتماعات والمحاضر','meeting_minutes_template.html']
+  ]},
+  {role:'قسم الموظف/الموظفة الإداري',icon:'🗂️',items:[
+    ['admin_plan','خطة الأداء الوظيفي','administrative_employee_plan.html'],
+    ['admin_execution','تنفيذ خطة الأداء','administrative_employee_execution.html'],
+    ['admin_improvement','خطة التحسين والتطوير','administrative_employee_improvement.html'],
+    ['admin_library','مركز الأعمال المفوضة والمكتبة','administrative_employee_library.html'],
+    ['admin_reports','التقارير والشواهد الإدارية','administrative_employee_portal.html']
   ]}
 ];
 function getVisitAccess(){data.visitAccess=data.visitAccess||{};return data.visitAccess;}
@@ -448,11 +505,22 @@ function renderVisitorPortal(){
   if(v.status==='closed'){box.innerHTML='<div class="portal-card disabled" style="grid-column:1/-1;text-align:center"><h3>الزيارة مغلقة</h3><p class="sub">تم إغلاق هذه الزيارة وتعطيل الرابط والرمز الخاص بها.</p></div>';return;}
   const access=visitor?(v.access||{}):getVisitAccess();
   const cards=[];
-  visitAccessSources.forEach(group=>group.items.forEach(([key,label])=>{if(access[key])cards.push({role:group.role,icon:group.icon,label,key});}));
+  visitAccessSources.forEach(group=>group.items.forEach(([key,label,file])=>{if(access[key])cards.push({role:group.role,icon:group.icon,label,key,file:file||''});}));
   if(!cards.length){box.innerHTML='<div class="portal-card" style="grid-column:1/-1;text-align:center"><h3>لم يتم اختيار عناصر للعرض بعد</h3><p class="sub">انتقل إلى إعداد الزيارة واختر الأقسام والشواهد المطلوب إظهارها للفريق الزائر.</p></div>';return;}
-  box.innerHTML=cards.map(c=>`<article class="portal-card"><h3>${c.icon} ${esc(c.label)}</h3><p class="sub">المصدر: ${esc(c.role)} — الصلاحية: عرض فقط</p><button class="btn gray" onclick="previewReadOnlySection('${c.key}','${esc(c.label)}')">عرض الشواهد</button></article>`).join('')+`<article class="portal-card"><h3>📝 بطاقة التقييم الذكية</h3><p class="sub">مرتبطة بالزيارة رقم ${esc(v.number||'—')}.</p><button class="btn blue" onclick="openSmartCardForVisit()">فتح بطاقة التقييم</button></article>`;
+  box.innerHTML=cards.map(c=>`<article class="portal-card"><h3>${c.icon} ${esc(c.label)}</h3><p class="sub">المصدر: ${esc(c.role)} — الصلاحية: عرض فقط</p><button class="btn gray" onclick="previewReadOnlySection('${c.key}','${esc(c.label)}','${c.file||''}')">فتح للعرض</button></article>`).join('')+`<article class="portal-card"><h3>📝 بطاقة التقييم الذكية</h3><p class="sub">مرتبطة بالزيارة رقم ${esc(v.number||'—')}.</p><button class="btn blue" onclick="openSmartCardForVisit()">فتح بطاقة التقييم</button></article>`;
 }
-function previewReadOnlySection(key,label){if(key==='institutional_evidence_portfolio'){activateTab('evidence');const st=document.getElementById('evidenceStatusFilter');if(st)st.value='approved';renderInstitutionalEvidence();return}alert('سيتم فتح '+label+' للفريق الزائر بصلاحية قراءة فقط عند الربط النهائي داخل المنصة.');}
+function previewReadOnlySection(key,label,file){
+  if(key==='institutional_evidence_portfolio'){activateTab('evidence');const st=document.getElementById('evidenceStatusFilter');if(st)st.value='approved';renderInstitutionalEvidence();return}
+  if(key==='manager_smart_card'){openSmartCardForVisit();return}
+  if(!file){alert('لا يوجد مسار عرض مرتبط بهذا العنصر.');return}
+  const v=getVisitorVisit()||getCurrentVisit();
+  const qs=new URLSearchParams();
+  qs.set('readonly','1');qs.set('mode','external_evaluation_readonly');qs.set('externalVisit','1');
+  qs.set('schoolId',getActiveSchoolId()||'');
+  if(v&&v.token){qs.set('visit_token',v.token);qs.set('visitToken',v.token)}
+  qs.set('return_to','external_evaluation_archive.html');
+  window.open(file+'?'+qs.toString(),'_blank','noopener');
+}
 
 
 async function testExternalEvaluationStorage(){

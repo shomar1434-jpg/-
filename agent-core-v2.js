@@ -4,7 +4,18 @@ if(window.__SCHOOL_AGENT_CORE_V2__)return;window.__SCHOOL_AGENT_CORE_V2__=true;
 const VERSION='2.0.0';
 const LS={conv:'school_agent_v2_conversations',memory:'school_agent_v2_memory',audit:'school_agent_v2_audit',actions:'school_agent_v2_actions'};
 const sensitive=/password|token|secret|anonkey|service_role|api[_-]?key/i;
-function parse(v,d){try{return JSON.parse(v||'')}catch(e){return d}}
+function parse(v,d){
+  function fallback(){
+    if(typeof d==='string'){
+      try{return JSON.parse(d)}catch(_){return d}
+    }
+    return d
+  }
+  try{
+    if(v===null||v===undefined||v==='')return fallback();
+    return typeof v==='string'?JSON.parse(v):v;
+  }catch(e){return fallback()}
+}
 function clean(v){return String(v==null?'':v).replace(/\s+/g,' ').trim()}
 function get(keys){for(const k of keys){try{const v=localStorage.getItem(k)||sessionStorage.getItem(k);if(v)return v}catch(e){}}return''}
 function uuid(){return crypto.randomUUID?crypto.randomUUID():'a'+Date.now()+Math.random().toString(36).slice(2)}
@@ -12,7 +23,7 @@ function file(){return(location.pathname.split('/').pop()||'index.html').toLower
 const roots={manager:'leadership',agent:'agency',teacher:'performance',student_advisor:'student_advisor',health_advisor:'health_advisor',activity_leader:'activity_leader',kindergarten_teacher:'kindergarten_teacher',administrative_employee:'administrative_employee'};
 function inferRoleFromFile(){const f=file();for(const k of Object.keys(roots))if(f.indexOf(k)>-1)return roots[k];if(/wakil|deputy/.test(f))return'agency';return''}
 function activeYear(){return clean(get(['smartSchoolActiveAcademicYear','platformAcademicYear','academic_year','school_year']))||'1448'}
-function yearStatus(y=activeYear()){try{const rows=parse(localStorage.getItem('smartSchoolAcademicYearsV1'),'[]');const r=rows.find(x=>String(x.year)===String(y));return r?.status||'active'}catch(e){return'active'}}
+function yearStatus(y=activeYear()){try{const rows=parse(localStorage.getItem('smartSchoolAcademicYearsV1'),[]);const r=rows.find(x=>String(x.year)===String(y));return r?.status||'active'}catch(e){return'active'}}
 function context(){
  const rawRole=get(['smart_school_active_role','platform_file_session_role','currentRole','user_role','role'])||inferRoleFromFile();
  const role=(window.AgentRoleProfiles?AgentRoleProfiles.normalize(rawRole):rawRole)||'performance';
@@ -34,13 +45,13 @@ function localRecords(){
  keys.forEach(k=>{try{const v=localStorage.getItem(k);if(v)out[k]=parse(v,v)}catch(e){}});try{out.__section=window.AgentSectionAdapters?.collect?.()||{}}catch(e){}return out;
 }
 function scopedKey(base,c=context()){return base+':'+(c.schoolId||'none')+':'+(c.academicYear||'none')+':'+(c.userId||'anon')}
-function audit(event,detail){const c=context(),row={id:uuid(),event,detail:detail||{},schoolId:c.schoolId,userId:c.userId,role:c.role,academicYear:c.academicYear,at:new Date().toISOString()};let rows=parse(localStorage.getItem(LS.audit),'[]');rows.unshift(row);localStorage.setItem(LS.audit,JSON.stringify(rows.slice(0,400)));return row}
-function memory(){const c=context();return parse(localStorage.getItem(scopedKey(LS.memory,c)),'[]')}
+function audit(event,detail){const c=context(),row={id:uuid(),event,detail:detail||{},schoolId:c.schoolId,userId:c.userId,role:c.role,academicYear:c.academicYear,at:new Date().toISOString()};let rows=parse(localStorage.getItem(LS.audit),[]);if(!Array.isArray(rows))rows=[];rows.unshift(row);localStorage.setItem(LS.audit,JSON.stringify(rows.slice(0,400)));return row}
+function memory(){const c=context();const rows=parse(localStorage.getItem(scopedKey(LS.memory,c)),[]);return Array.isArray(rows)?rows:[]}
 function remember(text,tags){const c=assertContext(context()),rows=memory();rows.unshift({id:uuid(),text:clean(text).slice(0,4000),tags:tags||[],createdAt:new Date().toISOString(),schoolId:c.schoolId,academicYear:c.academicYear});localStorage.setItem(scopedKey(LS.memory,c),JSON.stringify(rows.slice(0,120)));audit('memory.add',{id:rows[0].id});return rows[0]}
 function forgetMemory(id){const c=context(),rows=memory().filter(x=>x.id!==id);localStorage.setItem(scopedKey(LS.memory,c),JSON.stringify(rows));audit('memory.delete',{id})}
-function conversations(){return parse(localStorage.getItem(scopedKey(LS.conv,context())),'[]')}
+function conversations(){const rows=parse(localStorage.getItem(scopedKey(LS.conv,context())),[]);return Array.isArray(rows)?rows:[]}
 function saveConversation(conv){const c=context(),rows=conversations().filter(x=>x.id!==conv.id);rows.unshift(conv);localStorage.setItem(scopedKey(LS.conv,c),JSON.stringify(rows.slice(0,60)));return conv}
-function proposedActions(){return parse(localStorage.getItem(scopedKey(LS.actions,context())),'[]')}
+function proposedActions(){const rows=parse(localStorage.getItem(scopedKey(LS.actions,context())),[]);return Array.isArray(rows)?rows:[]}
 function riskFor(type){if(/delete|remove|approve|publish|send|archive_year|close_year|permission|role|school_switch/i.test(type))return'red';if(/create|update|fill|save|assign|draft/i.test(type))return'yellow';return'green'}
 function proposeAction(type,payload,label){const c=assertContext(context()),a={id:uuid(),type,payload:payload||{},label:label||type,risk:riskFor(type),status:'pending',schoolId:c.schoolId,userId:c.userId,role:c.role,academicYear:c.academicYear,createdAt:new Date().toISOString()};const rows=proposedActions();rows.unshift(a);localStorage.setItem(scopedKey(LS.actions,c),JSON.stringify(rows.slice(0,100)));audit('action.proposed',{id:a.id,type:a.type,risk:a.risk});return a}
 async function executeLocalAction(a){const c=assertContext(context());if(String(a.schoolId)!==String(c.schoolId)||String(a.academicYear)!==String(c.academicYear)||String(a.role)!==String(c.role))throw new Error('لا يمكن تنفيذ إجراء أُنشئ في سياق مدرسة/دور/عام مختلف.');
@@ -69,7 +80,7 @@ async function rememberCloud(text,tags,scope){const d=await api('memory_add',{te
 async function deleteCloudMemory(id){const d=await api('memory_delete',{id});forgetMemory(id);return d}
 async function cloudHistory(){const d=await api('history',{});return d.conversations||[]}
 async function cloudConversation(id){const d=await api('history_messages',{conversationId:id});return d}
-function exportContext(){return{context:context(),profile:window.AgentRoleProfiles?.get(context().role)||{},page:{text:visiblePage(),fields:fields()},memory:memory(),actions:proposedActions(),audit:parse(localStorage.getItem(LS.audit),'[]').slice(0,80)}}
+function exportContext(){return{context:context(),profile:window.AgentRoleProfiles?.get(context().role)||{},page:{text:visiblePage(),fields:fields()},memory:memory(),actions:proposedActions(),audit:(()=>{const a=parse(localStorage.getItem(LS.audit),[]);return Array.isArray(a)?a.slice(0,80):[]})()}}
 window.AgentCoreV2={VERSION,context,assertContext,fields,visiblePage,api,chat,brief,searchSchool,analyzeCurrent,analyzeFile,memory,remember,forgetMemory,proactiveSuggestions,cloudMemory,rememberCloud,deleteCloudMemory,cloudHistory,cloudConversation,conversations,saveConversation,proposedActions,proposeAction,approveAction,rejectAction,audit,exportContext};
 window.dispatchEvent(new CustomEvent('agent-core-v2-ready',{detail:{version:VERSION}}));
 })();

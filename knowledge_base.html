@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>القاعدة المعرفية | مدير النظام</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-bridge.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js"></script>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:"Cairo",Tahoma,Arial,sans-serif;background:#f3f8f7;color:#17342f;min-height:100vh}
+header{height:74px;background:#fff;border-bottom:1px solid #dcebe8;display:flex;align-items:center;justify-content:space-between;padding:0 28px;box-shadow:0 8px 26px rgba(15,118,110,.07);position:sticky;top:0;z-index:10}
+.brand{display:flex;align-items:center;gap:12px}.icon{width:46px;height:46px;border-radius:15px;display:grid;place-items:center;background:linear-gradient(135deg,#0f766e,#0891b2);color:#fff;font-size:23px}
+h1{font-size:20px;margin:0}.sub,.muted{font-size:12px;color:#71817e}.back,.btn{border:0;border-radius:12px;padding:10px 15px;font-weight:800;cursor:pointer;font-family:inherit}.back{border:1px solid #b8d9d4;background:#fff;color:#0f766e}.btn{background:#0f766e;color:#fff}.btn.secondary{background:#e9f5f2;color:#0f766e}.btn.danger{background:#fff0f0;color:#b42318}.btn:disabled{opacity:.5;cursor:not-allowed}
+main{max-width:1280px;margin:0 auto;padding:28px 22px 60px}.hero{background:linear-gradient(135deg,#073b4c,#0f766e);color:#fff;border-radius:26px;padding:26px 30px;display:flex;justify-content:space-between;align-items:center;gap:20px;box-shadow:0 16px 40px rgba(15,118,110,.15)}.hero h2{margin:0 0 8px;font-size:26px}.hero p{margin:0;opacity:.82;line-height:1.8;max-width:780px}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;min-width:330px}.stat{background:#ffffff17;border:1px solid #ffffff24;border-radius:16px;padding:13px;text-align:center}.stat b{font-size:22px;display:block}
+.grid{display:grid;grid-template-columns:430px 1fr;gap:18px;margin-top:18px}.card{background:#fff;border:1px solid #dbe9e6;border-radius:22px;padding:20px;box-shadow:0 10px 30px rgba(15,118,110,.06)}.card h3{margin:0 0 14px;font-size:18px}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.full{grid-column:1/-1}label{display:block;font-size:12px;font-weight:800;margin-bottom:5px}input,select,textarea{width:100%;border:1px solid #cddfdb;border-radius:11px;padding:10px 11px;font:inherit;background:#fbfefd}textarea{min-height:90px}.upload{border:2px dashed #9ccbc4;border-radius:16px;padding:16px;text-align:center;background:#f6fbfa}.progress{height:9px;background:#e7efed;border-radius:99px;overflow:hidden;margin-top:10px}.progress>i{display:block;width:0;height:100%;background:linear-gradient(90deg,#0f766e,#06b6d4);transition:.25s}.status{font-size:12px;color:#526762;line-height:1.7;margin-top:8px}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}.toolbar input{flex:1;min-width:220px}.docs{display:grid;gap:10px}.doc{border:1px solid #deebe8;border-radius:16px;padding:14px;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center}.doc h4{margin:0 0 5px;font-size:15px}.meta{font-size:11px;color:#71817e;line-height:1.7}.pill{display:inline-block;border-radius:99px;padding:4px 8px;font-size:10px;font-weight:800;background:#e7f6f2;color:#0f766e;margin-left:4px}.pill.archived{background:#eef2f6;color:#52606d}.pill.draft{background:#fff4d8;color:#8b5c00}.pill.superseded{background:#fff0f0;color:#a43a32}.doc-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.search-results{display:grid;gap:8px;margin-top:12px}.result{border-right:4px solid #0f766e;background:#f8fbfa;border-radius:12px;padding:12px}.result b{font-size:13px}.result p{font-size:12px;line-height:1.8;margin:6px 0;color:#40534f}.empty{text-align:center;padding:40px;color:#84918e}.security{padding:12px;border-radius:13px;background:#f0f9f7;color:#0c625b;font-size:12px;line-height:1.8;margin-top:12px}
+@media(max-width:950px){.grid{grid-template-columns:1fr}.hero{align-items:flex-start;flex-direction:column}.stats{width:100%;min-width:0}}@media(max-width:600px){header{padding:0 12px}.form-grid{grid-template-columns:1fr}.stats{grid-template-columns:1fr}.doc{grid-template-columns:1fr}.hero{border-radius:0;margin:0 -22px}.brand .sub{display:none}}
+</style>
+</head><body>
+<header><div class="brand"><div class="icon">📚</div><div><h1>القاعدة المعرفية</h1><div class="sub">الأدلة التنظيمية والإجرائية المركزية للوكيل الذكي</div></div></div><button class="back" onclick="location.href='index.html?systemAdminReturn=1'">← العودة إلى مدير النظام</button></header>
+<main>
+<section class="hero"><div><h2>المعرفة الرسمية للمنصة</h2><p>ارفع الدليل مرة واحدة. يستخرج النظام محتواه ويقسمه ويفهرسه دلاليًا، ثم يستطيع الوكيل الذكي في المدارس المستقلة الرجوع إليه عند الأسئلة التنظيمية والإجرائية مع إظهار اسم الدليل والصفحة.</p></div><div class="stats"><div class="stat"><b id="stDocs">0</b><span>دليل</span></div><div class="stat"><b id="stActive">0</b><span>ساري</span></div><div class="stat"><b id="stChunks">0</b><span>مقطع مفهرس</span></div></div></section>
+<div class="grid">
+<section class="card">
+<h3>رفع دليل جديد</h3>
+<form id="uploadForm"><div class="form-grid">
+<div class="full"><label>اسم الدليل</label><input id="title" required placeholder="مثال: الدليل التنظيمي لمدارس التعليم العام"></div>
+<div><label>المجال</label><select id="category"><option>الإدارة المدرسية</option><option>الشؤون التعليمية</option><option>شؤون الطلاب</option><option>الموارد البشرية</option><option>الانضباط والمواظبة</option><option>التقويم والاختبارات</option><option>الصحة المدرسية</option><option>النشاط الطلابي</option><option>رياض الأطفال</option><option>الأمن والسلامة</option><option>الأداء الوظيفي</option><option>الصلاحيات</option><option>عام</option></select></div>
+<div><label>الجهة المصدرة</label><input id="authority" value="وزارة التعليم"></div>
+<div><label>الإصدار</label><input id="version" placeholder="مثال: الإصدار 1448هـ"></div>
+<div><label>تاريخ الإصدار</label><input id="issueDate" type="date"></div>
+<div><label>تاريخ السريان</label><input id="effectiveDate" type="date"></div>
+<div><label>حالة النشر</label><select id="docStatus"><option value="active">ساري ومتاح للوكيل</option><option value="draft">مسودة غير متاحة للوكيل</option></select></div>
+<div class="full"><label>يحل محل دليل سابق (اختياري)</label><select id="replaces"><option value="">لا يوجد</option></select></div>
+<div class="full upload"><label>ملف الدليل PDF / DOCX / TXT</label><input id="file" type="file" accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" required><div class="muted" style="margin-top:8px">ملفات PDF تحافظ على رقم الصفحة في المراجع. ملفات Word وTXT تُفهرس دون رقم صفحة ثابت.</div></div>
+<div class="full"><button class="btn" id="uploadBtn" type="submit">رفع الدليل ومعالجته</button><div class="progress"><i id="bar"></i></div><div class="status" id="uploadStatus"></div></div>
+</div></form>
+<div class="security">🔒 رفع الأدلة وتعديلها وحذفها متاح لمدير النظام فقط. المدارس المستقلة لا تصل إلى إدارة هذه المكتبة؛ الوكيل يقرأ المقاطع السارية عبر الخادم فقط.</div>
+</section>
+
+<section>
+<div class="card">
+<div class="toolbar"><h3 style="margin:0;flex:1">الأدلة المرفوعة</h3><button class="btn secondary" onclick="loadDocs()">تحديث</button></div>
+<div id="docs" class="docs"><div class="empty">جارٍ تحميل الأدلة...</div></div>
+</div>
+<div class="card" style="margin-top:18px">
+<h3>اختبار البحث الدلالي</h3><div class="toolbar"><input id="testQuery" placeholder="اكتب سؤالًا تنظيميًا لاختبار ما سيجده الوكيل..."><select id="testCategory" style="max-width:220px"><option value="">كل المجالات</option></select><button class="btn" onclick="testSearch()">بحث</button></div><div id="searchResults" class="search-results"></div>
+</div>
+</section>
+</div>
+</main>
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+const sb=window.SmartSchoolSupabase?.getClient?.();
+let documents=[];
+const $=id=>document.getElementById(id), esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+function setProgress(n,msg){$('bar').style.width=Math.max(0,Math.min(100,n))+'%';$('uploadStatus').textContent=msg||''}
+async function invoke(action,data={}){if(!sb)throw new Error('Supabase غير جاهز');const r=await sb.functions.invoke('platform-knowledge',{body:{action,...data}});if(r.error)throw new Error(r.data?.error||r.error.message||'تعذر تنفيذ العملية');if(r.data?.error)throw new Error(r.data.error);return r.data}
+async function verifyAdmin(){if(!sb)throw new Error('تعذر تحميل Supabase');const sess=await sb.auth.getSession();if(!sess.data?.session){location.href='index.html';throw new Error('يلزم تسجيل دخول مدير النظام')};const v=await sb.functions.invoke('system-admin',{body:{action:'verify'}});if(v.error||!v.data?.ok){location.href='index.html';throw new Error('هذه الصفحة متاحة لمدير النظام فقط')}}
+function chunkText(text,pageStart,pageEnd){text=String(text||'').replace(/\s+/g,' ').trim();if(!text)return[];const out=[],target=1650,overlap=220;let pos=0;while(pos<text.length){let end=Math.min(text.length,pos+target);if(end<text.length){const cut=Math.max(text.lastIndexOf('。',end),text.lastIndexOf('.',end),text.lastIndexOf('؟',end),text.lastIndexOf('؛',end),text.lastIndexOf('،',end));if(cut>pos+900)end=cut+1}const content=text.slice(pos,end).trim();if(content)out.push({content,pageStart,pageEnd});if(end>=text.length)break;pos=Math.max(pos+1,end-overlap)}return out}
+async function extractFile(file){const name=file.name.toLowerCase();if(name.endsWith('.pdf')){const pdf=await pdfjsLib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;const chunks=[];for(let p=1;p<=pdf.numPages;p++){setProgress(8+Math.round(p/pdf.numPages*26),'استخراج نص الصفحة '+p+' من '+pdf.numPages);const page=await pdf.getPage(p),tc=await page.getTextContent(),text=tc.items.map(x=>x.str||'').join(' ');chunkText(text,p,p).forEach(x=>chunks.push(x))}return{chunks,pageCount:pdf.numPages}}
+if(name.endsWith('.docx')){setProgress(18,'استخراج نص ملف Word...');const r=await mammoth.extractRawText({arrayBuffer:await file.arrayBuffer()});return{chunks:chunkText(r.value,null,null),pageCount:0}}
+if(name.endsWith('.txt')){setProgress(18,'قراءة الملف النصي...');return{chunks:chunkText(await file.text(),null,null),pageCount:0}}
+throw new Error('نوع الملف غير مدعوم. استخدم PDF أو DOCX أو TXT.')}
+async function sha256(file){const b=await file.arrayBuffer(),h=await crypto.subtle.digest('SHA-256',b);return[...new Uint8Array(h)].map(x=>x.toString(16).padStart(2,'0')).join('')}
+function safeName(n){return String(n||'file').replace(/[^\w\u0600-\u06FF.\-]+/g,'_').slice(-150)}
+async function loadDocs(){const d=await invoke('list');documents=d.documents||[];$('stDocs').textContent=documents.length;$('stActive').textContent=documents.filter(x=>x.status==='active').length;$('stChunks').textContent=documents.reduce((a,x)=>a+Number(x.chunk_count||0),0);$('replaces').innerHTML='<option value="">لا يوجد</option>'+documents.filter(x=>x.status==='active').map(x=>`<option value="${x.id}">${esc(x.title)}${x.version_label?' — '+esc(x.version_label):''}</option>`).join('');renderDocs();const cats=[...new Set(documents.map(x=>x.category).filter(Boolean))];$('testCategory').innerHTML='<option value="">كل المجالات</option>'+cats.map(x=>`<option>${esc(x)}</option>`).join('')}
+function statusLabel(s){return({active:'ساري',draft:'مسودة',superseded:'مستبدل',archived:'مؤرشف'})[s]||s}
+function renderDocs(){const box=$('docs');if(!documents.length){box.innerHTML='<div class="empty">لم يتم رفع أي دليل بعد.</div>';return}box.innerHTML=documents.map(d=>`<div class="doc"><div><h4>📘 ${esc(d.title)}</h4><div><span class="pill ${esc(d.status)}">${statusLabel(d.status)}</span><span class="pill">${esc(d.category)}</span></div><div class="meta">${esc(d.authority||'')} ${d.version_label?'· '+esc(d.version_label):''}<br>${Number(d.page_count||0)?'الصفحات: '+d.page_count+' · ':''}المقاطع المفهرسة: ${d.chunk_count||0} · الملف: ${esc(d.original_name)}</div></div><div class="doc-actions"><button class="btn secondary" onclick="viewDoc('${d.id}')">عرض الملف</button>${d.status!=='active'?`<button class="btn secondary" onclick="setStatus('${d.id}','active')">تفعيل</button>`:''}${d.status==='active'?`<button class="btn secondary" onclick="setStatus('${d.id}','archived')">أرشفة</button>`:''}<button class="btn danger" onclick="deleteDoc('${d.id}')">حذف</button></div></div>`).join('')}
+async function viewDoc(id){const d=await invoke('signed_url',{id});window.open(d.url,'_blank','noopener')}
+async function setStatus(id,status){await invoke('set_status',{id,status});await loadDocs()}
+async function deleteDoc(id){if(!confirm('سيتم حذف الدليل وملفه وجميع المقاطع المفهرسة. هل تريد المتابعة؟'))return;await invoke('delete',{id});await loadDocs()}
+$('uploadForm').addEventListener('submit',async e=>{e.preventDefault();const btn=$('uploadBtn'),file=$('file').files[0];if(!file)return;btn.disabled=true;let path='';try{
+ setProgress(3,'التحقق من الملف...');const hash=await sha256(file);const extracted=await extractFile(file);if(!extracted.chunks.length)throw new Error('لم يتم العثور على نص قابل للفهرسة داخل الدليل. إذا كان PDF عبارة عن صور ممسوحة ضوئيًا فحوّله أولًا إلى PDF قابل للبحث.');
+ extracted.chunks.forEach((x,i)=>x.chunkIndex=i);setProgress(38,'رفع الملف الأصلي إلى التخزين المركزي...');
+ path='knowledge/'+crypto.randomUUID()+'/'+safeName(file.name);const up=await sb.storage.from('regulatory-knowledge').upload(path,file,{upsert:false,contentType:file.type||undefined,cacheControl:'3600'});if(up.error)throw up.error;
+ setProgress(52,'إنشاء الفهرس الدلالي. قد تستغرق العملية قليلًا للدليل الكبير...');
+ const d=await invoke('ingest',{document:{title:$('title').value.trim(),category:$('category').value,authority:$('authority').value.trim(),versionLabel:$('version').value.trim(),issueDate:$('issueDate').value||null,effectiveDate:$('effectiveDate').value||null,status:$('docStatus').value,replacesDocumentId:$('replaces').value||null,storagePath:path,originalName:file.name,mimeType:file.type,fileSize:file.size,pageCount:extracted.pageCount,sourceHash:hash},chunks:extracted.chunks});
+ setProgress(100,'✓ تم رفع الدليل وفهرسة '+d.indexedChunks+' مقطعًا. أصبح متاحًا للوكيل حسب حالة النشر.');e.target.reset();$('authority').value='وزارة التعليم';await loadDocs();
+ }catch(err){if(path)try{await sb.storage.from('regulatory-knowledge').remove([path])}catch(_){}setProgress(0,'تعذر إكمال العملية: '+(err.message||err));alert(err.message||err)}finally{btn.disabled=false}})
+async function testSearch(){const q=$('testQuery').value.trim();if(!q)return;const box=$('searchResults');box.innerHTML='<div class="empty">جارٍ البحث في الفهرس الدلالي...</div>';try{const d=await invoke('search_test',{query:q,category:$('testCategory').value||null,limit:8});const rows=d.results||[];box.innerHTML=rows.length?rows.map(r=>`<div class="result"><b>${esc(r.title)} ${r.page_start?'— صفحة '+r.page_start:''}</b><div class="meta">${esc(r.category)} · تطابق ${Math.round(Number(r.similarity||0)*100)}%</div><p>${esc(String(r.content||'').slice(0,650))}</p></div>`).join(''):'<div class="empty">لم يعثر الفهرس على مقاطع مرتبطة بالسؤال.</div>'}catch(e){box.innerHTML='<div class="empty">'+esc(e.message)+'</div>'}}
+(async()=>{try{await verifyAdmin();await loadDocs()}catch(e){console.error(e)}})();
+</script>
+</body></html>

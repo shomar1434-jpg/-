@@ -25,7 +25,7 @@ main{max-width:1280px;margin:0 auto;padding:28px 22px 60px}.hero{background:line
 @media(max-width:900px){.bundle-list{grid-template-columns:1fr}}
 </style>
 </head><body>
-<header><div class="brand"><div class="icon">📚</div><div><h1>القاعدة المعرفية <span style="font-size:10px;background:#e8f7f3;color:#0f766e;border-radius:999px;padding:3px 7px;vertical-align:middle">ZIP المرن v4</span></h1><div class="sub">الأدلة التنظيمية والإجرائية المركزية للوكيل الذكي</div></div></div><button class="back" onclick="location.href='index.html?systemAdminReturn=1'">← العودة إلى مدير النظام</button></header>
+<header><div class="brand"><div class="icon">📚</div><div><h1>القاعدة المعرفية <span style="font-size:10px;background:#e8f7f3;color:#0f766e;border-radius:999px;padding:3px 7px;vertical-align:middle">ZIP المرن v5 — رفع متتابع</span></h1><div class="sub">الأدلة التنظيمية والإجرائية المركزية للوكيل الذكي</div></div></div><button class="back" onclick="location.href='index.html?systemAdminReturn=1'">← العودة إلى مدير النظام</button></header>
 <main>
 <section class="hero"><div><h2>المعرفة الرسمية للمنصة</h2><p>ارفع الدليل مرة واحدة. يستخرج النظام محتواه ويقسمه ويفهرسه دلاليًا، ثم يستطيع الوكيل الذكي في المدارس المستقلة الرجوع إليه عند الأسئلة التنظيمية والإجرائية مع إظهار اسم الدليل والصفحة.</p></div><div class="stats"><div class="stat"><b id="stDocs">0</b><span>دليل</span></div><div class="stat"><b id="stActive">0</b><span>ساري</span></div><div class="stat"><b id="stChunks">0</b><span>مقطع مفهرس</span></div></div></section>
 <div class="grid">
@@ -174,27 +174,24 @@ function analyzeDocument(ex,fileName){
 }
 function renderBundled(){
  $('bundleCount').textContent=bundleFiles.length+' ملف';
- $('bundleList').innerHTML=bundleFiles.length?bundleFiles.map(d=>{const run=bundleRunState.get(d.id);const cls=run?.status||'';const state=run?.message||'مقروء محليًا — لم يُرفع إلى Supabase بعد';return `<div class="bundle-item ${cls}"><b>📄 ${esc(d.name)}</b><small>${Math.round(d.size/1024)} KB</small><div class="state">${esc(state)}</div></div>`}).join(''):'<div class="empty">اختر ملف ZIP لعرض ملفات PDF الموجودة داخله.</div>'
+ $('bundleList').innerHTML=bundleFiles.length?bundleFiles.map(d=>{const run=bundleRunState.get(d.id);const cls=run?.status||'';const state=run?.message||'مقروء محليًا — لم يُرفع إلى Supabase بعد';return `<div class="bundle-item ${cls}"><b>📄 ${esc(d.name)}</b><small>ملف PDF داخل الحزمة</small><div class="state">${esc(state)}</div></div>`}).join(''):'<div class="empty">اختر ملف ZIP لعرض ملفات PDF الموجودة داخله.</div>'
 }
 function setBundleState(id,status,message=''){bundleRunState.set(id,{status,message});renderBundled()}
 async function inspectBundleZip(file){
  bundleFiles=[];bundleRunState.clear();$('bundleErrors').style.display='none';$('bundleErrors').innerHTML='';$('bundleBar').style.width='0%';
  if(!file){$('importBundledBtn').disabled=true;renderBundled();return}
- $('bundleStatus').textContent='جارٍ قراءة ملف ZIP...';
+ $('bundleStatus').textContent='جارٍ قراءة فهرس ملف ZIP دون فك جميع الملفات...';
  const zip=await JSZip.loadAsync(file);
  const pdfs=Object.values(zip.files).filter(x=>!x.dir&&/\.pdf$/i.test(x.name));
  for(let i=0;i<pdfs.length;i++){
-   const entry=pdfs[i],ab=await entry.async('arraybuffer');
-   bundleFiles.push({id:'zip-'+i,name:entry.name.split('/').pop()||('document-'+(i+1)+'.pdf'),size:ab.byteLength,arrayBuffer:ab});
+   const entry=pdfs[i];
+   bundleFiles.push({id:'zip-'+i,name:entry.name.split('/').pop()||('document-'+(i+1)+'.pdf'),entry});
    $('bundleBar').style.width=Math.round((i+1)/Math.max(1,pdfs.length)*100)+'%';
  }
- $('bundleZipHint').textContent=`تم العثور على ${bundleFiles.length} ملف PDF. تمت القراءة محليًا فقط ولم يبدأ الرفع بعد. اضغط زر «رفع الأدلة ومعالجتها في Supabase» لبدء الرفع والفهرسة.`;
- $('bundleStatus').textContent=bundleFiles.length?'✓ تمت قراءة الحزمة محليًا. بانتظار أمر الرفع إلى Supabase.':'لم يتم العثور على ملفات PDF داخل الحزمة.';
+ $('bundleZipHint').textContent=`تم العثور على ${bundleFiles.length} ملف PDF. لم يتم فك الملفات بعد؛ ستتم معالجة كل دليل ورفعه منفردًا لتقليل استهلاك الذاكرة.`;
+ $('bundleStatus').textContent=bundleFiles.length?'✓ الحزمة جاهزة للرفع المتتابع إلى Supabase.':'لم يتم العثور على ملفات PDF داخل الحزمة.';
  const uploadBundleBtn=document.getElementById('importBundledBtn');
- if(uploadBundleBtn){
-   uploadBundleBtn.disabled=bundleFiles.length===0;
-   uploadBundleBtn.textContent=bundleFiles.length?`رفع ${bundleFiles.length} دليلًا إلى Supabase`:'اختر ملف ZIP أولًا';
- }
+ if(uploadBundleBtn){uploadBundleBtn.disabled=bundleFiles.length===0;uploadBundleBtn.textContent=bundleFiles.length?`رفع ${bundleFiles.length} دليلًا إلى Supabase`:'اختر ملف ZIP أولًا'}
  renderBundled();
 }
 $('bundleZipFile').addEventListener('change',async e=>{try{await inspectBundleZip(e.target.files[0])}catch(err){$('bundleStatus').textContent='تعذر قراءة ملف ZIP: '+(err.message||err);const b=document.getElementById('importBundledBtn');if(b){b.disabled=true;b.textContent='تعذر قراءة ZIP — أعد الاختيار'}}});
@@ -226,20 +223,28 @@ async function stagedZipIngest(item,meta,file,path,ex,hash,seq,total){
  }catch(e){try{await invoke('abort_ingest',{documentId:docId,error:e.message||String(e)})}catch(_){}throw e}
 }
 async function importOneZip(item,seq,total){
- setBundleState(item.id,'running','1/6 — استخراج محتوى PDF...');
- const file=new File([item.arrayBuffer],item.name,{type:'application/pdf'});
- const hash=await sha256(file);
- const ex=await extractFile(file);
- if(!ex.chunks.length)return{pending:true,title:item.name};
- setBundleState(item.id,'running','2/6 — تحديد الاسم الرسمي والجهة والتصنيف من محتوى الدليل...');
- const meta=analyzeDocument(ex,item.name);
- setBundleState(item.id,'running',`2/6 — تم التعرف: ${meta.title} (${meta.confidence})`);
- const existing=documents.find(x=>String(x.title||'').trim()===meta.title&&String(x.version_label||'')===String(meta.versionLabel||''));
- if(existing)return{skipped:true,title:meta.title};
- ex.chunks.forEach((x,i)=>x.chunkIndex=i);
- const path=await uploadZipFile(item,file,meta.title);
- try{return await stagedZipIngest(item,meta,file,path,ex,hash,seq,total)}
- catch(e){try{await sb.storage.from('regulatory-knowledge').remove([path])}catch(_){}throw e}
+ setBundleState(item.id,'running','1/6 — فك الدليل الحالي من ZIP فقط...');
+ let ab=null,file=null;
+ try{
+   ab=await item.entry.async('arraybuffer');
+   file=new File([ab],item.name,{type:'application/pdf'});
+   setBundleState(item.id,'running','1/6 — استخراج محتوى PDF...');
+   const hash=await sha256(file);
+   const ex=await extractFile(file);
+   if(!ex.chunks.length)return{pending:true,title:item.name};
+   setBundleState(item.id,'running','2/6 — تحديد الاسم الرسمي والجهة والتصنيف من محتوى الدليل...');
+   const meta=analyzeDocument(ex,item.name);
+   setBundleState(item.id,'running',`2/6 — تم التعرف: ${meta.title} (${meta.confidence})`);
+   const existing=documents.find(x=>String(x.title||'').trim()===meta.title&&String(x.version_label||'')===String(meta.versionLabel||''));
+   if(existing)return{skipped:true,title:meta.title};
+   ex.chunks.forEach((x,i)=>x.chunkIndex=i);
+   const path=await uploadZipFile(item,file,meta.title);
+   try{return await stagedZipIngest(item,meta,file,path,ex,hash,seq,total)}
+   catch(e){try{await sb.storage.from('regulatory-knowledge').remove([path])}catch(_){}throw e}
+ }finally{
+   ab=null;file=null;
+   if(item.entry&&item.entry._data&&item.entry._data.compressedContent){/* JSZip retains compressed source only; acceptable */}
+ }
 }
 async function importBundled(){
  const btn=$('importBundledBtn');if(!bundleFiles.length)return alert('اختر ملف ZIP أولًا.');
@@ -258,6 +263,7 @@ async function importBundled(){
    }catch(e){const msg=e?.message||String(e);failed.push({title:item.name,error:msg});setBundleState(item.id,'failed','✕ فشل: '+msg)}
    try{await loadDocs()}catch(_){}
    $('bundleStatus').textContent=`تمت معالجة ${i+1} من ${total} — نجح ${ok}، موجود ${skip}، يحتاج معالجة ${pending}، فشل ${failed.length}`;
+   await new Promise(r=>setTimeout(r,180));
   }
   $('bundleBar').style.width='100%';
   $('bundleStatus').textContent=`اكتملت المعالجة: أضيف ${ok}، موجود مسبقًا ${skip}، يحتاج معالجة نصية ${pending}، فشل ${failed.length}.`;
@@ -277,5 +283,14 @@ $('uploadForm').addEventListener('submit',async e=>{e.preventDefault();const btn
  }catch(err){if(docId)try{await invoke('abort_ingest',{documentId:docId,error:err.message||String(err)})}catch(_){}if(path)try{await sb.storage.from('regulatory-knowledge').remove([path])}catch(_){}setProgress(0,'تعذر إكمال العملية: '+(err.message||err));alert(err.message||err)}finally{btn.disabled=false}})
 async function testSearch(){const q=$('testQuery').value.trim();if(!q)return;const box=$('searchResults');box.innerHTML='<div class="empty">جارٍ البحث في الفهرس الدلالي...</div>';try{const d=await invoke('search_test',{query:q,category:$('testCategory').value||null,limit:8});const rows=d.results||[];box.innerHTML=rows.length?rows.map(r=>`<div class="result"><b>${esc(r.title)} ${r.page_start?'— صفحة '+r.page_start:''}</b><div class="meta">${esc(r.category)} · تطابق ${Math.round(Number(r.similarity||0)*100)}%</div><p>${esc(String(r.content||'').slice(0,650))}</p></div>`).join(''):'<div class="empty">لم يعثر الفهرس على مقاطع مرتبطة بالسؤال.</div>'}catch(e){box.innerHTML='<div class="empty">'+esc(e.message)+'</div>'}}
 (async()=>{try{await verifyAdmin();await loadDocs();renderBundled()}catch(e){console.error(e)}})();
+
+window.addEventListener('unhandledrejection',e=>{
+ const msg=e?.reason?.message||String(e?.reason||'خطأ غير معروف');
+ const box=document.getElementById('bundleStatus');if(box)box.textContent='توقفت العملية بسبب خطأ: '+msg;
+ console.error('Knowledge bundle unhandled rejection',e.reason);
+});
+window.addEventListener('error',e=>{
+ const box=document.getElementById('bundleStatus');if(box&&/رفع|معالج/.test(document.getElementById('importBundledBtn')?.textContent||''))box.textContent='توقفت العملية بسبب خطأ في المتصفح: '+(e.message||'غير معروف');
+});
 </script>
 </body></html>

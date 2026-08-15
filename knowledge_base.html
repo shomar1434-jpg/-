@@ -47,7 +47,7 @@ main{max-width:1280px;margin:0 auto;padding:28px 22px 60px}.hero{background:line
 <div class="bundle-head"><h3>📚 استيراد حزمة الأدلة الوزارية</h3><span class="bundle-count" id="bundleCount">0 ملف</span></div>
 <div class="muted" style="margin-top:8px">لا تُحفظ ملفات الأدلة داخل GitHub. اختر أي ملف ZIP يحتوي على أدلة PDF؛ يقبل النظام جميع الملفات أولًا دون مطابقة أسماء أو بصمات مسبقة، ثم يستخرج محتوى كل دليل ويحدد اسمه الرسمي وبياناته قبل اعتماده في القاعدة المعرفية.</div>
 <div class="upload" style="margin-top:12px"><label>ملف ZIP للأدلة الوزارية</label><input id="bundleZipFile" type="file" accept=".zip,application/zip"><div class="muted" id="bundleZipHint" style="margin-top:7px">اختر ملف ZIP الذي يحتوي على ملفات PDF.</div></div>
-<div style="margin-top:10px"><button type="button" class="btn" id="importBundledBtn" disabled>قراءة الحزمة وإضافة الأدلة</button></div>
+<div style="margin-top:10px"><button type="button" class="btn" id="importBundledBtn" disabled>رفع الأدلة ومعالجتها في Supabase</button></div>
 <div class="progress"><i id="bundleBar"></i></div><div class="status" id="bundleStatus"></div><div class="bundle-errors" id="bundleErrors"></div><div class="bundle-list" id="bundleList"></div>
 </section><div class="security">🔒 رفع الأدلة وتعديلها وحذفها متاح لمدير النظام فقط. المدارس المستقلة لا تصل إلى إدارة هذه المكتبة؛ الوكيل يقرأ المقاطع السارية عبر الخادم فقط.</div>
 </section>
@@ -174,7 +174,7 @@ function analyzeDocument(ex,fileName){
 }
 function renderBundled(){
  $('bundleCount').textContent=bundleFiles.length+' ملف';
- $('bundleList').innerHTML=bundleFiles.length?bundleFiles.map(d=>{const run=bundleRunState.get(d.id);const cls=run?.status||'';const state=run?.message||'جاهز للمعالجة — لا توجد مطابقة مسبقة مطلوبة';return `<div class="bundle-item ${cls}"><b>📄 ${esc(d.name)}</b><small>${Math.round(d.size/1024)} KB</small><div class="state">${esc(state)}</div></div>`}).join(''):'<div class="empty">اختر ملف ZIP لعرض ملفات PDF الموجودة داخله.</div>'
+ $('bundleList').innerHTML=bundleFiles.length?bundleFiles.map(d=>{const run=bundleRunState.get(d.id);const cls=run?.status||'';const state=run?.message||'مقروء محليًا — لم يُرفع إلى Supabase بعد';return `<div class="bundle-item ${cls}"><b>📄 ${esc(d.name)}</b><small>${Math.round(d.size/1024)} KB</small><div class="state">${esc(state)}</div></div>`}).join(''):'<div class="empty">اختر ملف ZIP لعرض ملفات PDF الموجودة داخله.</div>'
 }
 function setBundleState(id,status,message=''){bundleRunState.set(id,{status,message});renderBundled()}
 async function inspectBundleZip(file){
@@ -188,9 +188,9 @@ async function inspectBundleZip(file){
    bundleFiles.push({id:'zip-'+i,name:entry.name.split('/').pop()||('document-'+(i+1)+'.pdf'),size:ab.byteLength,arrayBuffer:ab});
    $('bundleBar').style.width=Math.round((i+1)/Math.max(1,pdfs.length)*100)+'%';
  }
- $('bundleZipHint').textContent=`تم العثور على ${bundleFiles.length} ملف PDF. جميعها مقبولة للمعالجة دون مطابقة أسماء أو بصمات مسبقة.`;
- $('bundleStatus').textContent=bundleFiles.length?'✓ الحزمة جاهزة. سيحدد النظام اسم كل دليل من محتواه أثناء المعالجة.':'لم يتم العثور على ملفات PDF داخل الحزمة.';
- $('importBundledBtn').disabled=!bundleFiles.length;renderBundled();
+ $('bundleZipHint').textContent=`تم العثور على ${bundleFiles.length} ملف PDF. تمت القراءة محليًا فقط ولم يبدأ الرفع بعد. اضغط زر «رفع الأدلة ومعالجتها في Supabase» لبدء الرفع والفهرسة.`;
+ $('bundleStatus').textContent=bundleFiles.length?'✓ تمت قراءة الحزمة محليًا. بانتظار أمر الرفع إلى Supabase.':'لم يتم العثور على ملفات PDF داخل الحزمة.';
+ $('importBundledBtn').disabled=!bundleFiles.length;$('importBundledBtn').textContent=bundleFiles.length?'رفع '+bundleFiles.length+' دليلًا إلى Supabase':'رفع الأدلة ومعالجتها في Supabase';renderBundled();
 }
 $('bundleZipFile').addEventListener('change',async e=>{try{await inspectBundleZip(e.target.files[0])}catch(err){$('bundleStatus').textContent='تعذر قراءة ملف ZIP: '+(err.message||err);$('importBundledBtn').disabled=true}});
 
@@ -238,7 +238,7 @@ async function importOneZip(item,seq,total){
 async function importBundled(){
  const btn=$('importBundledBtn');if(!bundleFiles.length)return alert('اختر ملف ZIP أولًا.');
  if(!confirm(`سيتم معالجة ${bundleFiles.length} ملف PDF ورفعها مباشرة إلى Supabase ثم تسميتها من محتواها وفهرستها. هل تريد المتابعة؟`))return;
- btn.disabled=true;bundleRunState.clear();$('bundleErrors').style.display='none';$('bundleErrors').innerHTML='';
+ btn.disabled=true;btn.textContent='جارٍ الرفع والمعالجة...';bundleRunState.clear();$('bundleErrors').style.display='none';$('bundleErrors').innerHTML='';
  let ok=0,skip=0,pending=0,failed=[];const total=bundleFiles.length;
  try{
   await loadDocs();
@@ -256,7 +256,7 @@ async function importBundled(){
   $('bundleBar').style.width='100%';
   $('bundleStatus').textContent=`اكتملت المعالجة: أضيف ${ok}، موجود مسبقًا ${skip}، يحتاج معالجة نصية ${pending}، فشل ${failed.length}.`;
   if(failed.length){$('bundleErrors').style.display='block';$('bundleErrors').innerHTML='<b>أسباب الفشل:</b>'+failed.map((x,i)=>`<div>${i+1}. ${esc(x.title)} — ${esc(x.error)}</div>`).join('')}
- }finally{btn.disabled=false}
+ }finally{btn.disabled=false;btn.textContent='إعادة رفع/معالجة الحزمة'}
 }
 $('importBundledBtn').addEventListener('click',importBundled);
 

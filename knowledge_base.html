@@ -44,10 +44,10 @@ main{max-width:1280px;margin:0 auto;padding:28px 22px 60px}.hero{background:line
 <div class="full"><button class="btn" id="uploadBtn" type="submit">رفع الدليل ومعالجته</button><div class="progress"><i id="bar"></i></div><div class="status" id="uploadStatus"></div></div>
 </div></form>
 <section class="card bundle-card full" id="bundledPanel">
-<div class="bundle-head"><h3>📚 استيراد حزمة الأدلة الوزارية</h3><span class="bundle-count" id="bundleCount">21 دليلًا</span></div>
-<div class="muted" style="margin-top:8px">لا تُحفظ ملفات الأدلة داخل GitHub. اختر ملف ZIP الذي يحتوي على الأدلة الوزارية، وسيتم التعرف على كل دليل بالبصمة الرقمية SHA-256 وربطه باسمه الوزاري الرسمي ثم رفعه مباشرة إلى Supabase وفهرسته.</div>
+<div class="bundle-head"><h3>📚 استيراد حزمة الأدلة الوزارية</h3><span class="bundle-count" id="bundleCount">0 ملف</span></div>
+<div class="muted" style="margin-top:8px">لا تُحفظ ملفات الأدلة داخل GitHub. اختر أي ملف ZIP يحتوي على أدلة PDF؛ يقبل النظام جميع الملفات أولًا دون مطابقة أسماء أو بصمات مسبقة، ثم يستخرج محتوى كل دليل ويحدد اسمه الرسمي وبياناته قبل اعتماده في القاعدة المعرفية.</div>
 <div class="upload" style="margin-top:12px"><label>ملف ZIP للأدلة الوزارية</label><input id="bundleZipFile" type="file" accept=".zip,application/zip"><div class="muted" id="bundleZipHint" style="margin-top:7px">اختر ملف ZIP الذي يحتوي على ملفات PDF.</div></div>
-<div style="margin-top:10px"><button type="button" class="btn" id="importBundledBtn" disabled>فحص الحزمة وإضافة الأدلة</button></div>
+<div style="margin-top:10px"><button type="button" class="btn" id="importBundledBtn" disabled>قراءة الحزمة وإضافة الأدلة</button></div>
 <div class="progress"><i id="bundleBar"></i></div><div class="status" id="bundleStatus"></div><div class="bundle-errors" id="bundleErrors"></div><div class="bundle-list" id="bundleList"></div>
 </section><div class="security">🔒 رفع الأدلة وتعديلها وحذفها متاح لمدير النظام فقط. المدارس المستقلة لا تصل إلى إدارة هذه المكتبة؛ الوكيل يقرأ المقاطع السارية عبر الخادم فقط.</div>
 </section>
@@ -72,7 +72,7 @@ function setProgress(n,msg){$('bar').style.width=Math.max(0,Math.min(100,n))+'%'
 async function invoke(action,data={}){if(!sb)throw new Error('Supabase غير جاهز');const r=await sb.functions.invoke('platform-knowledge',{body:{action,...data}});if(r.error)throw new Error(r.data?.error||r.error.message||'تعذر تنفيذ العملية');if(r.data?.error)throw new Error(r.data.error);return r.data}
 async function verifyAdmin(){if(!sb)throw new Error('تعذر تحميل Supabase');const sess=await sb.auth.getSession();if(!sess.data?.session){location.href='index.html';throw new Error('يلزم تسجيل دخول مدير النظام')};const v=await sb.functions.invoke('system-admin',{body:{action:'verify'}});if(v.error||!v.data?.ok){location.href='index.html';throw new Error('هذه الصفحة متاحة لمدير النظام فقط')}}
 function chunkText(text,pageStart,pageEnd){text=String(text||'').replace(/\s+/g,' ').trim();if(!text)return[];const out=[],target=1650,overlap=220;let pos=0;while(pos<text.length){let end=Math.min(text.length,pos+target);if(end<text.length){const cut=Math.max(text.lastIndexOf('。',end),text.lastIndexOf('.',end),text.lastIndexOf('؟',end),text.lastIndexOf('؛',end),text.lastIndexOf('،',end));if(cut>pos+900)end=cut+1}const content=text.slice(pos,end).trim();if(content)out.push({content,pageStart,pageEnd});if(end>=text.length)break;pos=Math.max(pos+1,end-overlap)}return out}
-async function extractFile(file){const name=file.name.toLowerCase();if(name.endsWith('.pdf')){const pdf=await pdfjsLib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;const chunks=[];for(let p=1;p<=pdf.numPages;p++){setProgress(8+Math.round(p/pdf.numPages*26),'استخراج نص الصفحة '+p+' من '+pdf.numPages);const page=await pdf.getPage(p),tc=await page.getTextContent(),text=tc.items.map(x=>x.str||'').join(' ');chunkText(text,p,p).forEach(x=>chunks.push(x))}return{chunks,pageCount:pdf.numPages}}
+async function extractFile(file){const name=file.name.toLowerCase();if(name.endsWith('.pdf')){const pdf=await pdfjsLib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;const chunks=[],preview=[];for(let p=1;p<=pdf.numPages;p++){setProgress(8+Math.round(p/pdf.numPages*26),'استخراج نص الصفحة '+p+' من '+pdf.numPages);const page=await pdf.getPage(p),tc=await page.getTextContent(),text=tc.items.map(x=>x.str||'').join(' ');if(p<=5)preview.push(text);chunkText(text,p,p).forEach(x=>chunks.push(x))}return{chunks,pageCount:pdf.numPages,previewText:preview.join('\n')}}
 if(name.endsWith('.docx')){setProgress(18,'استخراج نص ملف Word...');const r=await mammoth.extractRawText({arrayBuffer:await file.arrayBuffer()});return{chunks:chunkText(r.value,null,null),pageCount:0}}
 if(name.endsWith('.txt')){setProgress(18,'قراءة الملف النصي...');return{chunks:chunkText(await file.text(),null,null),pageCount:0}}
 throw new Error('نوع الملف غير مدعوم. استخدم PDF أو DOCX أو TXT.')}
@@ -84,94 +84,182 @@ function renderDocs(){const box=$('docs');if(!documents.length){box.innerHTML='<
 async function viewDoc(id){const d=await invoke('signed_url',{id});window.open(d.url,'_blank','noopener')}
 async function setStatus(id,status){await invoke('set_status',{id,status});await loadDocs()}
 async function deleteDoc(id){if(!confirm('سيتم حذف الدليل وملفه وجميع المقاطع المفهرسة. هل تريد المتابعة؟'))return;await invoke('delete',{id});await loadDocs()}
-const bundledDocs=[{"id":"moe-01","title":"دليل الخطط الدراسية","category":"الخطط الدراسية","authority":"وزارة التعليم","versionLabel":"الإصدار الخامس","originalName":"دليل الخطط الدراسية.pdf","status":"active","indexable":true,"sha256":"cec94e8f2b4cfc071d03f72e68b5fd49287f646ffea270b5263803d80b096d90","sizeBytes":2802247},{"id":"moe-02","title":"دليل الاختبارات: الأسس الفنية والعمليات الإجرائية","category":"التقويم والاختبارات","authority":"وزارة التعليم","versionLabel":"2025م","originalName":"دليل الاختبارات: الأسس الفنية والعمليات الإجرائية.pdf","status":"active","indexable":true,"sha256":"348b247c6a553f1ee4f899ecc404022c6d8d2b843fa4de06b6765716cd47c787","sizeBytes":3220757},{"id":"moe-03","title":"توزيع درجات المواد الدراسية","category":"التقويم والاختبارات","authority":"وزارة التعليم","versionLabel":"2025م","originalName":"توزيع درجات المواد الدراسية.pdf","status":"active","indexable":true,"sha256":"d8f35fe0518331890267b6bce4dce262f4a4ac55d106dcdbead9c551528d3dc0","sizeBytes":783358},{"id":"moe-04","title":"الإجراءات التنفيذية للائحة تقويم الطالب في التعليم العام","category":"التقويم والاختبارات","authority":"وزارة التعليم","versionLabel":"2025م","originalName":"الإجراءات التنفيذية للائحة تقويم الطالب في التعليم العام.pdf","status":"active","indexable":true,"sha256":"043700987567b62dac9866208249661cf86a330c4818ff59d1002f468d59664a","sizeBytes":945959},{"id":"moe-05","title":"الدليل الاسترشادي لأبرز الخدمات التقنية للتوجيه الطلابي في نظام نور","category":"شؤون الطلاب","authority":"وزارة التعليم","versionLabel":"الإصدار الأول 1447هـ / 2025م","originalName":"الدليل الاسترشادي لأبرز الخدمات التقنية للتوجيه الطلابي في نظام نور.pdf","status":"active","indexable":true,"sha256":"7f77339e4d43dbadd06ebb77bf1277df6dd32ca4197725b73b2f53388e39db79","sizeBytes":800278},{"id":"moe-06","title":"نموذج استرشادي للحصص الدراسية خلال 36 أسبوع","category":"الخطط الدراسية","authority":"المركز الوطني للمناهج","versionLabel":"1447هـ","originalName":"نموذج استرشادي للحصص الدراسية خلال 36 أسبوع.pdf","status":"active","indexable":true,"sha256":"6c1906baf69745cacfcafd9351b28fb45cde7861cbb67778d3bcc6e920be9569","sizeBytes":440131},{"id":"moe-07","title":"النموذج الإشرافي في ضوء تمكين المدرسة","category":"الإدارة المدرسية","authority":"وزارة التعليم","versionLabel":"الإصدار الثاني 1446هـ / 2024-2025م","originalName":"النموذج الإشرافي في ضوء تمكين المدرسة.pdf","status":"active","indexable":true,"sha256":"93360b271632bd063826c5f17390a2e8ed522f89897b200fae1a6210523cbc51","sizeBytes":3304840},{"id":"moe-08","title":"إضاءات حول آلية تنفيذ خطط الأنشطة الطلابية وفقًا لما ورد في دليل الخطط الدراسية - الإصدار الخامس","category":"النشاط الطلابي","authority":"وزارة التعليم","versionLabel":"1447هـ / 2025-2026م","originalName":"إضاءات حول آلية تنفيذ خطط الأنشطة الطلابية وفقًا لما ورد في دليل الخطط الدراسية - الإصدار الخامس.pdf","status":"active","indexable":true,"sha256":"1c2c1f172b24635b2bd55200ef440102f4ab8eb62d7a8e7848c7f0171cdd15be","sizeBytes":427539},{"id":"moe-09","title":"خريطة نواتج التعلم - أدوات دعم تطبيق النموذج الإشرافي في ضوء تمكين المدرسة","category":"الشؤون التعليمية","authority":"وزارة التعليم - وكالة الوزارة للتعليم العام - الإدارة العامة للإشراف التربوي","versionLabel":"1447هـ","originalName":"خريطة نواتج التعلم - أدوات دعم تطبيق النموذج الإشرافي في ضوء تمكين المدرسة.pdf","status":"active","indexable":true,"sha256":"1d640d15f6690235b9e5de09d1ada09fcc10ed43fd4fb2f0359a4b95068cf86a","sizeBytes":1589807},{"id":"moe-10","title":"خطة برامج وخدمات التوجيه الطلابي - الفصل الدراسي الأول","category":"شؤون الطلاب","authority":"الإدارة العامة للتعليم بمنطقة جازان - قسم التوجيه الطلابي","versionLabel":"1447هـ","originalName":"خطة برامج وخدمات التوجيه الطلابي - الفصل الدراسي الأول.pdf","status":"active","indexable":true,"sha256":"e4d91408d815c2ccc2ef7ab01a34aa27e2a9464205f14df6aa9a9f9792661a7e","sizeBytes":1159676},{"id":"moe-11","title":"الدليل الإرشادي للمركز الوطني للوثائق والمحفوظات","category":"الإدارة المدرسية","authority":"المركز الوطني للوثائق والمحفوظات","versionLabel":"","originalName":"الدليل الإرشادي للمركز الوطني للوثائق والمحفوظات.pdf","status":"active","indexable":false,"sha256":"ff051b43f455fe9959f479331bedc5a60f8ad1460cb17b30285a689cdf6e99ae","sizeBytes":370136},{"id":"moe-12","title":"دليل المستخدم لتطبيق \"حضوري\" للموظفين","category":"الموارد البشرية","authority":"وزارة التعليم","versionLabel":"2025م","originalName":"دليل المستخدم لتطبيق \"حضوري\" للموظفين.pdf","status":"active","indexable":true,"sha256":"ed4e00d7cac975ad8cacdc56eedc4abd4c80f6d54be7bde2bbd2835c65fafc54","sizeBytes":1212324},{"id":"moe-13","title":"دليل تخطيط شاغلي الوظائف التعليمية في إدارات التعليم","category":"الموارد البشرية","authority":"وزارة التعليم","versionLabel":"2025-2026م","originalName":"دليل تخطيط شاغلي الوظائف التعليمية في إدارات التعليم.pdf","status":"active","indexable":true,"sha256":"7d80d8430f4af83f39e7ea1b32713b5b491deb6c22324ea9aa98a2344aa1b5f8","sizeBytes":863878},{"id":"moe-14","title":"لائحة تقويم الطالب في التعليم العام","category":"التقويم والاختبارات","authority":"وزارة التعليم","versionLabel":"2025م","originalName":"لائحة تقويم الطالب في التعليم العام.pdf","status":"active","indexable":true,"sha256":"df9e53a2ecf9ddf227960ce87781df61617e1a70af1b31b68fbc9dfe9869d207","sizeBytes":394941},{"id":"moe-15","title":"نموذج الحصص الأسبوعية في الفصلين الدراسيين","category":"الخطط الدراسية","authority":"وزارة التعليم","versionLabel":"1447هـ","originalName":"نموذج الحصص الأسبوعية في الفصلين الدراسيين.pdf","status":"active","indexable":true,"sha256":"ecaa01256114cecdee3a3f2b589e12d2f4bcebf607c0ed1ff733325960a7f896","sizeBytes":846060},{"id":"moe-16","title":"وثيقة التشكيلات الإشرافية والمدرسية لشاغلي الوظائف التعليمية","category":"الموارد البشرية","authority":"وزارة التعليم - وكالة الوزارة للموارد البشرية","versionLabel":"1445هـ / 2024م","originalName":"وثيقة التشكيلات الإشرافية والمدرسية لشاغلي الوظائف التعليمية.pdf","status":"active","indexable":true,"sha256":"75aed66b46a3aa67ed4dfa121a92e543b9e9349e4faeaaabcb4a2d85fe4fb28d","sizeBytes":4723818},{"id":"moe-17","title":"دليل إجراءات عمل مدارس التعليم العام","category":"الإدارة المدرسية","authority":"وزارة التعليم - الإدارة العامة للتطوير التنظيمي","versionLabel":"رجب 1446هـ / يناير 2025م","originalName":"دليل إجراءات عمل مدارس التعليم العام.pdf","status":"active","indexable":true,"sha256":"9d37a896a6336c7e5f31f74b17bf1c5ccd3c638e7bc3ee8a1f1408a9d0102e8d","sizeBytes":12649267},{"id":"moe-18","title":"الدليل المبسط لتقييم أداء شاغلي الوظائف التعليمية","category":"الأداء الوظيفي","authority":"وزارة التعليم","versionLabel":"الإصدار الأول 1446هـ","originalName":"الدليل المبسط لتقييم أداء شاغلي الوظائف التعليمية.pdf","status":"active","indexable":true,"sha256":"92d1cf2cd08d332b8bdf3d720574f8312c9db859f30135a28277f053c86a2287","sizeBytes":4647016},{"id":"moe-19","title":"دليل الزي المدرسي والرياضي لطلبة التعليم العام","category":"الانضباط والمواظبة","authority":"وزارة التعليم","versionLabel":"","originalName":"دليل الزي المدرسي والرياضي لطلبة التعليم العام.pdf","status":"active","indexable":true,"sha256":"186e04ffaba8a22a48dd8ee2d5f81ce8224831ee0a7ba503bbcb7d567191c419","sizeBytes":22881722},{"id":"moe-20","title":"الدليل التنظيمي لمدارس التعليم العام (دليل الأهداف والمهام)","category":"الإدارة المدرسية","authority":"وزارة التعليم","versionLabel":"1446هـ / 2025م","originalName":"الدليل التنظيمي لمدارس التعليم العام (دليل الأهداف والمهام).pdf","status":"active","indexable":true,"sha256":"0e74342201ca59a8d0d75b3e82ada4b4df895f97ce8b1f49493f5e4c3fce86ce","sizeBytes":1486337},{"id":"moe-21","title":"قواعد السلوك والمواظبة لطلبة التعليم العام","category":"الانضباط والمواظبة","authority":"وزارة التعليم","versionLabel":"الإصدار الخامس 1447هـ / 2025م","originalName":"قواعد السلوك والمواظبة لطلبة التعليم العام.pdf","status":"active","indexable":true,"sha256":"9c6cf94bdef31133ecf432689aa153ff0d5cd082c4a4c2c5770babc8f644ab83","sizeBytes":1897921}];
 const bundleRunState=new Map();
-let bundleZipEntries=new Map();
+let bundleFiles=[];
 
+function normalizeArabic(v){
+ return String(v||'').toLowerCase()
+  .replace(/[إأآٱ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه')
+  .replace(/[\u064B-\u065F\u0670]/g,'').replace(/[^\u0600-\u06FF0-9a-z\s\-–—\/]/gi,' ')
+  .replace(/\s+/g,' ').trim()
+}
+function guessAuthority(text){
+ const t=normalizeArabic(text);
+ if(t.includes('المركز الوطني للوثائق والمحفوظات'))return 'المركز الوطني للوثائق والمحفوظات';
+ if(t.includes('المركز الوطني للمناهج'))return 'المركز الوطني للمناهج';
+ const m=String(text||'').match(/الإدارة العامة للتعليم\s*(?:بمنطقة|بمحافظة)?\s*([^\n]{2,45})/);
+ if(m)return ('الإدارة العامة للتعليم '+m[0].replace(/^الإدارة العامة للتعليم\s*/,'')).trim();
+ if(t.includes('وزاره التعليم'))return 'وزارة التعليم';
+ return 'وزارة التعليم';
+}
+function guessVersion(text){
+ const raw=String(text||'').replace(/\s+/g,' ');
+ const parts=[];
+ const e=raw.match(/الإصدار\s+(?:الأول|الثاني|الثالث|الرابع|الخامس|السادس|السابع|الثامن|التاسع|العاشر|\d+)/i);if(e)parts.push(e[0]);
+ const hy=raw.match(/14\d{2}\s*هـ?/);if(hy)parts.push(hy[0].replace(/\s+/g,''));
+ const gy=raw.match(/20\d{2}(?:\s*[-–]\s*20\d{2})?\s*م?/);if(gy)parts.push(gy[0].replace(/\s+/g,''));
+ return [...new Set(parts)].slice(0,3).join(' / ');
+}
+function guessCategory(text){
+ const t=normalizeArabic(text);
+ const rules=[
+  ['التقويم والاختبارات',['اختبارات','تقويم الطالب','درجات المواد','لائحه تقويم']],
+  ['الانضباط والمواظبة',['السلوك والمواظبه','الزي المدرسي','الانضباط']],
+  ['شؤون الطلاب',['التوجيه الطلابي','الارشاد الطلابي','خدمات التوجيه']],
+  ['النشاط الطلابي',['النشاط الطلابي','الانشطه الطلابيه']],
+  ['الأداء الوظيفي',['تقييم اداء','الاداء الوظيفي','شاغلي الوظائف التعليميه']],
+  ['الموارد البشرية',['الموارد البشريه','شاغلي الوظائف التعليميه','حضوري','التشكيلات الاشرافيه']],
+  ['الخطط الدراسية',['الخطط الدراسيه','الحصص الاسبوعيه','الحصص الدراسيه']],
+  ['الصحة المدرسية',['الصحه المدرسيه','الموجه الصحي']],
+  ['الأمن والسلامة',['الامن والسلامه','الطوارئ','السلامه المدرسيه']],
+  ['الشؤون التعليمية',['نواتج التعلم','تحسين التدريس','التدريس']],
+  ['الإدارة المدرسية',['مدارس التعليم العام','الاداره المدرسيه','الاشراف التربوي','الوثائق والمحفوظات']]
+ ];
+ for(const [c,words] of rules)if(words.some(w=>t.includes(normalizeArabic(w))))return c;
+ return 'عام';
+}
+const OFFICIAL_TITLES=[
+ 'دليل الخطط الدراسية',
+ 'دليل الاختبارات: الأسس الفنية والعمليات الإجرائية',
+ 'توزيع درجات المواد الدراسية',
+ 'الإجراءات التنفيذية للائحة تقويم الطالب في التعليم العام',
+ 'الدليل الاسترشادي لأبرز الخدمات التقنية للتوجيه الطلابي في نظام نور',
+ 'نموذج استرشادي للحصص الدراسية خلال 36 أسبوع',
+ 'النموذج الإشرافي في ضوء تمكين المدرسة',
+ 'إضاءات حول آلية تنفيذ خطط الأنشطة الطلابية وفقًا لما ورد في دليل الخطط الدراسية - الإصدار الخامس',
+ 'خريطة نواتج التعلم - أدوات دعم تطبيق النموذج الإشرافي في ضوء تمكين المدرسة',
+ 'خطة برامج وخدمات التوجيه الطلابي - الفصل الدراسي الأول',
+ 'الدليل الإرشادي للمركز الوطني للوثائق والمحفوظات',
+ 'دليل المستخدم لتطبيق حضوري للموظفين',
+ 'دليل تخطيط شاغلي الوظائف التعليمية في إدارات التعليم',
+ 'لائحة تقويم الطالب في التعليم العام',
+ 'نموذج الحصص الأسبوعية في الفصلين الدراسيين',
+ 'وثيقة التشكيلات الإشرافية والمدرسية لشاغلي الوظائف التعليمية',
+ 'دليل إجراءات عمل مدارس التعليم العام',
+ 'الدليل المبسط لتقييم أداء شاغلي الوظائف التعليمية',
+ 'دليل الزي المدرسي والرياضي لطلبة التعليم العام',
+ 'الدليل التنظيمي لمدارس التعليم العام (دليل الأهداف والمهام)',
+ 'قواعد السلوك والمواظبة لطلبة التعليم العام'
+];
+function titleScore(title,text){
+ const a=normalizeArabic(title).split(' ').filter(x=>x.length>2), t=normalizeArabic(text);
+ if(!a.length)return 0;
+ return a.filter(w=>t.includes(w)).length/a.length;
+}
+function genericTitle(text,fileName){
+ const raw=String(text||'').replace(/\r/g,'\n');
+ const lines=raw.split(/\n| {3,}/).map(x=>x.replace(/\s+/g,' ').trim())
+  .filter(x=>x.length>=8&&x.length<=150)
+  .filter(x=>!/^(المملكة العربية السعودية|وزارة التعليم|بسم الله|الفهرس|المحتويات)/.test(x));
+ const preferred=lines.find(x=>/(دليل|لائحة|وثيقة|قواعد|إجراءات|خطة|نموذج|إطار|خريطة|توزيع)/.test(x));
+ if(preferred)return preferred.replace(/^[-–—\s]+|[-–—\s]+$/g,'');
+ return String(fileName||'دليل جديد').replace(/\.pdf$/i,'').replace(/[_-]+/g,' ').trim();
+}
+function analyzeDocument(ex,fileName){
+ const intro=(ex.previewText||ex.chunks.slice(0,12).map(x=>x.content).join('\n')).slice(0,24000);
+ let best='',score=0;
+ for(const title of OFFICIAL_TITLES){const s=titleScore(title,intro);if(s>score){score=s;best=title}}
+ const title=score>=0.62?best:genericTitle(intro,fileName);
+ return {title,authority:guessAuthority(intro),versionLabel:guessVersion(intro),category:guessCategory(intro),confidence:score>=0.62?'مرتفع':'يحتاج مراجعة'};
+}
 function renderBundled(){
- const existing=new Set(documents.map(x=>String(x.title||'').trim()));
- $('bundleCount').textContent=bundledDocs.length+' دليلًا';
- $('bundleList').innerHTML=bundledDocs.map(d=>{const added=existing.has(d.title),run=bundleRunState.get(d.id);let cls='',state='';
-   if(run){cls=run.status;state=run.message}
-   else if(added){cls='success';state='✓ موجود في القاعدة المعرفية'}
-   else if(!d.indexable){cls='pending';state='⚠ موجود في الحزمة لكنه يحتاج نصًا قابلًا للبحث'}
-   else if(bundleZipEntries.has(d.sha256)){cls='running';state='✓ تم التعرف عليه داخل ملف ZIP'}
-   else state='بانتظار اختيار ملف ZIP';
-   return `<div class="bundle-item ${cls}"><b>📘 ${esc(d.title)}</b><small>${esc(d.authority)}${d.versionLabel?' · '+esc(d.versionLabel):''}<br>${esc(d.category)}</small><div class="state">${esc(state)}</div></div>`}).join('')
+ $('bundleCount').textContent=bundleFiles.length+' ملف';
+ $('bundleList').innerHTML=bundleFiles.length?bundleFiles.map(d=>{const run=bundleRunState.get(d.id);const cls=run?.status||'';const state=run?.message||'جاهز للمعالجة — لا توجد مطابقة مسبقة مطلوبة';return `<div class="bundle-item ${cls}"><b>📄 ${esc(d.name)}</b><small>${Math.round(d.size/1024)} KB</small><div class="state">${esc(state)}</div></div>`}).join(''):'<div class="empty">اختر ملف ZIP لعرض ملفات PDF الموجودة داخله.</div>'
 }
 function setBundleState(id,status,message=''){bundleRunState.set(id,{status,message});renderBundled()}
-
 async function inspectBundleZip(file){
- bundleZipEntries.clear();bundleRunState.clear();$('bundleErrors').style.display='none';$('bundleErrors').innerHTML='';$('bundleBar').style.width='0%';
+ bundleFiles=[];bundleRunState.clear();$('bundleErrors').style.display='none';$('bundleErrors').innerHTML='';$('bundleBar').style.width='0%';
  if(!file){$('importBundledBtn').disabled=true;renderBundled();return}
- $('bundleStatus').textContent='جارٍ فحص ملف ZIP والتعرف على الأدلة بالبصمة الرقمية...';
- const zip=await JSZip.loadAsync(file);const pdfs=Object.values(zip.files).filter(x=>!x.dir&&/\.pdf$/i.test(x.name));
- let matched=0,unknown=0;
+ $('bundleStatus').textContent='جارٍ قراءة ملف ZIP...';
+ const zip=await JSZip.loadAsync(file);
+ const pdfs=Object.values(zip.files).filter(x=>!x.dir&&/\.pdf$/i.test(x.name));
  for(let i=0;i<pdfs.length;i++){
-   const entry=pdfs[i],ab=await entry.async('arraybuffer'),hashBuf=await crypto.subtle.digest('SHA-256',ab),hash=[...new Uint8Array(hashBuf)].map(x=>x.toString(16).padStart(2,'0')).join('');
-   bundleZipEntries.set(hash,{entry,arrayBuffer:ab,name:entry.name});
-   if(bundledDocs.some(d=>d.sha256===hash))matched++;else unknown++;
+   const entry=pdfs[i],ab=await entry.async('arraybuffer');
+   bundleFiles.push({id:'zip-'+i,name:entry.name.split('/').pop()||('document-'+(i+1)+'.pdf'),size:ab.byteLength,arrayBuffer:ab});
    $('bundleBar').style.width=Math.round((i+1)/Math.max(1,pdfs.length)*100)+'%';
  }
- const missing=bundledDocs.filter(d=>!bundleZipEntries.has(d.sha256));
- $('bundleZipHint').textContent=`تم العثور على ${pdfs.length} ملف PDF — تم التعرف على ${matched} من ${bundledDocs.length} دليلًا، ملفات غير معروفة ${unknown}، مفقود ${missing.length}.`;
- $('bundleStatus').textContent=missing.length?`تم فحص الحزمة. يوجد ${missing.length} دليلًا من المجموعة المعتمدة غير موجود بالبصمة المطابقة.`:'✓ تم التعرف على جميع الأدلة الوزارية المعتمدة داخل الحزمة.';
- $('importBundledBtn').disabled=matched===0;renderBundled();
+ $('bundleZipHint').textContent=`تم العثور على ${bundleFiles.length} ملف PDF. جميعها مقبولة للمعالجة دون مطابقة أسماء أو بصمات مسبقة.`;
+ $('bundleStatus').textContent=bundleFiles.length?'✓ الحزمة جاهزة. سيحدد النظام اسم كل دليل من محتواه أثناء المعالجة.':'لم يتم العثور على ملفات PDF داخل الحزمة.';
+ $('importBundledBtn').disabled=!bundleFiles.length;renderBundled();
 }
 $('bundleZipFile').addEventListener('change',async e=>{try{await inspectBundleZip(e.target.files[0])}catch(err){$('bundleStatus').textContent='تعذر قراءة ملف ZIP: '+(err.message||err);$('importBundledBtn').disabled=true}});
 
-async function uploadBundledFile(d,file){const path='knowledge/ministerial-1447/'+crypto.randomUUID()+'/'+safeName(file.name);setBundleState(d.id,'running','2/5 — رفع الملف الأصلي إلى Supabase Storage...');const up=await sb.storage.from('regulatory-knowledge').upload(path,file,{upsert:false,contentType:'application/pdf',cacheControl:'3600'});if(up.error)throw new Error('فشل رفع الملف إلى Storage: '+(up.error.message||up.error));return path}
-async function stagedIngest(d,file,path,ex,hash,seq,total){
- setBundleState(d.id,'running','3/5 — إنشاء سجل الدليل...');
- const begin=await invoke('begin_ingest',{document:{title:d.title,category:d.category,authority:d.authority,versionLabel:d.versionLabel,status:'active',storagePath:path,originalName:d.originalName,mimeType:'application/pdf',fileSize:file.size,pageCount:ex.pageCount,sourceHash:hash,metadata:{bundledCollection:'ministerial_1447',officialTitleVerified:true,importedFromZip:true}}});
- if(begin.duplicate)return{skipped:true,duplicate:true};
- const docId=begin.document?.id;if(!docId)throw new Error('لم يرجع الخادم معرف الدليل بعد إنشاء السجل.');
+async function uploadZipFile(item,file,officialTitle){
+ const path='knowledge/batch-import/'+crypto.randomUUID()+'/'+safeName(officialTitle+'.pdf');
+ setBundleState(item.id,'running','3/6 — رفع الملف إلى Supabase Storage...');
+ const up=await sb.storage.from('regulatory-knowledge').upload(path,file,{upsert:false,contentType:'application/pdf',cacheControl:'3600'});
+ if(up.error)throw new Error('فشل رفع الملف إلى Storage: '+(up.error.message||up.error));
+ return path
+}
+async function stagedZipIngest(item,meta,file,path,ex,hash,seq,total){
+ setBundleState(item.id,'running','4/6 — إنشاء سجل الدليل بالاسم المستخرج: '+meta.title);
+ const begin=await invoke('begin_ingest',{document:{title:meta.title,category:meta.category,authority:meta.authority,versionLabel:meta.versionLabel,status:'active',storagePath:path,originalName:item.name,mimeType:'application/pdf',fileSize:file.size,pageCount:ex.pageCount,sourceHash:hash,metadata:{importedFromZip:true,autoNamedFromContent:true,namingConfidence:meta.confidence,sourceFileName:item.name}}});
+ if(begin.duplicate)return{skipped:true,duplicate:true,title:meta.title};
+ const docId=begin.document?.id;if(!docId)throw new Error('لم يرجع الخادم معرف الدليل.');
  try{
    const batchSize=20,totalBatches=Math.ceil(ex.chunks.length/batchSize);
    for(let i=0;i<ex.chunks.length;i+=batchSize){
-     const n=Math.floor(i/batchSize)+1,batch=ex.chunks.slice(i,i+batchSize);
-     setBundleState(d.id,'running',`4/5 — فهرسة الدفعة ${n} من ${totalBatches}`);
-     await invoke('ingest_batch',{documentId:docId,chunks:batch});
-     const overall=((seq-1)+(0.35+0.6*(n/totalBatches)))/total*100;$('bundleBar').style.width=Math.min(98,Math.round(overall))+'%';
+     const n=Math.floor(i/batchSize)+1;
+     setBundleState(item.id,'running',`5/6 — فهرسة ${meta.title}: الدفعة ${n} من ${totalBatches}`);
+     await invoke('ingest_batch',{documentId:docId,chunks:ex.chunks.slice(i,i+batchSize)});
+     $('bundleBar').style.width=Math.min(98,Math.round(((seq-1)+(0.45+0.5*n/totalBatches))/total*100))+'%';
    }
-   setBundleState(d.id,'running','5/5 — اعتماد الدليل في القاعدة المعرفية...');
+   setBundleState(item.id,'running','6/6 — اعتماد الدليل...');
    const fin=await invoke('finalize_ingest',{documentId:docId,status:'active'});
-   return{ok:true,indexed:fin.indexedChunks};
+   return{ok:true,indexed:fin.indexedChunks,title:meta.title,confidence:meta.confidence}
  }catch(e){try{await invoke('abort_ingest',{documentId:docId,error:e.message||String(e)})}catch(_){}throw e}
 }
-async function importOneBundled(d,seq,total){
- const existing=documents.find(x=>String(x.title||'').trim()===d.title);if(existing)return{skipped:true};
- const hit=bundleZipEntries.get(d.sha256);if(!hit)return{missing:true};
- setBundleState(d.id,'running','1/5 — تجهيز الملف من الحزمة...');
- const blob=new Blob([hit.arrayBuffer],{type:'application/pdf'}),file=new File([blob],d.originalName,{type:'application/pdf'});
- if(!d.indexable)return{pending:true,title:d.title};
- setBundleState(d.id,'running','1/5 — استخراج النص والصفحات...');
- const ex=await extractFile(file);if(!ex.chunks.length)return{pending:true,title:d.title};
+async function importOneZip(item,seq,total){
+ setBundleState(item.id,'running','1/6 — استخراج محتوى PDF...');
+ const file=new File([item.arrayBuffer],item.name,{type:'application/pdf'});
+ const hash=await sha256(file);
+ const ex=await extractFile(file);
+ if(!ex.chunks.length)return{pending:true,title:item.name};
+ setBundleState(item.id,'running','2/6 — تحديد الاسم الرسمي والجهة والتصنيف من محتوى الدليل...');
+ const meta=analyzeDocument(ex,item.name);
+ setBundleState(item.id,'running',`2/6 — تم التعرف: ${meta.title} (${meta.confidence})`);
+ const existing=documents.find(x=>String(x.title||'').trim()===meta.title&&String(x.version_label||'')===String(meta.versionLabel||''));
+ if(existing)return{skipped:true,title:meta.title};
  ex.chunks.forEach((x,i)=>x.chunkIndex=i);
- const path=await uploadBundledFile(d,file);
- try{return await stagedIngest(d,file,path,ex,d.sha256,seq,total)}catch(e){try{await sb.storage.from('regulatory-knowledge').remove([path])}catch(_){}throw e}
+ const path=await uploadZipFile(item,file,meta.title);
+ try{return await stagedZipIngest(item,meta,file,path,ex,hash,seq,total)}
+ catch(e){try{await sb.storage.from('regulatory-knowledge').remove([path])}catch(_){}throw e}
 }
 async function importBundled(){
- const btn=$('importBundledBtn');if(!bundleZipEntries.size)return alert('اختر ملف ZIP وافحصه أولًا.');
- if(!confirm('سيتم رفع الأدلة المعروفة داخل ملف ZIP مباشرة إلى Supabase وفهرستها. لن تُرفع ملفات الأدلة إلى GitHub. هل تريد المتابعة؟'))return;
+ const btn=$('importBundledBtn');if(!bundleFiles.length)return alert('اختر ملف ZIP أولًا.');
+ if(!confirm(`سيتم معالجة ${bundleFiles.length} ملف PDF ورفعها مباشرة إلى Supabase ثم تسميتها من محتواها وفهرستها. هل تريد المتابعة؟`))return;
  btn.disabled=true;bundleRunState.clear();$('bundleErrors').style.display='none';$('bundleErrors').innerHTML='';
- let ok=0,skip=0,pending=0,missing=0,failed=[];const total=bundledDocs.length;
- try{await loadDocs();
-  for(let i=0;i<total;i++){const d=bundledDocs[i];$('bundleBar').style.width=Math.round(i/total*100)+'%';
-   try{const r=await importOneBundled(d,i+1,total);
-    if(r?.skipped){skip++;setBundleState(d.id,'skipped',r.duplicate?'↪ موجود مسبقًا بنفس الملف':'↪ موجود مسبقًا')}
-    else if(r?.missing){missing++;setBundleState(d.id,'pending','⚠ غير موجود داخل ملف ZIP المختار')}
-    else if(r?.pending){pending++;setBundleState(d.id,'pending','⚠ يحتاج معالجة نصية قبل الفهرسة')}
-    else{ok++;setBundleState(d.id,'success',`✓ تمت الإضافة — ${r.indexed||0} مقطع معرفي`)}
-   }catch(e){const msg=e?.message||String(e);failed.push({title:d.title,error:msg});setBundleState(d.id,'failed','✕ فشل: '+msg)}
-   try{await loadDocs()}catch(_e){}
-   $('bundleStatus').textContent=`تمت معالجة ${i+1} من ${total} — نجح ${ok}، موجود ${skip}، يحتاج معالجة ${pending}، مفقود ${missing}، فشل ${failed.length}`;
+ let ok=0,skip=0,pending=0,failed=[];const total=bundleFiles.length;
+ try{
+  await loadDocs();
+  for(let i=0;i<total;i++){
+   const item=bundleFiles[i];$('bundleBar').style.width=Math.round(i/total*100)+'%';
+   try{
+    const r=await importOneZip(item,i+1,total);
+    if(r?.skipped){skip++;setBundleState(item.id,'skipped','↪ موجود مسبقًا: '+(r.title||item.name))}
+    else if(r?.pending){pending++;setBundleState(item.id,'pending','⚠ تعذر استخراج نص قابل للفهرسة')}
+    else{ok++;setBundleState(item.id,'success',`✓ تمت الإضافة: ${r.title} — ${r.indexed||0} مقطع (${r.confidence})`)}
+   }catch(e){const msg=e?.message||String(e);failed.push({title:item.name,error:msg});setBundleState(item.id,'failed','✕ فشل: '+msg)}
+   try{await loadDocs()}catch(_){}
+   $('bundleStatus').textContent=`تمت معالجة ${i+1} من ${total} — نجح ${ok}، موجود ${skip}، يحتاج معالجة ${pending}، فشل ${failed.length}`;
   }
-  $('bundleBar').style.width='100%';$('bundleStatus').textContent=`اكتملت المعالجة: أضيف ${ok}، موجود مسبقًا ${skip}، يحتاج معالجة نصية ${pending}، مفقود من الحزمة ${missing}، فشل ${failed.length}.`;
+  $('bundleBar').style.width='100%';
+  $('bundleStatus').textContent=`اكتملت المعالجة: أضيف ${ok}، موجود مسبقًا ${skip}، يحتاج معالجة نصية ${pending}، فشل ${failed.length}.`;
   if(failed.length){$('bundleErrors').style.display='block';$('bundleErrors').innerHTML='<b>أسباب الفشل:</b>'+failed.map((x,i)=>`<div>${i+1}. ${esc(x.title)} — ${esc(x.error)}</div>`).join('')}
  }finally{btn.disabled=false}
 }
 $('importBundledBtn').addEventListener('click',importBundled);
+
 $('uploadForm').addEventListener('submit',async e=>{e.preventDefault();const btn=$('uploadBtn'),file=$('file').files[0];if(!file)return;btn.disabled=true;let path='',docId='';try{
  setProgress(3,'التحقق من الملف...');const hash=await sha256(file);const extracted=await extractFile(file);if(!extracted.chunks.length)throw new Error('لم يتم العثور على نص قابل للفهرسة داخل الدليل. إذا كان PDF عبارة عن صور ممسوحة ضوئيًا فحوّله أولًا إلى PDF قابل للبحث.');
  extracted.chunks.forEach((x,i)=>x.chunkIndex=i);setProgress(35,'رفع الملف الأصلي إلى التخزين المركزي...');

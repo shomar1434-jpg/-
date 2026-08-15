@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="ar" dir="rtl">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="utf-8"><meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"><meta http-equiv="Pragma" content="no-cache"><meta http-equiv="Expires" content="0"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>القاعدة المعرفية | مدير النظام</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-bridge.js"></script>
@@ -25,7 +25,7 @@ main{max-width:1280px;margin:0 auto;padding:28px 22px 60px}.hero{background:line
 @media(max-width:900px){.bundle-list{grid-template-columns:1fr}}
 </style>
 </head><body>
-<header><div class="brand"><div class="icon">📚</div><div><h1>القاعدة المعرفية</h1><div class="sub">الأدلة التنظيمية والإجرائية المركزية للوكيل الذكي</div></div></div><button class="back" onclick="location.href='index.html?systemAdminReturn=1'">← العودة إلى مدير النظام</button></header>
+<header><div class="brand"><div class="icon">📚</div><div><h1>القاعدة المعرفية <span style="font-size:10px;background:#e8f7f3;color:#0f766e;border-radius:999px;padding:3px 7px;vertical-align:middle">ZIP المرن v4</span></h1><div class="sub">الأدلة التنظيمية والإجرائية المركزية للوكيل الذكي</div></div></div><button class="back" onclick="location.href='index.html?systemAdminReturn=1'">← العودة إلى مدير النظام</button></header>
 <main>
 <section class="hero"><div><h2>المعرفة الرسمية للمنصة</h2><p>ارفع الدليل مرة واحدة. يستخرج النظام محتواه ويقسمه ويفهرسه دلاليًا، ثم يستطيع الوكيل الذكي في المدارس المستقلة الرجوع إليه عند الأسئلة التنظيمية والإجرائية مع إظهار اسم الدليل والصفحة.</p></div><div class="stats"><div class="stat"><b id="stDocs">0</b><span>دليل</span></div><div class="stat"><b id="stActive">0</b><span>ساري</span></div><div class="stat"><b id="stChunks">0</b><span>مقطع مفهرس</span></div></div></section>
 <div class="grid">
@@ -47,7 +47,7 @@ main{max-width:1280px;margin:0 auto;padding:28px 22px 60px}.hero{background:line
 <div class="bundle-head"><h3>📚 استيراد حزمة الأدلة الوزارية</h3><span class="bundle-count" id="bundleCount">0 ملف</span></div>
 <div class="muted" style="margin-top:8px">لا تُحفظ ملفات الأدلة داخل GitHub. اختر أي ملف ZIP يحتوي على أدلة PDF؛ يقبل النظام جميع الملفات أولًا دون مطابقة أسماء أو بصمات مسبقة، ثم يستخرج محتوى كل دليل ويحدد اسمه الرسمي وبياناته قبل اعتماده في القاعدة المعرفية.</div>
 <div class="upload" style="margin-top:12px"><label>ملف ZIP للأدلة الوزارية</label><input id="bundleZipFile" type="file" accept=".zip,application/zip"><div class="muted" id="bundleZipHint" style="margin-top:7px">اختر ملف ZIP الذي يحتوي على ملفات PDF.</div></div>
-<div style="margin-top:10px"><button type="button" class="btn" id="importBundledBtn" disabled>رفع الأدلة ومعالجتها في Supabase</button></div>
+<div style="margin-top:10px"><button type="button" class="btn" id="importBundledBtn" disabled>اختر ملف ZIP أولًا</button></div>
 <div class="progress"><i id="bundleBar"></i></div><div class="status" id="bundleStatus"></div><div class="bundle-errors" id="bundleErrors"></div><div class="bundle-list" id="bundleList"></div>
 </section><div class="security">🔒 رفع الأدلة وتعديلها وحذفها متاح لمدير النظام فقط. المدارس المستقلة لا تصل إلى إدارة هذه المكتبة؛ الوكيل يقرأ المقاطع السارية عبر الخادم فقط.</div>
 </section>
@@ -190,16 +190,22 @@ async function inspectBundleZip(file){
  }
  $('bundleZipHint').textContent=`تم العثور على ${bundleFiles.length} ملف PDF. تمت القراءة محليًا فقط ولم يبدأ الرفع بعد. اضغط زر «رفع الأدلة ومعالجتها في Supabase» لبدء الرفع والفهرسة.`;
  $('bundleStatus').textContent=bundleFiles.length?'✓ تمت قراءة الحزمة محليًا. بانتظار أمر الرفع إلى Supabase.':'لم يتم العثور على ملفات PDF داخل الحزمة.';
- $('importBundledBtn').disabled=!bundleFiles.length;$('importBundledBtn').textContent=bundleFiles.length?'رفع '+bundleFiles.length+' دليلًا إلى Supabase':'رفع الأدلة ومعالجتها في Supabase';renderBundled();
+ const uploadBundleBtn=document.getElementById('importBundledBtn');
+ if(uploadBundleBtn){
+   uploadBundleBtn.disabled=bundleFiles.length===0;
+   uploadBundleBtn.textContent=bundleFiles.length?`رفع ${bundleFiles.length} دليلًا إلى Supabase`:'اختر ملف ZIP أولًا';
+ }
+ renderBundled();
 }
-$('bundleZipFile').addEventListener('change',async e=>{try{await inspectBundleZip(e.target.files[0])}catch(err){$('bundleStatus').textContent='تعذر قراءة ملف ZIP: '+(err.message||err);$('importBundledBtn').disabled=true}});
+$('bundleZipFile').addEventListener('change',async e=>{try{await inspectBundleZip(e.target.files[0])}catch(err){$('bundleStatus').textContent='تعذر قراءة ملف ZIP: '+(err.message||err);const b=document.getElementById('importBundledBtn');if(b){b.disabled=true;b.textContent='تعذر قراءة ZIP — أعد الاختيار'}}});
 
 async function uploadZipFile(item,file,officialTitle){
- const path='knowledge/batch-import/'+crypto.randomUUID()+'/'+safeName(officialTitle+'.pdf');
+ const ticket=await invoke('create_upload_url',{fileName:safeName((officialTitle||item.name||'document')+'.pdf')});
+ if(!ticket?.path||!ticket?.token)throw new Error('لم يصدر الخادم رابط رفع صالح.');
  setBundleState(item.id,'running','3/6 — رفع الملف إلى Supabase Storage...');
- const up=await sb.storage.from('regulatory-knowledge').upload(path,file,{upsert:false,contentType:'application/pdf',cacheControl:'3600'});
+ const up=await sb.storage.from('regulatory-knowledge').uploadToSignedUrl(ticket.path,ticket.token,file,{contentType:'application/pdf',cacheControl:'3600'});
  if(up.error)throw new Error('فشل رفع الملف إلى Storage: '+(up.error.message||up.error));
- return path
+ return ticket.path
 }
 async function stagedZipIngest(item,meta,file,path,ex,hash,seq,total){
  setBundleState(item.id,'running','4/6 — إنشاء سجل الدليل بالاسم المستخرج: '+meta.title);
@@ -263,7 +269,7 @@ $('importBundledBtn').addEventListener('click',importBundled);
 $('uploadForm').addEventListener('submit',async e=>{e.preventDefault();const btn=$('uploadBtn'),file=$('file').files[0];if(!file)return;btn.disabled=true;let path='',docId='';try{
  setProgress(3,'التحقق من الملف...');const hash=await sha256(file);const extracted=await extractFile(file);if(!extracted.chunks.length)throw new Error('لم يتم العثور على نص قابل للفهرسة داخل الدليل. إذا كان PDF عبارة عن صور ممسوحة ضوئيًا فحوّله أولًا إلى PDF قابل للبحث.');
  extracted.chunks.forEach((x,i)=>x.chunkIndex=i);setProgress(35,'رفع الملف الأصلي إلى التخزين المركزي...');
- path='knowledge/'+crypto.randomUUID()+'/'+safeName(file.name);const up=await sb.storage.from('regulatory-knowledge').upload(path,file,{upsert:false,contentType:file.type||undefined,cacheControl:'3600'});if(up.error)throw up.error;
+ const ticket=await invoke('create_upload_url',{fileName:safeName(file.name)});path=ticket.path;const up=await sb.storage.from('regulatory-knowledge').uploadToSignedUrl(ticket.path,ticket.token,file,{contentType:file.type||'application/pdf',cacheControl:'3600'});if(up.error)throw up.error;
  setProgress(45,'إنشاء سجل الدليل...');const begin=await invoke('begin_ingest',{document:{title:$('title').value.trim(),category:$('category').value,authority:$('authority').value.trim(),versionLabel:$('version').value.trim(),issueDate:$('issueDate').value||null,effectiveDate:$('effectiveDate').value||null,status:$('docStatus').value,replacesDocumentId:$('replaces').value||null,storagePath:path,originalName:file.name,mimeType:file.type,fileSize:file.size,pageCount:extracted.pageCount,sourceHash:hash}});
  if(begin.duplicate){setProgress(100,'الدليل موجود مسبقًا في القاعدة المعرفية.');return}docId=begin.document?.id;if(!docId)throw new Error('تعذر إنشاء سجل الدليل.');
  const batchSize=20,totalBatches=Math.ceil(extracted.chunks.length/batchSize);for(let i=0;i<extracted.chunks.length;i+=batchSize){const n=Math.floor(i/batchSize)+1;setProgress(45+Math.round(45*n/totalBatches),`فهرسة الدفعة ${n} من ${totalBatches}...`);await invoke('ingest_batch',{documentId:docId,chunks:extracted.chunks.slice(i,i+batchSize)})}

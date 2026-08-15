@@ -1692,6 +1692,48 @@ const launchApp = (appId) => {
         window.getMeetingCurrentUserId = () => currentUser?.id || null;
         window.getMeetingCurrentUserEmail = () => getMicrosoftEmail(currentUser);
 
+
+        const systemAdminGateway = async (action, payload = {}) => {
+            const sb = window.SmartSchoolSupabase?.getClient?.();
+            if (!sb) throw new Error('Supabase غير جاهز');
+            const sessionRes = await sb.auth.getSession();
+            const session = sessionRes?.data?.session;
+            if (!session?.access_token) throw new Error('جلسة مدير النظام غير متاحة. أعد تسجيل الدخول.');
+            const invoked = await sb.functions.invoke('system-admin', {
+                body: Object.assign({ action }, payload || {})
+            });
+            if (invoked.error) {
+                const msg = invoked.data?.error || invoked.data?.details || invoked.error?.message || 'رفض الخادم العملية';
+                throw new Error(msg);
+            }
+            if (!invoked.data?.ok) {
+                throw new Error(invoked.data?.error || invoked.data?.details || 'لم يؤكد الخادم العملية');
+            }
+            return invoked.data;
+        };
+
+        const normalizeAdminSchool = (row) => {
+            row = row || {};
+            const id = row.id || row.schoolId || row.school_id || '';
+            const code = row.school_code || row.schoolCode || id;
+            const name = row.school_name || row.schoolName || row.name || '';
+            const managerName = row.manager_name || row.managerName || row.principal_name || '';
+            const managerEmail = row.manager_email || row.managerEmail || row.email || '';
+            const reg = row.registration_code || row.registrationCode || '';
+            const status = row.status || 'active';
+            const basePath = location.href.split('/').slice(0,-1).join('/');
+            const registrationLink = row.registration_link || row.registrationLink ||
+                `${basePath}/register.html?schoolId=${encodeURIComponent(id)}&school=${encodeURIComponent(code)}&reg=${encodeURIComponent(reg)}&token=${encodeURIComponent(reg)}&schoolName=${encodeURIComponent(name)}&source=supabase_school_registration`;
+            const loginLink = row.login_link || row.loginLink ||
+                `${basePath}/school-login.html?schoolId=${encodeURIComponent(id)}&school=${encodeURIComponent(code)}&schoolName=${encodeURIComponent(name)}&source=supabase_school_login`;
+            return {
+                id, schoolId:id, schoolCode:code, schoolName:name,
+                managerName, managerEmail, status,
+                registrationCode:reg, registrationLink, loginLink,
+                createdAt: row.created_at || row.createdAt || ''
+            };
+        };
+
         const showSchoolManagementPanel = async () => {
             const modal = document.getElementById('school-management-modal');
             if (!modal) return showToast('لم يتم العثور على واجهة إدارة المدارس');
@@ -1712,44 +1754,44 @@ const launchApp = (appId) => {
         const createSupabaseSchoolFromPanel = async () => {
             const schoolName = (document.getElementById('sm-school-name')?.value || '').trim();
             const managerName = (document.getElementById('sm-manager-name')?.value || '').trim();
-            const email = (document.getElementById('sm-manager-email')?.value || '').trim();
+            const email = (document.getElementById('sm-manager-email')?.value || '').trim().toLowerCase();
             const password = (document.getElementById('sm-manager-password')?.value || '').trim();
             const statusBox = document.getElementById('sm-status');
-            if (!schoolName || !managerName || !email || !password) { showToast('يرجى تعبئة جميع بيانات المدرسة والمدير'); return; }
+            if (!schoolName || !managerName || !email || password.length < 8) {
+                if (statusBox) statusBox.textContent = 'يرجى تعبئة جميع البيانات، وكلمة المرور 8 أحرف على الأقل.';
+                return;
+            }
             try {
-                if (statusBox) statusBox.textContent = 'جاري الحفظ في Supabase...';
-                if (!window.SmartSchoolSupabase || !window.SmartSchoolSupabase.createSchoolWithManager) throw new Error('جسر Supabase غير جاهز');
-                const result = await window.SmartSchoolSupabase.createSchoolWithManager({ schoolName, managerName, email, password, status:'active' });
-                const school = result.school;
-                const manager = result.manager;
-                const localUsers = collectLocalUsersForWorkspace();
-                if (!localUsers.some(u => String(u.email||'').toLowerCase() === String(email).toLowerCase())) {
-                    localUsers.push({ ...manager, role:'leadership', isActive:true, status:'active', schoolName:school.schoolName, schoolId:school.id, accountType:'school_manager', isPrimaryManager:true });
-                    saveUnifiedUserStores(localUsers);
-                    allUsers = localUsers;
-                }
-                const localSchools = JSON.parse(localStorage.getItem('smart_school_schools') || '[]').filter(s => String(s.id||s.schoolId) !== String(school.id));
-                localSchools.push({ id:school.id, schoolId:school.id, schoolName:school.schoolName, managerName:school.managerName, managerEmail:school.managerEmail, status:school.status, registrationLink:school.registrationLink, loginLink:school.loginLink, createdAt:school.createdAt });
+                if (statusBox) statusBox.textContent = 'جاري إنشاء المدرسة وحساب المدير في Supabase...';
+                const result = await systemAdminGateway('create_school', { schoolName, managerName, email, password });
+                const school = normalizeAdminSchool(result.school || {});
+                const localSchools = JSON.parse(localStorage.getItem('smart_school_schools') || '[]')
+                    .filter(x => String(x.id || x.schoolId) !== String(school.id));
+                localSchools.unshift(school);
                 localStorage.setItem('smart_school_schools', JSON.stringify(localSchools));
-                ['sm-school-name','sm-manager-name','sm-manager-email','sm-manager-password'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
-                if (statusBox) statusBox.textContent = 'تم الحفظ بنجاح في Supabase.';
-                showToast('تم إنشاء المدرسة وحفظها في Supabase');
+                ['sm-school-name','sm-manager-name','sm-manager-email','sm-manager-password'].forEach(id => {
+                    const el=document.getElementById(id); if(el) el.value='';
+                });
+                if (statusBox) statusBox.textContent = 'تم إنشاء المدرسة وحساب المدير بنجاح.';
+                showToast('تم إنشاء المدرسة المستقلة في Supabase');
                 await renderSchoolManagement();
             } catch (err) {
                 console.error('Create school failed:', err);
-                if (statusBox) statusBox.textContent = 'فشل الحفظ: ' + (err.message || err);
-                showToast('فشل حفظ المدرسة في Supabase: ' + (err.message || err));
+                if (statusBox) statusBox.textContent = 'فشل إنشاء المدرسة: ' + (err.message || err);
+                showToast('تعذر إنشاء المدرسة: ' + (err.message || err));
             }
         };
 
         const renderSchoolManagement = async () => {
             const tbody = document.getElementById('schools-table-body');
+            const statusBox = document.getElementById('sm-status');
             if (!tbody) return;
-            tbody.innerHTML = '<tr><td colspan="4" class="p-6 text-center text-slate-400 text-xs">جاري تحميل المدارس من Supabase...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="4" class="p-6 text-center text-slate-400 text-xs">جارٍ تحميل المدارس من بوابة مدير النظام...</td></tr>';
             try {
-                if (!window.SmartSchoolSupabase || !window.SmartSchoolSupabase.listSchools) throw new Error('جسر Supabase غير جاهز');
-                const schools = await window.SmartSchoolSupabase.listSchools();
-                localStorage.setItem('smart_school_schools', JSON.stringify(schools.map(s => ({ id:s.id, schoolId:s.id, schoolName:s.schoolName, managerName:s.managerName, managerEmail:s.managerEmail, status:s.status, registrationLink:s.registrationLink, loginLink:s.loginLink, createdAt:s.createdAt }))));
+                const result = await systemAdminGateway('list_schools');
+                const schools = (result.schools || []).map(normalizeAdminSchool);
+                localStorage.setItem('smart_school_schools', JSON.stringify(schools));
+                if (statusBox) statusBox.textContent = 'تم تحميل ' + schools.length + ' مدرسة من Supabase.';
                 if (!schools.length) {
                     tbody.innerHTML = '<tr><td colspan="4" class="p-6 text-center text-slate-400 text-xs">لا توجد مدارس في Supabase حتى الآن. أنشئ مدرسة من النموذج أعلاه.</td></tr>';
                     return;
@@ -1757,10 +1799,12 @@ const launchApp = (appId) => {
                 tbody.innerHTML = schools.map(s => {
                     const reg = s.registrationLink || '';
                     const login = s.loginLink || '';
-                    const statusLabel = s.status === 'active' ? '<span class="text-green-700 font-bold">مفعلة</span>' : '<span class="text-amber-700 font-bold">'+(s.status||'pending')+'</span>';
+                    const statusLabel = s.status === 'active'
+                        ? '<span class="text-green-700 font-bold">مفعلة</span>'
+                        : '<span class="text-amber-700 font-bold">'+(s.status||'pending')+'</span>';
                     return `<tr class="hover:bg-slate-50">
                         <td class="p-3 border-b font-bold text-xs text-slate-700">${s.schoolName || 'بدون اسم'}<div class="text-[10px] text-slate-400 font-normal mt-1">${s.schoolCode || s.id}</div></td>
-                        <td class="p-3 border-b text-xs text-slate-600">${s.managerName || ''}<div class="text-[10px] text-slate-400 mt-1">${s.managerEmail || ''}</div></td>
+                        <td class="p-3 border-b text-xs text-slate-600">${s.managerName || ''}<div class="text-[10px] text-slate-400 mt-1" dir="ltr">${s.managerEmail || ''}</div></td>
                         <td class="p-3 border-b text-center text-xs">${statusLabel}</td>
                         <td class="p-3 border-b text-center"><div class="flex justify-center gap-2 flex-wrap">
                             <button onclick="copyTextValue('${safeJs(reg)}','تم نسخ رابط التسجيل')" class="bg-blue-600 text-white px-3 py-1 rounded-lg text-[10px] font-bold">رابط التسجيل</button>
@@ -1772,6 +1816,7 @@ const launchApp = (appId) => {
                 }).join('');
             } catch (err) {
                 console.error('Load schools failed:', err);
+                if (statusBox) statusBox.textContent = 'تعذر تحميل المدارس: ' + (err.message || err);
                 tbody.innerHTML = '<tr><td colspan="4" class="p-6 text-center text-red-500 text-xs">تعذر تحميل المدارس من Supabase: '+(err.message || err)+'</td></tr>';
             }
         };
@@ -1784,23 +1829,20 @@ const launchApp = (appId) => {
 
         const toggleSchoolSupabaseStatus = async (schoolId, status) => {
             try {
-                await window.SmartSchoolSupabase.updateSchoolStatus(schoolId, status);
+                await systemAdminGateway('set_school_status', { schoolId, status });
                 showToast(status === 'active' ? 'تم تفعيل المدرسة' : 'تم تعطيل المدرسة');
                 await renderSchoolManagement();
-            } catch (err) { showToast('تعذر تحديث حالة المدرسة: ' + (err.message || err)); }
+            } catch (err) {
+                showToast('تعذر تحديث حالة المدرسة: ' + (err.message || err));
+            }
         };
         const deleteSupabaseSchool = async (schoolId) => {
             const id = String(schoolId || '').trim();
             if (!id) return showToast('تعذر تحديد المدرسة');
             if (!confirm('سيتم حذف المدرسة نهائيًا من Supabase وحساباتها وملفاتها السحابية المرتبطة. هل تريد المتابعة؟')) return;
             try {
-                const sb = window.SmartSchoolSupabase?.getClient?.();
-                if (!sb) throw new Error('Supabase غير جاهز');
-                const session = (await sb.auth.getSession()).data?.session;
-                if (!session?.access_token) throw new Error('يلزم تسجيل دخول مدير النظام');
                 showToast('جاري حذف المدرسة من Supabase...');
-                const invoked = await sb.functions.invoke('system-admin', { body:{action:'delete_school', schoolId:id, confirmText:'DELETE'} });
-                if (invoked.error || !invoked.data?.ok) throw new Error(invoked.data?.error || invoked.error?.message || 'رفض الخادم الحذف');
+                await systemAdminGateway('delete_school', { schoolId:id, confirmText:'DELETE' });
                 showToast('تم حذف المدرسة من Supabase');
                 await renderSchoolManagement();
             } catch (err) {
@@ -1809,7 +1851,7 @@ const launchApp = (appId) => {
             }
         };
 
-        try { window.showSchoolManagementPanel = showSchoolManagementPanel; window.renderSchoolManagement = renderSchoolManagement; window.createSupabaseSchoolFromPanel = createSupabaseSchoolFromPanel; window.fillSchoolPanelFromRequest = fillSchoolPanelFromRequest; window.copyTextValue = copyTextValue; window.toggleSchoolSupabaseStatus = toggleSchoolSupabaseStatus; window.deleteSupabaseSchool = deleteSupabaseSchool; } catch(e) {}
+        try { window.systemAdminGateway = systemAdminGateway; window.showSchoolManagementPanel = showSchoolManagementPanel; window.renderSchoolManagement = renderSchoolManagement; window.createSupabaseSchoolFromPanel = createSupabaseSchoolFromPanel; window.fillSchoolPanelFromRequest = fillSchoolPanelFromRequest; window.copyTextValue = copyTextValue; window.toggleSchoolSupabaseStatus = toggleSchoolSupabaseStatus; window.deleteSupabaseSchool = deleteSupabaseSchool; } catch(e) {}
 
         const logout = () => { try{ localStorage.clear(); sessionStorage.clear(); }catch(e){} location.reload(); };
         const closeModal = (id) => document.getElementById(id).style.display = 'none';

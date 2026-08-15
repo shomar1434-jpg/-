@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 if(window.__SCHOOL_AGENT_CORE_V2__)return;window.__SCHOOL_AGENT_CORE_V2__=true;
-const VERSION='2.0.0';
+const VERSION='2.1.0';
 const LS={conv:'school_agent_v2_conversations',memory:'school_agent_v2_memory',audit:'school_agent_v2_audit',actions:'school_agent_v2_actions'};
 const sensitive=/password|token|secret|anonkey|service_role|api[_-]?key/i;
 function parse(v,d){
@@ -27,9 +27,9 @@ function yearStatus(y=activeYear()){try{const rows=parse(localStorage.getItem('s
 function context(){
  const rawRole=get(['smart_school_active_role','platform_file_session_role','currentRole','user_role','role'])||inferRoleFromFile();
  const role=(window.AgentRoleProfiles?AgentRoleProfiles.normalize(rawRole):rawRole)||'performance';
- const schoolId=get(['active_school_id','platform_file_session_school_id','current_school_id','school_id']);
+ const schoolId=get(['active_school_id','platform_file_session_school_id','current_school_id','currentSchoolId','activeSchool','school_id']);
  const sessionSchool=get(['platform_file_session_school_id']);
- const userId=get(['platform_file_session_user_id','currentUserId','current_user_id','user_id']);
+ const userId=get(['platform_file_session_user_id','currentUserId','current_user_id','currentUser','user_id']);
  const membershipId=get(['smart_school_active_membership_id']);
  const schoolName=get(['current_school_name','school_name','persist_school','active_school_name']);
  const userName=get(['currentUserName','current_user_name','userName','teacherName','managerName','persist_name_m']);
@@ -67,8 +67,90 @@ async function approveAction(id){const c=context(),rows=proposedActions(),a=rows
 function rejectAction(id){const c=context(),rows=proposedActions(),a=rows.find(x=>x.id===id);if(a){a.status='rejected';a.rejectedAt=new Date().toISOString();localStorage.setItem(scopedKey(LS.actions,c),JSON.stringify(rows));audit('action.rejected',{id:a.id,type:a.type})}}
 function endpoint(){const base=(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'');return base+'/functions/v1/platform-agent'}
 function anon(){return localStorage.getItem('smartSchoolSupabaseAnonKey')||'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM'}
-function sessionToken(){return window.PlatformCloudSession?.token?.()||get(['platform_file_session_token'])}
-async function api(action,payload,opts){const c=assertContext(context()),token=sessionToken();if(!token)throw new Error('جلسة المنصة السحابية غير متاحة. سجّل الدخول مجددًا.');const body={action,context:c,payload:payload||{},client:{version:VERSION,page:{text:visiblePage(),fields:fields()},memory:memory().slice(0,20),localSummary:action==='chat'?localRecords():undefined}};const r=await fetch(endpoint(),{method:'POST',headers:{'content-type':'application/json','apikey':anon(),'x-platform-session':token},body:JSON.stringify(body)});const data=await r.json().catch(()=>({}));if(!r.ok)throw new Error(data.error||data.message||'تعذر الاتصال بوكيل المنصة.');audit('api.'+action,{requestId:data.requestId||'',tools:data.toolsUsed||[]});return data}
+function sessionToken(){
+  const valid=v=>{
+    v=clean(v);
+    if(!v)return'';
+    if(/^eyJ[A-Za-z0-9_-]+\./.test(v))return'';
+    return v;
+  };
+  const fromObj=o=>{
+    if(!o)return'';
+    try{
+      for(const m of ['token','getToken','sessionToken','getSessionToken']){
+        if(typeof o[m]==='function'){
+          const v=valid(o[m]());
+          if(v)return v;
+        }
+      }
+      for(const k of ['token','sessionToken','platformToken','session_token','session_token_raw']){
+        const v=valid(o[k]);
+        if(v)return v;
+      }
+      for(const k of ['session','current','state']){
+        const n=o[k];
+        if(n&&typeof n==='object'){
+          for(const p of ['token','sessionToken','platformToken','session_token']){
+            const v=valid(n[p]);
+            if(v)return v;
+          }
+        }
+      }
+    }catch(_){}
+    return'';
+  };
+
+  let token=
+    fromObj(window.PlatformCloudSession)||
+    fromObj(window.PlatformFileSession)||
+    fromObj(window.SmartSchoolCloudSession);
+
+  if(!token){
+    const known=[
+      'platform_file_session_token',
+      'platform_session_token',
+      'platformSessionToken',
+      'smart_school_platform_session_token',
+      'smartSchoolPlatformSessionToken',
+      'school_platform_session_token',
+      'school_session_token',
+      'cloud_session_token'
+    ];
+    for(const k of known){
+      token=valid(get([k]));
+      if(token)break;
+    }
+  }
+
+  if(!token){
+    for(const st of [localStorage,sessionStorage]){
+      try{
+        for(let i=0;i<st.length;i++){
+          const k=st.key(i)||'';
+          if(!/(platform|school|cloud)/i.test(k)||!/session/i.test(k))continue;
+          if(/supabase|auth|access|refresh|anon|service/i.test(k))continue;
+          const raw=st.getItem(k);
+          if(!raw)continue;
+          if(/token/i.test(k)){
+            token=valid(raw);
+            if(token)break;
+          }
+          try{
+            token=fromObj(JSON.parse(raw));
+            if(token)break;
+          }catch(_){}
+        }
+      }catch(_){}
+      if(token)break;
+    }
+  }
+
+  if(token){
+    try{localStorage.setItem('platform_file_session_token',token)}catch(_){}
+  }
+  return token;
+}
+async function api(action,payload,opts){const c=assertContext(context()),token=sessionToken();if(!token)throw new Error('تعذر العثور على رمز جلسة المدرسة المستقلة. أعد الدخول إلى المدرسة مرة واحدة بعد تحديث الملف، ثم افتح الوكيل.');const body={action,context:c,payload:payload||{},client:{version:VERSION,page:{text:visiblePage(),fields:fields()},memory:memory().slice(0,20),localSummary:action==='chat'?localRecords():undefined}};const r=await fetch(endpoint(),{method:'POST',headers:{'content-type':'application/json','apikey':anon(),'x-platform-session':token},body:JSON.stringify(body)});const data=await r.json().catch(()=>({}));if(!r.ok)throw new Error(data.error||data.message||'تعذر الاتصال بوكيل المنصة.');audit('api.'+action,{requestId:data.requestId||'',tools:data.toolsUsed||[]});return data}
 async function chat(message,convId){const c=assertContext(context());let conv=conversations().find(x=>x.id===convId)||{id:convId||uuid(),title:clean(message).slice(0,70)||'محادثة جديدة',messages:[],createdAt:new Date().toISOString(),schoolId:c.schoolId,role:c.role,academicYear:c.academicYear};conv.messages.push({role:'user',content:message,at:new Date().toISOString()});saveConversation(conv);const data=await api('chat',{message,conversation:conv.messages.slice(-16),conversationId:conv.id,title:conv.title});conv.messages.push({role:'assistant',content:data.answer||'',at:new Date().toISOString(),toolsUsed:data.toolsUsed||[],sources:Array.isArray(data.sources)?data.sources:[],suggestedActions:data.suggestedActions||[]});conv.updatedAt=new Date().toISOString();saveConversation(conv);(data.suggestedActions||[]).forEach(x=>proposeAction(x.type,x.payload,x.label));return{conversation:conv,data}}
 async function brief(){return api('brief',{})}
 async function searchSchool(query){return api('chat',{message:'ابحث داخل بيانات المدرسة الحالية عن: '+query+'، واستخدم أداة البحث المناسبة. اعرض النتائج ذات الصلة فقط مع توضيح مصدرها، ولا تفترض شيئًا غير موجود.',conversation:[]})}

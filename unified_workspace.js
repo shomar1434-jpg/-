@@ -45,10 +45,15 @@
       /* ===== توحيد مساحة العمل V2: لا قوائم جانبية أو عائمة ===== */
       #manualDockControlPanel,#manualDockTip,#ssFinalBar,.ss-final-bar,.uw-generic-bar,#smartSchoolFloatingBar,.smart-school-floating-bar,#top-floating-icons,.top-floating-icons,.floating-icons,.global-floating-icons,.top-actions-floating,.quick-actions-floating{display:none!important;visibility:hidden!important;pointer-events:none!important}
       html.mdw-focus-mode .mdw-managed,.mdw-managed,.mdw-focus-hidden,.mdw-collapsed-top,.mdw-collapsed-left,.mdw-collapsed-bottom{transform:none!important;opacity:1!important;filter:none!important;pointer-events:auto!important}
-      header .im-static-messaging-btn,header button[onclick*="openAppSettings"]{display:inline-flex!important;visibility:visible!important;opacity:1!important;pointer-events:auto!important}
-      .uw-session-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap;text-decoration:none!important;border-radius:12px;padding:8px 14px;font-size:12px;font-weight:900;cursor:pointer;border:1px solid #e2e8f0;background:#fff;color:#334155;box-shadow:0 4px 12px rgba(15,23,42,.04)}
-      .uw-session-btn.home{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe}.uw-session-btn.exit{background:#fff1f2;color:#be123c;border-color:#fecdd3}
-      .uw-session-btn:hover{transform:translateY(-1px)}
+      header{position:relative!important}
+      .uw-header-actions-cluster{position:absolute!important;left:22px!important;top:50%!important;transform:translateY(-50%)!important;display:flex!important;align-items:center!important;gap:8px!important;direction:ltr!important;z-index:80!important;width:auto!important;max-width:none!important;margin:0!important;padding:0!important}
+      .uw-session-btn,.uw-header-icon-action{position:relative!important;width:40px!important;height:40px!important;min-width:40px!important;max-width:40px!important;min-height:40px!important;max-height:40px!important;padding:0!important;margin:0!important;border-radius:12px!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:0!important;white-space:nowrap!important;text-decoration:none!important;font-size:18px!important;font-weight:900!important;cursor:pointer!important;border:1px solid #dbe7e5!important;background:#fff!important;color:#0f766e!important;box-shadow:0 4px 12px rgba(15,23,42,.05)!important;overflow:visible!important;visibility:visible!important;opacity:1!important;pointer-events:auto!important}
+      .uw-session-btn.home{background:#eff6ff!important;color:#1d4ed8!important;border-color:#bfdbfe!important}.uw-session-btn.exit{background:#fff1f2!important;color:#be123c!important;border-color:#fecdd3!important}
+      .uw-header-icon-action.uw-settings{background:#f0fdfa!important;color:#0f766e!important;border-color:#b8e4dc!important}.uw-header-icon-action.uw-messages{background:#f8f5ff!important;color:#6d4cc4!important;border-color:#ddd4f8!important}
+      .uw-session-btn>span,.uw-header-icon-action .uw-hide-label{display:none!important}
+      .uw-session-btn:hover,.uw-header-icon-action:hover{transform:translateY(-2px)!important;box-shadow:0 8px 18px rgba(15,118,110,.12)!important}
+      .uw-session-btn::after,.uw-header-icon-action::after{content:attr(data-uw-label);position:absolute;top:calc(100% + 8px);left:50%;transform:translateX(-50%) translateY(-3px);background:#0f2930;color:#fff;border-radius:8px;padding:6px 9px;font-size:10px;font-weight:800;line-height:1;white-space:nowrap;opacity:0;visibility:hidden;pointer-events:none;transition:.15s;box-shadow:0 6px 16px rgba(15,23,42,.18);direction:rtl;z-index:9999}
+      .uw-session-btn:hover::after,.uw-header-icon-action:hover::after,.uw-session-btn:focus-visible::after,.uw-header-icon-action:focus-visible::after{opacity:1;visibility:visible;transform:translateX(-50%) translateY(0)}
       .uw-ops-section{width:100%;margin:0 0 22px;padding:16px;border:1px solid #dbe7e2;border-radius:24px;background:linear-gradient(135deg,rgba(255,255,255,.96),rgba(240,253,250,.82));box-shadow:0 10px 24px rgba(15,118,110,.06)}
       .uw-ops-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}.uw-ops-head h3{margin:0;font-size:15px;font-weight:900;color:#0f5132}.uw-ops-head p{margin:3px 0 0;color:#64748b;font-size:10px;font-weight:700}
       .uw-ops-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;align-items:stretch}
@@ -67,7 +72,7 @@
       .uw-fullscreen-internal main>div:has(>iframe),.uw-fullscreen-internal .agent-records-card,.uw-fullscreen-internal .self-eval-iframe-wrap{width:100%!important;height:100%!important;max-width:none!important;margin:0!important;border:0!important;border-radius:0!important;box-shadow:none!important}
       .uw-backbar{position:sticky;top:0;z-index:2147482600;display:flex;align-items:center;gap:10px;padding:10px 16px;background:rgba(255,255,255,.96);border-bottom:1px solid #e2e8f0;backdrop-filter:blur(12px)}
       .uw-backbar a,.uw-backbar button{border:0;border-radius:12px;padding:9px 14px;background:#0f766e;color:white;font:800 12px inherit;cursor:pointer;text-decoration:none}.uw-backbar span{font-weight:900;color:#334155}
-      @media(max-width:720px){.uw-session-btn{padding:8px 10px;font-size:11px}.uw-ops-section{padding:12px;border-radius:20px}.uw-ops-grid{grid-template-columns:1fr}.uw-operation-card{min-height:72px;padding:10px 12px}}
+      @media(max-width:720px){.uw-header-actions-cluster{left:10px!important;gap:5px!important}.uw-session-btn,.uw-header-icon-action{width:36px!important;height:36px!important;min-width:36px!important;max-width:36px!important;min-height:36px!important;max-height:36px!important;font-size:16px!important}.uw-ops-section{padding:12px;border-radius:20px}.uw-ops-grid{grid-template-columns:1fr}.uw-operation-card{min-height:72px;padding:10px 12px}}
       @media print{.uw-session-btn,.uw-ops-section,.uw-backbar{display:none!important}}
     `; document.head.appendChild(s);
   }
@@ -125,40 +130,60 @@
   }
 
   function addHeaderActions(){
-    if(document.getElementById('uwHomeHeader')) return;
     var settings=document.querySelector('header button[onclick*="openAppSettings"]');
     var messages=document.querySelector('header .im-static-messaging-btn');
-    var host=settings&&settings.parentElement ? settings.parentElement : (messages&&messages.parentElement ? messages.parentElement : null);
-    if(!host){
-      var h=document.querySelector('#welcome-dashboard header, body>header, .hero');
-      if(h){host=document.createElement('div');host.className='flex gap-2 items-center flex-wrap';h.appendChild(host)}
+    var header=document.querySelector('#welcome-dashboard header, body>header, header');
+    if(!header) return;
+
+    var cluster=document.getElementById('uwHeaderActionsCluster');
+    if(!cluster){
+      cluster=document.createElement('div');
+      cluster.id='uwHeaderActionsCluster';
+      cluster.className='uw-header-actions-cluster';
+      cluster.setAttribute('aria-label','أدوات الشريط العلوي');
+      header.appendChild(cluster);
     }
-    if(!host) return;
-    var home=document.createElement('a');home.id='uwHomeHeader';home.className='uw-session-btn home';home.href=roleRoot();home.innerHTML='🏠 <span>الرئيسية</span>';
-    var exit=document.createElement('button');exit.id='uwExitHeader';exit.type='button';exit.className='uw-session-btn exit';exit.innerHTML='⏻ <span>الخروج</span>';
-    exit.addEventListener('click',async function(){
-      if(isSystemAdminContext()){
-        try{
-          var sb=window.SmartSchoolSupabase&&window.SmartSchoolSupabase.getClient&&window.SmartSchoolSupabase.getClient();
-          if(sb&&sb.auth&&sb.auth.signOut) await sb.auth.signOut();
-        }catch(e){}
-        try{
-          sessionStorage.removeItem('system_admin_context');
-          sessionStorage.removeItem('system_admin_verified');
-          localStorage.removeItem('is_admin_session');
-          localStorage.removeItem('admin_verified');
-        }catch(e){}
-        location.replace('index.html');
-        return;
+
+    var home=document.getElementById('uwHomeHeader');
+    if(!home){
+      home=document.createElement('a');home.id='uwHomeHeader';home.className='uw-session-btn home';home.href=roleRoot();
+      home.innerHTML='🏠<span>الرئيسية</span>';home.setAttribute('data-uw-label','الرئيسية');home.setAttribute('aria-label','الرئيسية');home.title='الرئيسية';
+    }
+    var exit=document.getElementById('uwExitHeader');
+    if(!exit){
+      exit=document.createElement('button');exit.id='uwExitHeader';exit.type='button';exit.className='uw-session-btn exit';
+      exit.innerHTML='⏻<span>الخروج</span>';exit.setAttribute('data-uw-label','الخروج');exit.setAttribute('aria-label','الخروج');exit.title='الخروج';
+      exit.addEventListener('click',async function(){
+        if(isSystemAdminContext()){
+          try{var sb=window.SmartSchoolSupabase&&window.SmartSchoolSupabase.getClient&&window.SmartSchoolSupabase.getClient();if(sb&&sb.auth&&sb.auth.signOut) await sb.auth.signOut();}catch(e){}
+          try{sessionStorage.removeItem('system_admin_context');sessionStorage.removeItem('system_admin_verified');localStorage.removeItem('is_admin_session');localStorage.removeItem('admin_verified');}catch(e){}
+          location.replace('index.html');return;
+        }
+        try{if(window.PlatformCloudSession&&typeof window.PlatformCloudSession.clear==='function') window.PlatformCloudSession.clear();}catch(e){}
+        try{['smart_school_active_school_id','smart_school_active_membership_id','smart_school_active_role','active_school_id','active_school_name','current_school_id','current_school_name','currentRole','user_role'].forEach(function(k){localStorage.removeItem(k);sessionStorage.removeItem(k);});}catch(e){}
+        location.replace('school-login.html');
+      });
+    }
+
+    function iconify(el,kind,label,icon){
+      if(!el)return null;
+      el.classList.add('uw-header-icon-action',kind);
+      el.setAttribute('data-uw-label',label);el.setAttribute('aria-label',label);el.title=label;
+      if(!el.dataset.uwIconified){
+        el.dataset.uwIconified='1';
+        Array.from(el.childNodes).forEach(function(n){
+          if(n.nodeType===3 && String(n.textContent||'').trim()){var sp=document.createElement('span');sp.className='uw-hide-label';sp.textContent=n.textContent;n.replaceWith(sp)}
+          else if(n.nodeType===1){n.classList.add('uw-hide-label')}
+        });
+        var ico=document.createElement('span');ico.className='uw-action-glyph';ico.setAttribute('aria-hidden','true');ico.textContent=icon;el.insertBefore(ico,el.firstChild);
       }
-      try{ if(window.PlatformCloudSession&&typeof window.PlatformCloudSession.clear==='function') window.PlatformCloudSession.clear(); }catch(e){}
-      try{
-        ['smart_school_active_school_id','smart_school_active_membership_id','smart_school_active_role','active_school_id','active_school_name','current_school_id','current_school_name','currentRole','user_role']
-          .forEach(function(k){localStorage.removeItem(k);sessionStorage.removeItem(k);});
-      }catch(e){}
-      location.replace('school-login.html');
-    });
-    if(settings){host.insertBefore(home,settings);host.insertBefore(exit,settings)} else {host.appendChild(home);host.appendChild(exit)}
+      return el;
+    }
+    settings=iconify(settings,'uw-settings','إعدادات مخصصة','⚙️');
+    messages=iconify(messages,'uw-messages','المراسلات الداخلية','✉️');
+
+    /* ترتيب ثابت من أقصى يسار الشريط: الرئيسية، الخروج، الإعدادات، المراسلات */
+    [home,exit,settings,messages].forEach(function(el){if(el)cluster.appendChild(el)});
   }
 
   function tipText(el){var t=el.querySelector&&el.querySelector('.ss-tip');return (t&&t.textContent||el.title||el.getAttribute('aria-label')||'').trim()}

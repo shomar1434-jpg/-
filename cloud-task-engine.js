@@ -27,6 +27,6 @@
    return {ok:true,taskId,compatibilityFallback:'archived',task:r?.task||null};
   }
  }
- const api={VERSION,request,health:()=>request('health',{},'GET'),list:o=>request('list',o||{}),get:taskId=>request('get',{taskId}),listUsers:()=>request('list-users',{}),create:o=>request('create',o),reassign:o=>request('reassign',o),transition:(taskId,status,note='')=>request('transition',{taskId,status,note}),archiveTask,deleteTask,addUpdate:o=>request('add-update',o),attachEvidence:o=>request('attach-evidence',o),linkedRecords:taskId=>request('linked-records',{taskId}),dashboardSummary:o=>request('dashboard-summary',o||{}),mapTask};
+ const api={VERSION,request,health:()=>request('health',{},'GET'),list:o=>request('list',o||{}),get:taskId=>request('get',{taskId}),listUsers:()=>request('list-users',{}),create:o=>request('create',o),reassign:o=>request('reassign',o),updateSchedule:o=>request('update-schedule',o),updateMetadata:o=>request('update-metadata',o),transition:(taskId,status,note='')=>request('transition',{taskId,status,note}),archiveTask,deleteTask,addUpdate:o=>request('add-update',o),attachEvidence:o=>request('attach-evidence',o),linkedRecords:taskId=>request('linked-records',{taskId}),dashboardSummary:o=>request('dashboard-summary',o||{}),mapTask};
  window.CloudTaskEngine=api;
 })();

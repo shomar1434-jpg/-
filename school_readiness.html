@@ -1857,7 +1857,8 @@ function assignRoleTasks(memberIndex){
  });
 }
 function normalizeTeamRoleAssignments(){
- state.team.forEach((m,i)=>{if(ROLE_TASK_RULES[m.role])assignRoleTasks(i)});
+ if(!Array.isArray(state.team)) state.team=[];
+ state.team.forEach((m,i)=>{if(m&&ROLE_TASK_RULES[m.role])assignRoleTasks(i)});
 }
 function roleTaskPreviewHtml(role,customRole){
  const roleOpts=roleTaskOptions(role,customRole);
@@ -1867,7 +1868,7 @@ function roleTaskPreviewHtml(role,customRole){
 }
 function renderTeam(){
  const editor=document.getElementById("teamEditor");if(!editor)return;
- const availableUsers=readinessSchoolUsers.filter(u=>String(u.status||"active")!=="deleted");
+ const availableUsers=(Array.isArray(readinessSchoolUsers)?readinessSchoolUsers:[]).filter(u=>String(u?.status||"active")!=="deleted");
  editor.innerHTML=(state.team.length?state.team.map((m,mi)=>{
   const pct=memberCompletion(m),rows=memberAssignedRows(m);
   const done=rows.filter(x=>x.d.execution?.result==="done"&&x.d.evidence?.length).length;
@@ -1904,7 +1905,7 @@ function renderTeam(){
  const roleSel=document.getElementById("newMemberRole"),customWrap=document.getElementById("customRoleWrap"),cloudSel=document.getElementById("newMemberCloudUser"),preview=document.getElementById("newRoleTaskPreview"),customInput=document.getElementById("newMemberCustomRole");
  const refreshPreview=()=>{customWrap.style.display=roleSel.value==="أخرى"?"block":"none";preview.innerHTML=roleTaskPreviewHtml(roleSel.value,(customInput?.value||"").trim())};
  roleSel.onchange=refreshPreview;
- customInput.oninput=()=>{if(roleSel.value==="أخرى")refreshPreview()};
+ if(customInput)customInput.oninput=()=>{if(roleSel?.value==="أخرى")refreshPreview()};
  cloudSel.onchange=()=>{const u=availableUsers.find(x=>String(x.id)===String(cloudSel.value));if(!u)return;const rr=normalizePlatformRoleToReadiness(u.role);if(rr){roleSel.value=rr;refreshPreview()}};
  document.getElementById("addMember").onclick=()=>{
   const u=availableUsers.find(x=>String(x.id)===String(cloudSel?.value||""));
@@ -1990,8 +1991,22 @@ function renderReports(){
  const show=k=>{document.getElementById("reportContent").innerHTML=reportBody(k);document.querySelectorAll(".report-tab").forEach(b=>b.classList.toggle("active",b.dataset.k===k))};
  document.querySelectorAll(".report-tab").forEach(b=>b.onclick=()=>show(b.dataset.k));show("leadership")
 }
-function renderAll(){renderDashboard();renderSettings();normalizeTeamRoleAssignments();
-renderTeam();SECTIONS.forEach(s=>{renderSection(s);const ds=s.tasks.map((_,i)=>state.tasks[s.id][i]);document.getElementById("metrics-"+s.id).innerHTML=`<div class="metric"><span>نسبة المجال</span><strong>${sectionScore(s)}%</strong><div class="progress"><i style="width:${sectionScore(s)}%"></i></div></div><div class="metric"><span>المهام</span><strong>${s.tasks.length}</strong></div><div class="metric"><span>معتمدة</span><strong>${ds.filter(d=>d.status==="approved").length}</strong></div><div class="metric"><span>حرجة غير مغلقة</span><strong>${ds.filter(d=>d.priority==="critical"&&!["verified","approved","na"].includes(d.status)).length}</strong></div><div class="metric"><span>الشواهد</span><strong>${ds.reduce((a,d)=>a+d.evidence.length,0)}</strong></div>`});renderRisks();renderAnalysis();renderReports()}
+function renderAll(){
+ const safe=(name,fn)=>{try{fn()}catch(err){console.error("[Readiness render] "+name,err)}};
+ safe("dashboard",()=>renderDashboard());
+ safe("settings",()=>renderSettings());
+ safe("team-normalize",()=>normalizeTeamRoleAssignments());
+ safe("team",()=>renderTeam());
+ safe("sections",()=>SECTIONS.forEach(sec=>{
+   renderSection(sec);
+   const ds=sec.tasks.map((_,i)=>state.tasks?.[sec.id]?.[i]).filter(Boolean);
+   const metrics=document.getElementById("metrics-"+sec.id);
+   if(metrics)metrics.innerHTML=`<div class="metric"><span>نسبة المجال</span><strong>${sectionScore(sec)}%</strong><div class="progress"><i style="width:${sectionScore(sec)}%"></i></div></div><div class="metric"><span>المهام</span><strong>${sec.tasks.length}</strong></div><div class="metric"><span>معتمدة</span><strong>${ds.filter(d=>d.status==="approved").length}</strong></div><div class="metric"><span>حرجة غير مغلقة</span><strong>${ds.filter(d=>d.priority==="critical"&&!['verified','approved','na'].includes(d.status)).length}</strong></div><div class="metric"><span>الشواهد</span><strong>${ds.reduce((a,d)=>a+(Array.isArray(d.evidence)?d.evidence.length:0),0)}</strong></div>`;
+ }));
+ safe("risks",()=>renderRisks());
+ safe("analysis",()=>renderAnalysis());
+ safe("reports",()=>renderReports());
+}
 function printPage(id){document.querySelectorAll(".page").forEach(p=>p.classList.remove("printing"));document.getElementById("page-"+id).classList.add("printing");window.print()}
 document.getElementById("printBtn").onclick=()=>printPage(document.querySelector(".page.active").id.replace("page-",""));
 document.getElementById("exportBtn").onclick=()=>{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(state,null,2)],{type:"application/json"}));a.download="school-readiness-backup.json";a.click()};

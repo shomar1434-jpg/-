@@ -113,6 +113,21 @@ const membershipsForIdentity = async (admin: any, session: any) => {
   if(email){
     try { const q=await admin.from('users').select('*').eq('email',email).limit(1000); if(!q.error)(q.data||[]).forEach((u:any)=>{if(activeStatus(u.status)){const k=`${u.school_id}|${lower(u.role)}`;if(!byKey.has(k))byKey.set(k,{id:`user:${u.id}`,school_id:u.school_id,user_id:u.id,email,role:u.role,status:u.status,__userRow:u});}}); } catch(_){}
   }
+  // توافق المجمعات التعليمية: المدارس التي يحمل سجلها نفس بريد المدير تعد عضويات مدير،
+  // حتى لو كانت مدرسة قديمة أُنشئت قبل تفعيل school_members.
+  if(email){
+    const managerCols=['manager_email','email','principal_email','admin_email','owner_email'];
+    for(const col of managerCols){
+      try{
+        const q=await admin.from('schools').select('*').eq(col,email).limit(1000);
+        if(!q.error)(q.data||[]).forEach((school:any)=>{
+          if(!school?.id||!activeStatus(school.status))return;
+          const k=`${school.id}|manager`;
+          if(!byKey.has(k))byKey.set(k,{id:`manager:${school.id}`,school_id:school.id,user_id:session.user_id,email,role:'manager',status:'active',is_primary_manager:true,__schoolRow:school});
+        });
+      }catch(_){}
+    }
+  }
   const memberships=[...byKey.values()].filter((r:any)=>r.school_id);
   const ids=[...new Set(memberships.map((r:any)=>r.school_id))];
   const schools=new Map<string,any>();

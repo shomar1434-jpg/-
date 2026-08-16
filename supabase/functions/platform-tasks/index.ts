@@ -23,6 +23,43 @@ Deno.serve(async(req)=>{
   const event=async(taskId:string,type:string,note='',oldValues:any=null,newValues:any=null)=>{await sb.from('central_task_events').insert({school_id:s.school_id,task_id:taskId,actor_id:s.user_id,event_type:type,event_note:note||null,old_values:oldValues,new_values:newValues})};
   const notice=async(taskId:string,userId:any,email:any,type:string,title:string,message:string)=>{await sb.from('central_task_notifications').insert({school_id:s.school_id,task_id:taskId,recipient_user_id:isUuid(userId)?userId:null,recipient_email:email?String(email).toLowerCase():null,notification_type:type,title,message})};
   const getTask=async(id:string)=>{const {data}=await sb.from('central_tasks').select('*').eq('id',id).eq('school_id',s.school_id).is('deleted_at',null).maybeSingle();return data};
+  const syncReadinessProjection=async(task:any,kind:string,payload:any={})=>{
+   try{
+    const meta=task?.metadata||{};if(meta.source_type!=='readiness'||!meta.sectionId||meta.taskIndex==null)return;
+    let q=sb.from('school_readiness_plans').select('id,readiness_data').eq('school_id',s.school_id);
+    if(isUuid(meta.readinessPlanId))q=q.eq('id',meta.readinessPlanId);else q=q.eq('academic_year',Number(meta.academicYear||0)).eq('semester','first');
+    const {data:plan,error:pe}=await q.maybeSingle();if(pe||!plan?.readiness_data)return;
+    const rd:any=structuredClone(plan.readiness_data),sectionId=String(meta.sectionId),idx=Number(meta.taskIndex);
+    const item=rd?.tasks?.[sectionId]?.[idx];if(!item)return;
+    item.cloudTaskId=task.id;item.cloudTaskStatus=payload.status||task.status||item.cloudTaskStatus||'active';
+    item.responsible=task.assignee_name||item.responsible||'';
+    if(kind==='update'){
+      item.status='in_progress';
+      item.execution={...(item.execution||{}),result:'pending',by:task.assignee_name||task.assignee_email||'',date:now};
+      if(payload.notes)item.notes=String(payload.notes).slice(0,4000);
+    }
+    if(kind==='blocked'){
+      item.execution={result:'not_done',reason:String(payload.notes||'').slice(0,4000),by:task.assignee_name||task.assignee_email||'',date:now};item.status='blocked';item.notes=String(payload.notes||'').slice(0,4000);
+    }
+    if(kind==='evidence'){
+      item.evidence=Array.isArray(item.evidence)?item.evidence:[];
+      const fid=String(payload.platformFileId||'');
+      if(fid&&!item.evidence.some((e:any)=>String(e.platformFileId||e.id||'')===fid))item.evidence.push({id:fid,platformFileId:fid,name:payload.fileName||'شاهد تنفيذ سحابي',type:'cloud',source:'central_task',taskId:task.id,at:now});
+      item.execution={result:'done',reason:'',by:task.assignee_name||task.assignee_email||'',date:now};item.status='completed';item.done=now.slice(0,10);
+      if(item.incompleteArchive){item.incompleteArchive={...(item.incompleteArchive||{}),status:'completed_late',completedLateAt:now.slice(0,10)};}
+    }
+    if(kind==='transition'){
+      const st=String(payload.status||task.status||'');item.cloudTaskStatus=st;
+      if(st==='in_progress')item.status='in_progress';
+      else if(st==='pending_approval')item.status='submitted';
+      else if(st==='returned'){item.status='revision';item.review={...(item.review||{}),status:'returned',comment:payload.note||'',date:now};}
+      else if(st==='approved'){item.status='approved';item.review={status:'approved',comment:payload.note||'',by:String(s.user_id||''),date:now};}
+      else if(st==='rejected'){item.status='blocked';item.review={status:'rejected',comment:payload.note||'',by:String(s.user_id||''),date:now};}
+      else if(['withdrawn','archived','closed','canceled'].includes(st))item.cloudTaskStatus=st;
+    }
+    const {error:ue}=await sb.from('school_readiness_plans').update({readiness_data:rd,updated_at:now,updated_by:isUuid(s.user_id)?s.user_id:null}).eq('id',plan.id).eq('school_id',s.school_id);if(ue)console.warn('[platform-tasks:readiness-sync]',ue.message);
+   }catch(err){console.warn('[platform-tasks:readiness-sync]',err instanceof Error?err.message:String(err))}
+  };
   const mine=(t:any)=>t&&(String(t.assigned_to||'')===String(s.user_id)||String(t.assignee_email||'').toLowerCase()===sessionEmail);
   const canRead=(t:any)=>t&&t.school_id===s.school_id&&(isOwner||mine(t)||String(t.created_by)===String(s.user_id));
   const executionStatuses=new Set(['active','in_progress','transferred','returned']);
@@ -118,6 +155,18 @@ Deno.serve(async(req)=>{
    if(reassignGrants.length){const {error:rgError}=await sb.from('task_access_grants').insert(reassignGrants);if(rgError)throw rgError}
    await event(task.id,'reassigned',body.reason||'تم نقل التكليف',task,data);await notice(task.id,to,email,'assigned','تم نقل تكليف إليك',`أصبح التكليف "${task.title}" ضمن تكليفاتك.`);return json({task:data});
   }
+  if(action==='update-metadata'){
+   const task=await getTask(body.taskId);if(!canRead(task)||!isOwner)return json({error:'لا توجد صلاحية لتحديث بيانات التكليف'},403);
+   const merged={...(task.metadata||{}),...(body.metadata||{}),metadata_updated_at:now};
+   const {data,error}=await sb.from('central_tasks').update({metadata:merged,updated_at:now}).eq('id',task.id).eq('school_id',s.school_id).select('*').single();if(error)throw error;
+   await event(task.id,'metadata_updated','تحديث بيانات مهمة الجاهزية',task.metadata,merged);return json({task:data});
+  }
+  if(action==='update-schedule'){
+   if(!isOwner)return json({error:'لا توجد صلاحية لتحديث الجدول الزمني'},403);
+   const changes:any={start_date:body.startDate||null,due_date:body.dueDate||null,updated_at:now};
+   const {data,error}=await sb.from('central_tasks').update(changes).eq('id',task.id).eq('school_id',s.school_id).select('*').single();if(error)throw error;
+   await event(task.id,'schedule_updated','تم تحديث الفترة الزمنية للتكليف',task,data);return json({task:data});
+  }
   if(action==='transition'){
    const target=String(body.status||''),ownerOnly=new Set(['approved','returned','rejected','withdrawn','archived','closed']);if(ownerOnly.has(target)&&!isOwner)return json({error:'لا توجد صلاحية لتنفيذ هذا الإجراء'},403);if(!ownerOnly.has(target)&&!isOwner&&!mine(task))return json({error:'هذا التكليف غير مسند إليك'},403);
    const allowed:any={active:['in_progress','withdrawn','archived'],transferred:['in_progress','withdrawn','archived'],in_progress:['pending_approval','withdrawn','archived'],returned:['in_progress','pending_approval','withdrawn','archived'],pending_approval:['approved','returned','rejected'],approved:['archived','closed'],rejected:['archived'],withdrawn:['archived']};if(!(allowed[task.status]||[]).includes(target))return json({error:`انتقال الحالة غير مسموح: ${task.status} ← ${target}`},409);
@@ -129,17 +178,17 @@ Deno.serve(async(req)=>{
    // بمجرد إنهاء/إيقاف التكليف تنتهي صلاحية السجلات فوراً، بينما returned يبقيها للتصحيح.
    if(terminalStatuses.has(target))await revokeTaskAccess(task.id);
    if(['approved','returned','rejected'].includes(target))await sb.from('central_task_reviews').insert({school_id:s.school_id,task_id:task.id,reviewer_id:s.user_id,decision:target==='returned'?'returned_for_correction':target,review_notes:body.note||null});
-   await event(task.id,target,body.note||'',task,data);const recipient=ownerOnly.has(target)?task.assigned_to:task.created_by;await notice(task.id,recipient,ownerOnly.has(target)?task.assignee_email:null,target,'تحديث على التكليف',`تم تحديث حالة التكليف "${task.title}" إلى ${target}`);return json({task:data});
+   await syncReadinessProjection(data,'transition',{status:target,note:body.note||''});await event(task.id,target,body.note||'',task,data);const recipient=ownerOnly.has(target)?task.assigned_to:task.created_by;await notice(task.id,recipient,ownerOnly.has(target)?task.assignee_email:null,target,'تحديث على التكليف',`تم تحديث حالة التكليف "${task.title}" إلى ${target}`);return json({task:data});
   }
   if(action==='add-update'){
    if(!isOwner&&!mine(task))return json({error:'هذا التكليف غير مسند إليك'},403);const progress=body.progressPercent==null?null:Math.max(0,Math.min(100,Number(body.progressPercent)));
    const {data:u,error}=await sb.from('central_task_updates').insert({school_id:s.school_id,task_id:task.id,user_id:s.user_id,update_type:body.updateType||'execution',title:body.title||null,notes:body.notes||null,link_url:body.linkUrl||null,progress_percent:progress,status:body.status||'draft',metadata:body.metadata||{}}).select('*').single();if(error)throw error;
-   const changes:any={status:task.status==='active'||task.status==='transferred'||task.status==='returned'?'in_progress':task.status};if(progress!=null)changes.progress_percent=progress;await sb.from('central_tasks').update(changes).eq('id',task.id);await event(task.id,'updated',body.title||body.notes||'تحديث تنفيذ',null,u);return json({update:u});
+   const changes:any={status:task.status==='active'||task.status==='transferred'||task.status==='returned'?'in_progress':task.status};if(progress!=null)changes.progress_percent=progress;await sb.from('central_tasks').update(changes).eq('id',task.id);await syncReadinessProjection({...task,...changes},body.updateType==='blocked'?'blocked':'update',{notes:body.notes||body.title||'',progressPercent:progress});await event(task.id,'updated',body.title||body.notes||'تحديث تنفيذ',null,u);return json({update:u});
   }
   if(action==='attach-evidence'){
    if(!isOwner&&!mine(task))return json({error:'لا توجد صلاحية'},403);const fileId=String(body.platformFileId||'');const {data:file}=await sb.from('platform_files').select('*').eq('id',fileId).eq('school_id',s.school_id).maybeSingle();if(!file)return json({error:'الملف غير موجود'},404);
    const {data,error}=await sb.from('central_task_evidence').upsert({school_id:s.school_id,task_id:task.id,update_id:isUuid(body.updateId)?body.updateId:null,platform_file_id:fileId,uploaded_by:s.user_id,evidence_type:body.evidenceType||'execution',status:'active'},{onConflict:'task_id,platform_file_id'}).select('*').single();if(error)throw error;
-   await sb.from('platform_file_links').upsert({school_id:s.school_id,file_id:fileId,module_key:'central_tasks',record_type:'central_task',record_id:task.id,relation_type:'evidence',linked_by:s.user_id,is_primary:false},{onConflict:'school_id,file_id,module_key,record_type,record_id,relation_type'});await event(task.id,'evidence_uploaded','تم إرفاق شاهد',null,{platform_file_id:fileId});return json({evidence:data});
+   await sb.from('platform_file_links').upsert({school_id:s.school_id,file_id:fileId,module_key:'central_tasks',record_type:'central_task',record_id:task.id,relation_type:'evidence',linked_by:s.user_id,is_primary:false},{onConflict:'school_id,file_id,module_key,record_type,record_id,relation_type'});await syncReadinessProjection(task,'evidence',{platformFileId:fileId,fileName:file.display_name||file.original_name||file.file_name||'شاهد تنفيذ'});await event(task.id,'evidence_uploaded','تم إرفاق شاهد',null,{platform_file_id:fileId});return json({evidence:data});
   }
   if(action==='linked-records'){
    if(!canRead(task))return json({error:'لا توجد صلاحية'},403);const {data,error}=await sb.from('task_record_links').select('*').eq('task_id',task.id);if(error)throw error;const {data:grants}=await sb.from('task_access_grants').select('*').eq('task_id',task.id).eq('status','active');return json({records:data||[],grants:grants||[]});

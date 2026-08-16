@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 if(window.__SCHOOL_AGENT_CORE_V2__)return;window.__SCHOOL_AGENT_CORE_V2__=true;
-const VERSION='2.1.0';
+const VERSION='2.3.0';
 const LS={conv:'school_agent_v2_conversations',memory:'school_agent_v2_memory',audit:'school_agent_v2_audit',actions:'school_agent_v2_actions'};
 const sensitive=/password|token|secret|anonkey|service_role|api[_-]?key/i;
 function parse(v,d){
@@ -150,7 +150,135 @@ function sessionToken(){
   }
   return token;
 }
-async function api(action,payload,opts){const c=assertContext(context()),token=sessionToken();if(!token)throw new Error('تعذر العثور على رمز جلسة المدرسة المستقلة. أعد الدخول إلى المدرسة مرة واحدة بعد تحديث الملف، ثم افتح الوكيل.');const body={action,context:c,payload:payload||{},client:{version:VERSION,page:{text:visiblePage(),fields:fields()},memory:memory().slice(0,20),localSummary:action==='chat'?localRecords():undefined}};const r=await fetch(endpoint(),{method:'POST',headers:{'content-type':'application/json','apikey':anon(),'x-platform-session':token},body:JSON.stringify(body)});const data=await r.json().catch(()=>({}));if(!r.ok)throw new Error(data.error||data.message||'تعذر الاتصال بوكيل المنصة.');audit('api.'+action,{requestId:data.requestId||'',tools:data.toolsUsed||[]});return data}
+
+function storedSupabaseAuthSession(){
+  const projectRef='cijhgvbtrvmmlcssgxht';
+  const stores=[localStorage,sessionStorage];
+  const pick=obj=>{
+    if(!obj||typeof obj!=='object')return null;
+    if(obj.currentSession&&typeof obj.currentSession==='object')obj=obj.currentSession;
+    if(obj.session&&typeof obj.session==='object')obj=obj.session;
+    if(obj.access_token)return obj;
+    if(obj.accessToken)return {access_token:obj.accessToken,refresh_token:obj.refreshToken||'',expires_at:obj.expiresAt||0};
+    return null;
+  };
+  for(const st of stores){
+    try{
+      for(let i=0;i<st.length;i++){
+        const key=st.key(i)||'';
+        if(key!==`sb-${projectRef}-auth-token`&&!/^sb-.*-auth-token$/i.test(key))continue;
+        const raw=st.getItem(key); if(!raw)continue;
+        try{const found=pick(JSON.parse(raw));if(found?.access_token)return found}catch(_){}
+      }
+    }catch(_){}
+  }
+  return null;
+}
+async function usableSupabaseAccessToken(base,headers){
+  try{
+    const sb=window.SmartSchoolSupabase?.getClient?.();
+    if(sb){
+      const sr=await sb.auth.getSession();
+      const access=sr?.data?.session?.access_token||'';
+      if(access)return access;
+    }
+  }catch(_){}
+  const stored=storedSupabaseAuthSession();
+  if(stored?.access_token){
+    const exp=Number(stored.expires_at||0),now=Math.floor(Date.now()/1000);
+    if(!exp||exp>now+30)return stored.access_token;
+    if(stored.refresh_token){
+      try{
+        const r=await fetch(base+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers,body:JSON.stringify({refresh_token:stored.refresh_token})});
+        const d=await r.json().catch(()=>({}));
+        if(r.ok&&d.access_token){
+          try{localStorage.setItem('sb-cijhgvbtrvmmlcssgxht-auth-token',JSON.stringify(d))}catch(_){}
+          return d.access_token;
+        }
+      }catch(_){}
+    }
+  }
+  return '';
+}
+
+async function recoverPlatformSession(){
+  const c=context(),schoolId=clean(c.schoolId);
+  if(!schoolId)throw new Error('تعذر تحديد المدرسة الحالية لاستعادة جلسة الوكيل.');
+  const base=(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'');
+  const headers={'content-type':'application/json','apikey':anon()};
+  let response=null,data={};
+
+  try{
+    const access=await usableSupabaseAccessToken(base,headers);
+    if(access){
+      response=await fetch(base+'/functions/v1/platform-session',{
+        method:'POST',
+        headers:{...headers,'authorization':'Bearer '+access},
+        body:JSON.stringify({action:'bootstrap_auth',schoolId})
+      });
+      data=await response.json().catch(()=>({}));
+      if(response.ok&&data.token){
+        try{
+          localStorage.setItem('platform_file_session_token',data.token);
+          localStorage.setItem('platform_session_token',data.token);
+          localStorage.setItem('platformSessionToken',data.token);
+          localStorage.setItem('platform_file_session_expires_at',data.expiresAt||'');
+          localStorage.setItem('platform_file_session_user_id',data.userId||'');
+          localStorage.setItem('platform_file_session_school_id',data.schoolId||schoolId);
+          localStorage.setItem('platform_file_session_role',data.role||c.rawRole||c.role||'');
+        }catch(_){}
+        return data.token;
+      }
+    }
+  }catch(_){}
+
+  try{
+    const u=parse(localStorage.getItem('currentUser')||localStorage.getItem('currentSchoolUser'),{})||{};
+    const login=clean(u.email||u.user_email||u.manager_email||get(['currentUserEmail','current_user_email']));
+    const password=clean(u.password||u.pass||u.login_password||u.temp_password||u.default_password);
+    if(login&&password){
+      response=await fetch(base+'/functions/v1/platform-session',{
+        method:'POST',headers,
+        body:JSON.stringify({login,password,schoolId})
+      });
+      data=await response.json().catch(()=>({}));
+      if(response.ok&&data.token){
+        try{
+          localStorage.setItem('platform_file_session_token',data.token);
+          localStorage.setItem('platform_session_token',data.token);
+          localStorage.setItem('platformSessionToken',data.token);
+          localStorage.setItem('platform_file_session_expires_at',data.expiresAt||'');
+          localStorage.setItem('platform_file_session_user_id',data.userId||'');
+          localStorage.setItem('platform_file_session_school_id',data.schoolId||schoolId);
+          localStorage.setItem('platform_file_session_role',data.role||c.rawRole||c.role||'');
+        }catch(_){}
+        return data.token;
+      }
+    }
+  }catch(_){}
+
+  throw new Error(data?.error||'تعذر استعادة جلسة المدرسة السحابية تلقائيًا. أعد تسجيل الدخول إلى المدرسة ثم حاول مرة أخرى.');
+}
+async function api(action,payload,opts){
+  const c=assertContext(context());
+  let token=sessionToken();
+  if(!token)token=await recoverPlatformSession();
+  const body={action,context:c,payload:payload||{},client:{version:VERSION,page:{text:visiblePage(),fields:fields()},memory:memory().slice(0,20),localSummary:action==='chat'?localRecords():undefined}};
+  const send=async t=>{
+    const r=await fetch(endpoint(),{method:'POST',headers:{'content-type':'application/json','apikey':anon(),'x-platform-session':t},body:JSON.stringify(body)});
+    const data=await r.json().catch(()=>({}));
+    return {r,data};
+  };
+  let res=await send(token);
+  if(res.r.status===401){
+    try{localStorage.removeItem('platform_file_session_token')}catch(_){}
+    token=await recoverPlatformSession();
+    res=await send(token);
+  }
+  if(!res.r.ok)throw new Error(res.data.error||res.data.message||'تعذر الاتصال بوكيل المنصة.');
+  audit('api.'+action,{requestId:res.data.requestId||'',tools:res.data.toolsUsed||[]});
+  return res.data
+}
 async function chat(message,convId){const c=assertContext(context());let conv=conversations().find(x=>x.id===convId)||{id:convId||uuid(),title:clean(message).slice(0,70)||'محادثة جديدة',messages:[],createdAt:new Date().toISOString(),schoolId:c.schoolId,role:c.role,academicYear:c.academicYear};conv.messages.push({role:'user',content:message,at:new Date().toISOString()});saveConversation(conv);const data=await api('chat',{message,conversation:conv.messages.slice(-16),conversationId:conv.id,title:conv.title});conv.messages.push({role:'assistant',content:data.answer||'',at:new Date().toISOString(),toolsUsed:data.toolsUsed||[],sources:Array.isArray(data.sources)?data.sources:[],suggestedActions:data.suggestedActions||[]});conv.updatedAt=new Date().toISOString();saveConversation(conv);(data.suggestedActions||[]).forEach(x=>proposeAction(x.type,x.payload,x.label));return{conversation:conv,data}}
 async function brief(){return api('brief',{})}
 async function searchSchool(query){return api('chat',{message:'ابحث داخل بيانات المدرسة الحالية عن: '+query+'، واستخدم أداة البحث المناسبة. اعرض النتائج ذات الصلة فقط مع توضيح مصدرها، ولا تفترض شيئًا غير موجود.',conversation:[]})}
@@ -163,6 +291,6 @@ async function deleteCloudMemory(id){const d=await api('memory_delete',{id});for
 async function cloudHistory(){const d=await api('history',{});return d.conversations||[]}
 async function cloudConversation(id){const d=await api('history_messages',{conversationId:id});return d}
 function exportContext(){return{context:context(),profile:window.AgentRoleProfiles?.get(context().role)||{},page:{text:visiblePage(),fields:fields()},memory:memory(),actions:proposedActions(),audit:(()=>{const a=parse(localStorage.getItem(LS.audit),[]);return Array.isArray(a)?a.slice(0,80):[]})()}}
-window.AgentCoreV2={VERSION,context,assertContext,fields,visiblePage,api,chat,brief,searchSchool,analyzeCurrent,analyzeFile,memory,remember,forgetMemory,proactiveSuggestions,cloudMemory,rememberCloud,deleteCloudMemory,cloudHistory,cloudConversation,conversations,saveConversation,proposedActions,proposeAction,approveAction,rejectAction,audit,exportContext};
+window.AgentCoreV2={VERSION,context,assertContext,fields,visiblePage,api,recoverPlatformSession,chat,brief,searchSchool,analyzeCurrent,analyzeFile,memory,remember,forgetMemory,proactiveSuggestions,cloudMemory,rememberCloud,deleteCloudMemory,cloudHistory,cloudConversation,conversations,saveConversation,proposedActions,proposeAction,approveAction,rejectAction,audit,exportContext};
 window.dispatchEvent(new CustomEvent('agent-core-v2-ready',{detail:{version:VERSION}}));
 })();

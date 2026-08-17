@@ -140,8 +140,7 @@ const issueSession = async (admin:any, userId:string, schoolId:string, role:stri
   const tokenHash = await sha256(rawToken);
   const now = new Date().toISOString();
   const expiresAt = new Date(Date.now()+12*60*60*1000).toISOString();
-  // لا نلغي الجلسة السابقة هنا؛ قد توجد تبويبات/طلبات متزامنة تستخدم الرمز نفسه.
-  // تظل الجلسة السابقة صالحة حتى expires_at ثم تُرفض تلقائيًا من جميع المحركات.
+  if(previousSessionId) await admin.from('platform_sessions').update({status:'revoked',revoked_at:now}).eq('id',previousSessionId);
   const ins=await admin.from('platform_sessions').insert({session_token_hash:tokenHash,user_id:userId,school_id:schoolId,role,status:'active',expires_at:expiresAt,last_seen_at:now}).select('id').single();
   if(ins.error) throw new Error(ins.error.message);
   return {token:rawToken,expiresAt,userId,schoolId,role};
@@ -189,126 +188,26 @@ Deno.serve(async (request) => {
     });
 
     const action = lower(payload?.action || 'login');
-    if (action === 'auth-recover') {
-      const authHeader = text(request.headers.get('authorization'));
-      const accessToken = authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : '';
-      if (!accessToken) return json({error:'جلسة تسجيل الدخول الأساسية غير متاحة',code:'AUTH_RECOVER_TOKEN_MISSING',requestId},401);
-
-      const authLookup = await admin.auth.getUser(accessToken);
-      const authUser = authLookup?.data?.user || null;
-      if (authLookup.error || !authUser?.id || !authUser?.email) {
-        return json({error:'جلسة تسجيل الدخول الأساسية غير صالحة أو منتهية',code:'AUTH_RECOVER_INVALID',requestId},401);
-      }
-
-      const requestedSchool = text(payload?.schoolId);
-      if (!requestedSchool) return json({error:'معرّف المدرسة مطلوب لاستعادة الجلسة',code:'AUTH_RECOVER_SCHOOL_MISSING',requestId},400);
-
-      let school: any = null;
-      if (isUuid(requestedSchool)) {
-        const sq = await admin.from('schools').select('*').eq('id',requestedSchool).limit(1).maybeSingle();
-        if (!sq.error) school = sq.data;
-      } else {
-        const sq = await admin.from('schools').select('*').limit(1000);
-        if (!sq.error) {
-          const wanted = lower(requestedSchool);
-          school = (sq.data || []).find((row:any)=>[row.id,row.school_code,row.registration_code].some(v=>lower(v)===wanted)) || null;
-        }
-      }
-      if (!school?.id || !isUuid(school.id) || !activeStatus(school.status)) {
-        return json({error:'المدرسة غير موجودة أو غير فعالة',code:'AUTH_RECOVER_SCHOOL_NOT_FOUND',requestId},404);
-      }
-
-      const email = lower(authUser.email);
-      let publicUser: any = null;
-      try {
-        const byId = await admin.from('users').select('*').eq('id',authUser.id).limit(1).maybeSingle();
-        if (!byId.error && byId.data && activeStatus(byId.data.status)) publicUser = byId.data;
-      } catch (_) {}
-      if (!publicUser && email) {
-        try {
-          const byEmail = await admin.from('users').select('*').eq('email',email).limit(20);
-          if (!byEmail.error) publicUser = (byEmail.data || []).find((u:any)=>activeStatus(u.status)) || null;
-        } catch (_) {}
-      }
-
-      let membership: any = null;
-      try {
-        const mq = await admin.from('school_members').select('*').eq('school_id',school.id).eq('user_id',authUser.id).limit(1).maybeSingle();
-        if (!mq.error && mq.data && activeStatus(mq.data.status)) membership = mq.data;
-      } catch (_) {}
-      if (!membership && publicUser?.id && publicUser.id !== authUser.id) {
-        try {
-          const mq = await admin.from('school_members').select('*').eq('school_id',school.id).eq('user_id',publicUser.id).limit(1).maybeSingle();
-          if (!mq.error && mq.data && activeStatus(mq.data.status)) membership = mq.data;
-        } catch (_) {}
-      }
-      if (!membership && email) {
-        try {
-          const mq = await admin.from('school_members').select('*').eq('school_id',school.id).eq('email',email).limit(1).maybeSingle();
-          if (!mq.error && mq.data && activeStatus(mq.data.status)) membership = mq.data;
-        } catch (_) {}
-      }
-
-      const directUserInSchool = publicUser && text(publicUser.school_id) === text(school.id) && activeStatus(publicUser.status);
-      const isSchoolManager = email && lower(school.manager_email) === email;
-      if (!membership && !directUserInSchool && !isSchoolManager) {
-        return json({error:'الحساب غير مرتبط بالمدرسة النشطة',code:'AUTH_RECOVER_MEMBERSHIP_DENIED',requestId},403);
-      }
-
-      const resolvedUserId = text(membership?.user_id || publicUser?.id || authUser.id);
-      if (!isUuid(resolvedUserId)) return json({error:'تعذر تحديد معرّف مستخدم سحابي صالح',code:'AUTH_RECOVER_USER_ID_INVALID',requestId},409);
-      const resolvedRole = text(membership?.role || (isSchoolManager ? 'manager' : publicUser?.role) || 'member');
-      const next = await issueSession(admin,resolvedUserId,school.id,resolvedRole);
-      return json({...next,membershipId:text(membership?.id),schoolName:text(school.school_name),schoolCode:text(school.school_code),requestId,recoveredFromAuth:true});
-    }
     if (action === 'renew') {
       const rawSession = text(request.headers.get('x-platform-session'));
       if (!rawSession) return json({error:'رمز الجلسة غير موجود',code:'SESSION_TOKEN_MISSING',requestId},401);
       const hash = await sha256(rawSession);
-      const sq = await admin.from('platform_sessions').select('*').eq('session_token_hash',hash).limit(1).maybeSingle();
+      const sq = await admin.from('platform_sessions').select('*').eq('session_token_hash',hash).eq('status','active').limit(1).maybeSingle();
       if (sq.error) throw sq.error;
       const previous = sq.data;
       if (!previous) return json({error:'تعذر تجديد الجلسة السحابية',code:'SESSION_RENEW_NOT_FOUND',requestId},401);
-
       const expiredAt = previous.expires_at ? Date.parse(previous.expires_at) : Date.now();
-      const expiryGraceMs = 7 * 24 * 60 * 60 * 1000;
-      if (Number.isFinite(expiredAt) && expiredAt < Date.now() - expiryGraceMs) {
+      const graceMs = 7 * 24 * 60 * 60 * 1000;
+      if (Number.isFinite(expiredAt) && expiredAt < Date.now() - graceMs) {
         return json({error:'انتهت مهلة تجديد الجلسة. يلزم تسجيل الدخول مرة أخرى.',code:'SESSION_RENEW_GRACE_EXPIRED',requestId},401);
       }
-
-      // إذا كان الرمز قد أُلغي بسبب تدوير/سباق جلسات حديث، نسمح بالتعافي فقط
-      // عندما توجد جلسة شقيقة نشطة لنفس المستخدم والمدرسة والدور.
-      // هذا يمنع إحياء جلسة أُلغيَت وحدها عند تسجيل الخروج أو تعطيل الحساب.
-      if (lower(previous.status) !== 'active') {
-        // الرموز التي ألغتها آلية الجلسات القديمة قد تبقى في المتصفح حتى انتهاء صلاحيتها الأصلية.
-        // لا نعتمد مهلة زمنية ثابتة؛ يكفي أن الرمز نفسه لم ينتهِ وأن توجد جلسة شقيقة نشطة.
-        // الجلسة الملغاة تاريخيًا يمكن استعادتها داخل مهلة السماح أعلاه فقط إذا
-        // بقيت هوية المستخدم فعالة ولها جلسة شقيقة نشطة. هذا يعالج رموزًا قديمة
-        // خلفتها آلية التدوير السابقة دون إعادة استخدام كلمة المرور.
-        const siblingQ = await admin.from('platform_sessions')
-          .select('id,expires_at,status')
-          .eq('user_id', previous.user_id)
-          .eq('school_id', previous.school_id)
-          .eq('role', previous.role)
-          .eq('status','active')
-          .order('created_at',{ascending:false})
-          .limit(1)
-          .maybeSingle();
-        if (siblingQ.error) throw siblingQ.error;
-        const sibling = siblingQ.data;
-        const siblingValid = sibling && (!sibling.expires_at || Date.parse(sibling.expires_at) > Date.now());
-        if (!siblingValid) {
-          return json({error:'الجلسة السابقة أُلغيت ولا توجد جلسة فعالة يمكن التعافي منها',code:'SESSION_RENEW_NO_ACTIVE_SIBLING',requestId},401);
-        }
-      }
-
       const memberships = await membershipsForIdentity(admin, previous);
       const requestedSchool = text(payload?.schoolId || previous.school_id);
       const allowed = memberships.find((m:any)=>m.schoolId===requestedSchool && lower(m.role)===lower(previous.role)) ||
         memberships.find((m:any)=>m.schoolId===requestedSchool);
       if (!allowed) return json({error:'عضوية الحساب في المدرسة لم تعد فعالة',code:'SESSION_RENEW_MEMBERSHIP_DENIED',requestId},403);
       const next = await issueSession(admin, allowed.userId || previous.user_id, allowed.schoolId, allowed.role || previous.role, previous.id);
-      return json({...next,membershipId:allowed.membershipId,schoolName:allowed.schoolName,schoolCode:allowed.schoolCode,requestId,renewed:true,recoveredFromRevoked:lower(previous.status)!=='active'});
+      return json({...next,membershipId:allowed.membershipId,schoolName:allowed.schoolName,schoolCode:allowed.schoolCode,requestId,renewed:true});
     }
     if (action === 'memberships' || action === 'switch') {
       const rawSession = text(request.headers.get('x-platform-session'));
@@ -373,7 +272,6 @@ Deno.serve(async (request) => {
     }
 
     let authUser: any = null;
-    let authSession: any = null;
     const normalizedLogin = lower(login);
     if (anonKey && normalizedLogin.includes('@')) {
       const authClient = createClient(supabaseUrl, anonKey, {
@@ -383,10 +281,7 @@ Deno.serve(async (request) => {
         email: normalizedLogin,
         password,
       });
-      if (!authResult.error && authResult.data?.user) {
-        authUser = authResult.data.user;
-        authSession = authResult.data.session || null;
-      }
+      if (!authResult.error && authResult.data?.user) authUser = authResult.data.user;
     }
 
     const usersResult = await admin
@@ -499,9 +394,12 @@ Deno.serve(async (request) => {
     const now = new Date().toISOString();
     const expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
 
-    // لا نلغي الجلسات النشطة الأخرى لنفس المستخدم/المدرسة عند تسجيل الدخول.
-    // فتح الصفحة قد يطلق أكثر من طلب جلسة متزامنًا، وإلغاء الجميع هنا يسبب race condition
-    // يجعل المتصفح يحتفظ أحيانًا برمز تم إلغاؤه للتو. الجلسات تنتهي تلقائيًا عبر expires_at.
+    await admin
+      .from('platform_sessions')
+      .update({ status: 'revoked', revoked_at: now })
+      .eq('school_id', school.id)
+      .eq('user_id', user.id)
+      .eq('status', 'active');
 
     const sessionInsert = await admin
       .from('platform_sessions')
@@ -537,10 +435,6 @@ Deno.serve(async (request) => {
       role,
     });
 
-    const authExpiresAt = authSession?.expires_at
-      ? new Date(Number(authSession.expires_at) * 1000).toISOString()
-      : (authSession?.expires_in ? new Date(Date.now() + Number(authSession.expires_in) * 1000).toISOString() : '');
-
     return json({
       token: rawToken,
       expiresAt,
@@ -548,10 +442,6 @@ Deno.serve(async (request) => {
       schoolId: school.id,
       role,
       requestId,
-      // جلسة Auth تستخدم فقط لاستعادة platform-session دون حفظ كلمة المرور.
-      authAccessToken: text(authSession?.access_token),
-      authRefreshToken: text(authSession?.refresh_token),
-      authExpiresAt,
     });
   } catch (error) {
     console.error('[platform-session]', requestId, 'fatal', error);

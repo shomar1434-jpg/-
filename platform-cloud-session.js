@@ -7,6 +7,10 @@
   const SCHOOL_KEY = 'platform_file_session_school_id';
   const ROLE_KEY = 'platform_file_session_role';
 
+  let openInFlight = null;
+  let openInFlightKey = '';
+  let recoverInFlight = null;
+
   const url = () =>
     (localStorage.getItem('smartSchoolSupabaseUrl') ||
       'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/, '');
@@ -15,9 +19,7 @@
     localStorage.getItem('smartSchoolSupabaseAnonKey') ||
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
 
-  async function open(login, password, schoolId) {
-    clear();
-
+  async function openInternal(login, password, schoolId) {
     const response = await fetch(`${url()}/functions/v1/platform-session`, {
       method: 'POST',
       headers: {
@@ -61,6 +63,19 @@
     );
 
     return payload;
+  }
+
+  async function open(login, password, schoolId) {
+    const flightKey = `${String(login||'').trim().toLowerCase()}|${String(schoolId||'').trim()}`;
+    if (openInFlight && openInFlightKey === flightKey) return openInFlight;
+    openInFlightKey = flightKey;
+    openInFlight = openInternal(login, password, schoolId);
+    try {
+      return await openInFlight;
+    } finally {
+      openInFlight = null;
+      openInFlightKey = '';
+    }
   }
 
   async function sessionAction(action, body = {}) {
@@ -161,7 +176,7 @@
     return payload.token;
   }
 
-  async function recover() {
+  async function recoverInternal() {
     const oldToken = token();
     const sid = currentSchoolId();
     // المسار الأول: تدوير رمز الجلسة السابق حتى لو انتهت صلاحيته مؤخرًا.
@@ -187,6 +202,16 @@
     }
 
     throw new Error('تعذر تجديد الجلسة السحابية تلقائيًا. أعد تسجيل الدخول إلى المدرسة ثم حاول مرة أخرى.');
+  }
+
+  async function recover() {
+    if (recoverInFlight) return recoverInFlight;
+    recoverInFlight = recoverInternal();
+    try {
+      return await recoverInFlight;
+    } finally {
+      recoverInFlight = null;
+    }
   }
 
   async function ensure() {

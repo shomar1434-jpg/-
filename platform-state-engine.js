@@ -8,11 +8,11 @@
     token:()=>localStorage.getItem('platform_file_session_token')||''
   };
   async function ensureSession(){
-    if(cfg.token()) return cfg.token();
     if(window.PlatformCloudSession&&typeof window.PlatformCloudSession.ensure==='function'){
       try{await window.PlatformCloudSession.ensure();}catch(_){ }
       if(cfg.token()) return cfg.token();
     }
+    if(cfg.token()) return cfg.token();
     return '';
   }
   async function request(action,body={},opts={}){
@@ -21,16 +21,21 @@
     const controller=new AbortController();
     const timer=setTimeout(()=>controller.abort(),opts.timeout||30000);
     try{
-      const r=await fetch(`${cfg.base()}?action=${encodeURIComponent(action)}`,{
-        method:'POST',
-        headers:{apikey:cfg.anon(),'x-platform-session':token,'x-client-version':VERSION,'content-type':'application/json'},
-        body:JSON.stringify(body),
-        signal:controller.signal,
-        keepalive:!!opts.keepalive
-      });
-      const j=await r.json().catch(()=>({}));
-      if(!r.ok) throw new Error(j.error||`فشلت مزامنة الحالة (${r.status})`);
-      return j;
+      const send=async()=>{
+        const r=await fetch(`${cfg.base()}?action=${encodeURIComponent(action)}`,{
+          method:'POST',
+          headers:{apikey:cfg.anon(),'x-platform-session':cfg.token(),'x-client-version':VERSION,'content-type':'application/json'},
+          body:JSON.stringify(body),
+          signal:controller.signal,
+          keepalive:!!opts.keepalive
+        });
+        const j=await r.json().catch(()=>({}));
+        return {r,j};
+      };
+      let res=await send();
+      if(res.r.status===401&&window.PlatformCloudSession?.recover){await window.PlatformCloudSession.recover();res=await send();}
+      if(!res.r.ok) throw new Error(res.j.error||`فشلت مزامنة الحالة (${res.r.status})`);
+      return res.j;
     }finally{clearTimeout(timer)}
   }
   const pull=(moduleKey,scope='user',keys)=>request('pull',{moduleKey,scope,keys});

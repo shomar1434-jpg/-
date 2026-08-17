@@ -6,13 +6,13 @@ const config={
  anon:()=>localStorage.getItem('smartSchoolSupabaseAnonKey')||'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM',
  token:()=>localStorage.getItem('platform_file_session_token')||''
 };
-async function ensure(){if(config.token())return config.token();if(window.PlatformCloudSession?.ensure){await window.PlatformCloudSession.ensure();if(config.token())return config.token()}throw new Error('الجلسة السحابية غير متاحة. سجّل الخروج ثم ادخل مجددًا.');}
+async function ensure(){if(window.PlatformCloudSession?.ensure){await window.PlatformCloudSession.ensure();if(config.token())return config.token()}if(config.token())return config.token();throw new Error('الجلسة السحابية غير متاحة.');}
 async function request(action,body,method='POST'){
  await ensure();const c=new AbortController(),t=setTimeout(()=>c.abort(),TIMEOUT);
  try{const headers={apikey:config.anon(),'x-platform-session':config.token(),'x-client-version':VERSION};let payload;
   if(method!=='GET'){headers['content-type']='application/json';payload=JSON.stringify(body||{})}
-  const r=await fetch(`${config.base()}?action=${encodeURIComponent(action)}`,{method,headers,body:payload,signal:c.signal});
-  const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||`فشلت عملية Platform Core (${r.status})`);return j;
+  const send=async()=>{headers['x-platform-session']=config.token();const r=await fetch(`${config.base()}?action=${encodeURIComponent(action)}`,{method,headers,body:payload,signal:c.signal});const j=await r.json().catch(()=>({}));return {r,j}};
+  let res=await send();if(res.r.status===401&&window.PlatformCloudSession?.recover){await window.PlatformCloudSession.recover();res=await send()}if(!res.r.ok)throw new Error(res.j.error||`فشلت عملية Platform Core (${res.r.status})`);return res.j;
  }catch(e){throw e?.name==='AbortError'?new Error('انتهت مهلة الاتصال بمحرك المنصة.'):e}finally{clearTimeout(t)}
 }
 const cache={bootstrap:null,at:0};

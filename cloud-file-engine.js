@@ -9,12 +9,12 @@
   };
   function emit(name,detail){try{window.dispatchEvent(new CustomEvent('cloudfiles:'+name,{detail}))}catch(_){} }
   async function ensureSession(){
-    if(cfg.token())return cfg.token();
     if(window.PlatformCloudSession&&typeof window.PlatformCloudSession.ensure==='function'){
       await window.PlatformCloudSession.ensure();
       if(cfg.token())return cfg.token();
     }
-    throw new Error('الجلسة السحابية غير متاحة. سجّل الخروج ثم ادخل مجددًا.');
+    if(cfg.token())return cfg.token();
+    throw new Error('تعذر استعادة الجلسة السحابية تلقائيًا.');
   }
   async function request(action,{method='POST',body,form,timeout=DEFAULT_TIMEOUT,signal}={}){
     await ensureSession();
@@ -26,11 +26,20 @@
     if(form){payload=form}else if(body!==undefined){headers['content-type']='application/json';payload=JSON.stringify(body)}
     emit('request',{action});
     try{
-      const r=await fetch(`${cfg.base()}?action=${encodeURIComponent(action)}`,{method,headers,body:payload,signal:controller.signal});
-      const j=await r.json().catch(()=>({}));
-      if(!r.ok)throw new Error(j.error||`فشلت عملية الملفات (${r.status})`);
-      emit('success',{action,response:j});
-      return j;
+      const send=async()=>{
+        headers['x-platform-session']=cfg.token();
+        const r=await fetch(`${cfg.base()}?action=${encodeURIComponent(action)}`,{method,headers,body:payload,signal:controller.signal});
+        const j=await r.json().catch(()=>({}));
+        return {r,j};
+      };
+      let res=await send();
+      if(res.r.status===401&&window.PlatformCloudSession&&typeof window.PlatformCloudSession.recover==='function'){
+        await window.PlatformCloudSession.recover();
+        res=await send();
+      }
+      if(!res.r.ok)throw new Error(res.j.error||`فشلت عملية الملفات (${res.r.status})`);
+      emit('success',{action,response:res.j});
+      return res.j;
     }catch(e){
       const err=e&&e.name==='AbortError'?new Error('انتهت مهلة الاتصال بمحرك الملفات.'):e;
       emit('error',{action,error:err});

@@ -500,7 +500,7 @@
     </form>
   </main>
 
-<script src="platform-cloud-session.js"></script>
+<script src="platform-cloud-session.js?v=20260818-session-v12"></script>
 <script id="independent-school-login-engine">
 (function(){
   'use strict';
@@ -827,15 +827,26 @@
       if((targetSchoolId || targetSchoolCode) && !school){ setMsg('رابط المدرسة غير مرتبط بسجل مدرسة صحيح.'); return; }
       let user = await loginFromSupabase(loginId,password);
       if(!user) user = loginFromLocal(loginId,password,school);
-      if(user && window.PlatformCloudSession){
-        try{ await window.PlatformCloudSession.open(loginId,password,(user.schoolId||user.school_id||targetSchoolId||'')); }
-        catch(sessionError){ console.warn('تعذر إنشاء جلسة الملفات السحابية:',sessionError); }
-      }
       if(!user){ setMsg('بيانات الدخول غير صحيحة أو الحساب غير موجود في هذه المدرسة'); return; }
       if(!isActiveAccount(user)){ setMsg('الحساب غير مفعل بعد'); return; }
       user = normalizeLocalUser(user, school);
       const role = normalizeRole(user.role);
       const schoolId = user.schoolId || targetSchoolId || (school && (school.schoolId || school.id || school.school_id)) || '';
+
+      // لا نسمح بدخول المدرسة المستقلة دون جلسة سحابية صالحة؛
+      // السماح بذلك سابقًا كان يجعل مركز التكليفات والملفات يفشلان لاحقًا رغم نجاح واجهة الدخول.
+      if(window.PlatformCloudSession && schoolId){
+        try{
+          await window.PlatformCloudSession.open(loginId,password,schoolId);
+          if(!window.PlatformCloudSession.valid || !window.PlatformCloudSession.valid()){
+            throw new Error('لم تُنشأ جلسة سحابية صالحة للحساب.');
+          }
+        }catch(sessionError){
+          console.error('تعذر إنشاء جلسة المنصة السحابية:',sessionError);
+          setMsg((sessionError && sessionError.message) || 'تعذر إنشاء الجلسة السحابية. تحقق من بيانات الدخول ثم حاول مرة أخرى.');
+          return;
+        }
+      }
       const schoolName = user.schoolName || (school && (school.schoolName || school.school_name || school.name)) || '';
       if(school && !activeSchool) cacheActiveSchool(school);
       try{

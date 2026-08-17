@@ -1840,7 +1840,10 @@ function roleTaskOptions(role,customRole){
   if(!q)return [];
   return all.filter(o=>o.title.includes(q)||o.section.includes(q));
  }
- return all.filter(o=>rule.sections.includes(o.sectionId)||rule.titles.includes(o.title)||rule.keywords.some(k=>o.title.includes(k)));
+ const sections=Array.isArray(rule.sections)?rule.sections:[];
+ const titles=Array.isArray(rule.titles)?rule.titles:[];
+ const keywords=Array.isArray(rule.keywords)?rule.keywords:[];
+ return all.filter(o=>sections.includes(o.sectionId)||titles.includes(o.title)||keywords.some(k=>o.title.includes(k)));
 }
 function assignRoleTasks(memberIndex){
  const m=state.team[memberIndex]; if(!m)return;
@@ -1866,6 +1869,27 @@ function roleTaskPreviewHtml(role,customRole){
  if(!role)return `<div class="role-task-preview"><div class="role-task-preview-head"><strong>المهام المرتبطة بالفئة الوظيفية</strong><small>اختر الفئة لعرض مسؤولياتها</small></div><div class="role-task-preview-list"><div class="role-task-preview-empty">بمجرد اختيار الفئة الوظيفية ستظهر هنا المهام التي ستُسند تلقائياً للعضو.</div></div></div>`;
  return `<div class="role-task-preview"><div class="role-task-preview-head"><strong>المهام المسندة تلقائياً — ${esc(displayRole)}</strong><small>${roleOpts.length} مهمة مصنفة</small></div><div class="role-task-preview-list">${roleOpts.length?roleOpts.map(o=>`<div class="role-task-preview-item"><div><strong>${esc(o.title)}</strong><small>${esc(o.section)} · ${esc(o.stage)}</small></div></div>`).join(""):`<div class="role-task-preview-empty">لا توجد مهام مصنفة تلقائياً لهذا المسمى حالياً. لن يتم إسناد مهام عشوائية له.</div>`}</div></div>`;
 }
+function renderAssignmentSummary(){
+ const host=document.getElementById("assignmentSummary");if(!host)return;
+ const team=Array.isArray(state?.team)?state.team:[];
+ const all=allTaskOptions();
+ const assignedKeys=new Set();
+ team.forEach(m=>(Array.isArray(m?.assignedTasks)?m.assignedTasks:[]).forEach(k=>assignedKeys.add(k)));
+ const assigned=assignedKeys.size;
+ const unassigned=Math.max(0,all.length-assigned);
+ const linked=team.filter(m=>m?.role==="مدير المدرسة"||m?.cloudUserId).length;
+ const unlinked=team.filter(m=>m?.role!=="مدير المدرسة"&&!m?.cloudUserId).length;
+ const completed=all.filter(o=>{const d=state?.tasks?.[o.sectionId]?.[o.index];return d?.execution?.result==="done"&&Array.isArray(d?.evidence)&&d.evidence.length>0}).length;
+ host.innerHTML=`<div class="assignment-summary" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
+   <div class="metric"><span>أعضاء الفريق</span><strong>${team.length}</strong></div>
+   <div class="metric"><span>حسابات مرتبطة</span><strong>${linked}</strong></div>
+   <div class="metric"><span>مهام مسندة</span><strong>${assigned}</strong></div>
+   <div class="metric"><span>مهام غير مسندة</span><strong>${unassigned}</strong></div>
+   <div class="metric"><span>مهام مكتملة بالشاهد</span><strong>${completed}</strong></div>
+   <div class="metric"><span>أعضاء بحاجة للربط</span><strong>${unlinked}</strong></div>
+ </div>${team.length?`<div class="manager-list" style="margin-top:12px">${team.map(m=>{let rows=[];try{rows=memberAssignedRows(m)}catch(_){rows=[]}return `<div class="manager-list-item"><div><strong>${esc(m?.name||m?.customRole||m?.role||"عضو")}</strong><br><small>${esc(m?.role==="أخرى"?(m?.customRole||"أخرى"):(m?.role||"غير مصنف"))}</small></div><strong>${rows.length} مهمة</strong></div>`}).join("")}</div>`:`<div class="stage-empty" style="margin-top:12px">يظهر الملخص بعد إضافة أعضاء فريق الاستعداد.</div>`}`;
+}
+
 function renderTeam(){
  const editor=document.getElementById("teamEditor");if(!editor)return;
  const availableUsers=(Array.isArray(readinessSchoolUsers)?readinessSchoolUsers:[]).filter(u=>String(u?.status||"active")!=="deleted");
@@ -1997,6 +2021,7 @@ function renderAll(){
  safe("settings",()=>renderSettings());
  safe("team-normalize",()=>normalizeTeamRoleAssignments());
  safe("team",()=>renderTeam());
+ safe("assignment-summary",()=>renderAssignmentSummary());
  safe("sections",()=>SECTIONS.forEach(sec=>{
    renderSection(sec);
    const ds=sec.tasks.map((_,i)=>state.tasks?.[sec.id]?.[i]).filter(Boolean);

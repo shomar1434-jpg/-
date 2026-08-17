@@ -71,10 +71,52 @@ Deno.serve(async(req)=>{
   const uniqueGrantRows=(rows:any[])=>{const m=new Map();for(const r of rows||[]){const k=[r.module_key,r.record_type||'',r.record_id||''].join('|');if(!m.has(k))m.set(k,r)}return Array.from(m.values())};
   console.log('[platform-tasks]',{requestId,action,schoolId:s.school_id,userId:s.user_id,role:s.role});
   if(action==='health')return json({ok:true,version:'2.1.0',schoolId:s.school_id,userId:s.user_id,role:s.role});
+  if(action==='set-deputy-classification'){
+   if(!['manager','owner','school_manager','principal','مدير','مديرة'].includes(role))return json({error:'تحديد تصنيف الوكيل متاح لمدير المدرسة فقط'},403);
+   const userId=String(body.userId||'');const email=String(body.email||'').trim().toLowerCase();
+   const allowed=new Set(['educational','school_affairs','student_affairs']);const classification=String(body.classification||'').trim();
+   if(!allowed.has(classification))return json({error:'تصنيف الوكيل غير صالح'},400);
+   let mq=sb.from('school_members').select('*').eq('school_id',s.school_id);
+   if(isUuid(userId))mq=mq.eq('user_id',userId);else if(email)mq=mq.eq('email',email);else return json({error:'معرف الوكيل أو بريده مطلوب'},400);
+   let {data:member,error:me}=await mq.limit(1).maybeSingle();if(me)throw me;
+   let identity:any=null;
+   if(isUuid(userId)){const {data:u,error:e}=await sb.from('users').select('id,email,full_name,role,status').eq('id',userId).maybeSingle();if(e)throw e;identity=u}
+   if(!identity&&email){const {data:u,error:e}=await sb.from('users').select('id,email,full_name,role,status').eq('email',email).maybeSingle();if(e)throw e;identity=u}
+   if(!identity)return json({error:'حساب الوكيل غير موجود'},404);
+   if(String(identity.role||'')!=='agent' && String(member?.role||'')!=='agent')return json({error:'المستخدم المحدد ليس وكيلاً في هذه المدرسة'},409);
+   const roleLabel=classification;
+   if(member){const {data:m,error:e}=await sb.from('school_members').update({role:'agent',role_label:roleLabel,updated_at:now}).eq('id',member.id).select('*').single();if(e)throw e;member=m}
+   else{const {data:m,error:e}=await sb.from('school_members').insert({school_id:s.school_id,user_id:identity.id,email:identity.email,role:'agent',role_label:roleLabel,status:'active',is_primary_manager:false,is_primary:false,updated_at:now}).select('*').single();if(e)throw e;member=m}
+   return json({ok:true,classification,roleLabel,member,user:{id:identity.id,email:identity.email,full_name:identity.full_name}});
+  }
   if(action==='list-users'){
    if(!isOwner)return json({error:'لا توجد صلاحية لعرض المستخدمين'},403);
-   const {data,error}=await sb.from('users').select('id,school_id,email,full_name,role,status').eq('school_id',s.school_id).order('full_name');
-   if(error)throw error;return json({users:(data||[]).filter((u:any)=>String(u.status||'active')!=='deleted')});
+   // المستخدم قد يعمل في أكثر من مدرسة. users.school_id يمثل مدرسته الأساسية فقط،
+   // لذلك يجب دمج مستخدمي المدرسة المباشرين مع عضويات school_members.
+   const [{data:direct,error:directError},{data:members,error:membersError}]=await Promise.all([
+    sb.from('users').select('id,school_id,email,full_name,role,status').eq('school_id',s.school_id),
+    sb.from('school_members').select('user_id,email,role,role_label,status').eq('school_id',s.school_id)
+   ]);
+   if(directError)throw directError;if(membersError)throw membersError;
+   const memberRows=(members||[]).filter((m:any)=>String(m.status||'active')!=='deleted');
+   const memberIds=[...new Set(memberRows.map((m:any)=>String(m.user_id||'')).filter(isUuid))];
+   const memberEmails=[...new Set(memberRows.map((m:any)=>String(m.email||'').trim().toLowerCase()).filter(Boolean))];
+   let identityRows:any[]=[];
+   if(memberIds.length){const {data,error}=await sb.from('users').select('id,school_id,email,full_name,role,status').in('id',memberIds);if(error)throw error;identityRows.push(...(data||[]))}
+   // بعض العضويات القديمة قد لا تحمل user_id؛ نطابقها بالبريد دون الاعتماد على المدرسة الأساسية.
+   if(memberEmails.length){const {data,error}=await sb.from('users').select('id,school_id,email,full_name,role,status').in('email',memberEmails);if(error)throw error;identityRows.push(...(data||[]))}
+   const identities=new Map<string,any>();
+   for(const u of [...(direct||[]),...identityRows]){if(u?.id)identities.set(String(u.id),u)}
+   const out=new Map<string,any>();
+   for(const u of direct||[]){if(String(u.status||'active')==='deleted')continue;out.set(String(u.id),{...u,school_id:s.school_id})}
+   for(const m of memberRows){
+    const email=String(m.email||'').trim().toLowerCase();
+    const u=(m.user_id&&identities.get(String(m.user_id)))||[...identities.values()].find((x:any)=>String(x.email||'').trim().toLowerCase()===email);
+    if(!u)continue;
+    out.set(String(u.id),{...u,school_id:s.school_id,role:m.role||u.role,role_label:m.role_label||null,status:m.status||u.status||'active'});
+   }
+   const users=[...out.values()].filter((u:any)=>String(u.status||'active')!=='deleted').sort((a:any,b:any)=>String(a.full_name||a.email||'').localeCompare(String(b.full_name||b.email||''),'ar'));
+   return json({users});
   }
   if(action==='list'){
    let q=sb.from('central_tasks').select('*,central_task_updates(*),central_task_evidence(*),central_task_assignments(*)').eq('school_id',s.school_id).is('deleted_at',null).order('updated_at',{ascending:false}).limit(Math.min(Number(body.limit)||500,1000));
@@ -92,7 +134,16 @@ Deno.serve(async(req)=>{
    if(!isOwner)return json({error:'إنشاء التكليف متاح للمدير والوكيل فقط'},403);
    const assignedTo=isUuid(body.assignedTo)?String(body.assignedTo):null,assigneeEmail=String(body.assigneeEmail||'').trim().toLowerCase()||null;
    if(!assignedTo&&!assigneeEmail)return json({error:'يجب تحديد المستخدم المكلف'},400);
-   if(assignedTo){const {data:u}=await sb.from('users').select('id,school_id,email,full_name,role,status').eq('id',assignedTo).eq('school_id',s.school_id).maybeSingle();if(!u)return json({error:'المستخدم المكلف غير مرتبط بالمدرسة'},409)}
+   if(assignedTo){
+    // لا نعتمد على users.school_id وحده لأن المستخدم قد يعمل في أكثر من مدرسة.
+    // عضوية المدرسة الحالية في school_members هي المرجع الحاسم بعد دعم المجمعات التعليمية.
+    const {data:u,error:uErr}=await sb.from('users').select('id,school_id,email,full_name,role,status').eq('id',assignedTo).maybeSingle();if(uErr)throw uErr;
+    if(!u)return json({error:'حساب المستخدم المكلف غير موجود'},409);
+    const {data:membership,error:mErr}=await sb.from('school_members').select('id,user_id,email,role,role_label,status').eq('school_id',s.school_id).eq('user_id',assignedTo).maybeSingle();if(mErr)throw mErr;
+    const directlyBound=String(u.school_id||'')===String(s.school_id);
+    const activeMember=membership&&String(membership.status||'active')!=='deleted';
+    if(!directlyBound&&!activeMember)return json({error:'المستخدم المكلف غير مرتبط بالمدرسة الحالية'},409);
+   }
    const row={school_id:s.school_id,module_key:safeKey(body.moduleKey||body.sourceOwner||'central_tasks'),record_type:body.recordType||body.assignmentType||null,record_id:body.recordId||null,title:String(body.title||'').trim().slice(0,300),description:String(body.description||'').trim()||null,assignment_type:['record','partial','additional_role'].includes(body.assignmentType)?body.assignmentType:'partial',source_owner:body.sourceOwner||null,record_key:body.recordKey||null,created_by:s.user_id,owner_role:s.role,owner_label:body.ownerLabel||null,assigned_to:assignedTo,assignee_email:assigneeEmail,assignee_name:body.assigneeName||null,assignee_role:body.assigneeRole||null,priority:['low','normal','high','urgent'].includes(body.priority)?body.priority:'normal',status:'active',start_date:body.startDate||null,due_date:body.dueDate||null,requires_approval:body.requiresApproval!==false,metadata:{...(body.metadata||{}),assignment_engine_version:'2.0.0',assignment_engine:'unified',created_via:'platform-tasks'}};
    if(!row.title)return json({error:'عنوان التكليف مطلوب'},400);
    const {data:t,error}=await sb.from('central_tasks').insert(row).select('*').single();if(error){console.error('[platform-tasks:create:insert]',requestId,error,row);throw error;}if(!t?.id)throw new Error('تعذر إنشاء معرف التكليف بعد الإدراج');

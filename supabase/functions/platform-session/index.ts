@@ -188,6 +188,27 @@ Deno.serve(async (request) => {
     });
 
     const action = lower(payload?.action || 'login');
+    if (action === 'renew') {
+      const rawSession = text(request.headers.get('x-platform-session'));
+      if (!rawSession) return json({error:'رمز الجلسة غير موجود',code:'SESSION_TOKEN_MISSING',requestId},401);
+      const hash = await sha256(rawSession);
+      const sq = await admin.from('platform_sessions').select('*').eq('session_token_hash',hash).eq('status','active').limit(1).maybeSingle();
+      if (sq.error) throw sq.error;
+      const previous = sq.data;
+      if (!previous) return json({error:'تعذر تجديد الجلسة السحابية',code:'SESSION_RENEW_NOT_FOUND',requestId},401);
+      const expiredAt = previous.expires_at ? Date.parse(previous.expires_at) : Date.now();
+      const graceMs = 7 * 24 * 60 * 60 * 1000;
+      if (Number.isFinite(expiredAt) && expiredAt < Date.now() - graceMs) {
+        return json({error:'انتهت مهلة تجديد الجلسة. يلزم تسجيل الدخول مرة أخرى.',code:'SESSION_RENEW_GRACE_EXPIRED',requestId},401);
+      }
+      const memberships = await membershipsForIdentity(admin, previous);
+      const requestedSchool = text(payload?.schoolId || previous.school_id);
+      const allowed = memberships.find((m:any)=>m.schoolId===requestedSchool && lower(m.role)===lower(previous.role)) ||
+        memberships.find((m:any)=>m.schoolId===requestedSchool);
+      if (!allowed) return json({error:'عضوية الحساب في المدرسة لم تعد فعالة',code:'SESSION_RENEW_MEMBERSHIP_DENIED',requestId},403);
+      const next = await issueSession(admin, allowed.userId || previous.user_id, allowed.schoolId, allowed.role || previous.role, previous.id);
+      return json({...next,membershipId:allowed.membershipId,schoolName:allowed.schoolName,schoolCode:allowed.schoolCode,requestId,renewed:true});
+    }
     if (action === 'memberships' || action === 'switch') {
       const rawSession = text(request.headers.get('x-platform-session'));
       const currentSession = await activeSession(admin, rawSession);

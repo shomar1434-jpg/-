@@ -717,6 +717,20 @@ body::after{content:""!important;position:fixed;inset:0;z-index:-1;pointer-event
       <div id="sm-status" class="text-[11px] font-bold mt-3 text-slate-500"></div>
     </div>
 
+    <div id="sm-edit-panel" class="hidden bg-amber-50 border border-amber-200 rounded-3xl p-4 mb-5">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-3">
+        <div><h4 class="font-extrabold text-amber-900">تعديل بيانات المدرسة</h4><p class="text-[11px] text-amber-800 font-bold mt-1">يتم تعديل التسميات فقط. معرف المدرسة ورمزها وروابط الدخول والتسجيل وحسابات المستخدمين لا تتغير.</p></div>
+        <button type="button" onclick="cancelSchoolLabelsEdit()" class="bg-white border border-amber-200 text-amber-900 px-4 py-2 rounded-xl text-xs font-bold">إلغاء</button>
+      </div>
+      <input id="sm-edit-school-id" type="hidden">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <input id="sm-edit-school-name" class="p-3 border rounded-xl text-sm" placeholder="اسم المدرسة">
+        <input id="sm-edit-manager-name" class="p-3 border rounded-xl text-sm" placeholder="اسم مدير/ة المدرسة">
+        <input id="sm-edit-manager-email" type="email" class="p-3 border rounded-xl text-sm" placeholder="البريد الظاهر في الواجهات" dir="ltr" data-email-field="true">
+      </div>
+      <div class="mt-4"><button type="button" onclick="saveSchoolLabelsEdit()" class="bg-amber-700 text-white px-5 py-2 rounded-xl text-xs font-extrabold shadow">حفظ التعديلات</button></div>
+    </div>
+
     <div class="bg-white border border-slate-200 rounded-3xl overflow-hidden">
       <table class="w-full text-sm">
         <thead class="bg-slate-100 text-slate-700">
@@ -1456,6 +1470,7 @@ document.addEventListener("click", function(e){
   function schoolCode(s){return s && (s.school_code || s.schoolCode || s.registration_code || s.registrationCode || '');}
   function schoolName(s){return s && (s.school_name || s.schoolName || s.name || '');}
   function managerEmail(s){return cleanEmail(s && (s.manager_email || s.managerEmail || s.email || s.principal_email || s.admin_email || s.owner_email || ''));}
+  function managerDisplayEmail(s){return cleanEmail(s && (s.school_email || s.manager_email_label || s.managerDisplayEmail || s.manager_email || s.managerEmail || ''));}
   function managerName(s){return s && (s.manager_name || s.managerName || s.principal_name || s.owner_name || '');}
   function safeSchoolContract(s){
     return {
@@ -1507,6 +1522,23 @@ document.addEventListener("click", function(e){
     q.push('direct=1');
     return baseLoginUrl() + '?' + q.join('&');
   };
+  window.buildIndependentSchoolRegistrationUrl = function(school){
+    const id=schoolId(school),code=schoolCode(school),reg=String((school&& (school.registration_code||school.registrationCode))||'').trim();
+    const q=[];
+    if(id){q.push('schoolId='+enc(id));q.push('sid='+enc(id));}
+    if(code){q.push('school='+enc(code));q.push('schoolCode='+enc(code));}
+    if(reg){q.push('reg='+enc(reg));q.push('token='+enc(reg));}
+    q.push('source=supabase_school_registration');q.push('scope=school');
+    const base=location.href.split('/').slice(0,-1).join('/')+'/register.html';
+    return base+'?'+q.join('&');
+  };
+  window.copyRegistrationLink = async function(school){
+    const url=window.buildIndependentSchoolRegistrationUrl(school);
+    try{if(navigator.clipboard&&navigator.clipboard.writeText)await navigator.clipboard.writeText(url);else throw new Error('no clipboard');}
+    catch(_){prompt('انسخ رابط تسجيل المستخدمين',url)}
+    if(typeof showToast==='function')showToast('تم نسخ رابط التسجيل الثابت للمدرسة');
+    return url;
+  };
   window.copyIndependentSchoolLoginLink = async function(school){
     cacheIndependentSchoolContract(school);
     var url = window.buildIndependentSchoolLoginUrl(school);
@@ -1524,7 +1556,7 @@ document.addEventListener("click", function(e){
   function statusClass(s){return statusText(s)==='مفعلة'?'text-green-700':'text-red-700';}
   function renderSchoolRow(s){
     const id = schoolId(s), code = schoolCode(s), name = schoolName(s) || code || id || 'مدرسة بدون اسم';
-    const mName = managerName(s) || '—', mEmail = managerEmail(s) || '—';
+    const mName = managerName(s) || '—', mEmail = managerDisplayEmail(s) || managerEmail(s) || '—';
     const url = window.buildIndependentSchoolLoginUrl(s);
     const safe = v => String(v||'').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
     return `<tr class="border-b border-slate-100">
@@ -1535,6 +1567,7 @@ document.addEventListener("click", function(e){
         <button type="button" class="bg-blue-600 text-white px-3 py-2 rounded-lg text-xs font-extrabold" onclick='copyIndependentSchoolLoginLink(${JSON.stringify(s).replace(/'/g,"&#39;")})'>رابط الدخول</button>
         <button type="button" class="bg-teal-700 text-white px-3 py-2 rounded-lg text-xs font-extrabold" onclick='copyRegistrationLink && copyRegistrationLink(${JSON.stringify(s).replace(/'/g,"&#39;")})'>رابط التسجيل</button>
         <button type="button" class="bg-slate-100 text-slate-700 px-3 py-2 rounded-lg text-xs font-extrabold" onclick="prompt('رابط الدخول المرتبط بالمدرسة', '${safe(url)}')">عرض الرابط</button>
+        <button type="button" class="bg-amber-600 text-white px-3 py-2 rounded-lg text-xs font-extrabold" onclick='openSchoolLabelsEdit(${JSON.stringify(s).replace(/'/g,"&#39;")})'>تعديل البيانات</button>
         <button type="button" class="bg-red-600 text-white px-3 py-2 rounded-lg text-xs font-extrabold" onclick="deleteSupabaseSchool('${safe(id)}')">حذف</button>
       </td>
     </tr>`;
@@ -1555,6 +1588,38 @@ document.addEventListener("click", function(e){
     try{ const rows=await fetchSchools(); if(st) st.textContent='تم تحميل '+rows.length+' مدرسة عبر بوابة مدير النظام المحمية.'; if(body) body.innerHTML=rows.length?rows.map(renderSchoolRow).join(''):'<tr><td colspan="4" class="p-6 text-center text-slate-400 text-xs">لا توجد مدارس محفوظة.</td></tr>'; }
     catch(e){ if(st) st.textContent='غير مصرح: '+(e.message||e); if(body) body.innerHTML='<tr><td colspan="4" class="p-6 text-center text-red-600 text-xs">لا يمكن قراءة المدارس دون جلسة مدير نظام موثقة.</td></tr>'; }
   };
+  window.openSchoolLabelsEdit = function(school){
+    school=school||{};
+    const panel=document.getElementById('sm-edit-panel');
+    const set=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v||''};
+    set('sm-edit-school-id',schoolId(school));
+    set('sm-edit-school-name',schoolName(school));
+    set('sm-edit-manager-name',managerName(school));
+    set('sm-edit-manager-email',managerDisplayEmail(school)||managerEmail(school));
+    panel?.classList.remove('hidden');
+    panel?.scrollIntoView({behavior:'smooth',block:'center'});
+  };
+  window.cancelSchoolLabelsEdit = function(){
+    document.getElementById('sm-edit-panel')?.classList.add('hidden');
+    ['sm-edit-school-id','sm-edit-school-name','sm-edit-manager-name','sm-edit-manager-email'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});
+  };
+  window.saveSchoolLabelsEdit = async function(){
+    const schoolIdValue=(document.getElementById('sm-edit-school-id')?.value||'').trim();
+    const schoolNameValue=(document.getElementById('sm-edit-school-name')?.value||'').trim();
+    const managerNameValue=(document.getElementById('sm-edit-manager-name')?.value||'').trim();
+    const managerEmailLabel=cleanEmail(document.getElementById('sm-edit-manager-email')?.value||'');
+    const st=document.getElementById('sm-status');
+    if(!schoolIdValue||!schoolNameValue)return alert('اسم المدرسة مطلوب.');
+    try{
+      if(st)st.textContent='جارٍ حفظ تعديلات التسميات دون تغيير الروابط أو الحسابات...';
+      await secureAdminCall('update_school_labels',{schoolId:schoolIdValue,schoolName:schoolNameValue,managerName:managerNameValue,managerEmailLabel});
+      cancelSchoolLabelsEdit();
+      await renderSchoolManagement();
+      if(st)st.textContent='تم تعديل بيانات المدرسة مع الإبقاء على معرف المدرسة وروابط الدخول والتسجيل وحسابات المستخدمين كما هي.';
+      if(typeof showToast==='function')showToast('تم تحديث بيانات المدرسة دون تغيير الروابط');
+    }catch(e){if(st)st.textContent='تعذر تعديل بيانات المدرسة: '+(e.message||e);}
+  };
+
   window.deleteSupabaseSchool = async function(schoolId){
     const id=String(schoolId||'').trim(),st=document.getElementById('sm-status'),body=document.getElementById('schools-table-body');
     if(!id){if(st)st.textContent='تعذر تحديد المدرسة.';return;}

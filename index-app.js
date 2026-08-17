@@ -1724,16 +1724,17 @@ const launchApp = (appId) => {
             const name = row.school_name || row.schoolName || row.name || '';
             const managerName = row.manager_name || row.managerName || row.principal_name || '';
             const managerEmail = row.manager_email || row.managerEmail || row.email || '';
+            const managerDisplayEmail = row.school_email || row.manager_email_label || row.managerDisplayEmail || managerEmail;
             const reg = row.registration_code || row.registrationCode || '';
             const status = row.status || 'active';
             const basePath = location.href.split('/').slice(0,-1).join('/');
             const registrationLink = row.registration_link || row.registrationLink ||
-                `${basePath}/register.html?schoolId=${encodeURIComponent(id)}&school=${encodeURIComponent(code)}&reg=${encodeURIComponent(reg)}&token=${encodeURIComponent(reg)}&schoolName=${encodeURIComponent(name)}&source=supabase_school_registration`;
+                `${basePath}/register.html?schoolId=${encodeURIComponent(id)}&school=${encodeURIComponent(code)}&reg=${encodeURIComponent(reg)}&token=${encodeURIComponent(reg)}&source=supabase_school_registration`;
             const loginLink = row.login_link || row.loginLink ||
-                `${basePath}/school-login.html?schoolId=${encodeURIComponent(id)}&school=${encodeURIComponent(code)}&schoolName=${encodeURIComponent(name)}&source=supabase_school_login`;
+                `${basePath}/school-login.html?schoolId=${encodeURIComponent(id)}&school=${encodeURIComponent(code)}&source=supabase_school_login`;
             return {
                 id, schoolId:id, schoolCode:code, schoolName:name,
-                managerName, managerEmail, status,
+                managerName, managerEmail, managerDisplayEmail, status,
                 registrationCode:reg, registrationLink, loginLink,
                 createdAt: row.created_at || row.createdAt || ''
             };
@@ -1809,12 +1810,13 @@ const launchApp = (appId) => {
                         : '<span class="text-amber-700 font-bold">'+(s.status||'pending')+'</span>';
                     return `<tr class="hover:bg-slate-50">
                         <td class="p-3 border-b font-bold text-xs text-slate-700">${s.schoolName || 'بدون اسم'}<div class="text-[10px] text-slate-400 font-normal mt-1">${s.schoolCode || s.id}</div></td>
-                        <td class="p-3 border-b text-xs text-slate-600">${s.managerName || ''}<div class="text-[10px] text-slate-400 mt-1" dir="ltr">${s.managerEmail || ''}</div></td>
+                        <td class="p-3 border-b text-xs text-slate-600">${s.managerName || ''}<div class="text-[10px] text-slate-400 mt-1" dir="ltr">${s.managerDisplayEmail || s.managerEmail || ''}</div></td>
                         <td class="p-3 border-b text-center text-xs">${statusLabel}</td>
                         <td class="p-3 border-b text-center"><div class="flex justify-center gap-2 flex-wrap">
                             <button onclick="copyTextValue('${safeJs(reg)}','تم نسخ رابط التسجيل')" class="bg-blue-600 text-white px-3 py-1 rounded-lg text-[10px] font-bold">رابط التسجيل</button>
                             <button onclick="copyTextValue('${safeJs(login)}','تم نسخ رابط الدخول')" class="bg-teal-700 text-white px-3 py-1 rounded-lg text-[10px] font-bold">رابط الدخول</button>
                             <button onclick="toggleSchoolSupabaseStatus('${safeJs(s.id)}','${s.status === 'active' ? 'disabled' : 'active'}')" class="bg-amber-600 text-white px-3 py-1 rounded-lg text-[10px] font-bold">${s.status === 'active' ? 'تعطيل' : 'تفعيل'}</button>
+                            <button onclick='openSchoolLabelsEdit(${JSON.stringify(s).replace(/'/g,"&#39;")})' class="bg-slate-700 text-white px-3 py-1 rounded-lg text-[10px] font-bold">تعديل البيانات</button>
                             <button onclick="deleteSupabaseSchool('${safeJs(s.id)}')" class="bg-red-600 text-white px-3 py-1 rounded-lg text-[10px] font-bold">حذف</button>
                         </div></td>
                     </tr>`;

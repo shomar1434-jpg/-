@@ -282,9 +282,9 @@ Deno.serve(async (request) => {
       if (lower(previous.status) !== 'active') {
         // الرموز التي ألغتها آلية الجلسات القديمة قد تبقى في المتصفح حتى انتهاء صلاحيتها الأصلية.
         // لا نعتمد مهلة زمنية ثابتة؛ يكفي أن الرمز نفسه لم ينتهِ وأن توجد جلسة شقيقة نشطة.
-        if (Number.isFinite(expiredAt) && expiredAt <= Date.now()) {
-          return json({error:'انتهت صلاحية الجلسة السابقة ولا يمكن استعادتها',code:'SESSION_RENEW_REVOKED_EXPIRED',requestId},401);
-        }
+        // الجلسة الملغاة تاريخيًا يمكن استعادتها داخل مهلة السماح أعلاه فقط إذا
+        // بقيت هوية المستخدم فعالة ولها جلسة شقيقة نشطة. هذا يعالج رموزًا قديمة
+        // خلفتها آلية التدوير السابقة دون إعادة استخدام كلمة المرور.
         const siblingQ = await admin.from('platform_sessions')
           .select('id,expires_at,status')
           .eq('user_id', previous.user_id)
@@ -373,6 +373,7 @@ Deno.serve(async (request) => {
     }
 
     let authUser: any = null;
+    let authSession: any = null;
     const normalizedLogin = lower(login);
     if (anonKey && normalizedLogin.includes('@')) {
       const authClient = createClient(supabaseUrl, anonKey, {
@@ -382,7 +383,10 @@ Deno.serve(async (request) => {
         email: normalizedLogin,
         password,
       });
-      if (!authResult.error && authResult.data?.user) authUser = authResult.data.user;
+      if (!authResult.error && authResult.data?.user) {
+        authUser = authResult.data.user;
+        authSession = authResult.data.session || null;
+      }
     }
 
     const usersResult = await admin
@@ -533,6 +537,10 @@ Deno.serve(async (request) => {
       role,
     });
 
+    const authExpiresAt = authSession?.expires_at
+      ? new Date(Number(authSession.expires_at) * 1000).toISOString()
+      : (authSession?.expires_in ? new Date(Date.now() + Number(authSession.expires_in) * 1000).toISOString() : '');
+
     return json({
       token: rawToken,
       expiresAt,
@@ -540,6 +548,10 @@ Deno.serve(async (request) => {
       schoolId: school.id,
       role,
       requestId,
+      // جلسة Auth تستخدم فقط لاستعادة platform-session دون حفظ كلمة المرور.
+      authAccessToken: text(authSession?.access_token),
+      authRefreshToken: text(authSession?.refresh_token),
+      authExpiresAt,
     });
   } catch (error) {
     console.error('[platform-session]', requestId, 'fatal', error);

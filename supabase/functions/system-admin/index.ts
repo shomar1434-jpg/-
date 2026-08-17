@@ -15,45 +15,82 @@ Deno.serve(async(req)=>{
   if(action==='list_schools'){const r=await admin.from('schools').select('*').order('created_at',{ascending:false}).limit(1000);if(r.error)throw r.error;await audit(true);return json({ok:true,schools:r.data||[]})}
   if(action==='create_school'){
    const schoolName=clean(body.schoolName),managerName=clean(body.managerName),managerEmail=email(body.email),password=clean(body.password); if(!schoolName||!managerEmail||password.length<8)return json({error:'اسم المدرسة والبريد وكلمة مرور من 8 أحرف على الأقل مطلوبة'},400);
-   // اسم المدرسة يجب أن يبقى فريدًا، أما بريد المدير فيجوز تكراره لدعم المجمعات التعليمية.
+   // اسم المدرسة يجب أن يبقى فريدًا، أما البريد فهو هوية واحدة قابلة لعضويات متعددة عبر school_members.
    const sameName=await admin.from('schools').select('id').eq('school_name',schoolName).limit(1);
+   if(sameName.error)throw sameName.error;
    if(sameName.data?.length)return json({error:'اسم المدرسة مسجل مسبقًا'},409);
 
-   // هوية المدير حساب واحد مشترك بين كل مدارسه، بينما الصلاحية/النطاق تحفظ في school_members.
-   const existingUserQ=await admin.from('users').select('*').eq('email',managerEmail).eq('role','manager').limit(1).maybeSingle();
+   // لا نربط البحث بدور manager: المستخدم قد يكون وكيلًا/معلمًا في مدرسة ومديرًا في مدرسة أخرى.
+   let existingUserQ=await admin.from('users').select('*').eq('email',managerEmail).limit(1).maybeSingle();
    if(existingUserQ.error)throw existingUserQ.error;
    let managerUser:any=existingUserQ.data||null;
    let createdAuthUserId='';
+   let createdPublicUserId='';
+   let reusedExistingIdentity=Boolean(managerUser);
+   if(managerUser && clean(managerUser.password) && clean(managerUser.password)!==password){
+     return json({error:'البريد مرتبط بحساب مستخدم قائم. استخدم كلمة المرور الحالية لنفس الحساب حتى تعمل الهوية الموحدة بين المدارس.'},409);
+   }
+   const rollbackCreatedIdentity=async()=>{
+     try{if(createdPublicUserId)await admin.from('users').delete().eq('id',createdPublicUserId)}catch(_){}
+     try{if(createdAuthUserId)await admin.auth.admin.deleteUser(createdAuthUserId)}catch(_){}
+   };
+
    if(!managerUser){
+     // أنشئ هوية Auth فقط إذا لم توجد هوية عامة بهذا البريد.
+     // بعض المشاريع لديها Trigger ينشئ public.users آليًا عند إنشاء Auth، لذلك يجب إعادة القراءة قبل أي INSERT يدوي.
      const created=await admin.auth.admin.createUser({email:managerEmail,password,email_confirm:true,user_metadata:{full_name:managerName||schoolName,role:'manager'}});
      if(created.error)throw created.error;
      createdAuthUserId=clean(created.data.user?.id);
-     const row:any={email:managerEmail,full_name:managerName||schoolName,role:'manager',status:'active',is_primary_manager:true,must_change_password:false};
-     if(createdAuthUserId)row.id=createdAuthUserId;
-     // school_id يحدد المدرسة الافتراضية القديمة فقط؛ تعدد المدارس يعتمد على school_members.
-     row.school_id=null;
-     let up=await admin.from('users').insert(row).select('*').single();
-     if(up.error){
-       // بعض المخططات القديمة تشترط school_id؛ نؤجل إنشاء المستخدم إلى ما بعد إنشاء المدرسة.
-       managerUser={__pending:true,id:createdAuthUserId,email:managerEmail,full_name:managerName||schoolName,role:'manager',status:'active'};
-     }else managerUser=up.data;
+
+     const afterAuth=await admin.from('users').select('*').eq('email',managerEmail).limit(1).maybeSingle();
+     if(afterAuth.error)throw afterAuth.error;
+     managerUser=afterAuth.data||null;
+
+     if(managerUser){
+       // سجل أنشأه Trigger: نعتمده بدل إنشاء صف ثانٍ يصطدم users_email_key.
+       reusedExistingIdentity=true;
+       if(createdAuthUserId && clean(managerUser.id)===createdAuthUserId)createdPublicUserId=createdAuthUserId;
+       // هذا سجل أنشأه Trigger لهوية جديدة، لذلك نكمل بيانات الدخول العامة بدل إنشاء صف ثانٍ.
+       const patch:any={status:'active',password,must_change_password:false};
+       if(managerName)patch.full_name=managerName;
+       if(createdPublicUserId){patch.role='manager';patch.is_primary_manager=true;}
+       const patched=await admin.from('users').update(patch).eq('id',managerUser.id).select('*').maybeSingle();
+       if(!patched.error&&patched.data)managerUser=patched.data;
+     }else{
+       // توافق مع المشاريع التي لا تملك Trigger على auth.users.
+       const row:any={email:managerEmail,full_name:managerName||schoolName,role:'manager',status:'active',is_primary_manager:true,must_change_password:false,password};
+       if(createdAuthUserId)row.id=createdAuthUserId;
+       row.school_id=null;
+       const up=await admin.from('users').insert(row).select('*').single();
+       if(up.error){
+         // بعض المخططات القديمة تشترط school_id؛ نؤجل إنشاء المستخدم إلى ما بعد إنشاء المدرسة.
+         managerUser={__pending:true,id:createdAuthUserId,email:managerEmail,full_name:managerName||schoolName,role:'manager',status:'active',password};
+       }else managerUser=up.data;
+     }
    }
 
    const si=await admin.from('schools').insert({school_name:schoolName,school_code:code('SCH'),manager_name:managerName,manager_email:managerEmail,status:'active',registration_code:code('REG')}).select('*').single();
-   if(si.error){if(createdAuthUserId)await admin.auth.admin.deleteUser(createdAuthUserId);throw si.error}
+   if(si.error){await rollbackCreatedIdentity();throw si.error}
    const school=si.data;
 
    if(managerUser?.__pending){
-     const row:any={id:managerUser.id,email:managerEmail,full_name:managerName||schoolName,role:'manager',status:'active',school_id:school.id,is_primary_manager:true,must_change_password:false};
+     const row:any={id:managerUser.id,email:managerEmail,full_name:managerName||schoolName,role:'manager',status:'active',school_id:school.id,is_primary_manager:true,must_change_password:false,password};
      const ins=await admin.from('users').insert(row).select('*').single();
-     if(ins.error){if(createdAuthUserId)await admin.auth.admin.deleteUser(createdAuthUserId);await admin.from('schools').delete().eq('id',school.id);throw ins.error}
+     if(ins.error){await admin.from('schools').delete().eq('id',school.id);await rollbackCreatedIdentity();throw ins.error}
      managerUser=ins.data;
    }else if(managerUser && !clean(managerUser.school_id)){
-     // تثبيت مدرسة افتراضية للحسابات التي يسمح مخططها بقيمة فارغة، دون تغييرها لاحقًا عند إضافة مدارس أخرى.
-     await admin.from('users').update({school_id:school.id}).eq('id',managerUser.id).is('school_id',null);
-     managerUser.school_id=school.id;
+     // school_id هو المدرسة الافتراضية القديمة فقط. لا نغيّره إذا كان للحساب مدرسة أصلية.
+     const patched=await admin.from('users').update({school_id:school.id}).eq('id',managerUser.id).is('school_id',null).select('*').maybeSingle();
+     if(!patched.error&&patched.data)managerUser=patched.data;
    }
 
+   if(!managerUser?.id){
+     await admin.from('schools').delete().eq('id',school.id);
+     await rollbackCreatedIdentity();
+     return json({error:'تعذر تحديد هوية مدير المدرسة'},409);
+   }
+
+   // العضوية هي مصدر الدور داخل المدرسة الجديدة. لا نغيّر role العام للمستخدم كي لا نكسر دوره في مدرسته الأصلية.
    const membershipRow:any={school_id:school.id,user_id:managerUser.id,email:managerEmail,role:'manager',status:'active',is_primary_manager:true};
    let memberIns=await admin.from('school_members').insert(membershipRow);
    if(memberIns.error){
@@ -61,9 +98,15 @@ Deno.serve(async(req)=>{
      delete membershipRow.is_primary_manager; membershipRow.is_primary=true;
      memberIns=await admin.from('school_members').insert(membershipRow);
    }
-   if(memberIns.error){if(createdAuthUserId)await admin.auth.admin.deleteUser(createdAuthUserId);await admin.from('schools').delete().eq('id',school.id);throw memberIns.error}
+   if(memberIns.error){
+     // لا نحذف هوية مستخدم موجودة سابقًا. نحذف Auth فقط إذا أنشأناه في هذه العملية.
+     await admin.from('schools').delete().eq('id',school.id);
+     await rollbackCreatedIdentity();
+     throw memberIns.error;
+   }
 
-   await audit(true,school.id,{schoolName,managerEmail,multiSchoolManager:true});return json({ok:true,school,managerUserId:managerUser.id});
+   await audit(true,school.id,{schoolName,managerEmail,multiSchoolManager:true,reusedExistingIdentity});
+   return json({ok:true,school,managerUserId:managerUser.id,reusedExistingIdentity});
   }
   if(action==='set_school_status'){const schoolId=clean(body.schoolId),status=clean(body.status);if(!schoolId||!['active','disabled','inactive','suspended'].includes(status))return json({error:'طلب غير صالح'},400);const r=await admin.from('schools').update({status}).eq('id',schoolId).select('*').single();if(r.error)throw r.error;await audit(true,schoolId,{status});return json({ok:true,school:r.data})}
   if(action==='delete_school'){

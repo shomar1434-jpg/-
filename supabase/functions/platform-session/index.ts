@@ -265,22 +265,50 @@ Deno.serve(async (request) => {
       const rawSession = text(request.headers.get('x-platform-session'));
       if (!rawSession) return json({error:'رمز الجلسة غير موجود',code:'SESSION_TOKEN_MISSING',requestId},401);
       const hash = await sha256(rawSession);
-      const sq = await admin.from('platform_sessions').select('*').eq('session_token_hash',hash).eq('status','active').limit(1).maybeSingle();
+      const sq = await admin.from('platform_sessions').select('*').eq('session_token_hash',hash).limit(1).maybeSingle();
       if (sq.error) throw sq.error;
       const previous = sq.data;
       if (!previous) return json({error:'تعذر تجديد الجلسة السحابية',code:'SESSION_RENEW_NOT_FOUND',requestId},401);
+
       const expiredAt = previous.expires_at ? Date.parse(previous.expires_at) : Date.now();
-      const graceMs = 7 * 24 * 60 * 60 * 1000;
-      if (Number.isFinite(expiredAt) && expiredAt < Date.now() - graceMs) {
+      const expiryGraceMs = 7 * 24 * 60 * 60 * 1000;
+      if (Number.isFinite(expiredAt) && expiredAt < Date.now() - expiryGraceMs) {
         return json({error:'انتهت مهلة تجديد الجلسة. يلزم تسجيل الدخول مرة أخرى.',code:'SESSION_RENEW_GRACE_EXPIRED',requestId},401);
       }
+
+      // إذا كان الرمز قد أُلغي بسبب تدوير/سباق جلسات حديث، نسمح بالتعافي فقط
+      // عندما توجد جلسة شقيقة نشطة لنفس المستخدم والمدرسة والدور.
+      // هذا يمنع إحياء جلسة أُلغيَت وحدها عند تسجيل الخروج أو تعطيل الحساب.
+      if (lower(previous.status) !== 'active') {
+        // الرموز التي ألغتها آلية الجلسات القديمة قد تبقى في المتصفح حتى انتهاء صلاحيتها الأصلية.
+        // لا نعتمد مهلة زمنية ثابتة؛ يكفي أن الرمز نفسه لم ينتهِ وأن توجد جلسة شقيقة نشطة.
+        if (Number.isFinite(expiredAt) && expiredAt <= Date.now()) {
+          return json({error:'انتهت صلاحية الجلسة السابقة ولا يمكن استعادتها',code:'SESSION_RENEW_REVOKED_EXPIRED',requestId},401);
+        }
+        const siblingQ = await admin.from('platform_sessions')
+          .select('id,expires_at,status')
+          .eq('user_id', previous.user_id)
+          .eq('school_id', previous.school_id)
+          .eq('role', previous.role)
+          .eq('status','active')
+          .order('created_at',{ascending:false})
+          .limit(1)
+          .maybeSingle();
+        if (siblingQ.error) throw siblingQ.error;
+        const sibling = siblingQ.data;
+        const siblingValid = sibling && (!sibling.expires_at || Date.parse(sibling.expires_at) > Date.now());
+        if (!siblingValid) {
+          return json({error:'الجلسة السابقة أُلغيت ولا توجد جلسة فعالة يمكن التعافي منها',code:'SESSION_RENEW_NO_ACTIVE_SIBLING',requestId},401);
+        }
+      }
+
       const memberships = await membershipsForIdentity(admin, previous);
       const requestedSchool = text(payload?.schoolId || previous.school_id);
       const allowed = memberships.find((m:any)=>m.schoolId===requestedSchool && lower(m.role)===lower(previous.role)) ||
         memberships.find((m:any)=>m.schoolId===requestedSchool);
       if (!allowed) return json({error:'عضوية الحساب في المدرسة لم تعد فعالة',code:'SESSION_RENEW_MEMBERSHIP_DENIED',requestId},403);
       const next = await issueSession(admin, allowed.userId || previous.user_id, allowed.schoolId, allowed.role || previous.role, previous.id);
-      return json({...next,membershipId:allowed.membershipId,schoolName:allowed.schoolName,schoolCode:allowed.schoolCode,requestId,renewed:true});
+      return json({...next,membershipId:allowed.membershipId,schoolName:allowed.schoolName,schoolCode:allowed.schoolCode,requestId,renewed:true,recoveredFromRevoked:lower(previous.status)!=='active'});
     }
     if (action === 'memberships' || action === 'switch') {
       const rawSession = text(request.headers.get('x-platform-session'));

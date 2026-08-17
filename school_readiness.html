@@ -1635,13 +1635,28 @@ function normalizePlatformRoleToReadiness(role){
 }
 function readinessUserLabel(u){return String(u.full_name||u.name||u.email||"مستخدم").trim()}
 async function loadReadinessSchoolUsers(){
- if(!window.CloudTaskEngine)return [];
+ const merged=new Map();
+ const add=u=>{
+  if(!u)return;const id=String(u.id||u.user_id||'').trim(),email=String(u.email||u.user_email||'').trim().toLowerCase();
+  const name=String(u.full_name||u.name||u.display_name||'').trim();
+  if(!id&&!email)return;const k=id||email;
+  if(String(u.status||u.user_status||'active')==='deleted')return;
+  merged.set(k,{...u,id:id||k,email,full_name:name||String(u.email||u.user_email||'').trim()});
+ };
  try{
-  const r=await CloudTaskEngine.listUsers();
-  readinessSchoolUsers=(r.users||[]).filter(u=>String(u.status||"active")!=="deleted");
-  resolveExistingTeamCloudUsers();
-  return readinessSchoolUsers;
- }catch(e){console.warn("Readiness users load failed",e);return []}
+  if(window.CloudTaskEngine){const r=await CloudTaskEngine.listUsers();(r.users||[]).forEach(add)}
+ }catch(e){console.warn("Readiness cloud users load failed",e)}
+ // احتياط محلي/مركز المعلومات: لا يغيّر الفئة الوظيفية، ويُستخدم فقط لإظهار الاسم إذا تعذر المصدر السحابي.
+ try{
+  if(window.SchoolInformationSource){
+   if(typeof SchoolInformationSource.load==='function')await SchoolInformationSource.load(true);
+   const snap=typeof SchoolInformationSource.getSnapshot==='function'?await SchoolInformationSource.getSnapshot():null;
+   (snap?.staff||[]).forEach(add);
+  }
+ }catch(e){console.warn("Readiness fallback users load failed",e)}
+ readinessSchoolUsers=[...merged.values()].sort((a,b)=>readinessUserLabel(a).localeCompare(readinessUserLabel(b),'ar'));
+ resolveExistingTeamCloudUsers();
+ return readinessSchoolUsers;
 }
 function resolveMemberCloudUser(member){
  if(member.cloudUserId){const u=readinessSchoolUsers.find(x=>String(x.id)===String(member.cloudUserId));if(u)return u}

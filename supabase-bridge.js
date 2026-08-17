@@ -79,7 +79,9 @@
       registrationCode: row.registration_code || '',
       registrationLink: row.registration_link || '',
       loginLink: row.login_link || '',
-      createdAt: row.created_at || ''
+      createdAt: row.created_at || '',
+      roleLabel: row.role_label || '',
+      role_label: row.role_label || ''
     };
   }
 
@@ -103,7 +105,9 @@
       isPrimaryManager: !!row.is_primary_manager,
       is_primary_manager: !!row.is_primary_manager,
       mustChangePassword: !!row.must_change_password,
-      createdAt: row.created_at || ''
+      createdAt: row.created_at || '',
+      roleLabel: row.role_label || '',
+      role_label: row.role_label || ''
     };
   }
 
@@ -331,9 +335,18 @@
   async function listUsersBySchool(schoolId){
     const sb = getClient();
     if(!sb) throw new Error('Supabase غير جاهز');
-    const {data,error} = await sb.from('users').select('*').eq('school_id',schoolId).order('created_at',{ascending:false});
-    if(error) throw explainSupabaseError(error);
-    return (data || []).map(u => normalizeUser(u));
+    const [{data:direct,error:de},{data:members,error:me}] = await Promise.all([
+      sb.from('users').select('*').eq('school_id',schoolId).order('created_at',{ascending:false}),
+      sb.from('school_members').select('*').eq('school_id',schoolId)
+    ]);
+    if(de) throw explainSupabaseError(de); if(me) throw explainSupabaseError(me);
+    const identities=new Map((direct||[]).map(u=>[String(u.id),u]));
+    const ids=[...new Set((members||[]).map(m=>String(m.user_id||'')).filter(Boolean))];
+    if(ids.length){const q=await sb.from('users').select('*').in('id',ids);if(q.error)throw explainSupabaseError(q.error);(q.data||[]).forEach(u=>identities.set(String(u.id),u));}
+    const out=new Map();
+    (direct||[]).forEach(u=>out.set(String(u.id),normalizeUser(u)));
+    for(const m of members||[]){if(String(m.status||'active')==='deleted')continue;const u=identities.get(String(m.user_id||''));if(!u)continue;out.set(String(u.id),normalizeUser(Object.assign({},u,{school_id:schoolId,role:m.role||u.role,role_label:m.role_label||'',status:m.status||u.status}),null));}
+    return [...out.values()];
   }
 
   async function updateUserStatus(userId,status){
@@ -405,7 +418,7 @@
         }
         let schoolOverride = null;
         if(member){try{const sq=await sb.from('schools').select('*').eq('id',wantedSchool).maybeSingle();if(sq&&sq.data)schoolOverride=sq.data}catch(e){}
-          scoped=[Object.assign({},baseCandidate,{id:member.user_id||baseCandidate.id,school_id:wantedSchool,role:member.role||baseCandidate.role,__membershipId:member.id,__schoolOverride:schoolOverride})];
+          scoped=[Object.assign({},baseCandidate,{id:member.user_id||baseCandidate.id,school_id:wantedSchool,role:member.role||baseCandidate.role,role_label:member.role_label||'',__membershipId:member.id,__schoolOverride:schoolOverride})];
         }else if(String(baseCandidate.role||'')==='manager'){
           try{const schByEmail=await sb.from('schools').select('*').eq('id',wantedSchool).eq('manager_email',email).maybeSingle();if(schByEmail&&schByEmail.data)scoped=[Object.assign({},baseCandidate,{school_id:wantedSchool,role:'manager',is_primary_manager:true,__schoolOverride:schByEmail.data})]}catch(e){}
         }

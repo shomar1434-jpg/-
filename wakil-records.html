@@ -1365,7 +1365,7 @@ function wakilCategoryLabel(cat){return WAKIL_CATEGORY_LABELS[cat] || 'سجلا�
 function readJsonSafe(key,fallback){try{return JSON.parse(localStorage.getItem(key)||JSON.stringify(fallback||{}));}catch(e){return fallback||{};}}
 function normalizeAgencyList(v){
   if(Array.isArray(v)) return v.map(String).map(function(x){return x.trim()}).filter(Boolean).filter(function(x){return x!=='general'});
-  v=String(v||'').trim(); if(!v || v==='general') return [];
+  v=String(v||'').trim(); if(!v || v==='general') return []; var aliases={'deputy_academic':'educational','وكيل الشؤون التعليمية':'educational','وكيل/وكيلة الشؤون التعليمية':'educational','deputy_admin':'school_affairs','وكيل الشؤون المدرسية':'school_affairs','وكيل/وكيلة الشؤون المدرسية':'school_affairs','deputy_students':'student_affairs','وكيل شؤون الطلاب':'student_affairs','وكيل/وكيلة شؤون الطلاب':'student_affairs'}; if(aliases[v]) return [aliases[v]];
   if(v.charAt(0)==='['){try{return normalizeAgencyList(JSON.parse(v));}catch(e){}}
   return v.split(/[،,|]/).map(function(x){return x.trim()}).filter(Boolean).filter(function(x){return x!=='general'});
 }
@@ -1378,7 +1378,7 @@ function currentWakilUser(){
 }
 function currentWakilAgencies(){
   var u=currentWakilUser();
-  var list=normalizeAgencyList(u.agent_categories||u.agency_categories||u.agency_types||u.agency_type||u.agencyType||u.vice_agency_type||u.viceAgencyType||'');
+  var list=normalizeAgencyList(u.roleLabel||u.role_label||u.agent_categories||u.agency_categories||u.agency_types||u.agency_type||u.agencyType||u.vice_agency_type||u.viceAgencyType||'');
   if(!list.length){
     var sid=u.schoolId||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||'default';
     var map=readJsonSafe('smartSchoolUnifiedOpsV2_vp_agency_map_'+sid,{});
@@ -1392,7 +1392,7 @@ function allowedWakilCategory(cat){
   var agencies=currentWakilAgencies();
   cat=cat||'shared';
   if(cat==='shared') return true;
-  if(!agencies.length) return true;
+  if(!agencies.length){var u=currentWakilUser();var r=String(u.role||u.dbRole||'').toLowerCase();return !(r==='agent'||r==='agency'||r==='deputy') ? true : false;}
   return agencies.indexOf(cat)>-1;
 }
 function visibleForms(){return FORMS.filter(function(f){return allowedWakilCategory(f.category||'shared');});}

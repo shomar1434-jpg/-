@@ -124,12 +124,74 @@
     );
   }
 
+  function currentSchoolId() {
+    return schoolId() ||
+      localStorage.getItem('active_school_id') ||
+      localStorage.getItem('current_school_id') ||
+      localStorage.getItem('school_id') ||
+      localStorage.getItem('smart_school_id') || '';
+  }
+
+  function currentUserCredentials() {
+    const candidates = [
+      localStorage.getItem('currentSchoolUser'),
+      localStorage.getItem('currentUser'),
+      localStorage.getItem('smart_school_current_session'),
+    ];
+    for (const raw of candidates) {
+      if (!raw) continue;
+      try {
+        const u = JSON.parse(raw) || {};
+        const login = String(u.email || u.user_email || u.manager_email || localStorage.getItem('currentUserEmail') || '').trim().toLowerCase();
+        const password = String(u.password || u.pass || u.login_password || u.temp_password || u.default_password || '').trim();
+        if (login && password) return { login, password };
+      } catch (_) {}
+    }
+    return { login: String(localStorage.getItem('currentUserEmail') || '').trim().toLowerCase(), password: '' };
+  }
+
+  function applyPayload(payload) {
+    if (!payload || !payload.token) throw new Error('استجابة تجديد الجلسة لا تحتوي على رمز صالح');
+    localStorage.setItem(TOKEN_KEY, payload.token);
+    localStorage.setItem(EXPIRES_KEY, payload.expiresAt || '');
+    localStorage.setItem(USER_KEY, payload.userId || '');
+    localStorage.setItem(SCHOOL_KEY, payload.schoolId || currentSchoolId() || '');
+    localStorage.setItem(ROLE_KEY, payload.role || role() || localStorage.getItem('currentRole') || '');
+    window.dispatchEvent(new CustomEvent('platform-cloud-session-ready',{detail:{userId:payload.userId||'',schoolId:payload.schoolId||'',role:payload.role||'',expiresAt:payload.expiresAt||'',renewed:true}}));
+    return payload.token;
+  }
+
+  async function recover() {
+    const oldToken = token();
+    const sid = currentSchoolId();
+    // المسار الأول: تدوير رمز الجلسة السابق حتى لو انتهت صلاحيته مؤخرًا.
+    if (oldToken) {
+      try {
+        const response = await fetch(`${url()}/functions/v1/platform-session`, {
+          method: 'POST',
+          headers: {'content-type':'application/json',apikey:key(),'x-platform-session':oldToken},
+          body: JSON.stringify({action:'renew',schoolId:sid}),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (response.ok && payload.token) return applyPayload(payload);
+      } catch (_) {}
+    }
+
+    // المسار الثاني: إعادة إنشاء الجلسة من بيانات حساب المدرسة الموجودة أصلًا في سياق المنصة.
+    const creds = currentUserCredentials();
+    if (creds.login && creds.password && sid) {
+      try {
+        const payload = await open(creds.login, creds.password, sid);
+        return payload.token;
+      } catch (_) {}
+    }
+
+    throw new Error('تعذر تجديد الجلسة السحابية تلقائيًا. أعد تسجيل الدخول إلى المدرسة ثم حاول مرة أخرى.');
+  }
+
   async function ensure() {
     if (valid()) return token();
-    clear();
-    throw new Error(
-      'انتهت جلسة الملفات السحابية. سجّل الخروج ثم ادخل مجددًا لتجديدها.',
-    );
+    return recover();
   }
 
   function clear() {
@@ -151,6 +213,7 @@
     role,
     valid,
     ensure,
+    recover,
     clear,
   };
 })();

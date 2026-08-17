@@ -6,13 +6,6 @@
   const USER_KEY = 'platform_file_session_user_id';
   const SCHOOL_KEY = 'platform_file_session_school_id';
   const ROLE_KEY = 'platform_file_session_role';
-  const AUTH_ACCESS_KEY = 'platform_auth_access_token';
-  const AUTH_REFRESH_KEY = 'platform_auth_refresh_token';
-  const AUTH_EXPIRES_KEY = 'platform_auth_expires_at';
-
-  let openInFlight = null;
-  let openInFlightKey = '';
-  let recoverInFlight = null;
 
   const url = () =>
     (localStorage.getItem('smartSchoolSupabaseUrl') ||
@@ -22,7 +15,9 @@
     localStorage.getItem('smartSchoolSupabaseAnonKey') ||
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
 
-  async function openInternal(login, password, schoolId) {
+  async function open(login, password, schoolId) {
+    clear();
+
     const response = await fetch(`${url()}/functions/v1/platform-session`, {
       method: 'POST',
       headers: {
@@ -53,9 +48,6 @@
     localStorage.setItem(USER_KEY, payload.userId || '');
     localStorage.setItem(SCHOOL_KEY, payload.schoolId || '');
     localStorage.setItem(ROLE_KEY, payload.role || '');
-    if (payload.authAccessToken) localStorage.setItem(AUTH_ACCESS_KEY, payload.authAccessToken);
-    if (payload.authRefreshToken) localStorage.setItem(AUTH_REFRESH_KEY, payload.authRefreshToken);
-    if (payload.authExpiresAt) localStorage.setItem(AUTH_EXPIRES_KEY, payload.authExpiresAt);
 
     window.dispatchEvent(
       new CustomEvent('platform-cloud-session-ready', {
@@ -69,19 +61,6 @@
     );
 
     return payload;
-  }
-
-  async function open(login, password, schoolId) {
-    const flightKey = `${String(login||'').trim().toLowerCase()}|${String(schoolId||'').trim()}`;
-    if (openInFlight && openInFlightKey === flightKey) return openInFlight;
-    openInFlightKey = flightKey;
-    openInFlight = openInternal(login, password, schoolId);
-    try {
-      return await openInFlight;
-    } finally {
-      openInFlight = null;
-      openInFlightKey = '';
-    }
   }
 
   async function sessionAction(action, body = {}) {
@@ -153,69 +132,22 @@
       localStorage.getItem('smart_school_id') || '';
   }
 
-
-  async function authAccessToken() {
-    // 1) Use the auth session captured during school login.
-    try {
-      const access = localStorage.getItem(AUTH_ACCESS_KEY) || '';
-      const refresh = localStorage.getItem(AUTH_REFRESH_KEY) || '';
-      const expiry = localStorage.getItem(AUTH_EXPIRES_KEY) || '';
-      const stillValid = access && (!expiry || Date.parse(expiry) > Date.now() + 60_000);
-      if (stillValid) return access;
-
-      // Refresh Supabase Auth without ever storing or reusing the password.
-      if (refresh) {
-        const r = await fetch(`${url()}/auth/v1/token?grant_type=refresh_token`, {
-          method: 'POST',
-          headers: {'content-type':'application/json', apikey:key()},
-          body: JSON.stringify({refresh_token: refresh}),
-        });
-        const j = await r.json().catch(() => ({}));
-        if (r.ok && j.access_token) {
-          localStorage.setItem(AUTH_ACCESS_KEY, String(j.access_token));
-          if (j.refresh_token) localStorage.setItem(AUTH_REFRESH_KEY, String(j.refresh_token));
-          const expiresIn = Number(j.expires_in || 3600);
-          localStorage.setItem(AUTH_EXPIRES_KEY, new Date(Date.now() + Math.max(60, expiresIn) * 1000).toISOString());
-          return String(j.access_token);
-        }
-      }
-    } catch (_) {}
-
-    // 2) Compatibility with pages that already load a Supabase client.
-    try {
-      const sb = window.SmartSchoolSupabase?.getClient?.();
-      if (sb?.auth?.getSession) {
-        const authState = await sb.auth.getSession();
-        const session = authState?.data?.session || null;
-        const t = session?.access_token || '';
-        if (t) {
-          localStorage.setItem(AUTH_ACCESS_KEY, t);
-          if (session.refresh_token) localStorage.setItem(AUTH_REFRESH_KEY, session.refresh_token);
-          if (session.expires_at) localStorage.setItem(AUTH_EXPIRES_KEY, new Date(Number(session.expires_at) * 1000).toISOString());
-          return t;
-        }
-      }
-    } catch (_) {}
-
-    // 3) Compatibility with the standard Supabase localStorage key.
-    try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i) || '';
-        if (!/^sb-[a-z0-9]+-auth-token$/i.test(k)) continue;
-        const raw = localStorage.getItem(k);
-        if (!raw) continue;
-        const obj = JSON.parse(raw);
-        const session = obj?.currentSession || obj?.session || obj;
-        const t = session?.access_token || (Array.isArray(obj) ? obj?.[0]?.access_token : '');
-        if (t) {
-          localStorage.setItem(AUTH_ACCESS_KEY, String(t));
-          if (session?.refresh_token) localStorage.setItem(AUTH_REFRESH_KEY, String(session.refresh_token));
-          if (session?.expires_at) localStorage.setItem(AUTH_EXPIRES_KEY, new Date(Number(session.expires_at) * 1000).toISOString());
-          return String(t);
-        }
-      }
-    } catch (_) {}
-    return '';
+  function currentUserCredentials() {
+    const candidates = [
+      localStorage.getItem('currentSchoolUser'),
+      localStorage.getItem('currentUser'),
+      localStorage.getItem('smart_school_current_session'),
+    ];
+    for (const raw of candidates) {
+      if (!raw) continue;
+      try {
+        const u = JSON.parse(raw) || {};
+        const login = String(u.email || u.user_email || u.manager_email || localStorage.getItem('currentUserEmail') || '').trim().toLowerCase();
+        const password = String(u.password || u.pass || u.login_password || u.temp_password || u.default_password || '').trim();
+        if (login && password) return { login, password };
+      } catch (_) {}
+    }
+    return { login: String(localStorage.getItem('currentUserEmail') || '').trim().toLowerCase(), password: '' };
   }
 
   function applyPayload(payload) {
@@ -225,14 +157,11 @@
     localStorage.setItem(USER_KEY, payload.userId || '');
     localStorage.setItem(SCHOOL_KEY, payload.schoolId || currentSchoolId() || '');
     localStorage.setItem(ROLE_KEY, payload.role || role() || localStorage.getItem('currentRole') || '');
-    if (payload.authAccessToken) localStorage.setItem(AUTH_ACCESS_KEY, payload.authAccessToken);
-    if (payload.authRefreshToken) localStorage.setItem(AUTH_REFRESH_KEY, payload.authRefreshToken);
-    if (payload.authExpiresAt) localStorage.setItem(AUTH_EXPIRES_KEY, payload.authExpiresAt);
     window.dispatchEvent(new CustomEvent('platform-cloud-session-ready',{detail:{userId:payload.userId||'',schoolId:payload.schoolId||'',role:payload.role||'',expiresAt:payload.expiresAt||'',renewed:true}}));
     return payload.token;
   }
 
-  async function recoverInternal() {
+  async function recover() {
     const oldToken = token();
     const sid = currentSchoolId();
     // المسار الأول: تدوير رمز الجلسة السابق حتى لو انتهت صلاحيته مؤخرًا.
@@ -245,45 +174,19 @@
         });
         const payload = await response.json().catch(() => ({}));
         if (response.ok && payload.token) return applyPayload(payload);
-        console.warn('[platform-session] renew failed', payload.code || response.status, payload.requestId || '');
-      } catch (err) { console.warn('[platform-session] renew error', err); }
+      } catch (_) {}
     }
 
-    // المسار الثاني: استعادة الجلسة من Supabase Auth الحالي دون حفظ كلمة المرور في المتصفح.
-    // هذا المسار يعالج الرموز القديمة/الملغاة التي لا يمكن تدويرها، مع التحقق الخادمي من هوية المستخدم وعضويته.
-    if (sid) {
+    // المسار الثاني: إعادة إنشاء الجلسة من بيانات حساب المدرسة الموجودة أصلًا في سياق المنصة.
+    const creds = currentUserCredentials();
+    if (creds.login && creds.password && sid) {
       try {
-        const accessToken = await authAccessToken();
-        if (accessToken) {
-          const response = await fetch(`${url()}/functions/v1/platform-session`, {
-            method: 'POST',
-            headers: {
-              'content-type':'application/json',
-              apikey:key(),
-              authorization:`Bearer ${accessToken}`
-            },
-            body: JSON.stringify({action:'auth-recover',schoolId:sid}),
-          });
-          const payload = await response.json().catch(() => ({}));
-          if (response.ok && payload.token) return applyPayload(payload);
-          console.warn('[platform-session] auth-recover failed', payload.code || response.status, payload.requestId || '');
-        }
-      } catch (err) { console.warn('[platform-session] auth-recover error', err); }
+        const payload = await open(creds.login, creds.password, sid);
+        return payload.token;
+      } catch (_) {}
     }
 
-    // لا نعيد تسجيل الدخول بكلمة مرور محفوظة محليًا.
-    // بعد فشل renew و auth-recover يجب أن يبقى الفشل صريحًا وآمنًا بدل استخدام بيانات قديمة.
-    throw new Error('تعذر استعادة الجلسة السحابية تلقائيًا. أعد فتح المدرسة من صفحة الدخول إذا استمرت المشكلة.');
-  }
-
-  async function recover() {
-    if (recoverInFlight) return recoverInFlight;
-    recoverInFlight = recoverInternal();
-    try {
-      return await recoverInFlight;
-    } finally {
-      recoverInFlight = null;
-    }
+    throw new Error('تعذر تجديد الجلسة السحابية تلقائيًا. أعد تسجيل الدخول إلى المدرسة ثم حاول مرة أخرى.');
   }
 
   async function ensure() {
@@ -297,9 +200,6 @@
     localStorage.removeItem(USER_KEY);
     localStorage.removeItem(SCHOOL_KEY);
     localStorage.removeItem(ROLE_KEY);
-    localStorage.removeItem(AUTH_ACCESS_KEY);
-    localStorage.removeItem(AUTH_REFRESH_KEY);
-    localStorage.removeItem(AUTH_EXPIRES_KEY);
   }
 
   window.PlatformCloudSession = {

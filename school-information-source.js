@@ -154,6 +154,7 @@ function autofill(el,k){
 }
 function enhance(el){
   if(!el||el.nodeType!==1||el.dataset.sicEnhanced)return; if(!/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName))return;
+  if(el.dataset.sicIgnore==='1'||el.hasAttribute('data-sic-ignore'))return;
   const k=kind(el);if(!k)return;el.dataset.sicEnhanced='1';el.dataset.sicKind=k;el.dataset.sicSource='central';el.title=(el.title?el.title+' — ':'')+'المصدر: مركز المعلومات المدرسية';
   if(el.tagName==='INPUT'&&['text','search',''].includes(el.type)){el.setAttribute('list',k==='student'?'sicStudentsList':k==='teacher'?'sicTeachersList':k==='administrative_employee'?'sicAdministrativeEmployeesList':'sicStaffList')}
   else fillSelectIfNeeded(el);

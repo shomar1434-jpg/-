@@ -165,6 +165,38 @@
     return { login: String(localStorage.getItem('currentUserEmail') || '').trim().toLowerCase(), password: '' };
   }
 
+  async function authAccessToken() {
+    try {
+      const sb = window.SmartSchoolSupabase?.getClient?.();
+      if (sb?.auth?.getSession) {
+        const authState = await sb.auth.getSession();
+        const t = authState?.data?.session?.access_token || '';
+        if (t) return t;
+      }
+    } catch (_) {}
+
+    // صفحات مثل مركز التكليفات لا تحمل supabase-bridge.js دائمًا.
+    // Supabase JS يحفظ جلسة Auth في localStorage تحت sb-<project-ref>-auth-token.
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i) || '';
+        if (!/^sb-[a-z0-9]+-auth-token$/i.test(k)) continue;
+        const raw = localStorage.getItem(k);
+        if (!raw) continue;
+        const obj = JSON.parse(raw);
+        const candidates = [
+          obj?.access_token,
+          obj?.currentSession?.access_token,
+          obj?.session?.access_token,
+          Array.isArray(obj) ? obj?.[0]?.access_token : ''
+        ];
+        const t = candidates.find(Boolean);
+        if (t) return String(t);
+      }
+    } catch (_) {}
+    return '';
+  }
+
   function applyPayload(payload) {
     if (!payload || !payload.token) throw new Error('استجابة تجديد الجلسة لا تحتوي على رمز صالح');
     localStorage.setItem(TOKEN_KEY, payload.token);
@@ -192,7 +224,28 @@
       } catch (_) {}
     }
 
-    // المسار الثاني: إعادة إنشاء الجلسة من بيانات حساب المدرسة الموجودة أصلًا في سياق المنصة.
+    // المسار الثاني: استعادة الجلسة من Supabase Auth الحالي دون حفظ كلمة المرور في المتصفح.
+    // هذا المسار يعالج الرموز القديمة/الملغاة التي لا يمكن تدويرها، مع التحقق الخادمي من هوية المستخدم وعضويته.
+    if (sid) {
+      try {
+        const accessToken = await authAccessToken();
+        if (accessToken) {
+          const response = await fetch(`${url()}/functions/v1/platform-session`, {
+            method: 'POST',
+            headers: {
+              'content-type':'application/json',
+              apikey:key(),
+              authorization:`Bearer ${accessToken}`
+            },
+            body: JSON.stringify({action:'auth-recover',schoolId:sid}),
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (response.ok && payload.token) return applyPayload(payload);
+        }
+      } catch (_) {}
+    }
+
+    // المسار الثالث (توافق محلي قديم فقط): إعادة إنشاء الجلسة إذا كانت بيانات الدخول محفوظة أصلًا في نموذج محلي قديم.
     const creds = currentUserCredentials();
     if (creds.login && creds.password && sid) {
       try {
@@ -201,7 +254,7 @@
       } catch (_) {}
     }
 
-    throw new Error('تعذر تجديد الجلسة السحابية تلقائيًا. أعد تسجيل الدخول إلى المدرسة ثم حاول مرة أخرى.');
+    throw new Error('تعذر استعادة الجلسة السحابية تلقائيًا. تحقق من استمرار تسجيل الدخول إلى المدرسة ثم حاول مرة أخرى.');
   }
 
   async function recover() {

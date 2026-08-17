@@ -108,6 +108,23 @@ Deno.serve(async(req)=>{
    await audit(true,school.id,{schoolName,managerEmail,multiSchoolManager:true,reusedExistingIdentity});
    return json({ok:true,school,managerUserId:managerUser.id,reusedExistingIdentity});
   }
+  if(action==='update_school_labels'){
+   const schoolId=clean(body.schoolId),schoolName=clean(body.schoolName),managerName=clean(body.managerName),managerEmailLabel=email(body.managerEmailLabel||'');
+   if(!schoolId||!schoolName)return json({error:'معرف المدرسة واسم المدرسة مطلوبان'},400);
+   const current=await admin.from('schools').select('id,school_code,school_name,manager_name,manager_email,school_email,registration_code,registration_link,login_link').eq('id',schoolId).maybeSingle();
+   if(current.error)throw current.error;
+   if(!current.data)return json({error:'المدرسة غير موجودة'},404);
+   const sameName=await admin.from('schools').select('id').eq('school_name',schoolName).neq('id',schoolId).limit(1);
+   if(sameName.error)throw sameName.error;
+   if(sameName.data?.length)return json({error:'اسم المدرسة مستخدم لمدرسة أخرى'},409);
+   // تعديل تسميات المدرسة فقط: لا نغيّر id أو school_code أو registration_code أو روابط الدخول/التسجيل،
+   // ولا نغيّر manager_email الحقيقي أو users/school_members/auth حتى تبقى هوية الدخول وصلاحياتها مستقرة.
+   const patch:any={school_name:schoolName,manager_name:managerName||null,school_email:managerEmailLabel||null,updated_at:new Date().toISOString()};
+   const r=await admin.from('schools').update(patch).eq('id',schoolId).select('*').single();
+   if(r.error)throw r.error;
+   await audit(true,schoolId,{action:'update_school_labels',schoolName,managerName,managerEmailLabel,identityEmailUnchanged:current.data.manager_email,linksPreserved:true});
+   return json({ok:true,school:r.data,preserved:{id:current.data.id,school_code:current.data.school_code,registration_code:current.data.registration_code,registration_link:current.data.registration_link,login_link:current.data.login_link,manager_email:current.data.manager_email}});
+  }
   if(action==='set_school_status'){const schoolId=clean(body.schoolId),status=clean(body.status);if(!schoolId||!['active','disabled','inactive','suspended'].includes(status))return json({error:'طلب غير صالح'},400);const r=await admin.from('schools').update({status}).eq('id',schoolId).select('*').single();if(r.error)throw r.error;await audit(true,schoolId,{status});return json({ok:true,school:r.data})}
   if(action==='delete_school'){
    const schoolId=clean(body.schoolId); if(!schoolId)return json({error:'معرف المدرسة مطلوب'},400);

@@ -116,7 +116,7 @@ const membershipsForIdentity = async (admin: any, session: any) => {
   // توافق المجمعات التعليمية: المدارس التي يحمل سجلها نفس بريد المدير تعد عضويات مدير،
   // حتى لو كانت مدرسة قديمة أُنشئت قبل تفعيل school_members.
   if(email){
-    const managerCols=['manager_email','email','principal_email','admin_email','owner_email'];
+    const managerCols=['manager_email'];
     for(const col of managerCols){
       try{
         const q=await admin.from('schools').select('*').eq(col,email).limit(1000);
@@ -140,7 +140,8 @@ const issueSession = async (admin:any, userId:string, schoolId:string, role:stri
   const tokenHash = await sha256(rawToken);
   const now = new Date().toISOString();
   const expiresAt = new Date(Date.now()+12*60*60*1000).toISOString();
-  if(previousSessionId) await admin.from('platform_sessions').update({status:'revoked',revoked_at:now}).eq('id',previousSessionId);
+  // لا نلغي الجلسة السابقة هنا؛ قد توجد تبويبات/طلبات متزامنة تستخدم الرمز نفسه.
+  // تظل الجلسة السابقة صالحة حتى expires_at ثم تُرفض تلقائيًا من جميع المحركات.
   const ins=await admin.from('platform_sessions').insert({session_token_hash:tokenHash,user_id:userId,school_id:schoolId,role,status:'active',expires_at:expiresAt,last_seen_at:now}).select('id').single();
   if(ins.error) throw new Error(ins.error.message);
   return {token:rawToken,expiresAt,userId,schoolId,role};
@@ -394,12 +395,9 @@ Deno.serve(async (request) => {
     const now = new Date().toISOString();
     const expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
 
-    await admin
-      .from('platform_sessions')
-      .update({ status: 'revoked', revoked_at: now })
-      .eq('school_id', school.id)
-      .eq('user_id', user.id)
-      .eq('status', 'active');
+    // لا نلغي الجلسات النشطة الأخرى لنفس المستخدم/المدرسة عند تسجيل الدخول.
+    // فتح الصفحة قد يطلق أكثر من طلب جلسة متزامنًا، وإلغاء الجميع هنا يسبب race condition
+    // يجعل المتصفح يحتفظ أحيانًا برمز تم إلغاؤه للتو. الجلسات تنتهي تلقائيًا عبر expires_at.
 
     const sessionInsert = await admin
       .from('platform_sessions')

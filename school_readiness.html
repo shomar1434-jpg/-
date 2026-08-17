@@ -1069,7 +1069,7 @@ function normalizeReadinessState(){
  syncPlatformSettingsToReadiness({persist:false});
  state.weights=Object.assign({...DEFAULT_WEIGHTS},state.weights||{});
  state.team=Array.isArray(state.team)?state.team:[];
- state.team.forEach(m=>{m.cloudUserId=m.cloudUserId||"";m.cloudUserEmail=m.cloudUserEmail||"";m.cloudUserRole=m.cloudUserRole||"";m.cloudSyncStatus=m.cloudSyncStatus||""});
+ state.team.forEach(m=>{m.cloudUserId=m.cloudUserId||"";m.cloudUserEmail=m.cloudUserEmail||"";m.cloudUserRole=m.cloudUserRole||"";m.cloudSyncStatus=m.cloudSyncStatus||"";m.assignedTasks=Array.isArray(m.assignedTasks)?m.assignedTasks:[];m.manualAssignedTasks=Array.isArray(m.manualAssignedTasks)?m.manualAssignedTasks:[]});
  state.tasks=state.tasks&&typeof state.tasks==="object"?state.tasks:{};
  state.stageEngineVersion=Number(state.stageEngineVersion||0);
  for(const section of SECTIONS){
@@ -1087,7 +1087,6 @@ function normalizeReadinessState(){
    item.rolloverHistory=Array.isArray(item.rolloverHistory)?item.rolloverHistory:[];
    if(item.originalPhase===null||item.originalPhase===undefined)item.originalPhase=Number(item.phase||0);
    item.rolloverEligible=!!item.rolloverEligible;
-   if(!item.responsible&&suggestedRoleForTask(task))item.responsible=suggestedRoleForTask(task);
   });
  }
  if(state.stageEngineVersion<3)state.stageEngineVersion=3;
@@ -1412,7 +1411,7 @@ function taskHtml(s,i,t){
 
   <div><label>الأولوية</label><select class="select bind" data-k="priority"><option value="normal" ${d.priority==="normal"?"selected":""}>عادي</option><option value="critical" ${d.priority==="critical"?"selected":""}>حرج</option></select></div>
   <div><label>مرحلة خطة المتابعة</label><select class="select bind" data-k="phase">${PHASES.map((p,x)=>`<option value="${x}" ${+d.phase===x?"selected":""}>${p}</option>`).join("")}</select></div>
-  <div><label>مسؤول التنفيذ</label><select class="select bind" data-k="responsible"><option value="">غير مسند</option>${state.team.map(x=>`<option ${d.responsible===x.name?"selected":""}>${esc(x.name)}</option>`).join("")}</select></div>
+  <div><label>مسؤول التنفيذ</label><select class="select task-assignee"><option value="">غير مسند</option>${state.team.map(x=>`<option value="${esc(x.id)}" ${(assignedMemberForTask(s.id,i)?.id===x.id)||(!assignedMemberForTask(s.id,i)&&d.responsible===x.name)?"selected":""}>${esc(x.name)}</option>`).join("")}</select></div>
   <div><label>تاريخ البدء</label><input class="field bind" data-k="start" type="date" value="${d.start}"></div>
   <div><label>الموعد المستهدف</label><input class="field bind" data-k="due" type="date" value="${d.due}"></div>
   <div class="wide"><label>الملاحظات العامة</label><textarea class="textarea bind" data-k="notes">${esc(d.notes)}</textarea></div>
@@ -1458,6 +1457,7 @@ function renderSection(s){
   const i=+card.dataset.i,d=state.tasks[s.id][i];
   card.querySelector(".task-summary").onclick=e=>{if(e.target.closest("button,select,input,textarea"))return;card.classList.toggle("open")};
   card.querySelectorAll(".bind").forEach(el=>el.onchange=()=>{d[el.dataset.k]=el.dataset.k==="phase"?+el.value:el.value;save()});
+  const assigneeSelect=card.querySelector(".task-assignee");if(assigneeSelect)assigneeSelect.onchange=()=>assignTaskToMember(taskKey(s.id,i),assigneeSelect.value,{manual:true});
   card.querySelectorAll(".review-bind").forEach(el=>el.onchange=()=>{d.review[el.dataset.k]=el.value;if(el.dataset.k==="status"&&el.value==="rejected")d.status="revision";save()});
   const input=card.querySelector(".evidence-input");
   if(input)input.onchange=async e=>{
@@ -1633,7 +1633,7 @@ function normalizePlatformRoleToReadiness(role){
  if(r.includes("administrative")||r.includes("admin_employee")||r.includes("موظف اداري")||r.includes("اداري"))return "الموظف الإداري";
  return "";
 }
-function readinessUserLabel(u){return `${u.full_name||u.name||u.email||"مستخدم"}${u.role?` — ${u.role}`:""}`}
+function readinessUserLabel(u){return String(u.full_name||u.name||u.email||"مستخدم").trim()}
 async function loadReadinessSchoolUsers(){
  if(!window.CloudTaskEngine)return [];
  try{
@@ -1645,12 +1645,10 @@ async function loadReadinessSchoolUsers(){
 }
 function resolveMemberCloudUser(member){
  if(member.cloudUserId){const u=readinessSchoolUsers.find(x=>String(x.id)===String(member.cloudUserId));if(u)return u}
- const name=normalizeTextKey(member.name),role=member.role;
+ const name=normalizeTextKey(member.name);
  if(!name)return null;
  const exact=readinessSchoolUsers.filter(u=>normalizeTextKey(u.full_name||u.name)===name);
- const roleExact=exact.filter(u=>!role||normalizePlatformRoleToReadiness(u.role)===role);
- const matches=roleExact.length?roleExact:exact;
- return matches.length===1?matches[0]:null;
+ return exact.length===1?exact[0]:null;
 }
 function resolveExistingTeamCloudUsers(){
  let changed=false;
@@ -1845,29 +1843,66 @@ function roleTaskOptions(role,customRole){
  const keywords=Array.isArray(rule.keywords)?rule.keywords:[];
  return all.filter(o=>sections.includes(o.sectionId)||titles.includes(o.title)||keywords.some(k=>o.title.includes(k)));
 }
-function assignRoleTasks(memberIndex){
- const m=state.team[memberIndex]; if(!m)return;
- const allowed=roleTaskOptions(m.role,m.customRole), keys=new Set(allowed.map(o=>o.key));
- m.assignedTasks=Array.isArray(m.assignedTasks)?m.assignedTasks:[];
- // التصنيف الوظيفي هو المرجع: لا تبقى مهام عشوائية خارج نطاق الدور.
- m.assignedTasks=m.assignedTasks.filter(k=>keys.has(k));
- allowed.forEach(o=>{
-  // المهمة ذات مسؤول واحد؛ عند إسنادها للدور الحالي تُزال من أي عضو آخر.
-  state.team.forEach((x,idx)=>{if(idx!==memberIndex&&Array.isArray(x.assignedTasks))x.assignedTasks=x.assignedTasks.filter(k=>k!==o.key)});
-  if(!m.assignedTasks.includes(o.key))m.assignedTasks.push(o.key);
-  const p=parseTaskKey(o.key),d=state.tasks[p.sectionId]?.[p.index];
-  if(d)d.responsible=m.name||m.customRole||m.role;
+function assignTaskToMember(key,memberId,{manual=true,skipSave=false}={}){
+ const target=state.team.find(m=>String(m.id)===String(memberId||""))||null;
+ state.team.forEach(m=>{
+  m.assignedTasks=Array.isArray(m.assignedTasks)?m.assignedTasks:[];
+  m.manualAssignedTasks=Array.isArray(m.manualAssignedTasks)?m.manualAssignedTasks:[];
+  m.assignedTasks=m.assignedTasks.filter(k=>k!==key);
+  m.manualAssignedTasks=m.manualAssignedTasks.filter(k=>k!==key);
  });
+ if(target){
+  if(!target.assignedTasks.includes(key))target.assignedTasks.push(key);
+  if(manual&&!target.manualAssignedTasks.includes(key))target.manualAssignedTasks.push(key);
+ }
+ const p=parseTaskKey(key),d=state.tasks[p.sectionId]?.[p.index];
+ if(d)d.responsible=target?(target.name||target.customRole||target.role||""):"";
+ if(!skipSave)save();
+ return target;
+}
+function assignRoleTasks(memberIndex){
+ // أبقيت الدالة للتوافق مع أي استدعاءات قديمة، لكن التطبيع المركزي هو المرجع الفعلي.
+ normalizeTeamRoleAssignments();
 }
 function normalizeTeamRoleAssignments(){
- if(!Array.isArray(state.team)) state.team=[];
- state.team.forEach((m,i)=>{if(m&&ROLE_TASK_RULES[m.role])assignRoleTasks(i)});
+ if(!Array.isArray(state.team))state.team=[];
+ const manualOwners=new Map();
+ state.team.forEach(m=>{
+  m.assignedTasks=Array.isArray(m.assignedTasks)?m.assignedTasks:[];
+  m.manualAssignedTasks=Array.isArray(m.manualAssignedTasks)?m.manualAssignedTasks:[];
+  m.manualAssignedTasks.forEach(k=>{if(!manualOwners.has(k))manualOwners.set(k,m.id)});
+  m.assignedTasks=[];
+ });
+ // الإسناد اليدوي للمدير له الأولوية ولا يلغيه التصنيف الوظيفي.
+ manualOwners.forEach((memberId,key)=>{
+  const m=state.team.find(x=>String(x.id)===String(memberId));
+  if(m&&!m.assignedTasks.includes(key))m.assignedTasks.push(key);
+ });
+ // مهام الفئات تسند لأول عضو من الفئة، ولا تتجاوز أي إسناد يدوي سابق.
+ const autoOwned=new Set(manualOwners.keys());
+ state.team.forEach(m=>{
+  const allowed=roleTaskOptions(m.role,m.customRole);
+  allowed.forEach(o=>{
+   if(autoOwned.has(o.key))return;
+   if(!m.assignedTasks.includes(o.key))m.assignedTasks.push(o.key);
+   autoOwned.add(o.key);
+  });
+ });
+ // مزامنة اسم المسؤول مع العضو الحقيقي فقط، وترك غير المسند فارغاً.
+ const ownerByKey=new Map();
+ state.team.forEach(m=>(m.assignedTasks||[]).forEach(k=>{if(!ownerByKey.has(k))ownerByKey.set(k,m)}));
+ allTaskOptions().forEach(o=>{
+  const d=state.tasks[o.sectionId]?.[o.index],owner=ownerByKey.get(o.key);
+  if(!d)return;
+  if(owner)d.responsible=owner.name||owner.customRole||owner.role||"";
+  else if(!["done","not_done"].includes(String(d.execution?.result||"")))d.responsible="";
+ });
 }
 function roleTaskPreviewHtml(role,customRole){
  const roleOpts=roleTaskOptions(role,customRole);
  const displayRole=role==="أخرى"?(customRole||"المسمى الآخر"):role;
  if(!role)return `<div class="role-task-preview"><div class="role-task-preview-head"><strong>المهام المرتبطة بالفئة الوظيفية</strong><small>اختر الفئة لعرض مسؤولياتها</small></div><div class="role-task-preview-list"><div class="role-task-preview-empty">بمجرد اختيار الفئة الوظيفية ستظهر هنا المهام التي ستُسند تلقائياً للعضو.</div></div></div>`;
- return `<div class="role-task-preview"><div class="role-task-preview-head"><strong>المهام المسندة تلقائياً — ${esc(displayRole)}</strong><small>${roleOpts.length} مهمة مصنفة</small></div><div class="role-task-preview-list">${roleOpts.length?roleOpts.map(o=>`<div class="role-task-preview-item"><div><strong>${esc(o.title)}</strong><small>${esc(o.section)} · ${esc(o.stage)}</small></div></div>`).join(""):`<div class="role-task-preview-empty">لا توجد مهام مصنفة تلقائياً لهذا المسمى حالياً. لن يتم إسناد مهام عشوائية له.</div>`}</div></div>`;
+ return `<div class="role-task-preview"><div class="role-task-preview-head"><strong>المهام المرتبطة بالفئة — ${esc(displayRole)}</strong><small>${roleOpts.length} مهمة مصنفة</small></div><div class="role-task-preview-list">${roleOpts.length?roleOpts.map(o=>`<div class="role-task-preview-item"><div><strong>${esc(o.title)}</strong><small>${esc(o.section)} · ${esc(o.stage)}</small></div></div>`).join(""):`<div class="role-task-preview-empty">لا توجد مهام مصنفة تلقائياً لهذا المسمى حالياً. لن يتم إسناد مهام عشوائية له.</div>`}</div></div>`;
 }
 function renderAssignmentSummary(){
  const host=document.getElementById("assignmentSummary");if(!host)return;
@@ -1876,18 +1911,30 @@ function renderAssignmentSummary(){
  const assignedKeys=new Set();
  team.forEach(m=>(Array.isArray(m?.assignedTasks)?m.assignedTasks:[]).forEach(k=>assignedKeys.add(k)));
  const assigned=assignedKeys.size;
- const unassigned=Math.max(0,all.length-assigned);
+ const unassignedRows=all.filter(o=>!assignedKeys.has(o.key));
  const linked=team.filter(m=>m?.role==="مدير المدرسة"||m?.cloudUserId).length;
  const unlinked=team.filter(m=>m?.role!=="مدير المدرسة"&&!m?.cloudUserId).length;
  const completed=all.filter(o=>{const d=state?.tasks?.[o.sectionId]?.[o.index];return d?.execution?.result==="done"&&Array.isArray(d?.evidence)&&d.evidence.length>0}).length;
+ const memberOptions=team.map(m=>`<option value="${esc(m.id)}">${esc(m.name||"عضو")}</option>`).join("");
  host.innerHTML=`<div class="assignment-summary" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
    <div class="metric"><span>أعضاء الفريق</span><strong>${team.length}</strong></div>
    <div class="metric"><span>حسابات مرتبطة</span><strong>${linked}</strong></div>
    <div class="metric"><span>مهام مسندة</span><strong>${assigned}</strong></div>
-   <div class="metric"><span>مهام غير مسندة</span><strong>${unassigned}</strong></div>
+   <div class="metric"><span>مهام غير مسندة</span><strong>${unassignedRows.length}</strong></div>
    <div class="metric"><span>مهام مكتملة بالشاهد</span><strong>${completed}</strong></div>
    <div class="metric"><span>أعضاء بحاجة للربط</span><strong>${unlinked}</strong></div>
- </div>${team.length?`<div class="manager-list" style="margin-top:12px">${team.map(m=>{let rows=[];try{rows=memberAssignedRows(m)}catch(_){rows=[]}return `<div class="manager-list-item"><div><strong>${esc(m?.name||m?.customRole||m?.role||"عضو")}</strong><br><small>${esc(m?.role==="أخرى"?(m?.customRole||"أخرى"):(m?.role||"غير مصنف"))}</small></div><strong>${rows.length} مهمة</strong></div>`}).join("")}</div>`:`<div class="stage-empty" style="margin-top:12px">يظهر الملخص بعد إضافة أعضاء فريق الاستعداد.</div>`}`;
+ </div>
+ ${team.length?`<div class="manager-list" style="margin-top:12px">${team.map(m=>{let rows=[];try{rows=memberAssignedRows(m)}catch(_){rows=[]}return `<div class="manager-list-item"><div><strong>${esc(m?.name||"عضو")}</strong><br><small>${esc(m?.role==="أخرى"?(m?.customRole||"أخرى"):(m?.role||"غير مصنف"))}</small></div><strong>${rows.length} مهمة</strong></div>`}).join("")}</div>`:`<div class="stage-empty" style="margin-top:12px">يظهر الملخص بعد إضافة أعضاء فريق الاستعداد.</div>`}
+ <div class="manager-section" style="margin-top:14px">
+  <h4>المهام التي لم يحدد لها مسؤول تنفيذ <span class="badge">${unassignedRows.length}</span></h4>
+  <small>هذه المهام لم يغطيها تصنيف الفئات الحالية. يستطيع المدير إسناد كل مهمة لأي عضو حسب حاجة المدرسة، ويظل الإسناد اليدوي محفوظاً.</small>
+  <div class="manager-list" style="margin-top:10px">${unassignedRows.length?unassignedRows.map(o=>`<div class="manager-list-item unassigned-readiness-row" data-unassigned-key="${esc(o.key)}"><div><strong>${esc(o.title)}</strong><br><small>${esc(o.section)} · ${esc(o.stage)}</small></div><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><select class="select unassigned-member-select" style="min-width:150px"><option value="">اختر المسؤول</option>${memberOptions}</select><button class="btn assign-unassigned-btn">إسناد</button></div></div>`).join(""):`<div class="stage-empty">جميع مهام الجاهزية لها مسؤول تنفيذ محدد.</div>`}</div>
+ </div>`;
+ host.querySelectorAll(".assign-unassigned-btn").forEach(btn=>btn.onclick=()=>{
+  const row=btn.closest("[data-unassigned-key]"),sel=row?.querySelector(".unassigned-member-select"),key=row?.dataset.unassignedKey;
+  if(!key||!sel?.value)return alert("اختر العضو المسؤول عن تنفيذ المهمة.");
+  assignTaskToMember(key,sel.value,{manual:true});
+ });
 }
 
 function renderTeam(){
@@ -1909,7 +1956,7 @@ function renderTeam(){
    <div class="assignment-summary"><span class="badge">المسندة حسب الدور: ${rows.length}</span><span class="badge">نُفذ: ${done}</span><span class="badge">لم يُنفذ: ${notDone}</span><span class="badge">بانتظار التحديد: ${pending}</span></div>
    <button class="assignment-toggle" data-assignment-toggle="${mi}"><span>عرض المسؤوليات المرتبطة بالفئة الوظيفية</span><span class="chev">⌄</span></button>
    <div class="assignment-panel" data-assignment-panel="${mi}">
-    <div class="assignment-panel-actions"><span class="badge">${roleOpts.length?`تم إسناد ${roleOpts.length} مسؤولية تلقائياً لهذا الدور`:"لا توجد مسؤوليات مصنفة تلقائياً لهذا المسمى"}</span><button class="btn" data-close-assignment="${mi}">إغلاق القائمة</button></div>
+    <div class="assignment-panel-actions"><span class="badge">${roleOpts.length?`${roleOpts.length} مسؤولية مرتبطة بهذه الفئة`:"لا توجد مسؤوليات مصنفة تلقائياً لهذا المسمى"}</span><button class="btn" data-close-assignment="${mi}">إغلاق القائمة</button></div>
     <div class="assignment-task-picker">${roleOpts.length?roleOpts.map(o=>`<div class="assignment-task-option"><span><strong>${esc(o.title)}</strong><br><small>${esc(o.section)} · ${esc(o.stage)}</small></span></div>`).join(""):`<div class="stage-empty">هذا المسمى لا يملك مسؤوليات مصنفة حالياً، ولن تُسند إليه مهام من فئات أخرى.</div>`}</div>
     <div class="assignment-fixed-note">هذه المهام مرتبطة بالتصنيف الوظيفي ولا يتم اختيارها عشوائياً أو تعديلها يدوياً من هذه القائمة.</div>
    </div>
@@ -1930,7 +1977,7 @@ function renderTeam(){
  const refreshPreview=()=>{customWrap.style.display=roleSel.value==="أخرى"?"block":"none";preview.innerHTML=roleTaskPreviewHtml(roleSel.value,(customInput?.value||"").trim())};
  roleSel.onchange=refreshPreview;
  if(customInput)customInput.oninput=()=>{if(roleSel?.value==="أخرى")refreshPreview()};
- cloudSel.onchange=()=>{const u=availableUsers.find(x=>String(x.id)===String(cloudSel.value));if(!u)return;const rr=normalizePlatformRoleToReadiness(u.role);if(rr){roleSel.value=rr;refreshPreview()}};
+ cloudSel.onchange=()=>{/* اسم المستخدم مستقل تماماً عن فئته الوظيفية في محرك الجاهزية. */};
  document.getElementById("addMember").onclick=()=>{
   const u=availableUsers.find(x=>String(x.id)===String(cloudSel?.value||""));
   const r=roleSel.value,c=(customInput?.value||"").trim();
@@ -1939,8 +1986,8 @@ function renderTeam(){
   if(r==="أخرى"&&!c)return alert("اكتب المسمى الوظيفي عند اختيار «أخرى».");
   const n=String(u.full_name||u.name||u.email||"").trim();
   if(!n)return alert("تعذر قراءة اسم المستخدم المحدد من حساب المنصة.");
-  state.team.push({id:"m"+Date.now(),name:n,role:r,customRole:r==="أخرى"?c:"",scope:"role",assignedTasks:[],cloudUserId:u.id||"",cloudUserEmail:u.email||"",cloudUserRole:u.role||"",cloudSyncStatus:"linked"});
-  assignRoleTasks(state.team.length-1);save();
+  state.team.push({id:"m"+Date.now(),name:n,role:r,customRole:r==="أخرى"?c:"",scope:"role",assignedTasks:[],manualAssignedTasks:[],cloudUserId:u.id||"",cloudUserEmail:u.email||"",cloudUserRole:u.role||"",cloudSyncStatus:"linked"});
+  normalizeTeamRoleAssignments();save();
  };
 }
 

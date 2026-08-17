@@ -1703,7 +1703,12 @@ const launchApp = (appId) => {
                 body: Object.assign({ action }, payload || {})
             });
             if (invoked.error) {
-                const msg = invoked.data?.error || invoked.data?.details || invoked.error?.message || 'رفض الخادم العملية';
+                let msg = invoked.data?.error || invoked.data?.details || '';
+                // FunctionsHttpError قد يخفي body داخل context؛ نحاول قراءته لعرض السبب الحقيقي بدل non-2xx فقط.
+                if (!msg && invoked.error?.context && typeof invoked.error.context.json === 'function') {
+                    try { const body = await invoked.error.context.json(); msg = body?.details || body?.error || ''; } catch (_) {}
+                }
+                if (!msg) msg = invoked.error?.message || 'رفض الخادم العملية';
                 throw new Error(msg);
             }
             if (!invoked.data?.ok) {

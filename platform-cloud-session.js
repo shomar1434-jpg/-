@@ -147,23 +147,6 @@
       localStorage.getItem('smart_school_id') || '';
   }
 
-  function currentUserCredentials() {
-    const candidates = [
-      localStorage.getItem('currentSchoolUser'),
-      localStorage.getItem('currentUser'),
-      localStorage.getItem('smart_school_current_session'),
-    ];
-    for (const raw of candidates) {
-      if (!raw) continue;
-      try {
-        const u = JSON.parse(raw) || {};
-        const login = String(u.email || u.user_email || u.manager_email || localStorage.getItem('currentUserEmail') || '').trim().toLowerCase();
-        const password = String(u.password || u.pass || u.login_password || u.temp_password || u.default_password || '').trim();
-        if (login && password) return { login, password };
-      } catch (_) {}
-    }
-    return { login: String(localStorage.getItem('currentUserEmail') || '').trim().toLowerCase(), password: '' };
-  }
 
   async function authAccessToken() {
     try {
@@ -245,16 +228,9 @@
       } catch (_) {}
     }
 
-    // المسار الثالث (توافق محلي قديم فقط): إعادة إنشاء الجلسة إذا كانت بيانات الدخول محفوظة أصلًا في نموذج محلي قديم.
-    const creds = currentUserCredentials();
-    if (creds.login && creds.password && sid) {
-      try {
-        const payload = await open(creds.login, creds.password, sid);
-        return payload.token;
-      } catch (_) {}
-    }
-
-    throw new Error('تعذر استعادة الجلسة السحابية تلقائيًا. تحقق من استمرار تسجيل الدخول إلى المدرسة ثم حاول مرة أخرى.');
+    // لا نعيد تسجيل الدخول بكلمة مرور محفوظة محليًا.
+    // بعد فشل renew و auth-recover يجب أن يبقى الفشل صريحًا وآمنًا بدل استخدام بيانات قديمة.
+    throw new Error('تعذر استعادة الجلسة السحابية تلقائيًا. أعد فتح المدرسة من صفحة الدخول إذا استمرت المشكلة.');
   }
 
   async function recover() {

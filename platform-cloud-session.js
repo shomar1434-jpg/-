@@ -16,8 +16,6 @@
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
 
   async function open(login, password, schoolId) {
-    clear();
-
     const response = await fetch(`${url()}/functions/v1/platform-session`, {
       method: 'POST',
       headers: {
@@ -43,22 +41,7 @@
       throw new Error('استجابة جلسة الملفات لا تحتوي على رمز جلسة صالح');
     }
 
-    localStorage.setItem(TOKEN_KEY, payload.token);
-    localStorage.setItem(EXPIRES_KEY, payload.expiresAt || '');
-    localStorage.setItem(USER_KEY, payload.userId || '');
-    localStorage.setItem(SCHOOL_KEY, payload.schoolId || '');
-    localStorage.setItem(ROLE_KEY, payload.role || '');
-
-    window.dispatchEvent(
-      new CustomEvent('platform-cloud-session-ready', {
-        detail: {
-          userId: payload.userId || '',
-          schoolId: payload.schoolId || '',
-          role: payload.role || '',
-          expiresAt: payload.expiresAt || '',
-        },
-      }),
-    );
+    applyPayload(payload, false);
 
     return payload;
   }
@@ -118,75 +101,57 @@
   function valid() {
     const currentToken = token();
     const expiry = expiresAt();
-    return Boolean(
-      currentToken &&
-        (!expiry || Date.parse(expiry) > Date.now() + 60_000),
-    );
+    const activeSchool = localStorage.getItem('active_school_id') || localStorage.getItem('current_school_id') || localStorage.getItem('school_id') || localStorage.getItem('smart_school_id') || '';
+    const sameSchool = !activeSchool || !schoolId() || String(activeSchool) === String(schoolId());
+    return Boolean(currentToken && sameSchool && (!expiry || Date.parse(expiry) > Date.now() + 60_000));
   }
 
   function currentSchoolId() {
-    return schoolId() ||
-      localStorage.getItem('active_school_id') ||
+    return localStorage.getItem('active_school_id') ||
       localStorage.getItem('current_school_id') ||
       localStorage.getItem('school_id') ||
-      localStorage.getItem('smart_school_id') || '';
+      localStorage.getItem('smart_school_id') ||
+      schoolId() || '';
   }
 
-  function currentUserCredentials() {
-    const candidates = [
-      localStorage.getItem('currentSchoolUser'),
-      localStorage.getItem('currentUser'),
-      localStorage.getItem('smart_school_current_session'),
-    ];
-    for (const raw of candidates) {
-      if (!raw) continue;
-      try {
-        const u = JSON.parse(raw) || {};
-        const login = String(u.email || u.user_email || u.manager_email || localStorage.getItem('currentUserEmail') || '').trim().toLowerCase();
-        const password = String(u.password || u.pass || u.login_password || u.temp_password || u.default_password || '').trim();
-        if (login && password) return { login, password };
-      } catch (_) {}
-    }
-    return { login: String(localStorage.getItem('currentUserEmail') || '').trim().toLowerCase(), password: '' };
-  }
-
-  function applyPayload(payload) {
+  function applyPayload(payload, renewed = true) {
     if (!payload || !payload.token) throw new Error('استجابة تجديد الجلسة لا تحتوي على رمز صالح');
     localStorage.setItem(TOKEN_KEY, payload.token);
     localStorage.setItem(EXPIRES_KEY, payload.expiresAt || '');
     localStorage.setItem(USER_KEY, payload.userId || '');
     localStorage.setItem(SCHOOL_KEY, payload.schoolId || currentSchoolId() || '');
     localStorage.setItem(ROLE_KEY, payload.role || role() || localStorage.getItem('currentRole') || '');
-    window.dispatchEvent(new CustomEvent('platform-cloud-session-ready',{detail:{userId:payload.userId||'',schoolId:payload.schoolId||'',role:payload.role||'',expiresAt:payload.expiresAt||'',renewed:true}}));
+    window.dispatchEvent(new CustomEvent('platform-cloud-session-ready',{detail:{userId:payload.userId||'',schoolId:payload.schoolId||'',role:payload.role||'',expiresAt:payload.expiresAt||'',renewed:Boolean(renewed)}}));
     return payload.token;
   }
 
+  let recoveryPromise = null;
   async function recover() {
-    const oldToken = token();
-    const sid = currentSchoolId();
-    // المسار الأول: تدوير رمز الجلسة السابق حتى لو انتهت صلاحيته مؤخرًا.
-    if (oldToken) {
-      try {
-        const response = await fetch(`${url()}/functions/v1/platform-session`, {
-          method: 'POST',
-          headers: {'content-type':'application/json',apikey:key(),'x-platform-session':oldToken},
-          body: JSON.stringify({action:'renew',schoolId:sid}),
-        });
-        const payload = await response.json().catch(() => ({}));
-        if (response.ok && payload.token) return applyPayload(payload);
-      } catch (_) {}
-    }
-
-    // المسار الثاني: إعادة إنشاء الجلسة من بيانات حساب المدرسة الموجودة أصلًا في سياق المنصة.
-    const creds = currentUserCredentials();
-    if (creds.login && creds.password && sid) {
-      try {
-        const payload = await open(creds.login, creds.password, sid);
-        return payload.token;
-      } catch (_) {}
-    }
-
-    throw new Error('تعذر تجديد الجلسة السحابية تلقائيًا. أعد تسجيل الدخول إلى المدرسة ثم حاول مرة أخرى.');
+    if (recoveryPromise) return recoveryPromise;
+    recoveryPromise = (async () => {
+      const oldToken = token();
+      const sid = currentSchoolId();
+      if (!oldToken) {
+        const error = new Error('لا توجد جلسة سحابية لهذه المدرسة. أعد تسجيل الدخول إلى المدرسة.');
+        error.code = 'SESSION_MISSING';
+        throw error;
+      }
+      const response = await fetch(`${url()}/functions/v1/platform-session`, {
+        method: 'POST',
+        headers: {'content-type':'application/json',apikey:key(),'x-platform-session':oldToken},
+        body: JSON.stringify({action:'renew',schoolId:sid}),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.token) {
+        const error = new Error(payload.error || 'تعذر تجديد الجلسة السحابية. أعد تسجيل الدخول إلى المدرسة.');
+        error.code = payload.code || `HTTP_${response.status}`;
+        error.requestId = payload.requestId || '';
+        throw error;
+      }
+      return applyPayload(payload, true);
+    })();
+    try { return await recoveryPromise; }
+    finally { recoveryPromise = null; }
   }
 
   async function ensure() {

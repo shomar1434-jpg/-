@@ -215,7 +215,7 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
       <option value="student_advisor">قسم الموجه/الموجهة الطلابية</option>
       <option value="teacher">قسم المعلم/المعلمة</option><option value="health_advisor">قسم الموجه الصحي</option><option value="kindergarten_teacher">قسم معلمة رياض الأطفال</option>
       <option value="activity_leader">قسم رائد/ة النشاط</option>
-      <option value="administrative_employee">قسم الموظف/ة الإداري/ة</option>
+      <option id="administrativeEmployeeRoleOption" value="administrative_employee">قسم الموظف/ة الإداري/ة</option>
     </select>
     <button class="btn" type="submit">إرسال طلب التسجيل</button>
     <p id="msg" class="text-center text-xs font-bold"></p>
@@ -234,8 +234,24 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
     token:qs.get('token')||qs.get('register')||qs.get('reg')||'',
     schoolId:qs.get('schoolId')||qs.get('school_id')||'',
     schoolCode:qs.get('school')||qs.get('schoolCode')||qs.get('school_code')||'',
-    schoolName:qs.get('schoolName')||qs.get('school_name')||''
+    schoolName:qs.get('schoolName')||qs.get('school_name')||'',
+    adminEmployee:qs.get('adminEmployee')==='1'||qs.get('source')==='administrative_employee_registration',
+    adminSupervisor:(qs.get('supervisor')||qs.get('adminSupervisor')||'').toLowerCase()==='agent'?'agent':'manager'
   };
+  function configureRoleFromInvite(){
+    const roleEl=document.getElementById('role');
+    const adminOpt=document.getElementById('administrativeEmployeeRoleOption');
+    if(invite.adminEmployee){
+      roleEl.value='administrative_employee';
+      roleEl.disabled=true;
+      roleEl.setAttribute('aria-disabled','true');
+      document.querySelector('.hint').innerHTML='هذا رابط تسجيل <b>موظف/ة إداري/ة</b> خاص بالمدرسة. بعد إرسال الطلب سيظهر لدى '+(invite.adminSupervisor==='agent'?'الوكيل/الوكيلة':'المدير/المديرة')+' الذي أرسل الرابط.';
+    }else if(adminOpt){
+      // الدور الإداري لا يُنشأ من رابط التسجيل العام؛ مصدره الوحيد رابط بوابة الموظفين الإداريين.
+      adminOpt.remove();
+    }
+  }
+  configureRoleFromInvite();
   async function resolveInviteSchool(){
     let school=null;
     try{
@@ -271,12 +287,13 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
       phone:'',nationalId:'',schoolName:invite.schoolName,schoolId:invite.schoolId,
       isActive:false,status:'pending',source:'registration_link',
       adminOwnerId:invite.admin,registrationToken:invite.token,registeredViaManagerLink:true,
+      registrationSource:invite.adminEmployee?'administrative_employee_link':'general_registration',adminSupervisor:invite.adminEmployee?invite.adminSupervisor:'',
       permissions:[],
       dateJoined:new Date().toLocaleString('ar-SA')
     };
     try{
       if(window.SmartSchoolSupabase && (invite.schoolId || invite.schoolCode || invite.token)){
-        await window.SmartSchoolSupabase.registerSchoolUser({schoolId:invite.schoolId, schoolCode:invite.schoolCode, registrationCode:invite.token, name, email, password, role});
+        await window.SmartSchoolSupabase.registerSchoolUser({schoolId:invite.schoolId, schoolCode:invite.schoolCode, registrationCode:invite.token, name, email, password, role, adminSupervisor:invite.adminEmployee?invite.adminSupervisor:'', registrationSource:invite.adminEmployee?'administrative_employee_link':'general_registration'});
       }
     }catch(err){
       msg.textContent=err.message||'تعذر إرسال الطلب إلى السحابة';
@@ -294,6 +311,7 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
       localStorage.setItem(key,JSON.stringify(all));
     }
     document.getElementById('reg-form').classList.add('hide');
+    if(invite.adminEmployee){const p=document.querySelector('#success p');if(p)p.textContent='تم تسجيل طلب الموظف الإداري، وسيظهر لدى '+(invite.adminSupervisor==='agent'?'الوكيل/الوكيلة':'المدير/المديرة')+' الذي أرسل الرابط حتى يتم تفعيله.';}
     document.getElementById('success').style.display='block';
   });
 })();

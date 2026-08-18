@@ -394,12 +394,9 @@ Deno.serve(async (request) => {
     const now = new Date().toISOString();
     const expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
 
-    await admin
-      .from('platform_sessions')
-      .update({ status: 'revoked', revoked_at: now })
-      .eq('school_id', school.id)
-      .eq('user_id', user.id)
-      .eq('status', 'active');
+    // لا نلغي الجلسات النشطة الأخرى عند تسجيل الدخول.
+    // قد يكون للمستخدم أكثر من تبويب/جهاز أو أكثر من سياق مدرسة،
+    // وإلغاء جميع الجلسات هنا كان يكسر مركز التكليفات بصورة عشوائية.
 
     const sessionInsert = await admin
       .from('platform_sessions')

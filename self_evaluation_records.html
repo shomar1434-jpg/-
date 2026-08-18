@@ -90,7 +90,7 @@ h1{font-size:18px;margin:0;color:#0f3f75;font-weight:900}
 <link rel="stylesheet" href="premium-ui.css">
 <script defer src="premium-ui.js"></script>
 
-<script>window.CLOUD_STATE_CONFIG={moduleKey:'self_evaluation',scope:'school',keys:['school_info', 'school_actual_reality', 'school_committees', 'school_operational_plan', 'school_indicators_data', 'self_evaluation_archive_v1'],prefixes:['self_evaluation_', 'school_self_evaluation_']};</script>
+<script>window.CLOUD_STATE_CONFIG={moduleKey:'self_evaluation',scope:'school',keys:['school_info', 'school_actual_reality', 'school_committees', 'school_operational_plan', 'school_operational_execution_v1', 'school_indicators_data', 'self_evaluation_archive_v1', 'manager_self_evaluation_archive_v1'],prefixes:['self_evaluation_', 'school_self_evaluation_']};</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-bridge.js"></script>
 <script src="platform-state-engine.js"></script>
@@ -3786,6 +3786,10 @@ function saveCurrentRecordToArchive(){
 }
 function saveLocal(){
   localStorage.setItem(STORAGE,JSON.stringify(state));
+  try{
+    const target=(window.parent&&window.parent!==window&&window.parent.localStorage)?window.parent.localStorage:window.localStorage;
+    target.setItem('school_operational_execution_v1',JSON.stringify(state.plan||{}));
+  }catch(e){}
   if(activeRecordIndex){
     const {di,ri}=activeRecordIndex;
     const folderName=domains[di].records[ri].name;

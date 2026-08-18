@@ -9,7 +9,7 @@ const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,
 const sha256=async(v:string)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(v)))).map(x=>x.toString(16).padStart(2,'0')).join('');
 const safeKey=(v:unknown,max=120)=>String(v||'').trim().replace(/[^\p{L}\p{N}._:@/\-]+/gu,'_').slice(0,max);
 const managers=new Set(['manager','owner','school_manager','principal','مدير','مديرة']);
-const schoolAggregateModules=new Set(['teacher_comprehensive']);
+const schoolAggregateModules=new Set(['teacher_comprehensive','admin_performance']);
 const MAX_ITEMS=250;
 const MAX_TOTAL_CHARS=3_500_000;
 
@@ -38,7 +38,7 @@ Deno.serve(async(req)=>{
     const ownerKey=scope==='school'?'school':String(s.user_id||'');
     if(!moduleKey&&action!=='health') return json({error:'moduleKey مطلوب',code:'STATE_MODULE_REQUIRED',requestId},400);
 
-    if(action==='health') return json({ok:true,version:'1.0.0',schoolId:s.school_id,userId:s.user_id,role:s.role});
+    if(action==='health') return json({ok:true,version:'1.1.0-admin-employee-flow',schoolId:s.school_id,userId:s.user_id,role:s.role});
 
     if(action==='pull'){
       let q=sb.from('platform_module_state').select('module_key,state_key,payload,deleted_at,updated_at,owner_key').eq('school_id',s.school_id).eq('module_key',moduleKey).eq('owner_key',ownerKey).order('updated_at',{ascending:true}).limit(2000);
@@ -60,6 +60,38 @@ Deno.serve(async(req)=>{
       const {data,error}=await q;
       if(error) throw error;
       return json({items:data||[],scope:'school-users',schoolId:s.school_id});
+    }
+
+    if(action==='pull-user'){
+      if(!isManager) return json({error:'هذه القراءة تتطلب صلاحية مدير المدرسة',code:'STATE_MANAGER_REQUIRED',requestId},403);
+      if(moduleKey!=='admin_performance') return json({error:'هذه القراءة مخصصة لأداء الموظف الإداري',code:'STATE_TARGET_MODULE_FORBIDDEN',requestId},403);
+      const targetUserId=String(body.ownerUserId||body.userId||'').trim();
+      if(!targetUserId) return json({error:'معرف الموظف الإداري مطلوب',code:'STATE_TARGET_USER_REQUIRED',requestId},400);
+      const membership=await sb.from('school_members').select('user_id,role,status').eq('school_id',s.school_id).eq('user_id',targetUserId).in('role',['administrative_employee','admin_employee']).neq('status','deleted').maybeSingle();
+      if(membership.error) throw membership.error;
+      if(!membership.data) return json({error:'المستخدم ليس موظفًا إداريًا في المدرسة الحالية',code:'STATE_TARGET_NOT_ADMIN_EMPLOYEE',requestId},403);
+      const keys=Array.isArray(body.keys)?body.keys.slice(0,100).map((x:unknown)=>safeKey(x,220)).filter(Boolean):[];
+      let q=sb.from('platform_module_state').select('module_key,state_key,payload,deleted_at,updated_at,owner_key').eq('school_id',s.school_id).eq('module_key',moduleKey).eq('owner_key',targetUserId).order('updated_at',{ascending:true}).limit(2000);
+      if(keys.length) q=q.in('state_key',keys);
+      const {data,error}=await q;if(error) throw error;
+      return json({items:data||[],scope:'target-user',ownerKey:targetUserId});
+    }
+
+    if(action==='manager-upsert-user'){
+      if(!isManager) return json({error:'هذه العملية تتطلب صلاحية مدير المدرسة',code:'STATE_MANAGER_REQUIRED',requestId},403);
+      if(moduleKey!=='admin_performance') return json({error:'هذه العملية مخصصة لأداء الموظف الإداري',code:'STATE_TARGET_MODULE_FORBIDDEN',requestId},403);
+      const targetUserId=String(body.ownerUserId||body.userId||'').trim();
+      if(!targetUserId) return json({error:'معرف الموظف الإداري مطلوب',code:'STATE_TARGET_USER_REQUIRED',requestId},400);
+      const membership=await sb.from('school_members').select('user_id,role,status').eq('school_id',s.school_id).eq('user_id',targetUserId).in('role',['administrative_employee','admin_employee']).neq('status','deleted').maybeSingle();
+      if(membership.error) throw membership.error;
+      if(!membership.data) return json({error:'المستخدم ليس موظفًا إداريًا في المدرسة الحالية',code:'STATE_TARGET_NOT_ADMIN_EMPLOYEE',requestId},403);
+      const items=Array.isArray(body.items)?body.items:[];
+      if(items.length>MAX_ITEMS) return json({error:`الحد الأعلى ${MAX_ITEMS} عنصرًا في الدفعة`,code:'STATE_BATCH_TOO_LARGE',requestId},413);
+      const rows:any[]=[];let totalChars=0;
+      for(const item of items){const stateKey=safeKey(item?.key,220);if(!stateKey)continue;const deleted=!!item?.deleted;const value=deleted?null:String(item?.value??'');totalChars+=value?.length||0;rows.push({school_id:s.school_id,owner_key:targetUserId,module_key:moduleKey,state_key:stateKey,payload:deleted?null:{value},updated_by:s.user_id,updated_at:now,deleted_at:deleted?now:null});}
+      if(totalChars>MAX_TOTAL_CHARS) return json({error:'حجم بيانات المزامنة في الدفعة كبير جدًا',code:'STATE_PAYLOAD_TOO_LARGE',requestId},413);
+      if(rows.length){const {error}=await sb.from('platform_module_state').upsert(rows,{onConflict:'school_id,owner_key,module_key,state_key'});if(error)throw error;}
+      return json({ok:true,upserted:rows.length,scope:'target-user',ownerKey:targetUserId});
     }
 
     if(action==='bulk-upsert'){

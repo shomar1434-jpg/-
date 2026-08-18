@@ -33,7 +33,7 @@ Deno.serve(async(req)=>{
   const event=async(type:string,file:any,extra:any={})=>{await sb.from('platform_file_events').insert({school_id:s.school_id,file_id:file?.id||null,folder_id:extra.folder_id||file?.folder_id||null,user_id:s.user_id,event_type:type,module_key:file?.module_key||extra.module_key||null,old_values:extra.old_values||null,new_values:extra.new_values||null})};
   const getFile=async(id:string)=>{const {data}=await sb.from('platform_files').select('*').eq('id',id).eq('school_id',s.school_id).maybeSingle();return data};
   const getFolder=async(id:string)=>{const {data}=await sb.from('platform_folders').select('*').eq('id',id).eq('school_id',s.school_id).maybeSingle();return data};
-  if(action==='health')return json({ok:true,version:'3.1.0-readiness-evidence',schoolId:s.school_id,userId:s.user_id,role:s.role});
+  if(action==='health')return json({ok:true,version:'3.2.0-readiness-evidence-modal',schoolId:s.school_id,userId:s.user_id,role:s.role});
   if(action==='upload'){
    const form=await req.formData(), file=form.get('file') as File;if(!file)return json({error:'لم يتم اختيار ملف'},400);
    if(file.size>MAX_FILE_SIZE)return json({error:'حجم الملف يتجاوز الحد المسموح (50 ميجابايت)',code:'FILE_TOO_LARGE',requestId},413);
@@ -140,10 +140,39 @@ Deno.serve(async(req)=>{
    const {data:links,error}=await sb.from('platform_file_links').select('*').eq('file_id',file.id).is('deleted_at',null).order('created_at');if(error)throw error;return json({file,links:links||[]});
   }
   if(action==='link'){
-   const file=await getFile(body.fileId);if(!file)return json({error:'الملف غير موجود'},404);if(!canManage(file))return json({error:'لا توجد صلاحية'},403);const key={school_id:s.school_id,file_id:file.id,module_key:safeKey(body.moduleKey),record_type:String(body.recordType),record_id:String(body.recordId),relation_type:String(body.relationType||'attachment')};const {data:existing}=await sb.from('platform_file_links').select('*').match(key).maybeSingle();let data:any,error:any;if(existing){({data,error}=await sb.from('platform_file_links').update({deleted_at:null,linked_by:s.user_id,is_primary:!!body.isPrimary}).eq('id',existing.id).select('*').single())}else{({data,error}=await sb.from('platform_file_links').insert({...key,linked_by:s.user_id,is_primary:!!body.isPrimary}).select('*').single())}if(error)throw error;await event('linked',file,{new_values:data});return json({link:data});
+   const file=await getFile(body.fileId);if(!file)return json({error:'الملف غير موجود'},404);
+   const moduleKey=safeKey(body.moduleKey),recordType=String(body.recordType||''),recordId=String(body.recordId||''),relationType=String(body.relationType||'attachment');
+   const metadata=body.metadata&&typeof body.metadata==='object'?body.metadata:{};
+   let readinessAuthorized=false,readinessPlanId='';
+   if(moduleKey==='school_readiness'&&relationType==='evidence'){
+    readinessPlanId=isUuid(metadata.readinessPlanId)?String(metadata.readinessPlanId):(recordType==='readiness_plan'&&isUuid(recordId)?recordId:'');
+    if(isManager)readinessAuthorized=true;
+    else if(recordType==='readiness_task'&&isUuid(recordId)){
+     const {data:grant}=await sb.from('task_access_grants').select('id').eq('school_id',s.school_id).eq('task_id',recordId).eq('user_id',s.user_id).eq('status','active').eq('can_upload',true).limit(1).maybeSingle();
+     readinessAuthorized=!!grant;
+    }
+    if(!readinessAuthorized)return json({error:'لا توجد صلاحية لربط شاهد الجاهزية',code:'READINESS_LINK_FORBIDDEN',requestId},403);
+    if(!isUuid(readinessPlanId))return json({error:'لم يتم تحديد خطة جاهزية سحابية صالحة للشاهد',code:'READINESS_PLAN_REQUIRED',requestId},409);
+   }else if(!canManage(file))return json({error:'لا توجد صلاحية'},403);
+   if(moduleKey==='school_readiness'&&relationType==='evidence'&&!canRead(file))return json({error:'الملف غير متاح لهذه المدرسة',code:'READINESS_FILE_FORBIDDEN',requestId},403);
+   const key={school_id:s.school_id,file_id:file.id,module_key:moduleKey,record_type:recordType,record_id:recordId,relation_type:relationType};const {data:existing}=await sb.from('platform_file_links').select('*').match(key).maybeSingle();let data:any,error:any;if(existing){({data,error}=await sb.from('platform_file_links').update({deleted_at:null,linked_by:s.user_id,is_primary:!!body.isPrimary}).eq('id',existing.id).select('*').single())}else{({data,error}=await sb.from('platform_file_links').insert({...key,linked_by:s.user_id,is_primary:!!body.isPrimary}).select('*').single())}if(error)throw error;
+   let evidence:any=null;
+   if(moduleKey==='school_readiness'&&relationType==='evidence'){
+    const taskKey=String(metadata.taskKey||metadata.readinessTaskKey||'').trim();
+    if(taskKey){
+     const {data:existingEvidence}=await sb.from('school_readiness_evidence').select('*').eq('school_id',s.school_id).eq('plan_id',readinessPlanId).eq('task_key',taskKey).eq('platform_file_id',file.id).maybeSingle();
+     if(existingEvidence){evidence=existingEvidence}else{
+      const ins=await sb.from('school_readiness_evidence').insert({school_id:s.school_id,plan_id:readinessPlanId,task_key:taskKey,section_key:String(metadata.sectionKey||metadata.sectionId||'').trim()||null,stage_key:metadata.stageKey!=null?String(metadata.stageKey):(metadata.phase!=null?String(metadata.phase):null),file_name:file.display_name||file.original_name||'شاهد',file_path:file.storage_path,file_type:file.mime_type||'application/octet-stream',file_size:Number(file.file_size||0),description:metadata.description?String(metadata.description):null,uploaded_by:s.user_id,platform_file_id:file.id,status:'active'}).select('*').single();
+      if(ins.error){await sb.from('platform_file_links').update({deleted_at:now}).eq('id',data.id);throw ins.error}evidence=ins.data;
+     }
+    }
+   }
+   await event('linked',file,{new_values:{...data,evidence_id:evidence?.id||null}});return json({link:data,evidence});
   }
   if(action==='unlink'){
-   const {data:link}=await sb.from('platform_file_links').select('*,platform_files(*)').eq('id',body.linkId).eq('school_id',s.school_id).maybeSingle();if(!link)return json({error:'الرابط غير موجود'},404);const file=(link as any).platform_files;if(!canManage(file))return json({error:'لا توجد صلاحية'},403);await sb.from('platform_file_links').update({deleted_at:now}).eq('id',link.id);await event('unlinked',file,{old_values:link});return json({ok:true});
+   const {data:link}=await sb.from('platform_file_links').select('*,platform_files(*)').eq('id',body.linkId).eq('school_id',s.school_id).maybeSingle();if(!link)return json({error:'الرابط غير موجود'},404);const file=(link as any).platform_files;if(!canManage(file))return json({error:'لا توجد صلاحية'},403);await sb.from('platform_file_links').update({deleted_at:now}).eq('id',link.id);
+   if(String((link as any).module_key)==='school_readiness'&&String((link as any).relation_type)==='evidence'&&isUuid((link as any).record_id)){await sb.from('school_readiness_evidence').update({status:'trashed',deleted_at:now}).eq('school_id',s.school_id).eq('plan_id',(link as any).record_id).eq('platform_file_id',file.id).eq('status','active')}
+   await event('unlinked',file,{old_values:link});return json({ok:true});
   }
   if(action==='audit'){
    let q=sb.from('platform_file_events').select('*').eq('school_id',s.school_id).order('created_at',{ascending:false}).limit(Math.min(Number(body.limit)||100,500));if(body.fileId)q=q.eq('file_id',body.fileId);if(body.moduleKey)q=q.eq('module_key',safeKey(body.moduleKey));if(!isManager)q=q.eq('user_id',s.user_id);const {data,error}=await q;if(error)throw error;return json({events:data||[]});

@@ -115,7 +115,7 @@ Deno.serve(async(req)=>{
     if(!u)continue;
     out.set(String(u.id),{...u,school_id:s.school_id,role:m.role||u.role,role_label:m.role_label||null,status:m.status||u.status||'active'});
    }
-   const users=[...out.values()].filter((u:any)=>String(u.status||'active')!=='deleted').sort((a:any,b:any)=>String(a.full_name||a.email||'').localeCompare(String(b.full_name||b.email||''),'ar'));
+   const users=[...out.values()].filter((u:any)=>{const role=String(u.role||'').toLowerCase();const st=String(u.status||'active').toLowerCase();if(['administrative_employee','admin_employee'].includes(role))return st==='active';return st!=='deleted';}).sort((a:any,b:any)=>String(a.full_name||a.email||'').localeCompare(String(b.full_name||b.email||''),'ar'));
    return json({users});
   }
   if(action==='list'){

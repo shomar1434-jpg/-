@@ -127,13 +127,13 @@
   }
 
   async function useSelected(){
-    const files=S.files.filter(f=>S.selected.has(f.id));if(!files.length)return toast('اختر شاهدًا أولاً',true);try{if(S.mode==='report-slot')await applyReport(files);else if(S.mode==='readiness')await applyReadiness(files,S.target);else if(S.mode==='impact')await applyImpact(files);else if(S.mode==='generic-input')await applyGeneric(files,S.target);close()}catch(e){toast(e.message||e,true)}
+    const files=S.files.filter(f=>S.selected.has(f.id));if(!files.length)return toast('اختر شاهدًا أولاً',true);try{if(S.mode==='report-slot')await applyReport(files);else if(S.mode==='readiness')await applyReadiness(files,S.target);else if(S.mode==='readiness-select'){if(typeof S.target?.onSelect==='function')await S.target.onSelect(files)}else if(S.mode==='impact')await applyImpact(files);else if(S.mode==='generic-input')await applyGeneric(files,S.target);close()}catch(e){toast(e.message||e,true)}
   }
 
   function addSourceToSelectionModal(modal){
     if(!modal||modal.dataset.elsReady==='1')return;const title=(modal.querySelector('h1,h2,h3,h4')?.textContent||'').trim();if(!/إضافة\s*شاهد|شاهد\s*جديد/.test(title))return;const content=modal.querySelector('.modal-content')||modal.firstElementChild||modal;const grid=[...content.querySelectorAll('div')].find(d=>/grid/.test(d.className||'')&&d.querySelectorAll('button').length>=2);if(!grid)return;const b=document.createElement('button');b.type='button';const sample=grid.querySelector('button');b.className=(sample?.className||'')+' els-library-choice';b.innerHTML='📚 <span>مكتبة القسم</span>';b.onclick=e=>{e.preventDefault();e.stopPropagation();open('report-slot',{slot:g('currentUploadId')||g('boxId')||1})};grid.appendChild(b);modal.dataset.elsReady='1';
   }
-  function addReadinessButtons(root=document){root.querySelectorAll?.('input.evidence-input').forEach(inp=>{if(inp.dataset.elsReady==='1')return;const b=document.createElement('button');b.type='button';b.className='els-source-btn no-print';b.innerHTML='📚 من مكتبة القسم';b.onclick=()=>open('readiness',inp);inp.insertAdjacentElement('afterend',b);inp.dataset.elsReady='1'})}
+  function addReadinessButtons(root=document){root.querySelectorAll?.('input.evidence-input').forEach(inp=>{if(inp.dataset.evidenceLibrary==='off'||inp.dataset.elsReady==='1')return;const b=document.createElement('button');b.type='button';b.className='els-source-btn no-print';b.innerHTML='📚 من مكتبة القسم';b.onclick=()=>open('readiness',inp);inp.insertAdjacentElement('afterend',b);inp.dataset.elsReady='1'})}
   function isActuallyVisible(el){
     if(!el || !el.isConnected) return false;
     try{
@@ -149,7 +149,7 @@
   }
   function addGenericEvidenceButtons(root=document){
     root.querySelectorAll?.('input[type="file"]').forEach(inp=>{
-      if(inp.dataset.elsGenericReady==='1'||!isEvidenceInput(inp))return;
+      if(inp.dataset.elsGenericReady==='1'||inp.classList.contains('evidence-input')||!isEvidenceInput(inp))return;
       // الحقول المخفية التي تستخدمها أزرار رفع مخصصة لا يجوز أن تنشئ زرًا عائمًا في أعلى الصفحة.
       // ستتم إعادة فحصها عند ظهور نافذة/قسم الشاهد فعليًا.
       if(!isActuallyVisible(inp) && inp.dataset.evidenceLibrary!=='on') return;

@@ -500,7 +500,7 @@
     </form>
   </main>
 
-<script src="platform-cloud-session.js"></script>
+<script src="platform-cloud-session.js?v=20260818-clean-session-v1"></script>
 <script id="independent-school-login-engine">
 (function(){
   'use strict';
@@ -827,16 +827,22 @@
       if((targetSchoolId || targetSchoolCode) && !school){ setMsg('رابط المدرسة غير مرتبط بسجل مدرسة صحيح.'); return; }
       let user = await loginFromSupabase(loginId,password);
       if(!user) user = loginFromLocal(loginId,password,school);
-      if(user && window.PlatformCloudSession){
-        try{ await window.PlatformCloudSession.open(loginId,password,(user.schoolId||user.school_id||targetSchoolId||'')); }
-        catch(sessionError){ console.warn('تعذر إنشاء جلسة الملفات السحابية:',sessionError); }
-      }
       if(!user){ setMsg('بيانات الدخول غير صحيحة أو الحساب غير موجود في هذه المدرسة'); return; }
       if(!isActiveAccount(user)){ setMsg('الحساب غير مفعل بعد'); return; }
       user = normalizeLocalUser(user, school);
       const role = normalizeRole(user.role);
       const schoolId = user.schoolId || targetSchoolId || (school && (school.schoolId || school.id || school.school_id)) || '';
       const schoolName = user.schoolName || (school && (school.schoolName || school.school_name || school.name)) || '';
+      if(!window.PlatformCloudSession){ setMsg('محرك الجلسة السحابية غير متاح. حدّث الصفحة ثم حاول مرة أخرى.'); return; }
+      try{
+        const cloudSession = await window.PlatformCloudSession.open(loginId,password,schoolId);
+        if(!cloudSession || !cloudSession.token) throw new Error('لم يتم إنشاء رمز جلسة صالح');
+      }catch(sessionError){
+        console.error('تعذر إنشاء جلسة المنصة السحابية:',sessionError);
+        try{ window.PlatformCloudSession.clear(); }catch(_){ }
+        setMsg('تعذر إنشاء جلسة المدرسة السحابية: '+(sessionError?.message||'خطأ غير معروف'));
+        return;
+      }
       if(school && !activeSchool) cacheActiveSchool(school);
       try{
         Object.keys(sessionStorage).forEach(k => { if(/follow|monitor|readonly/i.test(k)) sessionStorage.removeItem(k); });

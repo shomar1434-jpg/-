@@ -129,7 +129,13 @@
     return 'school-login.html';
   }
 
+  function isSectionRootPage(){
+    var f=(location.pathname.split('/').pop()||'index.html').toLowerCase();
+    return ['index.html','manager.html','agent.html','student_advisor.html','health_advisor.html','teacher.html','kindergarten_teacher.html','activity_leader.html','administrative_employee_portal.html','school-login.html','register.html'].indexOf(f)>=0;
+  }
+
   function addHeaderActions(){
+    if(!isSectionRootPage()) return;
     var settings=document.querySelector('header button[onclick*="openAppSettings"]');
     var messages=document.querySelector('header .im-static-messaging-btn');
     var header=document.querySelector('#welcome-dashboard header, body>header, header');

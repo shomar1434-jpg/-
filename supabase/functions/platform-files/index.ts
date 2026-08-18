@@ -4,7 +4,7 @@ const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,
 const sha256=async(v:string)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(v)))).map(x=>x.toString(16).padStart(2,'0')).join('');
 const safeExt=(name:string)=>{const x=(name.split('.').pop()||'bin').toLowerCase().replace(/[^a-z0-9]/g,'');return x||'bin'};
 const safeKey=(v:unknown,fallback='general')=>String(v||fallback).replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,80)||fallback;
-const managers=new Set(['manager','owner','school_manager','principal','مدير','مديرة']);
+const managers=new Set(['manager','owner','school_manager','principal','leadership','admin','مدير','مديرة','مدير المدرسة','مديرة المدرسة']);
 const MAX_FILE_SIZE=50*1024*1024;
 const allowedMimePrefixes=['image/','text/'];
 const allowedMimeTypes=new Set(['application/pdf','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.ms-excel','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','application/vnd.ms-powerpoint','application/vnd.openxmlformats-officedocument.presentationml.presentation','application/zip','application/octet-stream']);
@@ -33,34 +33,51 @@ Deno.serve(async(req)=>{
   const event=async(type:string,file:any,extra:any={})=>{await sb.from('platform_file_events').insert({school_id:s.school_id,file_id:file?.id||null,folder_id:extra.folder_id||file?.folder_id||null,user_id:s.user_id,event_type:type,module_key:file?.module_key||extra.module_key||null,old_values:extra.old_values||null,new_values:extra.new_values||null})};
   const getFile=async(id:string)=>{const {data}=await sb.from('platform_files').select('*').eq('id',id).eq('school_id',s.school_id).maybeSingle();return data};
   const getFolder=async(id:string)=>{const {data}=await sb.from('platform_folders').select('*').eq('id',id).eq('school_id',s.school_id).maybeSingle();return data};
-  if(action==='health')return json({ok:true,version:'3.0.0',schoolId:s.school_id,userId:s.user_id,role:s.role});
+  if(action==='health')return json({ok:true,version:'3.1.0-readiness-evidence',schoolId:s.school_id,userId:s.user_id,role:s.role});
   if(action==='upload'){
    const form=await req.formData(), file=form.get('file') as File;if(!file)return json({error:'لم يتم اختيار ملف'},400);
    if(file.size>MAX_FILE_SIZE)return json({error:'حجم الملف يتجاوز الحد المسموح (50 ميجابايت)',code:'FILE_TOO_LARGE',requestId},413);
    const mime=file.type||'application/octet-stream';if(!allowedMimeTypes.has(mime)&&!allowedMimePrefixes.some(x=>mime.startsWith(x)))return json({error:'نوع الملف غير مسموح',code:'FILE_TYPE_NOT_ALLOWED',requestId},415);
-   const scope=String(form.get('ownershipScope')||'user')==='school'?'school':'user';if(scope==='school'&&!isManager)return json({error:'رفع ملف مدرسي مشترك يتطلب صلاحية المدير'},403);
+   const scope=String(form.get('ownershipScope')||'user')==='school'?'school':'user';
    const moduleKey=safeKey(form.get('moduleKey')), folderId=String(form.get('folderId')||'')||null, recordType=String(form.get('recordType')||'')||null, recordId=String(form.get('recordId')||'')||null;
    const relationType=String(form.get('relationType')||'attachment'), replaceFileId=String(form.get('replaceFileId')||'')||null;
+   let metadata:any={};try{metadata=JSON.parse(String(form.get('metadata')||'{}'))}catch(_){metadata={}}
+   // شواهد الجاهزية ملفات مدرسية مشتركة، لكن المكلف يحتاج الرفع حتى لو لم يكن مديراً.
+   // السماح هنا مقيد بتكليف جاهزية فعلي في نفس المدرسة ومنحة رفع نشطة للمستخدم.
+   let readinessEvidenceAuthorized=false;
+   let readinessPlanId='';
+   if(moduleKey==='school_readiness'&&relationType==='evidence'){
+    readinessPlanId=isUuid(metadata.readinessPlanId)?String(metadata.readinessPlanId):(recordType==='readiness_plan'&&isUuid(recordId)?recordId:'');
+    if(isManager)readinessEvidenceAuthorized=true;
+    else if(recordType==='readiness_task'&&isUuid(recordId)){
+     const {data:grant}=await sb.from('task_access_grants').select('id').eq('school_id',s.school_id).eq('task_id',recordId).eq('user_id',s.user_id).eq('status','active').eq('can_upload',true).limit(1).maybeSingle();
+     if(grant)readinessEvidenceAuthorized=true;
+     else{
+      const {data:task}=await sb.from('central_tasks').select('id,assigned_to,module_key,status').eq('id',recordId).eq('school_id',s.school_id).maybeSingle();
+      readinessEvidenceAuthorized=!!task&&String(task.assigned_to||'')===String(s.user_id)&&String(task.module_key||'')==='school_readiness'&&!['archived','withdrawn','canceled'].includes(String(task.status||''));
+     }
+    }
+   }
+   if(scope==='school'&&!isManager&&!readinessEvidenceAuthorized)return json({error:'لا توجد صلاحية لرفع ملف مدرسي مشترك',code:'SCHOOL_UPLOAD_FORBIDDEN',requestId},403);
    if(folderId){const folder=await getFolder(folderId);if(!folder||!canManage(folder)||folder.module_key!==moduleKey||folder.status!=='active')return json({error:'المجلد غير صالح أو لا توجد صلاحية'},403)}
    let replaced:any=null;if(replaceFileId){replaced=await getFile(replaceFileId);if(!replaced||!canManage(replaced))return json({error:'الملف المراد استبداله غير صالح'},403)}
    const id=crypto.randomUUID(),ext=safeExt(file.name),slot=folderId||recordId||'root',root=scope==='school'?'shared':`users/${s.user_id}`,path=`schools/${s.school_id}/${root}/${moduleKey}/${slot}/${id}.${ext}`;
    const up=await sb.storage.from('school-platform-files').upload(path,file,{contentType:file.type||'application/octet-stream',upsert:false});if(up.error)throw up.error;
-   let metadata:any={};try{metadata=JSON.parse(String(form.get('metadata')||'{}'))}catch(_){metadata={}}
    const {data:row,error}=await sb.from('platform_files').insert({id,school_id:s.school_id,ownership_scope:scope,owner_user_id:scope==='user'?s.user_id:null,uploaded_by:s.user_id,module_key:moduleKey,folder_id:folderId,primary_record_type:recordType,primary_record_id:recordId,storage_path:path,original_name:file.name,display_name:String(form.get('displayName')||file.name).slice(0,255),stored_name:`${id}.${ext}`,extension:ext,mime_type:file.type||'application/octet-stream',file_size:file.size,visibility:scope==='school'?'school':'private',version_number:replaced?(Number(replaced.version_number)||1)+1:1,replaced_file_id:replaced?.id||null,metadata}).select('*').single();
    if(error){await sb.storage.from('school-platform-files').remove([path]);throw error}
    if(recordType&&recordId){const {error:le}=await sb.from('platform_file_links').insert({school_id:s.school_id,file_id:id,module_key:moduleKey,record_type:recordType,record_id:recordId,relation_type:relationType,linked_by:s.user_id,is_primary:true});if(le&&!String(le.message).includes('duplicate')){await sb.storage.from('school-platform-files').remove([path]);await sb.from('platform_files').delete().eq('id',id);throw le}}
    let evidence:any=null;
    if(moduleKey==='school_readiness'&&relationType==='evidence'&&recordId){
-    if(!isUuid(recordId)){await sb.storage.from('school-platform-files').remove([path]);await sb.from('platform_file_links').delete().eq('file_id',id);await sb.from('platform_files').delete().eq('id',id);return json({error:'لم يتم إنشاء خطة جاهزية سحابية صالحة بعد',code:'READINESS_PLAN_REQUIRED',requestId},409)}
-    const taskKey=String(metadata.taskKey||'').trim();
-    const sectionKey=String(metadata.sectionKey||'').trim()||null;
+    if(!isUuid(readinessPlanId)){await sb.storage.from('school-platform-files').remove([path]);await sb.from('platform_file_links').delete().eq('file_id',id);await sb.from('platform_files').delete().eq('id',id);return json({error:'لم يتم تحديد خطة جاهزية سحابية صالحة للشاهد',code:'READINESS_PLAN_REQUIRED',requestId},409)}
+    const taskKey=String(metadata.taskKey||metadata.readinessTaskKey||'').trim();
+    const sectionKey=String(metadata.sectionKey||metadata.sectionId||'').trim()||null;
     if(taskKey){
      const evidenceInsert=await sb.from('school_readiness_evidence').insert({
       school_id:s.school_id,
-      plan_id:recordId,
+      plan_id:readinessPlanId,
       task_key:taskKey,
       section_key:sectionKey,
-      stage_key:metadata.stageKey?String(metadata.stageKey):null,
+      stage_key:metadata.stageKey!=null?String(metadata.stageKey):(metadata.phase!=null?String(metadata.phase):null),
       file_name:file.name,
       file_path:path,
       file_type:file.type||'application/octet-stream',

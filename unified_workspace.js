@@ -166,7 +166,7 @@
           location.replace('index.html');return;
         }
         try{if(window.PlatformCloudSession&&typeof window.PlatformCloudSession.clear==='function') window.PlatformCloudSession.clear();}catch(e){}
-        try{['smart_school_active_school_id','smart_school_active_membership_id','smart_school_active_role','active_school_id','active_school_name','current_school_id','current_school_name','currentRole','user_role'].forEach(function(k){localStorage.removeItem(k);sessionStorage.removeItem(k);});}catch(e){}
+        try{['smart_school_active_school_id','smart_school_active_membership_id','smart_school_active_role','active_school_id','active_school_name','current_school_id','current_school_name','currentRole','user_role','administrative_employee_tab_session_v1'].forEach(function(k){localStorage.removeItem(k);sessionStorage.removeItem(k);});}catch(e){}
         location.replace('school-login.html');
       });
     }

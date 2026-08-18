@@ -1464,9 +1464,14 @@ function renderSection(s){
   if(input)input.onchange=async e=>{
    const files=[...e.target.files];
    if(!files.length)return;
-   for(const f of files){
-    const uploaded=await dbPut(f,s.id,i,d.phase);
-    d.evidence.push({
+   const committed=[];
+   try{
+    for(const f of files){
+     const uploaded=await dbPut(f,s.id,i,d.phase);
+     committed.push({file:f,uploaded});
+    }
+    const unifiedTaskKey=taskKey(s.id,i);
+    committed.forEach(({file:f,uploaded})=>d.evidence.push({
      id:uploaded.id,
      platformFileId:uploaded.platformFileId||"",
      evidenceRecordId:uploaded.evidenceRecordId||"",
@@ -1475,13 +1480,17 @@ function renderSection(s){
      size:f.size,
      date:new Date().toISOString().slice(0,10),
      sectionKey:s.id,
-     taskKey:`${s.id}:${i}`,
-     storage:uploaded.storage||"local"
-    })
-   }
-   d.execution={result:"done",reason:"",by:d.responsible||"",date:new Date().toISOString()};
-   d.status="completed";d.done=new Date().toISOString().slice(0,10);
-   save()
+     taskKey:unifiedTaskKey,
+     storage:uploaded.storage||"cloud"
+    }));
+    d.execution={result:"done",reason:"",by:d.responsible||"",date:new Date().toISOString()};
+    d.status="completed";d.done=new Date().toISOString().slice(0,10);
+    save();
+   }catch(err){
+    for(const row of committed){try{if(row.uploaded?.platformFileId&&window.CloudFileEngine)await CloudFileEngine.trash(row.uploaded.platformFileId)}catch(_){}}
+    console.error("Readiness evidence transaction failed",err);
+    alert(err?.message||"تعذر حفظ شاهد التنفيذ سحابيًا.");
+   }finally{input.value=""}
   };
   card.querySelectorAll(".remove-evidence").forEach(b=>b.onclick=async e=>{
    e.stopPropagation();
@@ -2130,18 +2139,19 @@ async function dbPut(file,sectionKey,taskIndex,stageKey){
  try{
   if(window.CloudFileEngine&&window.PlatformCloudSession?.token()){
    if(!cloudPlanId)throw new Error("لم يتم إنشاء خطة الجاهزية السحابية بعد");
-   const taskKey=`${sectionKey}:${taskIndex}`;
+   const taskKeyValue=taskKey(sectionKey,taskIndex);
    const r=await CloudFileEngine.upload({
     file,
     ownershipScope:"school",
     moduleKey:"school_readiness",
     recordType:"readiness_plan",
-    recordId:cloudPlanId||currentSchoolId(),
+    recordId:cloudPlanId,
     relationType:"evidence",
     metadata:{
      readinessPlanId:cloudPlanId||"",
      sectionKey,
-     taskKey,
+     taskKey:taskKeyValue,
+     readinessTaskKey:taskKeyValue,
      taskIndex,
      stageKey:stageKey==null?"":String(stageKey),
      academicYear:state.settings?.year||"",
@@ -2156,6 +2166,7 @@ async function dbPut(file,sectionKey,taskIndex,stageKey){
    };
   }
  }catch(e){console.error("Cloud evidence upload failed",e);throw new Error("تعذر حفظ الشاهد سحابيًا. تحقق من الاتصال والجلسة ثم أعد المحاولة.")}
+ throw new Error("حفظ شواهد الجاهزية يتطلب جلسة سحابية فعالة للمدرسة المستقلة.");
 }
 async function dbGet(id){
  if(String(id).startsWith("cloud:")&&window.CloudFileEngine){return CloudFileEngine.getBlob(String(id).slice(6))}
@@ -2175,7 +2186,8 @@ async function migrateLegacyReadinessEvidence(){
     if(!ev?.id||String(ev.id).startsWith("cloud:"))continue;
     try{
      const file=await dbGet(ev.id); if(!file)continue;
-     const r=await CloudFileEngine.upload({file,ownershipScope:"school",moduleKey:"school_readiness",recordType:"readiness_plan",recordId:cloudPlanId,relationType:"evidence",displayName:ev.name||file.name,metadata:{readinessPlanId:cloudPlanId,sectionKey:s.id,taskKey:`${s.id}:${i}`,taskIndex:i,stageKey:d.phase==null?"":String(d.phase),academicYear:state.settings?.year||"",semester:"first",migratedFrom:"indexeddb"}});
+     const legacyTaskKey=taskKey(s.id,i);
+     const r=await CloudFileEngine.upload({file,ownershipScope:"school",moduleKey:"school_readiness",recordType:"readiness_plan",recordId:cloudPlanId,relationType:"evidence",displayName:ev.name||file.name,metadata:{readinessPlanId:cloudPlanId,sectionKey:s.id,taskKey:legacyTaskKey,readinessTaskKey:legacyTaskKey,taskIndex:i,stageKey:d.phase==null?"":String(d.phase),academicYear:state.settings?.year||"",semester:"first",migratedFrom:"indexeddb"}});
      const oldId=ev.id; ev.id="cloud:"+r.file.id;ev.platformFileId=r.file.id;ev.evidenceRecordId=r.evidence?.id||"";ev.storage="cloud";changed=true;
      const x=await db();await new Promise((res,rej)=>{const tr=x.transaction("files","readwrite");tr.objectStore("files").delete(oldId);tr.oncomplete=()=>res();tr.onerror=()=>rej(tr.error)});
     }catch(e){console.warn("Legacy readiness evidence migration deferred",ev?.name,e?.message||e)}

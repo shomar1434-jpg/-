@@ -5,15 +5,6 @@
  async function refresh(options={}){if(!window.CloudTaskEngine)return;try{const r=await CloudTaskEngine.list();const mapped=(r.tasks||[]).map(CloudTaskEngine.mapTask);if(options.preserveOnEmpty&&mapped.length===0&&tasks().length>0){console.warn('أعاد الخادم قائمة فارغة بعد الحفظ؛ تم الاحتفاظ بالعرض الحالي مؤقتًا.');return;}saveTasks(mapped);renderAll();window.dispatchEvent(new CustomEvent('central-tasks:cloud-loaded',{detail:{count:mapped.length}}));}catch(e){console.warn('تعذر تحميل التكليفات السحابية، تم الإبقاء على النسخة المحلية المؤقتة:',e);toast(e.message||'تعذر تحميل التكليفات السحابية',false)}}
  document.addEventListener('DOMContentLoaded',async()=>{
   if(!window.CloudTaskEngine)return;
-  // ثبّت جلسة المدرسة النشطة قبل أن تبدأ أي قراءة أو تهيئة لمركز التكليفات.
-  // هذا يمنع بقية المحركات من العمل برمز قديم أو تابع لمدرسة أخرى.
-  try{
-    if(window.PlatformCloudSession?.ensure) await window.PlatformCloudSession.ensure();
-  }catch(sessionError){
-    console.error('[central-task-session-bootstrap]',sessionError);
-    toast(sessionError.message||'تعذر تهيئة الجلسة السحابية لمركز التكليفات',false);
-    return;
-  }
   const oldCreate=window.createTask;
   window.createTask=async function(e){
    e?.preventDefault?.();

@@ -68,87 +68,11 @@ function rejectAction(id){const c=context(),rows=proposedActions(),a=rows.find(x
 function endpoint(){const base=(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'');return base+'/functions/v1/platform-agent'}
 function anon(){return localStorage.getItem('smartSchoolSupabaseAnonKey')||'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM'}
 function sessionToken(){
-  const valid=v=>{
-    v=clean(v);
-    if(!v)return'';
-    if(/^eyJ[A-Za-z0-9_-]+\./.test(v))return'';
-    return v;
-  };
-  const fromObj=o=>{
-    if(!o)return'';
-    try{
-      for(const m of ['token','getToken','sessionToken','getSessionToken']){
-        if(typeof o[m]==='function'){
-          const v=valid(o[m]());
-          if(v)return v;
-        }
-      }
-      for(const k of ['token','sessionToken','platformToken','session_token','session_token_raw']){
-        const v=valid(o[k]);
-        if(v)return v;
-      }
-      for(const k of ['session','current','state']){
-        const n=o[k];
-        if(n&&typeof n==='object'){
-          for(const p of ['token','sessionToken','platformToken','session_token']){
-            const v=valid(n[p]);
-            if(v)return v;
-          }
-        }
-      }
-    }catch(_){}
-    return'';
-  };
-
-  let token=
-    fromObj(window.PlatformCloudSession)||
-    fromObj(window.PlatformFileSession)||
-    fromObj(window.SmartSchoolCloudSession);
-
-  if(!token){
-    const known=[
-      'platform_file_session_token',
-      'platform_session_token',
-      'platformSessionToken',
-      'smart_school_platform_session_token',
-      'smartSchoolPlatformSessionToken',
-      'school_platform_session_token',
-      'school_session_token',
-      'cloud_session_token'
-    ];
-    for(const k of known){
-      token=valid(get([k]));
-      if(token)break;
-    }
-  }
-
-  if(!token){
-    for(const st of [localStorage,sessionStorage]){
-      try{
-        for(let i=0;i<st.length;i++){
-          const k=st.key(i)||'';
-          if(!/(platform|school|cloud)/i.test(k)||!/session/i.test(k))continue;
-          if(/supabase|auth|access|refresh|anon|service/i.test(k))continue;
-          const raw=st.getItem(k);
-          if(!raw)continue;
-          if(/token/i.test(k)){
-            token=valid(raw);
-            if(token)break;
-          }
-          try{
-            token=fromObj(JSON.parse(raw));
-            if(token)break;
-          }catch(_){}
-        }
-      }catch(_){}
-      if(token)break;
-    }
-  }
-
-  if(token){
-    try{localStorage.setItem('platform_file_session_token',token)}catch(_){}
-  }
-  return token;
+  try{
+    const managed=window.PlatformCloudSession?.token?.();
+    if(managed)return clean(managed);
+  }catch(_){ }
+  return clean(localStorage.getItem('platform_file_session_token')||'');
 }
 
 function storedSupabaseAuthSession(){
@@ -202,62 +126,8 @@ async function usableSupabaseAccessToken(base,headers){
 }
 
 async function recoverPlatformSession(){
-  const c=context(),schoolId=clean(c.schoolId);
-  if(!schoolId)throw new Error('تعذر تحديد المدرسة الحالية لاستعادة جلسة الوكيل.');
-  const base=(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'');
-  const headers={'content-type':'application/json','apikey':anon()};
-  let response=null,data={};
-
-  try{
-    const access=await usableSupabaseAccessToken(base,headers);
-    if(access){
-      response=await fetch(base+'/functions/v1/platform-session',{
-        method:'POST',
-        headers:{...headers,'authorization':'Bearer '+access},
-        body:JSON.stringify({action:'bootstrap_auth',schoolId})
-      });
-      data=await response.json().catch(()=>({}));
-      if(response.ok&&data.token){
-        try{
-          localStorage.setItem('platform_file_session_token',data.token);
-          localStorage.setItem('platform_session_token',data.token);
-          localStorage.setItem('platformSessionToken',data.token);
-          localStorage.setItem('platform_file_session_expires_at',data.expiresAt||'');
-          localStorage.setItem('platform_file_session_user_id',data.userId||'');
-          localStorage.setItem('platform_file_session_school_id',data.schoolId||schoolId);
-          localStorage.setItem('platform_file_session_role',data.role||c.rawRole||c.role||'');
-        }catch(_){}
-        return data.token;
-      }
-    }
-  }catch(_){}
-
-  try{
-    const u=parse(localStorage.getItem('currentUser')||localStorage.getItem('currentSchoolUser'),{})||{};
-    const login=clean(u.email||u.user_email||u.manager_email||get(['currentUserEmail','current_user_email']));
-    const password=clean(u.password||u.pass||u.login_password||u.temp_password||u.default_password);
-    if(login&&password){
-      response=await fetch(base+'/functions/v1/platform-session',{
-        method:'POST',headers,
-        body:JSON.stringify({login,password,schoolId})
-      });
-      data=await response.json().catch(()=>({}));
-      if(response.ok&&data.token){
-        try{
-          localStorage.setItem('platform_file_session_token',data.token);
-          localStorage.setItem('platform_session_token',data.token);
-          localStorage.setItem('platformSessionToken',data.token);
-          localStorage.setItem('platform_file_session_expires_at',data.expiresAt||'');
-          localStorage.setItem('platform_file_session_user_id',data.userId||'');
-          localStorage.setItem('platform_file_session_school_id',data.schoolId||schoolId);
-          localStorage.setItem('platform_file_session_role',data.role||c.rawRole||c.role||'');
-        }catch(_){}
-        return data.token;
-      }
-    }
-  }catch(_){}
-
-  throw new Error(data?.error||'تعذر استعادة جلسة المدرسة السحابية تلقائيًا. أعد تسجيل الدخول إلى المدرسة ثم حاول مرة أخرى.');
+  if(!window.PlatformCloudSession?.recover) throw new Error('مدير الجلسة السحابية غير متاح.');
+  return await window.PlatformCloudSession.recover();
 }
 async function api(action,payload,opts){
   const c=assertContext(context());
@@ -271,7 +141,6 @@ async function api(action,payload,opts){
   };
   let res=await send(token);
   if(res.r.status===401){
-    try{localStorage.removeItem('platform_file_session_token')}catch(_){}
     token=await recoverPlatformSession();
     res=await send(token);
   }

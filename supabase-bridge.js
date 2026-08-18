@@ -80,14 +80,21 @@
       registrationLink: row.registration_link || '',
       loginLink: row.login_link || '',
       createdAt: row.created_at || '',
-      roleLabel: row.role_label || '',
-      role_label: row.role_label || ''
+      roleLabel: publicRoleLabel,
+      role_label: publicRoleLabel,
+      rawRoleLabel: rawRoleLabel,
+      adminSupervisor: adminSupervisor,
+      admin_supervisor: adminSupervisor
     };
   }
 
   function normalizeUser(row, school){
     if(!row) return null;
     const appRole = dbRoleToApp(row.role);
+    const rawRoleLabel = String(row.role_label || '');
+    const adminSupervisorMatch = rawRoleLabel.match(/^ADMIN_EMPLOYEE_SUPERVISOR:(manager|agent)$/i);
+    const adminSupervisor = adminSupervisorMatch ? adminSupervisorMatch[1].toLowerCase() : '';
+    const publicRoleLabel = adminSupervisor ? 'موظف/ة إداري/ة' : rawRoleLabel;
     return {
       id: row.id,
       name: row.full_name || row.name || '',
@@ -313,23 +320,52 @@
     }
 
     if(!schoolId) throw new Error('الرابط غير مرتبط بمدرسة صحيحة');
+    const dbRole=appRoleToDb(payload.role);
+    const isAdministrativeEmployee=dbRole==='administrative_employee'||dbRole==='admin_employee';
+    const supervisor=(String(payload.adminSupervisor||payload.supervisor||'').toLowerCase()==='agent')?'agent':'manager';
 
-    const {data:existing} = await sb.from('users').select('id').eq('email',payload.email).eq('school_id',schoolId).maybeSingle();
-    if(existing) throw new Error('يوجد طلب أو حساب سابق بنفس البريد داخل هذه المدرسة');
+    const {data:existing} = await sb.from('users').select('*').eq('email',payload.email).eq('school_id',schoolId).maybeSingle();
+    let user=existing||null;
+    if(user){
+      if(String(user.role||'')!==dbRole) throw new Error('يوجد حساب سابق بنفس البريد داخل هذه المدرسة بدور مختلف');
+      if(String(user.status||'')==='deleted'){
+        const q=await sb.from('users').update({status:'pending',active:false,full_name:payload.name||user.full_name||'',password:payload.password||user.password||''}).eq('id',user.id).select('*').single();
+        if(q.error) throw explainSupabaseError(q.error); user=q.data;
+      }
+    }else{
+      user = await insertUser({
+        school_id: schoolId,
+        full_name: payload.name || payload.fullName || '',
+        email: payload.email || '',
+        password: payload.password || '',
+        role: dbRole,
+        status: 'pending',
+        active: false,
+        is_primary_manager: false,
+        must_change_password: false
+      });
+    }
 
-    const user = await insertUser({
-      school_id: schoolId,
-      full_name: payload.name || payload.fullName || '',
-      email: payload.email || '',
-      password: payload.password || '',
-      role: appRoleToDb(payload.role),
-      status: 'pending',
-      active: false,
-      is_primary_manager: false,
-      must_change_password: false
-    });
-
-    return normalizeUser(user, school);
+    // الموظف الإداري لا يعتمد على users.school_id وحده؛ ننشئ عضوية صريحة للمدرسة
+    // ونحفظ جهة الإشراف داخل role_label كعلامة تقنية غير معروضة للمستخدم.
+    if(isAdministrativeEmployee && user && user.id){
+      const marker='ADMIN_EMPLOYEE_SUPERVISOR:'+supervisor;
+      const found=await sb.from('school_members').select('*').eq('school_id',schoolId).eq('user_id',user.id).eq('role','administrative_employee').maybeSingle();
+      if(found.error) throw explainSupabaseError(found.error);
+      if(found.data){
+        const q=await sb.from('school_members').update({email:payload.email||user.email,role_label:marker,status:'pending',updated_at:new Date().toISOString()}).eq('id',found.data.id).select('*').single();
+        if(q.error) throw explainSupabaseError(q.error);
+      }else{
+        const row={school_id:schoolId,user_id:user.id,email:payload.email||user.email,role:'administrative_employee',role_label:marker,status:'pending',is_primary:false,is_primary_manager:false,updated_at:new Date().toISOString()};
+        let q=await sb.from('school_members').insert(row).select('*').single();
+        if(q.error){
+          const legacy={school_id:schoolId,user_id:user.id,email:payload.email||user.email,role:'administrative_employee',status:'pending',is_primary_manager:false};
+          q=await sb.from('school_members').insert(legacy).select('*').single();
+        }
+        if(q.error) throw explainSupabaseError(q.error);
+      }
+    }
+    return normalizeUser(Object.assign({},user,isAdministrativeEmployee?{role_label:'ADMIN_EMPLOYEE_SUPERVISOR:'+supervisor}:{}), school);
   }
 
   async function listUsersBySchool(schoolId){
@@ -349,6 +385,56 @@
     return [...out.values()];
   }
 
+  async function listAdministrativeEmployeesBySchool(schoolId,supervisor){
+    const sb=getClient(); if(!sb) throw new Error('Supabase غير جاهز');
+    const sup=String(supervisor||'').toLowerCase();
+    const mq=await sb.from('school_members').select('*').eq('school_id',schoolId).in('role',['administrative_employee','admin_employee']).neq('status','deleted');
+    if(mq.error) throw explainSupabaseError(mq.error);
+    const members=(mq.data||[]).filter(m=>{
+      if(!sup)return true;
+      const marker=String(m.role_label||'').match(/^ADMIN_EMPLOYEE_SUPERVISOR:(manager|agent)$/i);
+      return !marker||marker[1].toLowerCase()===sup;
+    });
+    const ids=[...new Set(members.map(m=>String(m.user_id||'')).filter(Boolean))];
+    let identities=new Map();
+    if(ids.length){const uq=await sb.from('users').select('*').in('id',ids);if(uq.error)throw explainSupabaseError(uq.error);(uq.data||[]).forEach(u=>identities.set(String(u.id),u));}
+    const out=members.map(m=>{const u=identities.get(String(m.user_id||''))||{};return normalizeUser(Object.assign({},u,{id:m.user_id||u.id,email:m.email||u.email,school_id:schoolId,role:'administrative_employee',role_label:m.role_label||'',status:m.status||u.status||'pending'}),null);}).filter(Boolean);
+    // دعم السجلات القديمة التي أنشئت قبل school_members، بشرط أن يكون دور users نفسه إداريًا صريحًا.
+    const legacy=await sb.from('users').select('*').eq('school_id',schoolId).in('role',['administrative_employee','admin_employee']).neq('status','deleted');
+    if(legacy.error) throw explainSupabaseError(legacy.error);
+    const seen=new Set(out.map(x=>String(x.id||x.email)));
+    for(const u of legacy.data||[]){if(seen.has(String(u.id||u.email)))continue;const n=normalizeUser(u,null);if(n)out.push(n);}
+    return out;
+  }
+
+  async function removeAdministrativeEmployee(payload){
+    const sb=getClient(); if(!sb) throw new Error('Supabase غير جاهز');
+    const schoolId=String(payload.schoolId||payload.school_id||'').trim();
+    const userId=String(payload.userId||payload.user_id||'').trim();
+    const email=String(payload.email||'').trim().toLowerCase();
+    if(!schoolId||(!userId&&!email)) throw new Error('بيانات الموظف الإداري غير مكتملة');
+    let membershipQ=sb.from('school_members').delete().eq('school_id',schoolId).in('role',['administrative_employee','admin_employee']);
+    membershipQ=userId?membershipQ.eq('user_id',userId):membershipQ.eq('email',email);
+    const membershipResult=await membershipQ;
+    if(membershipResult.error) throw explainSupabaseError(membershipResult.error);
+
+    let user=null;
+    if(userId){const q=await sb.from('users').select('*').eq('id',userId).maybeSingle();if(q.error)throw explainSupabaseError(q.error);user=q.data;}
+    else if(email){const q=await sb.from('users').select('*').eq('email',email).eq('school_id',schoolId).maybeSingle();if(q.error)throw explainSupabaseError(q.error);user=q.data;}
+    if(user && ['administrative_employee','admin_employee'].includes(String(user.role||'').toLowerCase())){
+      const other=await sb.from('school_members').select('school_id,role,status').eq('user_id',user.id).neq('status','deleted').limit(1).maybeSingle();
+      if(other.error) throw explainSupabaseError(other.error);
+      if(other.data){
+        const q=await sb.from('users').update({school_id:other.data.school_id,role:other.data.role,status:'active',active:true}).eq('id',user.id);
+        if(q.error) throw explainSupabaseError(q.error);
+      }else{
+        const q=await sb.from('users').delete().eq('id',user.id);
+        if(q.error) throw explainSupabaseError(q.error);
+      }
+    }
+    return true;
+  }
+
   async function updateUserStatus(userId,status){
     const sb = getClient();
     if(!sb) throw new Error('Supabase غير جاهز');
@@ -357,6 +443,10 @@
       active: status === 'active'
     }).eq('id',userId).select('*').single();
     if(error) throw explainSupabaseError(error);
+    try{
+      const sid=localStorage.getItem('active_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||'';
+      if(sid) await sb.from('school_members').update({status,updated_at:new Date().toISOString()}).eq('school_id',sid).eq('user_id',userId);
+    }catch(e){console.warn('تعذر مزامنة حالة عضوية المدرسة',e)}
     return normalizeUser(data);
   }
 
@@ -525,6 +615,8 @@
     updateSchoolStatus,
     registerSchoolUser,
     listUsersBySchool,
+    listAdministrativeEmployeesBySchool,
+    removeAdministrativeEmployee,
     updateUserStatus,
     upsertSchoolUser,
     loginSchoolUser,

@@ -8,7 +8,7 @@ const CFG={
 };
 const SECTION_MAP={'1':'أ','2':'ب','3':'ج','4':'د','5':'هـ','6':'و','7':'ز','8':'ح','9':'ط','10':'ي','11':'ك','12':'ل'};
 const ROLE_AR={manager:'مدير/ة المدرسة',school_manager:'مدير/ة المدرسة',agent:'وكيل/ة',deputy:'وكيل/ة',teacher:'معلم/ة',student_advisor:'موجه/موجهة طلابية',counselor:'موجه/موجهة طلابية',activity_leader:'رائد/ة النشاط',admin_employee:'موظف/ة إداري/ة',administrative_employee:'موظف/ة إداري/ة',employee:'موظف/ة',health_advisor:'الموجه الصحي',kindergarten_teacher:'معلمة رياض الأطفال',principal:'مدير/ة المدرسة'};
-const state={students:[],staff:[],loaded:false,loading:null,schoolId:'',year:'',updatedAt:'',version:'2.1.0'};
+const state={students:[],staff:[],administrativeStaff:[],loaded:false,loading:null,schoolId:'',year:'',updatedAt:'',version:'2.2.0'};
 const safe=v=>String(v==null?'':v).trim();
 const norm=v=>safe(v).replace(/[إأآا]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/[ـ\u064B-\u0652]/g,'').replace(/\s+/g,' ').toLowerCase();
 const readJson=k=>{try{return JSON.parse(localStorage.getItem(k)||sessionStorage.getItem(k)||'null')}catch(_){return null}};
@@ -47,41 +47,25 @@ async function cloudStaff(){
   try{if(window.SmartSchoolSupabase&&typeof SmartSchoolSupabase.listUsersBySchool==='function')return await SmartSchoolSupabase.listUsersBySchool(sid)}catch(_){}
   try{return await rest('users?select=*&school_id=eq.'+encodeURIComponent(sid)+'&status=neq.deleted&limit=2000')}catch(_){return[]}
 }
+async function cloudAdministrativeStaff(){const sid=schoolId();if(!sid)return[];try{if(window.SmartSchoolSupabase&&typeof SmartSchoolSupabase.listAdministrativeEmployeesBySchool==='function')return await SmartSchoolSupabase.listAdministrativeEmployeesBySchool(sid)}catch(_){}return[]}
 async function load(force){
   const sid=schoolId(),yr=year(); if(state.loaded&&!force&&state.schoolId===sid&&state.year===yr)return state;if(state.loading&&!force)return state.loading;
   state.loading=(async()=>{
     state.schoolId=sid;state.year=yr;
-    const [cs,cu]=await Promise.all([cloudStudents(),cloudStaff()]);
+    const [cs,cu,ca]=await Promise.all([cloudStudents(),cloudStaff(),cloudAdministrativeStaff()]);
     state.students=dedupe([...studentLocal(),...cs].map(mapStudent).filter(x=>x.name&&!/محذوف/.test(norm(x.status))),x=>safe(x.student_number||x.national_id)||norm(x.name)+'|'+norm(x.grade)+'|'+norm(x.section));
     state.staff=dedupe([...staffLocal(),...cu].map(mapStaff).filter(x=>x.name),x=>safe(x.id)||norm(x.email)||norm(x.name)+'|'+norm(x.role));
+    state.administrativeStaff=dedupe((ca||[]).map(mapStaff).filter(x=>x.name&&['admin_employee','administrative_employee'].includes(norm(x.role))),x=>safe(x.id)||norm(x.email)||norm(x.name));
     state.loaded=true;state.loading=null;state.updatedAt=new Date().toISOString();refreshLists();emit('school-information-ready',snapshot());emit('school-information-change',snapshot());return state;
   })();return state.loading;
 }
 function teachers(){return state.staff.filter(x=>/teacher|kindergarten_teacher|معلم|معلمة رياض/.test(norm(x.role+' '+x.role_label)))}
-function administrativePlanRows(){
-  const sid=schoolId();
-  try{
-    const rows=JSON.parse(localStorage.getItem('administrative_employee_plans')||'[]');
-    if(!Array.isArray(rows))return [];
-    return rows.filter(x=>{const ps=safe(x&& (x.schoolId||x.activeSchoolId||x.school_id||''));return x&&x.active!==false&&(!sid||!ps||sid===ps)}).map(x=>({
-      id:safe(x.id||x.contact||x.email||x.name),
-      name:safe(x.name||x.employeeName||''),
-      role:'administrative_employee',
-      role_label:safe(x.jobTitle||'موظف/ة إداري/ة'),
-      email:safe(x.contact||x.email||''),
-      status:x.active===false?'disabled':'active',
-      school_id:safe(x.schoolId||x.activeSchoolId||x.school_id||sid),
-      source:'administrative_employee_plan'
-    })).filter(x=>x.name);
-  }catch(_){return []}
-}
 function administrativeEmployees(){
-  const accountRows=state.staff.filter(x=>{
-    const r=norm(x.role), l=norm(x.role_label);
-    return /^(admin_employee|administrative_employee|administrative staff|admin staff)$/.test(r)||/موظف.*اداري|موظفه.*اداري|مساعد اداري|كاتب مدرسه|سكرتير|مدخل بيانات|مشرف نقل مدرسي|محضر مختبر|امين مصادر تعلم|مشرف فصول/.test(l);
-  });
-  return dedupe([...accountRows,...administrativePlanRows()],x=>safe(x.id)||norm(x.email)||norm(x.name));
+  // المصدر الوحيد للموظف الإداري هو الدور الصريح الناتج عن رابط التسجيل الإداري.
+  // لا نعتمد على المسمى النصي، ولا على وجود خطة محلية، ولا على كون المستخدم عضوًا في المدرسة فقط.
+  return state.administrativeStaff.slice();
 }
+
 function snapshot(){
   return {
     schoolId:state.schoolId||schoolId(),

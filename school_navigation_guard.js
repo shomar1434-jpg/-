@@ -54,7 +54,7 @@ function schoolLogout(){
  try{window.PlatformCloudSession?.clear?.()}catch(_){}
  try{
    ['smart_school_active_school_id','smart_school_active_membership_id','smart_school_active_role','active_school_id','active_school_name',
-    'current_school_id','current_school_name','currentRole','user_role','platform_file_session_school_id','platform_file_session_role']
+    'current_school_id','current_school_name','currentRole','user_role','platform_file_session_school_id','platform_file_session_role','administrative_employee_tab_session_v1']
     .forEach(k=>{localStorage.removeItem(k);sessionStorage.removeItem(k)});
  }catch(_){}
  location.replace('school-login.html');

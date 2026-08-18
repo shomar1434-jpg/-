@@ -12,6 +12,7 @@
   const exact=new Set((explicit?.keys||[]).map(String));
   const prefixes=(explicit?.prefixes||[]).map(String);
   const explicitMode=!!explicit;
+  const targetOwnerUserId=String(explicit?.ownerUserId||'').trim();
   let applying=false,hydrated=false,booted=false;
   const queues={user:new Map(),school:new Map()};
   let flushTimer=0;
@@ -72,7 +73,10 @@
       const items=[...q.values()]; q.clear();
       for(let i=0;i<items.length;i+=200){
         const batch=items.slice(i,i+200);
-        try{await PlatformStateEngine.bulkUpsert(moduleKey,scope,batch,{keepalive});}
+        try{
+          if(scope==='user'&&targetOwnerUserId&&typeof PlatformStateEngine.managerUpsertUser==='function') await PlatformStateEngine.managerUpsertUser(moduleKey,targetOwnerUserId,batch,{keepalive});
+          else await PlatformStateEngine.bulkUpsert(moduleKey,scope,batch,{keepalive});
+        }
         catch(e){batch.forEach(x=>q.set(x.key,x)); console.warn('[PersistenceGuard] flush failed',moduleKey,scope,e?.message||e); break;}
       }
     }
@@ -92,7 +96,7 @@
   async function hydrateScope(scope){
     if(!window.PlatformStateEngine) return false;
     const wanted=explicitMode?[...exact]:undefined;
-    const result=await PlatformStateEngine.pull(moduleKey,scope,wanted);
+    const result=(scope==='user'&&targetOwnerUserId&&typeof PlatformStateEngine.pullUser==='function')?await PlatformStateEngine.pullUser(moduleKey,targetOwnerUserId,wanted):await PlatformStateEngine.pull(moduleKey,scope,wanted);
     const rows=result.items||[];
     const cloud=new Map(rows.map(r=>[String(r.state_key),r]));
     let changed=false;
@@ -110,7 +114,7 @@
         const v=nativeGet.call(localStorage,k); if(v!==null) migration.push({key:k,value:v,deleted:false});
       }
       applying=false;
-      for(let i=0;i<migration.length;i+=150){try{await PlatformStateEngine.bulkUpsert(moduleKey,scope,migration.slice(i,i+150));}catch(e){console.warn('[PersistenceGuard] migration failed',e?.message||e);break;}}
+      for(let i=0;i<migration.length;i+=150){try{if(scope==='user'&&targetOwnerUserId&&typeof PlatformStateEngine.managerUpsertUser==='function')await PlatformStateEngine.managerUpsertUser(moduleKey,targetOwnerUserId,migration.slice(i,i+150));else await PlatformStateEngine.bulkUpsert(moduleKey,scope,migration.slice(i,i+150));}catch(e){console.warn('[PersistenceGuard] migration failed',e?.message||e);break;}}
     }finally{applying=false;}
     return changed;
   }

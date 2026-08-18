@@ -39,7 +39,10 @@
     }finally{clearTimeout(timer)}
   }
   const pull=(moduleKey,scope='user',keys)=>request('pull',{moduleKey,scope,keys});
+  const pullUser=(moduleKey,ownerUserId,keys)=>request('pull-user',{moduleKey,ownerUserId,keys});
+  const pullSchoolUsers=(moduleKey,keys)=>request('pull-school-users',{moduleKey,keys});
   const bulkUpsert=(moduleKey,scope='user',items,opts)=>request('bulk-upsert',{moduleKey,scope,items},opts);
+  const managerUpsertUser=(moduleKey,ownerUserId,items,opts)=>request('manager-upsert-user',{moduleKey,ownerUserId,items},opts);
   const health=()=>request('health',{});
-  window.PlatformStateEngine={VERSION,request,pull,bulkUpsert,health};
+  window.PlatformStateEngine={VERSION:'1.1.0-admin-employee-flow',request,pull,pullUser,pullSchoolUsers,bulkUpsert,managerUpsertUser,health};
 })();

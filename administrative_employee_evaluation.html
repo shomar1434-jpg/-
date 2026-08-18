@@ -238,13 +238,12 @@ body{font-family:'Tajawal',sans-serif;background:linear-gradient(150deg,#f0f7f4,
   <div class="emp-head">
     <h3>👥 إدارة الموظفين الإداريين <span class="emp-pill" id="empCountBadge">1 موظف</span></h3>
     <div class="emp-controls">
-      <select id="employeeSelector" onchange="switchEmployee(this.value)"></select>
+      <select id="employeeSelector" data-sic-ignore="1" onchange="switchEmployee(this.value)"></select>
       <button class="btn btn-o" onclick="saveCurrentEmployee()" style="padding:8px 14px;font-size:12px">حفظ بيانات الموظف الحالي</button>
-      <button class="btn btn-p" onclick="addEmployeeProfile()" style="padding:8px 14px;font-size:12px">+ إضافة موظف إداري</button>
-      <button class="btn btn-r" onclick="deleteEmployeeProfile()" style="padding:8px 14px;font-size:12px">حذف الموظف الحالي</button>
+      <button class="btn btn-p" onclick="reloadRegisteredAdministrativeEmployees()" style="padding:8px 14px;font-size:12px">↻ تحديث الموظفين المسجلين</button>
     </div>
   </div>
-  <div class="hnote" style="margin:0">يمكن إضافة أكثر من موظف إداري والتنقل بينهم دون حذف بيانات الموظفين السابقين. احفظ بيانات الموظف الحالي قبل الانتقال أو الطباعة.</div>
+  <div class="hnote" style="margin:0">القائمة مرتبطة فقط بالموظفين الإداريين المسجلين من رابط الموظف الإداري في المدرسة الحالية. لا يتم إنشاء موظفين يدويًا من بطاقة التقويم.</div>
 </div>
 
 <!-- TABS -->
@@ -717,61 +716,39 @@ function applyFormData(data){
   });
   updateObjTotalWt(); syncEval(); calcComp(); calcAll(); buildMidyear();
 }
-function employeeNameLabel(i){
-  const p=employeeProfiles[i]||{};
-  return (p.name && p.name.trim()) ? p.name.trim() : `الموظف الإداري ${i+1}`;
+function currentEvaluationSchoolId(){
+  const q=new URLSearchParams(location.search);return q.get('school')||q.get('schoolId')||localStorage.getItem('active_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||'';
 }
+function currentEvaluationSupervisor(){const q=new URLSearchParams(location.search);return String(q.get('supervisor')||'').toLowerCase()==='agent'?'agent':'manager'}
+function employeeNameLabel(i){const p=employeeProfiles[i]||{};return (p.name&&p.name.trim())?p.name.trim():'موظف إداري'}
+function profileKey(p){return String(p&& (p.email||p.id||p.name)||'').toLowerCase()}
 function saveCurrentEmployee(silent=false){
-  if(!employeeProfiles.length) employeeProfiles=[{name:'الموظف الإداري 1', data:[]}];
-  const name=document.getElementById('v_name')?.value?.trim() || `الموظف الإداري ${currentEmployeeIndex+1}`;
-  employeeProfiles[currentEmployeeIndex]={name, data:collectFormData(), updatedAt:new Date().toISOString()};
-  localStorage.setItem('adminEmployeeEvalProfiles', JSON.stringify(employeeProfiles));
-  renderEmployeeSelector();
-  if(!silent) alert('تم حفظ بيانات الموظف الحالي.');
+  if(!employeeProfiles.length){if(!silent)alert('لا يوجد موظف إداري مسجل لاستخدام بطاقة التقويم.');return;}
+  const current=employeeProfiles[currentEmployeeIndex]||{};
+  const name=document.getElementById('v_name')?.value?.trim()||current.name||'موظف إداري';
+  employeeProfiles[currentEmployeeIndex]=Object.assign({},current,{name,data:collectFormData(),updatedAt:new Date().toISOString()});
+  localStorage.setItem('adminEmployeeEvalProfiles',JSON.stringify(employeeProfiles));renderEmployeeSelector();if(!silent)alert('تم حفظ بيانات تقييم الموظف الحالي.');
 }
 function renderEmployeeSelector(){
-  const sel=document.getElementById('employeeSelector');
-  if(!sel) return;
-  sel.innerHTML='';
-  employeeProfiles.forEach((p,i)=>{
-    const op=document.createElement('option');
-    op.value=i;
-    op.textContent=employeeNameLabel(i);
-    if(i===currentEmployeeIndex) op.selected=true;
-    sel.appendChild(op);
-  });
-  const badge=document.getElementById('empCountBadge');
-  if(badge) badge.textContent=`${employeeProfiles.length} موظف`;
+  const sel=document.getElementById('employeeSelector');if(!sel)return;sel.innerHTML='';
+  if(!employeeProfiles.length){const op=document.createElement('option');op.value='';op.textContent='لا يوجد موظفون إداريون مسجلون';sel.appendChild(op);sel.disabled=true;}else{sel.disabled=false;employeeProfiles.forEach((p,i)=>{const op=document.createElement('option');op.value=i;op.textContent=employeeNameLabel(i);if(i===currentEmployeeIndex)op.selected=true;sel.appendChild(op);});}
+  const badge=document.getElementById('empCountBadge');if(badge)badge.textContent=`${employeeProfiles.length} موظف`;
 }
-function switchEmployee(v){
-  saveCurrentEmployee(true);
-  currentEmployeeIndex=parseInt(v,10)||0;
-  applyFormData(employeeProfiles[currentEmployeeIndex]?.data||[]);
+function switchEmployee(v){if(employeeProfiles.length)saveCurrentEmployee(true);currentEmployeeIndex=parseInt(v,10)||0;applyFormData(employeeProfiles[currentEmployeeIndex]?.data||[]);const p=employeeProfiles[currentEmployeeIndex];if(p){const n=document.getElementById('v_name');if(n)n.value=p.name||'';}renderEmployeeSelector();}
+async function fetchRegisteredAdministrativeEmployees(){
+  const sid=currentEvaluationSchoolId(),sup=currentEvaluationSupervisor();if(!sid)return[];
+  try{if(window.SmartSchoolSupabase?.listAdministrativeEmployeesBySchool)return await window.SmartSchoolSupabase.listAdministrativeEmployeesBySchool(sid,sup)||[];}catch(e){console.warn('تعذر جلب الموظفين الإداريين',e)}
+  return[];
+}
+async function initEmployees(){
+  let saved=[];try{saved=JSON.parse(localStorage.getItem('adminEmployeeEvalProfiles')||'[]')||[]}catch(e){}
+  const savedMap=new Map(saved.map(p=>[profileKey(p),p]));const accounts=await fetchRegisteredAdministrativeEmployees();
+  employeeProfiles=accounts.map(u=>{const key=String(u.email||u.id||'').toLowerCase();const old=savedMap.get(key)||{};return Object.assign({},old,{id:u.id,email:u.email||'',name:u.name||u.fullName||old.name||'موظف إداري',accountStatus:u.status||'pending',adminSupervisor:u.adminSupervisor||currentEvaluationSupervisor()});});
+  const qs=new URLSearchParams(location.search),wanted=String(qs.get('emp')||'').toLowerCase();currentEmployeeIndex=Math.max(0,employeeProfiles.findIndex(p=>[p.email,p.id,p.name].some(v=>String(v||'').toLowerCase()===wanted)));if(currentEmployeeIndex<0)currentEmployeeIndex=0;
   renderEmployeeSelector();
+  if(employeeProfiles.length){applyFormData(employeeProfiles[currentEmployeeIndex]?.data||[]);const p=employeeProfiles[currentEmployeeIndex];const n=document.getElementById('v_name');if(n)n.value=p.name||'';}else{applyFormData([]);}
 }
-function addEmployeeProfile(){
-  saveCurrentEmployee(true);
-  employeeProfiles.push({name:`الموظف الإداري ${employeeProfiles.length+1}`, data:[]});
-  currentEmployeeIndex=employeeProfiles.length-1;
-  applyFormData([]);
-  renderEmployeeSelector();
-  go('p1',document.querySelectorAll('.tab')[0]);
-}
-function deleteEmployeeProfile(){
-  if(employeeProfiles.length<=1){alert('يجب أن يبقى موظف واحد على الأقل.');return;}
-  if(!confirm('هل تريد حذف بيانات هذا الموظف من هذه النسخة؟')) return;
-  employeeProfiles.splice(currentEmployeeIndex,1);
-  currentEmployeeIndex=Math.max(0,currentEmployeeIndex-1);
-  applyFormData(employeeProfiles[currentEmployeeIndex]?.data||[]);
-  localStorage.setItem('adminEmployeeEvalProfiles', JSON.stringify(employeeProfiles));
-  renderEmployeeSelector();
-}
-function initEmployees(){
-  try{employeeProfiles=JSON.parse(localStorage.getItem('adminEmployeeEvalProfiles')||'[]')||[]}catch(e){employeeProfiles=[]}
-  if(!employeeProfiles.length) employeeProfiles=[{name:'الموظف الإداري 1', data:[]}];
-  currentEmployeeIndex=0;
-  renderEmployeeSelector();
-}
+async function reloadRegisteredAdministrativeEmployees(){if(employeeProfiles.length)saveCurrentEmployee(true);await initEmployees();alert(employeeProfiles.length?'تم تحديث قائمة الموظفين الإداريين من المدرسة.':'لا يوجد موظفون إداريون مسجلون من الرابط الإداري في المدرسة الحالية.');}
 
 // ==================== NAV ====================
 function go(id, btn) {

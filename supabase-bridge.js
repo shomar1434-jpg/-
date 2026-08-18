@@ -113,8 +113,9 @@
       is_primary_manager: !!row.is_primary_manager,
       mustChangePassword: !!row.must_change_password,
       createdAt: row.created_at || '',
-      roleLabel: row.role_label || '',
-      role_label: row.role_label || ''
+      roleLabel: publicRoleLabel || '',
+      role_label: publicRoleLabel || '',
+      adminSupervisor: adminSupervisor
     };
   }
 
@@ -435,6 +436,20 @@
     return true;
   }
 
+
+  async function updateAdministrativeEmployeeStatus(payload){
+    const sb=getClient(); if(!sb) throw new Error('Supabase غير جاهز');
+    const schoolId=String(payload.schoolId||payload.school_id||'').trim();
+    const userId=String(payload.userId||payload.user_id||'').trim();
+    const status=String(payload.status||'').trim();
+    if(!schoolId||!userId||!['pending','active','disabled'].includes(status)) throw new Error('بيانات تفعيل الموظف الإداري غير مكتملة');
+    const mq=await sb.from('school_members').select('id,role').eq('school_id',schoolId).eq('user_id',userId).in('role',['administrative_employee','admin_employee']).maybeSingle();
+    if(mq.error) throw explainSupabaseError(mq.error); if(!mq.data) throw new Error('عضوية الموظف الإداري غير موجودة في هذه المدرسة');
+    const m=await sb.from('school_members').update({status,updated_at:new Date().toISOString()}).eq('id',mq.data.id);if(m.error)throw explainSupabaseError(m.error);
+    const u=await sb.from('users').update({status,active:status==='active'}).eq('id',userId);if(u.error)throw explainSupabaseError(u.error);
+    return true;
+  }
+
   async function updateUserStatus(userId,status){
     const sb = getClient();
     if(!sb) throw new Error('Supabase غير جاهز');
@@ -617,6 +632,7 @@
     listUsersBySchool,
     listAdministrativeEmployeesBySchool,
     removeAdministrativeEmployee,
+    updateAdministrativeEmployeeStatus,
     updateUserStatus,
     upsertSchoolUser,
     loginSchoolUser,

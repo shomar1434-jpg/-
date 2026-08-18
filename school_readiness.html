@@ -1421,7 +1421,7 @@ function taskHtml(s,i,t){
    <div class="execution-step-title">استكمال إثبات التنفيذ</div>
    <div class="full evidence-zone" data-evidence-zone="${s.id}-${i}">
     <strong>شاهد التنفيذ:</strong> ${evidenceRequired(d)}<br>
-    <input class="evidence-input no-print" data-evidence-section="${s.id}" data-evidence-index="${i}" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg">
+    <input class="evidence-input no-print" data-evidence-library="off" data-evidence-section="${s.id}" data-evidence-index="${i}" type="file" multiple style="display:none" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg">
     <div class="evidence-list">${d.evidence.map((e,x)=>`<div class="evidence-item"><div><strong>${esc(e.name)}</strong><br><small>${esc(e.type||"ملف")} · ${esc(e.date||"")} · ${e.storage==="cloud"?"سحابي":"محلي"}</small></div><div><button class="btn preview-evidence" data-x="${x}">معاينة</button><button class="btn danger remove-evidence" data-x="${x}">حذف</button></div></div>`).join("")||'<span class="empty">لم يُرفق شاهد تنفيذ بعد.</span>'}</div>
    </div>
    <div class="full review-box" style="margin-top:10px;display:${ev?"block":"none"}">
@@ -1495,7 +1495,8 @@ function renderSection(s){
   card.querySelectorAll(".remove-evidence").forEach(b=>b.onclick=async e=>{
    e.stopPropagation();
    const x=+b.dataset.x;
-   await dbDelete(d.evidence[x].id);
+   const evRow=d.evidence[x];
+   if(evRow?.source==="section_library"&&evRow?.linkId&&window.CloudFileEngine){await CloudFileEngine.unlink(evRow.linkId)}else{await dbDelete(evRow.id)}
    d.evidence.splice(x,1);
    if(!d.evidence.length){
     d.execution={result:"pending",reason:"",by:"",date:""};
@@ -1754,16 +1755,50 @@ function toggleMemberTask(memberIndex,key,checked){
 let executionTarget=null,pendingExecutedTarget=null;
 function markTaskExecuted(sectionId,index){
  const d=state.tasks[sectionId][index];
- d.execution={result:"done",reason:"",by:d.responsible||"",date:new Date().toISOString()};
  d.action="";d.followupDate="";
- const block=document.querySelector(`[data-done-block="${sectionId}-${index}"]`);
- const noBlock=document.querySelector(`[data-notdone-block="${sectionId}-${index}"]`);
- block?.classList.add("show");noBlock?.classList.remove("show");
- const input=document.querySelector(`.evidence-input[data-evidence-section="${sectionId}"][data-evidence-index="${index}"]`);
- const zone=document.querySelector(`[data-evidence-zone="${sectionId}-${index}"]`);
- zone?.classList.add("awaiting-evidence");
- alert("تم اختيار «نُفذ». أرفق شاهد التنفيذ لإكمال احتساب المهمة.");
- input?.click()
+ openReadinessEvidenceModal(sectionId,index);
+}
+
+let readinessEvidenceTarget=null;
+let readinessDeviceFiles=[];
+let readinessLibraryFiles=[];
+function evidenceModalEl(){return document.getElementById("readinessEvidenceModal")}
+function renderReadinessEvidenceSelection(){
+ const box=document.getElementById("readinessEvidenceSelection");if(!box)return;
+ const rows=[...readinessDeviceFiles.map(f=>({name:f.name,source:"الجهاز"})),...readinessLibraryFiles.map(f=>({name:f.display_name||f.original_name||"ملف",source:"مكتبة القسم"}))];
+ box.innerHTML=rows.length?rows.map(x=>`<div class="evidence-item"><div><strong>${esc(x.name)}</strong><br><small>${x.source}</small></div></div>`).join(""):'<span class="empty">لم يتم اختيار شاهد بعد.</span>';
+ const saveBtn=document.getElementById("readinessEvidenceSave");if(saveBtn)saveBtn.disabled=!rows.length;
+}
+function openReadinessEvidenceModal(sectionId,index){
+ readinessEvidenceTarget={sectionId,index};readinessDeviceFiles=[];readinessLibraryFiles=[];
+ const title=document.getElementById("readinessEvidenceTaskTitle");const sec=SECTIONS.find(x=>x.id===sectionId);if(title)title.textContent=sec?.tasks?.[index]||"شاهد تنفيذ المهمة";
+ const fileInput=document.getElementById("readinessEvidenceDeviceInput");if(fileInput)fileInput.value="";
+ const status=document.getElementById("readinessEvidenceStatus");if(status){status.textContent="اختر مصدر الشاهد، ثم اضغط حفظ الشاهد.";status.className=""}
+ renderReadinessEvidenceSelection();evidenceModalEl()?.classList.add("show");
+}
+function closeReadinessEvidenceModal(){if(document.getElementById("readinessEvidenceSave")?.disabled&&readinessEvidenceTarget===null)return;evidenceModalEl()?.classList.remove("show");readinessEvidenceTarget=null;readinessDeviceFiles=[];readinessLibraryFiles=[]}
+async function linkReadinessLibraryEvidence(file,sectionId,index,stageKey){
+ if(!window.CloudFileEngine||!window.PlatformCloudSession?.token())throw new Error("الجلسة السحابية غير فعالة");
+ if(!cloudPlanId)throw new Error("لم يتم إنشاء خطة الجاهزية السحابية بعد");
+ const key=taskKey(sectionId,index);
+ const r=await CloudFileEngine.link({fileId:file.id,moduleKey:"school_readiness",recordType:"readiness_plan",recordId:cloudPlanId,relationType:"evidence",isPrimary:true,metadata:{readinessPlanId:cloudPlanId,sectionKey:sectionId,taskKey:key,readinessTaskKey:key,taskIndex:index,stageKey:stageKey==null?"":String(stageKey),academicYear:state.settings?.year||"",semester:"first"}});
+ return {id:"cloud:"+file.id,platformFileId:file.id,evidenceRecordId:r.evidence?.id||"",storage:"cloud",linkId:r.link?.id||""};
+}
+async function commitReadinessEvidenceModal(){
+ if(!readinessEvidenceTarget)return;const {sectionId,index}=readinessEvidenceTarget;const d=state.tasks[sectionId][index];
+ const saveBtn=document.getElementById("readinessEvidenceSave"),status=document.getElementById("readinessEvidenceStatus");if(saveBtn)saveBtn.disabled=true;if(status)status.textContent="جارٍ حفظ الشاهد سحابيًا...";
+ const committed=[];
+ try{
+  for(const f of readinessDeviceFiles){const uploaded=await dbPut(f,sectionId,index,d.phase);committed.push({name:f.name,type:f.type,size:f.size,uploaded});}
+  for(const f of readinessLibraryFiles){const uploaded=await linkReadinessLibraryEvidence(f,sectionId,index,d.phase);committed.push({name:f.display_name||f.original_name||"شاهد",type:f.mime_type||"ملف",size:Number(f.file_size||0),uploaded,source:"section_library"});}
+  const unifiedTaskKey=taskKey(sectionId,index);
+  for(const row of committed){if(d.evidence.some(x=>String(x.platformFileId||"")===String(row.uploaded.platformFileId||"")))continue;d.evidence.push({id:row.uploaded.id,platformFileId:row.uploaded.platformFileId||"",evidenceRecordId:row.uploaded.evidenceRecordId||"",linkId:row.uploaded.linkId||"",name:row.name,type:row.type,size:row.size,date:new Date().toISOString().slice(0,10),sectionKey:sectionId,taskKey:unifiedTaskKey,storage:"cloud",source:row.source||"device"})}
+  d.execution={result:"done",reason:"",by:d.responsible||"",date:new Date().toISOString()};d.status="completed";d.done=new Date().toISOString().slice(0,10);
+  save();if(status)status.textContent="تم حفظ الشاهد سحابيًا بنجاح.";evidenceModalEl()?.classList.remove("show");readinessEvidenceTarget=null;readinessDeviceFiles=[];readinessLibraryFiles=[];
+ }catch(err){
+  for(const row of committed){try{if(row.source!=="section_library"&&row.uploaded?.platformFileId&&window.CloudFileEngine)await CloudFileEngine.trash(row.uploaded.platformFileId)}catch(_){}}
+  console.error("Readiness evidence modal save failed",err);if(status)status.textContent=err?.message||"تعذر حفظ الشاهد سحابيًا.";alert(err?.message||"تعذر حفظ الشاهد سحابيًا.");if(saveBtn)saveBtn.disabled=false;
+ }
 }
 function askNotExecuted(sectionId,index){
  executionTarget={sectionId,index};
@@ -2233,6 +2268,18 @@ window.save=save;
 try{Object.defineProperty(window,'state',{get:()=>state,set:v=>{state=v},configurable:true})}catch(_){window.state=state}
 </script>
 
+<div class="exec-modal-backdrop" id="readinessEvidenceModal">
+ <div class="exec-modal" role="dialog" aria-modal="true" aria-labelledby="readinessEvidenceTaskTitle">
+  <div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><div><h3 style="margin:0">إضافة شاهد التنفيذ</h3><small id="readinessEvidenceTaskTitle"></small></div><button type="button" class="btn" id="readinessEvidenceClose">إغلاق</button></div>
+  <div class="callout" style="margin-top:12px">اختر شاهدًا من الجهاز أو من مكتبة القسم. ستبقى هذه النافذة مفتوحة حتى يتم حفظ الشاهد سحابيًا بنجاح.</div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0"><button type="button" class="btn" id="readinessEvidenceFromDevice">📎 اختيار من الجهاز</button><button type="button" class="btn" id="readinessEvidenceFromLibrary">📚 اختيار من مكتبة القسم</button></div>
+  <input id="readinessEvidenceDeviceInput" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" style="display:none">
+  <div class="evidence-list" id="readinessEvidenceSelection"><span class="empty">لم يتم اختيار شاهد بعد.</span></div>
+  <div id="readinessEvidenceStatus" style="margin-top:12px;font-weight:700;color:#526a6d">اختر مصدر الشاهد، ثم اضغط حفظ الشاهد.</div>
+  <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px"><button type="button" class="btn" id="readinessEvidenceCancel">إلغاء</button><button type="button" class="btn execute-yes" id="readinessEvidenceSave" disabled>حفظ الشاهد سحابيًا</button></div>
+ </div>
+</div>
+
 <div class="exec-modal-backdrop" id="notExecutedModal">
  <div class="exec-modal">
   <h3>سبب عدم التنفيذ</h3>
@@ -2253,7 +2300,16 @@ try{Object.defineProperty(window,'state',{get:()=>state,set:v=>{state=v},configu
 <script src="platform-record-catalog.js"></script>
 <script src="delegated-access-guard.js"></script>
 <script src="school-activity-engine.js"></script>
-  <script src="evidence-library-source.js"></script>
+
+<script src="evidence-library-source.js"></script>
+<script>
+document.getElementById("readinessEvidenceFromDevice")?.addEventListener("click",()=>document.getElementById("readinessEvidenceDeviceInput")?.click());
+document.getElementById("readinessEvidenceDeviceInput")?.addEventListener("change",e=>{readinessDeviceFiles=[...(e.target.files||[])];renderReadinessEvidenceSelection()});
+document.getElementById("readinessEvidenceFromLibrary")?.addEventListener("click",()=>{if(!window.EvidenceLibrarySource)return alert("مكتبة القسم غير متاحة حاليًا");window.EvidenceLibrarySource.open("readiness-select",{onSelect:async files=>{readinessLibraryFiles=files||[];renderReadinessEvidenceSelection()}})});
+document.getElementById("readinessEvidenceSave")?.addEventListener("click",commitReadinessEvidenceModal);
+document.getElementById("readinessEvidenceCancel")?.addEventListener("click",()=>{evidenceModalEl()?.classList.remove("show");readinessEvidenceTarget=null;readinessDeviceFiles=[];readinessLibraryFiles=[];renderReadinessEvidenceSelection()});
+document.getElementById("readinessEvidenceClose")?.addEventListener("click",()=>{evidenceModalEl()?.classList.remove("show");readinessEvidenceTarget=null;readinessDeviceFiles=[];readinessLibraryFiles=[];renderReadinessEvidenceSelection()});
+</script>
 
 <script src="school-information-source.js"></script>
 <script src="internal-messaging.js"></script>

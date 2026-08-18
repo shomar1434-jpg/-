@@ -8,7 +8,7 @@ const CFG={
 };
 const SECTION_MAP={'1':'أ','2':'ب','3':'ج','4':'د','5':'هـ','6':'و','7':'ز','8':'ح','9':'ط','10':'ي','11':'ك','12':'ل'};
 const ROLE_AR={manager:'مدير/ة المدرسة',school_manager:'مدير/ة المدرسة',agent:'وكيل/ة',deputy:'وكيل/ة',teacher:'معلم/ة',student_advisor:'موجه/موجهة طلابية',counselor:'موجه/موجهة طلابية',activity_leader:'رائد/ة النشاط',admin_employee:'موظف/ة إداري/ة',administrative_employee:'موظف/ة إداري/ة',employee:'موظف/ة',health_advisor:'الموجه الصحي',kindergarten_teacher:'معلمة رياض الأطفال',principal:'مدير/ة المدرسة'};
-const state={students:[],staff:[],administrativeStaff:[],loaded:false,loading:null,schoolId:'',year:'',updatedAt:'',version:'2.2.0'};
+const state={students:[],staff:[],administrativeStaff:[],loaded:false,loading:null,schoolId:'',year:'',updatedAt:'',version:'2.3.0-deputy-teacher-source'};
 const safe=v=>String(v==null?'':v).trim();
 const norm=v=>safe(v).replace(/[إأآا]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/[ـ\u064B-\u0652]/g,'').replace(/\s+/g,' ').toLowerCase();
 const readJson=k=>{try{return JSON.parse(localStorage.getItem(k)||sessionStorage.getItem(k)||'null')}catch(_){return null}};
@@ -45,6 +45,27 @@ async function cloudStudents(){const sid=schoolId();if(!sid)return[];try{return 
 async function cloudStaff(){
   const sid=schoolId();if(!sid)return[];
   try{if(window.SmartSchoolSupabase&&typeof SmartSchoolSupabase.listUsersBySchool==='function')return await SmartSchoolSupabase.listUsersBySchool(sid)}catch(_){}
+  // المدارس المستقلة ومتعددة المدارس: school_members هو المرجع الصحيح للعضوية،
+  // وليس users.school_id فقط، لأن المستخدم قد يعمل في أكثر من مدرسة بنفس الحساب.
+  try{
+    const members=await rest('school_members?select=*&school_id=eq.'+encodeURIComponent(sid)+'&status=neq.deleted&limit=3000');
+    const ids=[...new Set((members||[]).map(m=>safe(m.user_id)).filter(Boolean))];
+    let identities=[];
+    if(ids.length){
+      const chunks=[]; for(let i=0;i<ids.length;i+=100)chunks.push(ids.slice(i,i+100));
+      for(const chunk of chunks){
+        const filter='('+chunk.map(x=>x.replace(/[^a-zA-Z0-9_-]/g,'')).filter(Boolean).join(',')+')';
+        if(filter!=='()'){try{identities.push(...await rest('users?select=*&id=in.'+encodeURIComponent(filter)+'&limit=500'))}catch(_){}}
+      }
+    }
+    const by=new Map((identities||[]).map(u=>[safe(u.id),u]));
+    const fromMembers=(members||[]).map(m=>{
+      const u=by.get(safe(m.user_id))||{};
+      return Object.assign({},u,{id:m.user_id||u.id,email:m.email||u.email,school_id:sid,role:m.role||u.role,role_label:m.role_label||u.role_label,status:m.status||u.status||'active'});
+    }).filter(x=>safe(x.id||x.email||x.name));
+    let direct=[]; try{direct=await rest('users?select=*&school_id=eq.'+encodeURIComponent(sid)+'&status=neq.deleted&limit=2000')}catch(_){}
+    return dedupe([...fromMembers,...direct],x=>safe(x.id)||norm(x.email)||norm(x.name)+'|'+norm(x.role));
+  }catch(_){}
   try{return await rest('users?select=*&school_id=eq.'+encodeURIComponent(sid)+'&status=neq.deleted&limit=2000')}catch(_){return[]}
 }
 async function cloudAdministrativeStaff(){const sid=schoolId();if(!sid)return[];try{if(window.SmartSchoolSupabase&&typeof SmartSchoolSupabase.listAdministrativeEmployeesBySchool==='function')return await SmartSchoolSupabase.listAdministrativeEmployeesBySchool(sid)}catch(_){}return[]}

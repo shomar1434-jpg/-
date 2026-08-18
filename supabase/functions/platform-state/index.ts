@@ -9,6 +9,7 @@ const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,
 const sha256=async(v:string)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(v)))).map(x=>x.toString(16).padStart(2,'0')).join('');
 const safeKey=(v:unknown,max=120)=>String(v||'').trim().replace(/[^\p{L}\p{N}._:@/\-]+/gu,'_').slice(0,max);
 const managers=new Set(['manager','owner','school_manager','principal','مدير','مديرة']);
+const schoolAggregateModules=new Set(['teacher_comprehensive']);
 const MAX_ITEMS=250;
 const MAX_TOTAL_CHARS=3_500_000;
 
@@ -48,6 +49,17 @@ Deno.serve(async(req)=>{
       const {data,error}=await q;
       if(error) throw error;
       return json({items:data||[],scope,ownerKey});
+    }
+
+    if(action==='pull-school-users'){
+      if(!isManager) return json({error:'هذه القراءة تتطلب صلاحية مدير المدرسة',code:'STATE_MANAGER_REQUIRED',requestId},403);
+      if(!schoolAggregateModules.has(moduleKey)) return json({error:'هذا المصدر غير متاح للتجميع المدرسي',code:'STATE_AGGREGATE_MODULE_FORBIDDEN',requestId},403);
+      const keys=Array.isArray(body.keys)?body.keys.slice(0,50).map((x:unknown)=>safeKey(x,220)).filter(Boolean):[];
+      let q=sb.from('platform_module_state').select('module_key,state_key,payload,deleted_at,updated_at,owner_key').eq('school_id',s.school_id).eq('module_key',moduleKey).neq('owner_key','school').order('updated_at',{ascending:true}).limit(5000);
+      if(keys.length) q=q.in('state_key',keys);
+      const {data,error}=await q;
+      if(error) throw error;
+      return json({items:data||[],scope:'school-users',schoolId:s.school_id});
     }
 
     if(action==='bulk-upsert'){

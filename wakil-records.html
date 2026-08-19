@@ -1364,11 +1364,24 @@ const WAKIL_CATEGORY_ORDER = ['educational','school_affairs','student_affairs','
 const WAKIL_AGENCY_LABELS = {educational:'وكيل/وكيلة الشؤون التعليمية',school_affairs:'وكيل/وكيلة الشؤون المدرسية',student_affairs:'وكيل/وكيلة شؤون الطلاب'};
 function wakilCategoryLabel(cat){return WAKIL_CATEGORY_LABELS[cat] || 'سجلات أخرى'}
 function readJsonSafe(key,fallback){try{return JSON.parse(localStorage.getItem(key)||JSON.stringify(fallback||{}));}catch(e){return fallback||{};}}
+function canonicalWakilAgency(v){
+  var x=String(v||'').trim().replace(/\s+/g,' ');
+  if(!x || x==='general') return '';
+  var aliases={
+    'educational':'educational','deputy_academic':'educational','academic':'educational',
+    'وكيل شؤون تعليمية':'educational','وكيل الشؤون التعليمية':'educational','وكيل/وكيلة شؤون تعليمية':'educational','وكيل/وكيلة الشؤون التعليمية':'educational','وكيلة شؤون تعليمية':'educational','وكيلة الشؤون التعليمية':'educational',
+    'school_affairs':'school_affairs','deputy_admin':'school_affairs','school':'school_affairs',
+    'وكيل شؤون مدرسية':'school_affairs','وكيل الشؤون المدرسية':'school_affairs','وكيل/وكيلة شؤون مدرسية':'school_affairs','وكيل/وكيلة الشؤون المدرسية':'school_affairs','وكيلة شؤون مدرسية':'school_affairs','وكيلة الشؤون المدرسية':'school_affairs',
+    'student_affairs':'student_affairs','deputy_students':'student_affairs','students':'student_affairs',
+    'وكيل شؤون الطلاب':'student_affairs','وكيل الشؤون الطلابية':'student_affairs','وكيل/وكيلة شؤون الطلاب':'student_affairs','وكيلة شؤون الطلاب':'student_affairs'
+  };
+  return aliases[x]||x;
+}
 function normalizeAgencyList(v){
-  if(Array.isArray(v)) return v.map(String).map(function(x){return x.trim()}).filter(Boolean).filter(function(x){return x!=='general'});
-  v=String(v||'').trim(); if(!v || v==='general') return []; var aliases={'deputy_academic':'educational','وكيل الشؤون التعليمية':'educational','وكيل/وكيلة الشؤون التعليمية':'educational','deputy_admin':'school_affairs','وكيل الشؤون المدرسية':'school_affairs','وكيل/وكيلة الشؤون المدرسية':'school_affairs','deputy_students':'student_affairs','وكيل شؤون الطلاب':'student_affairs','وكيل/وكيلة شؤون الطلاب':'student_affairs'}; if(aliases[v]) return [aliases[v]];
+  if(Array.isArray(v)) return Array.from(new Set(v.map(canonicalWakilAgency).filter(Boolean).filter(function(x){return x!=='general';})));
+  v=String(v||'').trim(); if(!v || v==='general') return [];
   if(v.charAt(0)==='['){try{return normalizeAgencyList(JSON.parse(v));}catch(e){}}
-  return v.split(/[،,|]/).map(function(x){return x.trim()}).filter(Boolean).filter(function(x){return x!=='general'});
+  return Array.from(new Set(v.split(/[،,|]/).map(canonicalWakilAgency).filter(Boolean).filter(function(x){return x!=='general';})));
 }
 function currentWakilUser(){
   var q=new URLSearchParams(location.search||'');
@@ -1379,7 +1392,8 @@ function currentWakilUser(){
 }
 function currentWakilAgencies(){
   var u=currentWakilUser();
-  var list=normalizeAgencyList(u.roleLabel||u.role_label||u.agent_categories||u.agency_categories||u.agency_types||u.agency_type||u.agencyType||u.vice_agency_type||u.viceAgencyType||'');
+  // تصنيف الوكالة الصريح هو المصدر الأول. المسمى الوظيفي مجرد احتياط حتى لا يحجب تصنيف school_affairs الحقيقي.
+  var list=normalizeAgencyList(u.agent_categories||u.agency_categories||u.agency_types||u.agency_type||u.agencyType||u.vice_agency_type||u.viceAgencyType||u.roleLabel||u.role_label||'');
   if(!list.length){
     var sid=u.schoolId||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||'default';
     var map=readJsonSafe('smartSchoolUnifiedOpsV2_vp_agency_map_'+sid,{});

@@ -116,7 +116,7 @@
     if(/teacher/.test(FILE)) return 'teacher.html';
     if(/administrative_employee|admin_employee/.test(FILE)) return 'administrative_employee_portal.html';
     try{
-      var ar=String(localStorage.getItem('smart_school_active_role')||localStorage.getItem('platform_file_session_role')||'').toLowerCase();
+      var ar=String(sessionStorage.getItem('smart_school_tab_role_v1')||localStorage.getItem('smart_school_active_role')||localStorage.getItem('platform_file_session_role')||'').toLowerCase();
       if(/leadership|manager|principal|مدير/.test(ar)) return 'manager.html';
       if(/agency|agent|wakil|deputy|وكيل/.test(ar)) return 'agent.html';
       if(/student_advisor|counselor|موجه/.test(ar)) return 'student_advisor.html';

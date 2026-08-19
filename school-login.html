@@ -73,11 +73,16 @@
     return roles;
   }
 
+  function canonicalWakilAgency(v){
+    const x=String(v||'').trim().replace(/\s+/g,' '); if(!x||x==='general')return '';
+    const a={'educational':'educational','deputy_academic':'educational','وكيل شؤون تعليمية':'educational','وكيل الشؤون التعليمية':'educational','وكيل/وكيلة شؤون تعليمية':'educational','وكيل/وكيلة الشؤون التعليمية':'educational','وكيلة شؤون تعليمية':'educational','وكيلة الشؤون التعليمية':'educational','school_affairs':'school_affairs','deputy_admin':'school_affairs','وكيل شؤون مدرسية':'school_affairs','وكيل الشؤون المدرسية':'school_affairs','وكيل/وكيلة شؤون مدرسية':'school_affairs','وكيل/وكيلة الشؤون المدرسية':'school_affairs','وكيلة شؤون مدرسية':'school_affairs','وكيلة الشؤون المدرسية':'school_affairs','student_affairs':'student_affairs','deputy_students':'student_affairs','وكيل شؤون الطلاب':'student_affairs','وكيل الشؤون الطلابية':'student_affairs','وكيل/وكيلة شؤون الطلاب':'student_affairs','وكيلة شؤون الطلاب':'student_affairs'};
+    return a[x]||x;
+  }
   function normalizeAgencyList(v){
-    if(Array.isArray(v)) return v.map(String).map(x=>x.trim()).filter(Boolean).filter(x=>x!=='general');
+    if(Array.isArray(v)) return [...new Set(v.map(canonicalWakilAgency).filter(Boolean).filter(x=>x!=='general'))];
     v=String(v||'').trim(); if(!v || v==='general') return [];
     if(v.charAt(0)==='['){try{return normalizeAgencyList(JSON.parse(v));}catch(e){}}
-    return v.split(/[،,|]/).map(x=>x.trim()).filter(Boolean).filter(x=>x!=='general');
+    return [...new Set(v.split(/[،,|]/).map(canonicalWakilAgency).filter(Boolean).filter(x=>x!=='general'))];
   }
   function mergeViceAgency(user){
     if(!user) return user;
@@ -799,11 +804,16 @@
     });
     return normalizeLocalUser(found, school) || localManagerFromSchool(loginId,password,school);
   }
+  function canonicalWakilAgency(v){
+    const x=String(v||'').trim().replace(/\s+/g,' '); if(!x||x==='general')return '';
+    const a={'educational':'educational','deputy_academic':'educational','وكيل شؤون تعليمية':'educational','وكيل الشؤون التعليمية':'educational','وكيل/وكيلة شؤون تعليمية':'educational','وكيل/وكيلة الشؤون التعليمية':'educational','وكيلة شؤون تعليمية':'educational','وكيلة الشؤون التعليمية':'educational','school_affairs':'school_affairs','deputy_admin':'school_affairs','وكيل شؤون مدرسية':'school_affairs','وكيل الشؤون المدرسية':'school_affairs','وكيل/وكيلة شؤون مدرسية':'school_affairs','وكيل/وكيلة الشؤون المدرسية':'school_affairs','وكيلة شؤون مدرسية':'school_affairs','وكيلة الشؤون المدرسية':'school_affairs','student_affairs':'student_affairs','deputy_students':'student_affairs','وكيل شؤون الطلاب':'student_affairs','وكيل الشؤون الطلابية':'student_affairs','وكيل/وكيلة شؤون الطلاب':'student_affairs','وكيلة شؤون الطلاب':'student_affairs'};
+    return a[x]||x;
+  }
   function normalizeAgencyList(v){
-    if(Array.isArray(v)) return v.map(String).map(x=>x.trim()).filter(Boolean).filter(x=>x!=='general');
+    if(Array.isArray(v)) return [...new Set(v.map(canonicalWakilAgency).filter(Boolean).filter(x=>x!=='general'))];
     v=String(v||'').trim(); if(!v || v==='general') return [];
     if(v.charAt(0)==='['){try{return normalizeAgencyList(JSON.parse(v));}catch(e){}}
-    return v.split(/[،,|]/).map(x=>x.trim()).filter(Boolean).filter(x=>x!=='general');
+    return [...new Set(v.split(/[،,|]/).map(canonicalWakilAgency).filter(Boolean).filter(x=>x!=='general'))];
   }
   function teacherRoleCode(x){
     x=String(x||'').trim();
@@ -858,6 +868,7 @@
       const agencyCats = normalizeAgencyList(user.agent_categories || user.agency_categories || user.agency_types || user.agency_type || user.agencyType || '');
       const teacherExtraRoles = normalizeTeacherExtraRoles(user.teacher_extra_roles || user.additional_assignments || user.extra_roles || user.extraRoles || '');
       Object.assign(user,{role, schoolId, schoolName, agent_categories:agencyCats, agency_categories:agencyCats, agency_types:agencyCats, agency_type:agencyCats.join(','), agencyType:agencyCats.join(','), teacher_extra_roles:teacherExtraRoles, additional_assignments:teacherExtraRoles, extra_roles:teacherExtraRoles});
+      sessionStorage.setItem('smart_school_tab_role_v1',role);sessionStorage.setItem('smart_school_tab_school_v1',schoolId||'');
       localStorage.setItem('currentRole', role);
       localStorage.setItem('currentUserName', user.name || '');
       localStorage.setItem('currentUserEmail', user.email || loginId);

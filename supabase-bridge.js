@@ -394,7 +394,7 @@
     const members=(mq.data||[]).filter(m=>{
       if(!sup)return true;
       const marker=String(m.role_label||'').match(/^ADMIN_EMPLOYEE_SUPERVISOR:(manager|agent)$/i);
-      return !marker||marker[1].toLowerCase()===sup;
+      const owner=marker?marker[1].toLowerCase():'manager';return owner===sup;
     });
     const ids=[...new Set(members.map(m=>String(m.user_id||'')).filter(Boolean))];
     let identities=new Map();
@@ -404,7 +404,7 @@
     const legacy=await sb.from('users').select('*').eq('school_id',schoolId).in('role',['administrative_employee','admin_employee']).neq('status','deleted');
     if(legacy.error) throw explainSupabaseError(legacy.error);
     const seen=new Set(out.map(x=>String(x.id||x.email)));
-    for(const u of legacy.data||[]){if(seen.has(String(u.id||u.email)))continue;const n=normalizeUser(u,null);if(n)out.push(n);}
+    for(const u of legacy.data||[]){if(sup&&sup!=='manager')continue;if(seen.has(String(u.id||u.email)))continue;const n=normalizeUser(u,null);if(n)out.push(n);}
     return out;
   }
 
@@ -413,7 +413,17 @@
     const schoolId=String(payload.schoolId||payload.school_id||'').trim();
     const userId=String(payload.userId||payload.user_id||'').trim();
     const email=String(payload.email||'').trim().toLowerCase();
+    const expectedSupervisor=String(payload.supervisor||payload.adminSupervisor||'').trim().toLowerCase();
     if(!schoolId||(!userId&&!email)) throw new Error('بيانات الموظف الإداري غير مكتملة');
+    if(expectedSupervisor){
+      let check=sb.from('school_members').select('id,role_label').eq('school_id',schoolId).in('role',['administrative_employee','admin_employee']);
+      check=userId?check.eq('user_id',userId):check.eq('email',email);
+      const cq=await check.limit(1).maybeSingle();if(cq.error)throw explainSupabaseError(cq.error);
+      if(!cq.data)throw new Error('عضوية الموظف الإداري غير موجودة في المدرسة');
+      const marker=String(cq.data.role_label||'').match(/^ADMIN_EMPLOYEE_SUPERVISOR:(manager|agent)$/i);
+      const actual=marker?marker[1].toLowerCase():'manager';
+      if(actual!==expectedSupervisor)throw new Error('هذا الموظف الإداري يتبع مسؤولاً مباشرًا آخر');
+    }
     let membershipQ=sb.from('school_members').delete().eq('school_id',schoolId).in('role',['administrative_employee','admin_employee']);
     membershipQ=userId?membershipQ.eq('user_id',userId):membershipQ.eq('email',email);
     const membershipResult=await membershipQ;
@@ -442,9 +452,11 @@
     const schoolId=String(payload.schoolId||payload.school_id||'').trim();
     const userId=String(payload.userId||payload.user_id||'').trim();
     const status=String(payload.status||'').trim();
+    const expectedSupervisor=String(payload.supervisor||payload.adminSupervisor||'').trim().toLowerCase();
     if(!schoolId||!userId||!['pending','active','disabled'].includes(status)) throw new Error('بيانات تفعيل الموظف الإداري غير مكتملة');
-    const mq=await sb.from('school_members').select('id,role').eq('school_id',schoolId).eq('user_id',userId).in('role',['administrative_employee','admin_employee']).maybeSingle();
+    const mq=await sb.from('school_members').select('id,role,role_label').eq('school_id',schoolId).eq('user_id',userId).in('role',['administrative_employee','admin_employee']).maybeSingle();
     if(mq.error) throw explainSupabaseError(mq.error); if(!mq.data) throw new Error('عضوية الموظف الإداري غير موجودة في هذه المدرسة');
+    if(expectedSupervisor){const marker=String(mq.data.role_label||'').match(/^ADMIN_EMPLOYEE_SUPERVISOR:(manager|agent)$/i);const actual=marker?marker[1].toLowerCase():'manager';if(actual!==expectedSupervisor)throw new Error('هذا الموظف الإداري يتبع مسؤولاً مباشرًا آخر');}
     const m=await sb.from('school_members').update({status,updated_at:new Date().toISOString()}).eq('id',mq.data.id);if(m.error)throw explainSupabaseError(m.error);
     const u=await sb.from('users').update({status,active:status==='active'}).eq('id',userId);if(u.error)throw explainSupabaseError(u.error);
     return true;

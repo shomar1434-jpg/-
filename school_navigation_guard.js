@@ -30,7 +30,7 @@ function roleRoot(){
  if(/student_advisor/.test(f))return'student_advisor.html';if(/health_advisor/.test(f))return'health_advisor.html';
  if(/kindergarten_teacher/.test(f))return'kindergarten_teacher.html';if(/activity_leader/.test(f))return'activity_leader.html';
  if(/administrative_employee|admin_employee/.test(f))return'administrative_employee_portal.html';if(/teacher/.test(f))return'teacher.html';
- const r=String(localStorage.getItem('smart_school_active_role')||localStorage.getItem('platform_file_session_role')||'').toLowerCase();
+ const r=String(sessionStorage.getItem('smart_school_tab_role_v1')||localStorage.getItem('smart_school_active_role')||localStorage.getItem('platform_file_session_role')||'').toLowerCase();
  if(/leadership|manager|principal|مدير/.test(r))return'manager.html';if(/agency|agent|wakil|deputy|وكيل/.test(r))return'agent.html';
  if(/student_advisor|counselor/.test(r))return'student_advisor.html';if(/health/.test(r))return'health_advisor.html';
  if(/kindergarten/.test(r))return'kindergarten_teacher.html';if(/activity/.test(r))return'activity_leader.html';

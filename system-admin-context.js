@@ -6,7 +6,7 @@
   function isAdmin(){var p=q();try{return p.get('systemAdmin')==='1'||sessionStorage.getItem('system_admin_context')==='1'||sessionStorage.getItem('system_admin_verified')==='true'}catch(e){return p.get('systemAdmin')==='1'}}
   if(!isAdmin()) return;
   try{
-    sessionStorage.setItem('system_admin_context','1');
+    sessionStorage.setItem('system_admin_context','1');sessionStorage.setItem('smart_school_tab_role_v1','system_admin');
     document.documentElement.setAttribute('data-system-admin-context','1');
   }catch(e){}
   var keys=['current_school_id','current_school_name','active_school_id','active_school_name','school_id','school_name','smart_school_id','smart_school_name','persist_school','smart_school_current_session','independent_school_mode','smartSchool.currentSchool','smart_school_active_school','smart_school_active_school_id','smart_school_active_school_name','activeSchool','active_school','currentSchool','schoolContext','school_context'];

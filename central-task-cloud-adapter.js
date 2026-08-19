@@ -1,10 +1,24 @@
 (function(){
  'use strict';
  async function emitCoreEvent(task,eventType,data={}){try{if(window.PlatformCore)await PlatformCore.emitRecordEvent({moduleKey:'central_tasks',recordType:'central_task',recordId:task.task_id||task.id,taskId:task.task_id||task.id,eventType,data})}catch(e){console.warn('تعذر إرسال حدث Platform Core:',e)}}
+
+ let cloudUsersCache=[];
+ function normalizeCloudRole(r){r=String(r||'').trim().toLowerCase();if(['administrative_employee','admin_employee','administrative'].includes(r))return'admin_employee';if(['manager','leadership','principal'].includes(r))return'manager';if(['agent','agency','wakil','deputy'].includes(r))return'agent';if(['teacher','performance'].includes(r))return'teacher';if(['student_advisor','counselor'].includes(r))return'student_advisor';if(['activity_leader','activity'].includes(r))return'activity_leader';return r||'user'}
+ async function refreshAssignableUsers(){
+  try{
+   const r=await CloudTaskEngine.listUsers();
+   cloudUsersCache=(r.users||[]).map(u=>({id:u.id,name:u.full_name||u.name||u.email||'مستخدم',email:u.email||'',role:normalizeCloudRole(u.role),status:u.status||'active',role_label:u.role_label||''})).filter(u=>u.id&&u.status!=='deleted'&&(!(u.role==='admin_employee')||u.status==='active'));
+   window.__centralTaskCloudUsers=cloudUsersCache.slice();
+   window.collectUsers=function(){return cloudUsersCache.length?cloudUsersCache.slice():[]};
+   window.populateUsers=function(){const el=document.getElementById('assigneeId');if(!el)return;const ordinary=cloudUsersCache.filter(u=>u.role!=='admin_employee');const admins=cloudUsersCache.filter(u=>u.role==='admin_employee');let html='';if(ordinary.length)html+='<optgroup label="مستخدمو المدرسة">'+ordinary.map(u=>`<option value="${esc(u.id)}" data-role="${esc(u.role)}" data-email="${esc(u.email)}">${esc(u.name)} — ${esc(roleLabel(u.role))}</option>`).join('')+'</optgroup>';if(admins.length)html+='<optgroup label="──────── الموظفون الإداريون ────────">'+admins.map(u=>`<option value="${esc(u.id)}" data-role="admin_employee" data-email="${esc(u.email)}">${esc(u.name)} — موظف/موظفة إدارية</option>`).join('')+'</optgroup>';el.innerHTML=html||'<option value="">لا يوجد مستخدمون مفعّلون</option>';};
+   window.populateUsers();
+  }catch(e){console.warn('تعذر تحميل قائمة المكلفين السحابية',e)}
+ }
  function toast(msg,ok=true){let x=document.getElementById('cloudTaskToast');if(!x){x=document.createElement('div');x.id='cloudTaskToast';x.style.cssText='position:fixed;left:24px;bottom:24px;z-index:99999;padding:12px 18px;border-radius:16px;color:white;font-weight:900;font-size:13px;box-shadow:0 16px 40px #0003;transition:.25s';document.body.appendChild(x)}x.textContent=msg;x.style.background=ok?'#0f766e':'#b91c1c';x.style.opacity='1';setTimeout(()=>x.style.opacity='0',3500)}
  async function refresh(options={}){if(!window.CloudTaskEngine)return;try{const r=await CloudTaskEngine.list();const mapped=(r.tasks||[]).map(CloudTaskEngine.mapTask);if(options.preserveOnEmpty&&mapped.length===0&&tasks().length>0){console.warn('أعاد الخادم قائمة فارغة بعد الحفظ؛ تم الاحتفاظ بالعرض الحالي مؤقتًا.');return;}saveTasks(mapped);renderAll();window.dispatchEvent(new CustomEvent('central-tasks:cloud-loaded',{detail:{count:mapped.length}}));}catch(e){console.warn('تعذر تحميل التكليفات السحابية، تم الإبقاء على النسخة المحلية المؤقتة:',e);toast(e.message||'تعذر تحميل التكليفات السحابية',false)}}
  document.addEventListener('DOMContentLoaded',async()=>{
   if(!window.CloudTaskEngine)return;
+  await refreshAssignableUsers();
   const oldCreate=window.createTask;
   window.createTask=async function(e){
    e?.preventDefault?.();
@@ -14,7 +28,7 @@
    if(submit?.dataset.saving==='1') return;
    if(submit){submit.dataset.saving='1';submit.disabled=true;submit.dataset.originalText=submit.textContent||'';submit.textContent='جارٍ الحفظ سحابيًا...'}
    try{
-    const users=collectUsers(),sel=document.getElementById('assigneeId'),u=users.find(x=>String(x.id)===String(sel.value))||{};
+    const users=(window.collectUsers?window.collectUsers():collectUsers()),sel=document.getElementById('assigneeId'),u=users.find(x=>String(x.id)===String(sel.value))||{};
     if(!u.id && !u.email) throw new Error('تعذر تحديد حساب المستخدم المكلف. حدّث الصفحة واختر المستخدم مرة أخرى.');
     const owner=document.getElementById('sourceOwner').value;
     const section=document.getElementById('ownerSection')?.value||'';
@@ -52,6 +66,7 @@
   const oldSaveUpdate=window.saveUpdate;
   window.saveUpdate=async function(e,id){e.preventDefault();const t=getTask(id);if(!t)return;try{const file=document.getElementById('updFile').files[0];const title=document.getElementById('updTitle').value,notes=document.getElementById('updDesc').value,link=document.getElementById('updLink').value;const ur=await CloudTaskEngine.addUpdate({taskId:id,updateType:'execution',title,notes,linkUrl:link,status:'draft'});if(file){if(!window.CloudFileEngine)throw new Error('محرك الملفات غير متاح');const fr=await CloudFileEngine.upload({file,ownershipScope:'school',moduleKey:'central_tasks',recordType:'central_task',recordId:id,relationType:'evidence',metadata:{taskId:id,updateId:ur.update.id}});await CloudTaskEngine.attachEvidence({taskId:id,updateId:ur.update.id,platformFileId:fr.file.id,evidenceType:'execution'})}await emitCoreEvent(t,'record_updated',{status:t.status,progress_percent:t.progress_percent,title,notes,evidence:!!file});await refresh();closeModal();toast('تم حفظ التنفيذ والشاهد سحابيًا');}catch(err){console.error(err);toast(err.message||'تعذر حفظ التنفيذ السحابي',false)}};
   await refresh();
+  await refreshAssignableUsers();
   setInterval(refresh,60000);
   window.addEventListener('focus',refresh);
  });

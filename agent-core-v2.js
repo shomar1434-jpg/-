@@ -25,7 +25,7 @@ function inferRoleFromFile(){const f=file();for(const k of Object.keys(roots))if
 function activeYear(){return clean(get(['smartSchoolActiveAcademicYear','platformAcademicYear','academic_year','school_year']))||'1448'}
 function yearStatus(y=activeYear()){try{const rows=parse(localStorage.getItem('smartSchoolAcademicYearsV1'),[]);const r=rows.find(x=>String(x.year)===String(y));return r?.status||'active'}catch(e){return'active'}}
 function context(){
- const rawRole=get(['smart_school_active_role','platform_file_session_role','currentRole','user_role','role'])||inferRoleFromFile();
+ const rawRole=sessionStorage.getItem('smart_school_tab_role_v1')||get(['smart_school_active_role','platform_file_session_role','currentRole','user_role','role'])||inferRoleFromFile();
  const role=(window.AgentRoleProfiles?AgentRoleProfiles.normalize(rawRole):rawRole)||'performance';
  const schoolId=get(['active_school_id','platform_file_session_school_id','current_school_id','currentSchoolId','activeSchool','school_id']);
  const sessionSchool=get(['platform_file_session_school_id']);

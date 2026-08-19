@@ -1241,7 +1241,16 @@ initEmployees();
       document.body.appendChild(note); setTimeout(()=>note.remove(),3500);
     }catch(e){console.warn('تعذر استيراد خطة الموظف الإداري',e)}
   }
-  window.addEventListener('load',function(){setTimeout(importAdministrativeEmployeePlanFromPortal,400)});
+  async function hydrateAdministrativeEmployeePlanForEvaluation(){
+    try{
+      const qs=new URLSearchParams(location.search);const owner=qs.get('owner_uid')||'';const emp=qs.get('emp')||'';
+      if(!window.PlatformStateEngine)return;
+      const keys=['administrative_employee_plans'];
+      const r=owner&&PlatformStateEngine.pullUser?await PlatformStateEngine.pullUser('admin_performance',owner,keys):await PlatformStateEngine.pull('admin_performance','user',keys);
+      (r.items||[]).forEach(function(it){if(it.deleted_at)return;var v=it.payload&&Object.prototype.hasOwnProperty.call(it.payload,'value')?it.payload.value:null;if(v!==null&&v!==undefined)localStorage.setItem(String(it.state_key),String(v));});
+    }catch(e){console.warn('تعذر تحميل خطة الموظف قبل التقييم',e)}
+  }
+  window.addEventListener('load',function(){setTimeout(async function(){await hydrateAdministrativeEmployeePlanForEvaluation();importAdministrativeEmployeePlanFromPortal();},250)});
 })();
 </script>
 

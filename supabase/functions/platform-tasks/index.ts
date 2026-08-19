@@ -70,7 +70,7 @@ Deno.serve(async(req)=>{
   };
   const uniqueGrantRows=(rows:any[])=>{const m=new Map();for(const r of rows||[]){const k=[r.module_key,r.record_type||'',r.record_id||''].join('|');if(!m.has(k))m.set(k,r)}return Array.from(m.values())};
   console.log('[platform-tasks]',{requestId,action,schoolId:s.school_id,userId:s.user_id,role:s.role});
-  if(action==='health')return json({ok:true,version:'2.1.0',schoolId:s.school_id,userId:s.user_id,role:s.role});
+  if(action==='health')return json({ok:true,version:'2.2.0-admin-assignee-list',schoolId:s.school_id,userId:s.user_id,role:s.role});
   if(action==='set-deputy-classification'){
    if(!['manager','owner','school_manager','principal','مدير','مديرة'].includes(role))return json({error:'تحديد تصنيف الوكيل متاح لمدير المدرسة فقط'},403);
    const userId=String(body.userId||'');const email=String(body.email||'').trim().toLowerCase();
@@ -143,6 +143,8 @@ Deno.serve(async(req)=>{
     const directlyBound=String(u.school_id||'')===String(s.school_id);
     const activeMember=membership&&String(membership.status||'active')!=='deleted';
     if(!directlyBound&&!activeMember)return json({error:'المستخدم المكلف غير مرتبط بالمدرسة الحالية'},409);
+    const effectiveRole=String(membership?.role||u.role||'').toLowerCase();
+    if(['administrative_employee','admin_employee'].includes(effectiveRole)&&String(membership?.status||u.status||'pending').toLowerCase()!=='active')return json({error:'الموظف الإداري يجب أن يكون مفعّلاً قبل إسناد التكليف'},409);
    }
    const row={school_id:s.school_id,module_key:safeKey(body.moduleKey||body.sourceOwner||'central_tasks'),record_type:body.recordType||body.assignmentType||null,record_id:body.recordId||null,title:String(body.title||'').trim().slice(0,300),description:String(body.description||'').trim()||null,assignment_type:['record','partial','additional_role'].includes(body.assignmentType)?body.assignmentType:'partial',source_owner:body.sourceOwner||null,record_key:body.recordKey||null,created_by:s.user_id,owner_role:s.role,owner_label:body.ownerLabel||null,assigned_to:assignedTo,assignee_email:assigneeEmail,assignee_name:body.assigneeName||null,assignee_role:body.assigneeRole||null,priority:['low','normal','high','urgent'].includes(body.priority)?body.priority:'normal',status:'active',start_date:body.startDate||null,due_date:body.dueDate||null,requires_approval:body.requiresApproval!==false,metadata:{...(body.metadata||{}),assignment_engine_version:'2.0.0',assignment_engine:'unified',created_via:'platform-tasks'}};
    if(!row.title)return json({error:'عنوان التكليف مطلوب'},400);

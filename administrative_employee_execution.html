@@ -47,7 +47,7 @@
 <section class="card"><div class="title">الأهداف المعتمدة وشواهد التنفيذ</div><div id="goalsBox"></div></section>
 </div>
 <script>
-const qs=new URLSearchParams(location.search);const empId=qs.get('emp')||qs.get('id')||localStorage.getItem('currentUserEmail')||'';const supervisor=qs.get('supervisor')||'';const schoolScope=qs.get('school')||currentSchoolScope();
+const qs=new URLSearchParams(location.search);const empId=qs.get('emp')||qs.get('id')||localStorage.getItem('currentUserEmail')||'';const ownerUid=qs.get('owner_uid')||'';const supervisor=qs.get('supervisor')||'';const schoolScope=qs.get('school')||currentSchoolScope();
 function currentSchoolScope(){try{const keys=['active_school_id','activeSchoolId','selected_school_id','school_id'];for(const k of keys){const v=localStorage.getItem(k);if(v)return v;}const s=JSON.parse(localStorage.getItem('active_school')||localStorage.getItem('activeSchool')||'null');return s&&(s.id||s.schoolId||s.code||s.name)||''}catch(e){return ''}}
 function parse(k,d){try{return JSON.parse(localStorage.getItem(k)||'')}catch(e){return d}}
 function allPlans(){return parse('administrative_employee_plans',[])||[]}
@@ -69,7 +69,18 @@ function addLinkEvidence(i){let u=document.getElementById('url-'+i),t=document.g
 function removeEvidence(i,j){let ex=currentExecution();if(ex.goals[i]&&ex.goals[i].evidence){ex.goals[i].evidence.splice(j,1);localStorage.setItem(execKey(),JSON.stringify(ex));renderEvidence(i,ex.goals[i].evidence);saveExecution(false);}}
 function evidenceIcon(e){if(e.type==='image')return '<img class="thumb" src="'+e.data+'">';if(e.type==='link')return '🔗';if(e.type==='pdf')return '📕';if(e.type==='word')return '📘';if(e.type==='excel')return '📗';return '📄'}
 function renderEvidence(i,ev){let box=document.getElementById('ev-'+i);if(!box)return;box.innerHTML=(ev||[]).map((e,j)=>`<div class="evItem"><div>${evidenceIcon(e)} ${e.type==='link'?'<a target="_blank" href="'+esc(e.url)+'">'+esc(e.name)+'</a>':'<a target="_blank" href="'+esc(e.data||'#')+'">'+esc(e.name)+'</a>'}</div><button class="btn danger" onclick="removeEvidence(${i},${j})">حذف</button></div>`).join('')||'<div class="meta">لا توجد شواهد مرفوعة لهذا الهدف بعد.</div>';let ex=loadExec();let g=ex.goals&&ex.goals[i];if(g){let p=document.getElementById('prog-'+i);if(p)p.value=String(g.progress||0);}}
-render();
+async function hydrateApprovedPlanAndExecution(){
+  try{
+    if(!window.PlatformStateEngine)return false;
+    const keys=['administrative_employee_plans',execKey()];
+    const r=ownerUid&&PlatformStateEngine.pullUser?await PlatformStateEngine.pullUser('admin_performance',ownerUid,keys):await PlatformStateEngine.pull('admin_performance','user',keys);
+    (r.items||[]).forEach(function(it){if(it.deleted_at)return;var v=it.payload&&Object.prototype.hasOwnProperty.call(it.payload,'value')?it.payload.value:null;if(v!==null&&v!==undefined)localStorage.setItem(String(it.state_key),String(v));});
+    return true;
+  }catch(e){console.warn('تعذر تحميل الخطة المعتمدة قبل التنفيذ',e);return false;}
+}
+async function bootExecution(){await hydrateApprovedPlanAndExecution();render();}
+bootExecution();
+window.addEventListener('platform-persistence-ready',function(){render()});
 </script>
 
 <!-- Unified Comprehensive Cloud Storage -->

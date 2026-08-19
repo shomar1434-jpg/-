@@ -5,7 +5,7 @@
   const cfg={
     base:()=> (localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'')+'/functions/v1/platform-state',
     anon:()=>localStorage.getItem('smartSchoolSupabaseAnonKey')||'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM',
-    token:()=>localStorage.getItem('platform_file_session_token')||''
+    token:()=>window.PlatformCloudSession?.token?.()||sessionStorage.getItem('platform_tab_session_token_v1')||localStorage.getItem('platform_file_session_token')||''
   };
   async function ensureSession(){
     if(window.PlatformCloudSession&&typeof window.PlatformCloudSession.ensure==='function'){
@@ -43,6 +43,8 @@
   const pullSchoolUsers=(moduleKey,keys)=>request('pull-school-users',{moduleKey,keys});
   const bulkUpsert=(moduleKey,scope='user',items,opts)=>request('bulk-upsert',{moduleKey,scope,items},opts);
   const managerUpsertUser=(moduleKey,ownerUserId,items,opts)=>request('manager-upsert-user',{moduleKey,ownerUserId,items},opts);
+  const updateAdministrativeEmployeeStatus=(ownerUserId,status)=>request('admin-employee-status',{moduleKey:'admin_performance',ownerUserId,status});
+  const removeAdministrativeEmployee=(ownerUserId)=>request('admin-employee-delete',{moduleKey:'admin_performance',ownerUserId});
   const health=()=>request('health',{});
-  window.PlatformStateEngine={VERSION:'1.1.0-admin-employee-flow',request,pull,pullUser,pullSchoolUsers,bulkUpsert,managerUpsertUser,health};
+  window.PlatformStateEngine={VERSION:'1.3.0-admin-supervisor-actions',request,pull,pullUser,pullSchoolUsers,bulkUpsert,managerUpsertUser,updateAdministrativeEmployeeStatus,removeAdministrativeEmployee,health};
 })();

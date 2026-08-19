@@ -6,6 +6,11 @@
   const USER_KEY = 'platform_file_session_user_id';
   const SCHOOL_KEY = 'platform_file_session_school_id';
   const ROLE_KEY = 'platform_file_session_role';
+  const TAB_TOKEN_KEY='platform_tab_session_token_v1';
+  const TAB_EXPIRES_KEY='platform_tab_session_expires_v1';
+  const TAB_USER_KEY='platform_tab_session_user_v1';
+  const TAB_SCHOOL_KEY='platform_tab_session_school_v1';
+  const TAB_ROLE_KEY='smart_school_tab_role_v1';
 
   const url = () =>
     (localStorage.getItem('smartSchoolSupabaseUrl') ||
@@ -69,6 +74,7 @@
   async function switchSchool(targetSchoolId, targetRole = '', membershipId = '') {
     const payload = await sessionAction('switch', {schoolId:targetSchoolId, role:targetRole, membershipId});
     if (!payload.token) throw new Error('لم تُنشأ جلسة سحابية للمدرسة المختارة.');
+    sessionStorage.setItem(TAB_TOKEN_KEY,payload.token);sessionStorage.setItem(TAB_EXPIRES_KEY,payload.expiresAt||'');sessionStorage.setItem(TAB_USER_KEY,payload.userId||'');sessionStorage.setItem(TAB_SCHOOL_KEY,payload.schoolId||'');sessionStorage.setItem(TAB_ROLE_KEY,payload.role||'');
     localStorage.setItem(TOKEN_KEY, payload.token);
     localStorage.setItem(EXPIRES_KEY, payload.expiresAt || '');
     localStorage.setItem(USER_KEY, payload.userId || '');
@@ -79,35 +85,36 @@
   }
 
   function token() {
-    return localStorage.getItem(TOKEN_KEY) || '';
+    return sessionStorage.getItem(TAB_TOKEN_KEY) || localStorage.getItem(TOKEN_KEY) || '';
   }
 
   function expiresAt() {
-    return localStorage.getItem(EXPIRES_KEY) || '';
+    return sessionStorage.getItem(TAB_EXPIRES_KEY) || localStorage.getItem(EXPIRES_KEY) || '';
   }
 
   function userId() {
-    return localStorage.getItem(USER_KEY) || '';
+    return sessionStorage.getItem(TAB_USER_KEY) || localStorage.getItem(USER_KEY) || '';
   }
 
   function schoolId() {
-    return localStorage.getItem(SCHOOL_KEY) || '';
+    return sessionStorage.getItem(TAB_SCHOOL_KEY) || localStorage.getItem(SCHOOL_KEY) || '';
   }
 
   function role() {
-    return localStorage.getItem(ROLE_KEY) || '';
+    return sessionStorage.getItem(TAB_ROLE_KEY) || localStorage.getItem(ROLE_KEY) || '';
   }
 
   function valid() {
     const currentToken = token();
     const expiry = expiresAt();
-    const activeSchool = localStorage.getItem('active_school_id') || localStorage.getItem('current_school_id') || localStorage.getItem('school_id') || localStorage.getItem('smart_school_id') || '';
+    const activeSchool = sessionStorage.getItem(TAB_SCHOOL_KEY) || localStorage.getItem('active_school_id') || localStorage.getItem('current_school_id') || localStorage.getItem('school_id') || localStorage.getItem('smart_school_id') || '';
     const sameSchool = !activeSchool || !schoolId() || String(activeSchool) === String(schoolId());
     return Boolean(currentToken && sameSchool && (!expiry || Date.parse(expiry) > Date.now() + 60_000));
   }
 
   function currentSchoolId() {
-    return localStorage.getItem('active_school_id') ||
+    return sessionStorage.getItem(TAB_SCHOOL_KEY) ||
+      localStorage.getItem('active_school_id') ||
       localStorage.getItem('current_school_id') ||
       localStorage.getItem('school_id') ||
       localStorage.getItem('smart_school_id') ||
@@ -116,11 +123,13 @@
 
   function applyPayload(payload, renewed = true) {
     if (!payload || !payload.token) throw new Error('استجابة تجديد الجلسة لا تحتوي على رمز صالح');
+    const sid=payload.schoolId || currentSchoolId() || '';const rr=payload.role || role() || localStorage.getItem('currentRole') || '';
+    sessionStorage.setItem(TAB_TOKEN_KEY,payload.token);sessionStorage.setItem(TAB_EXPIRES_KEY,payload.expiresAt||'');sessionStorage.setItem(TAB_USER_KEY,payload.userId||'');sessionStorage.setItem(TAB_SCHOOL_KEY,sid);sessionStorage.setItem(TAB_ROLE_KEY,rr);
     localStorage.setItem(TOKEN_KEY, payload.token);
     localStorage.setItem(EXPIRES_KEY, payload.expiresAt || '');
     localStorage.setItem(USER_KEY, payload.userId || '');
-    localStorage.setItem(SCHOOL_KEY, payload.schoolId || currentSchoolId() || '');
-    localStorage.setItem(ROLE_KEY, payload.role || role() || localStorage.getItem('currentRole') || '');
+    localStorage.setItem(SCHOOL_KEY, sid);
+    localStorage.setItem(ROLE_KEY, rr);
     window.dispatchEvent(new CustomEvent('platform-cloud-session-ready',{detail:{userId:payload.userId||'',schoolId:payload.schoolId||'',role:payload.role||'',expiresAt:payload.expiresAt||'',renewed:Boolean(renewed)}}));
     return payload.token;
   }
@@ -160,11 +169,9 @@
   }
 
   function clear() {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(EXPIRES_KEY);
-    localStorage.removeItem(USER_KEY);
-    localStorage.removeItem(SCHOOL_KEY);
-    localStorage.removeItem(ROLE_KEY);
+    const tabToken=sessionStorage.getItem(TAB_TOKEN_KEY)||'';const sharedToken=localStorage.getItem(TOKEN_KEY)||'';
+    [TAB_TOKEN_KEY,TAB_EXPIRES_KEY,TAB_USER_KEY,TAB_SCHOOL_KEY,TAB_ROLE_KEY].forEach(k=>sessionStorage.removeItem(k));
+    if(!tabToken||sharedToken===tabToken){localStorage.removeItem(TOKEN_KEY);localStorage.removeItem(EXPIRES_KEY);localStorage.removeItem(USER_KEY);localStorage.removeItem(SCHOOL_KEY);localStorage.removeItem(ROLE_KEY);}
   }
 
   window.PlatformCloudSession = {

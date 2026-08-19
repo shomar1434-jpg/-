@@ -1,6 +1,7 @@
 (function(){
   'use strict';
   if(window.__MULTI_SCHOOL_SWITCHER_ALL_USERS_V2__) return;
+  try{var __q=new URLSearchParams(location.search||'');if(__q.get('systemAdmin')==='1'||__q.get('systemAdminReturn')==='1'||sessionStorage.getItem('system_admin_context')==='1'||sessionStorage.getItem('system_admin_verified')==='true')return;}catch(e){}
   window.__MULTI_SCHOOL_SWITCHER_ALL_USERS_V2__=true;
 
   var NS='smartSchoolUnifiedOpsV2';
@@ -22,8 +23,8 @@
   function user(){return parse(localStorage.getItem('currentSchoolUser'),null)||parse(localStorage.getItem('currentUser'),null)||parse(localStorage.getItem('smart_school_current_session'),null)||{}}
   function email(){var u=user();return norm(u.email||u.microsoftEmail||localStorage.getItem('currentUserEmail')||'')}
   function userId(){var u=user();return String(u.id||u.user_id||localStorage.getItem('currentUserId')||'')}
-  function activeSchoolId(){var q=new URLSearchParams(location.search||'');return String(q.get('schoolId')||q.get('school_id')||localStorage.getItem('active_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||'')}
-  function activeRole(){var u=user();return norm(localStorage.getItem('smart_school_active_role')||localStorage.getItem('currentRole')||u.activeRole||u.role||u.dbRole||'')}
+  function activeSchoolId(){var q=new URLSearchParams(location.search||'');return String(q.get('schoolId')||q.get('school_id')||sessionStorage.getItem('smart_school_tab_school_v1')||localStorage.getItem('active_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||'')}
+  function activeRole(){var u=user();return norm(sessionStorage.getItem('smart_school_tab_role_v1')||localStorage.getItem('smart_school_active_role')||localStorage.getItem('currentRole')||u.activeRole||u.role||u.dbRole||'')}
   function roleMeta(role){var r=norm(role);if(ROLE_META[r])return ROLE_META[r];if(/مدير|principal/.test(r))return ROLE_META.manager;if(/وكيل|deputy/.test(r))return ROLE_META.agency;if(/رياض/.test(r))return ROLE_META.kindergarten_teacher;if(/صحي|health/.test(r))return ROLE_META.health_advisor;if(/طلاب|مرشد|موجه/.test(r))return ROLE_META.student_advisor;if(/نشاط|activity/.test(r))return ROLE_META.activity_leader;if(/إداري|اداري|administrative|admin_staff/.test(r))return ROLE_META.administrative_employee;if(/معلم|teacher|performance/.test(r))return ROLE_META.performance;return {app:r||'performance',file:'index.html',label:role||'مستخدم'} }
   function roleLabel(role,label){return label||roleMeta(role).label||role||'مستخدم'}
 
@@ -84,6 +85,7 @@
   function restoreWorkspace(sid){if(!sid)return;scopeKeys().forEach(function(k){try{localStorage.removeItem(k)}catch(e){}});var d=parse(localStorage.getItem('schoolWorkspaceVault:'+sid),{});Object.keys(d||{}).forEach(function(k){try{localStorage.setItem(k,d[k])}catch(e){}})}
 
   function setContext(m){
+    try{sessionStorage.setItem('smart_school_tab_role_v1',m.app||m.role||'');sessionStorage.setItem('smart_school_tab_school_v1',m.schoolId||'');sessionStorage.setItem('smart_school_tab_membership_v1',m.membershipId||'')}catch(e){}
     var old=activeSchoolId();if(old&&old!==m.schoolId)saveWorkspace(old);if(old!==m.schoolId)restoreWorkspace(m.schoolId);
     var pairs={active_school_id:m.schoolId,current_school_id:m.schoolId,school_id:m.schoolId,smart_school_id:m.schoolId,active_school_name:m.schoolName,current_school_name:m.schoolName,school_name:m.schoolName,persist_school:m.schoolName,smart_school_active_role:m.app,currentRole:m.role,currentUserId:m.userId||userId()};
     Object.keys(pairs).forEach(function(k){if(pairs[k]!=null)localStorage.setItem(k,String(pairs[k]))});if(m.schoolCode){localStorage.setItem('active_school_code',m.schoolCode);localStorage.setItem('school_code',m.schoolCode)}if(m.membershipId)localStorage.setItem(ACTIVE_MEMBERSHIP,m.membershipId);

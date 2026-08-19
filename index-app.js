@@ -313,13 +313,24 @@ const launchApp = (appId) => {
             const files = { 'leadership': 'manager.html', 'agency': 'agent.html', 'performance': 'teacher.html', 'health_advisor': 'health_advisor.html', 'kindergarten_teacher': 'kindergarten_teacher.html', 'student_advisor': 'student_advisor.html', 'activity_leader': 'activity_leader.html', 'administrative_employee': 'administrative_employee_portal.html' };
             const target = files[appId];
             if (!target) return showToast('لم يتم العثور على ملف القسم');
+            const isSystemAdmin = !!(currentUser?.isRootAdmin || sessionStorage.getItem('system_admin_context') === '1' || sessionStorage.getItem('system_admin_verified') === 'true');
             try {
-                localStorage.setItem('currentRole', currentUser?.role || appId);
+                const tabRole=(isSystemAdmin && appId==='administrative_employee')?'system_admin':(currentUser?.role || appId);
+                sessionStorage.setItem('smart_school_tab_role_v1',tabRole);
+                if(isSystemAdmin && appId==='administrative_employee'){
+                    sessionStorage.setItem('system_admin_context','1');
+                    sessionStorage.setItem('system_admin_verified','true');
+                }else{
+                    localStorage.setItem('currentRole', currentUser?.role || appId);
+                }
                 localStorage.setItem('currentUserName', currentUser?.name || '');
                 localStorage.setItem('currentUserEmail', currentUser?.email || '');
                 localStorage.setItem('smart_school_active_role', appId);
             } catch(e) {}
-            const isSystemAdmin = !!(currentUser?.isRootAdmin || sessionStorage.getItem('system_admin_context') === '1' || sessionStorage.getItem('system_admin_verified') === 'true');
+            if(isSystemAdmin && appId==='administrative_employee'){
+                window.location.href = target + '?mode=system_admin&systemAdmin=1&returnHome=' + encodeURIComponent('index.html?systemAdminReturn=1');
+                return;
+            }
             let suffix = `?role=${encodeURIComponent(currentUser?.role || appId)}&uid=${encodeURIComponent(currentUser?.id || '')}`;
             if (isSystemAdmin) suffix += '&systemAdmin=1&returnHome=' + encodeURIComponent('index.html?systemAdminReturn=1');
             window.location.href = target + suffix;

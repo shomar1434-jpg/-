@@ -4,7 +4,7 @@ const VERSION='1.0.0',TIMEOUT=45000;
 const config={
  base:()=> (localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'')+'/functions/v1/platform-core',
  anon:()=>localStorage.getItem('smartSchoolSupabaseAnonKey')||'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM',
- token:()=>localStorage.getItem('platform_file_session_token')||''
+ token:()=>window.PlatformCloudSession?.token?.()||sessionStorage.getItem('platform_tab_session_token_v1')||localStorage.getItem('platform_file_session_token')||''
 };
 async function ensure(){if(window.PlatformCloudSession?.ensure){await window.PlatformCloudSession.ensure();if(config.token())return config.token()}if(config.token())return config.token();throw new Error('الجلسة السحابية غير متاحة.');}
 async function request(action,body,method='POST'){

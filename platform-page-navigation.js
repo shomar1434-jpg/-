@@ -21,7 +21,7 @@ function roleRoot(){
     [/administrative_employee|admin_employee/,'administrative_employee_portal.html'],[/teacher/,'teacher.html']
   ];
   for(const [re,root] of byFile) if(re.test(f)) return root;
-  const r=String(localStorage.getItem('smart_school_active_role')||localStorage.getItem('platform_file_session_role')||'').toLowerCase();
+  const r=String(sessionStorage.getItem('smart_school_tab_role_v1')||localStorage.getItem('smart_school_active_role')||localStorage.getItem('platform_file_session_role')||'').toLowerCase();
   if(/manager|principal|leadership|مدير/.test(r)) return 'manager.html';
   if(/agent|wakil|deputy|agency|وكيل/.test(r)) return 'agent.html';
   if(/student_advisor|counselor/.test(r)) return 'student_advisor.html';

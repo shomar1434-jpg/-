@@ -165,9 +165,20 @@
           try{sessionStorage.removeItem('system_admin_context');sessionStorage.removeItem('system_admin_verified');localStorage.removeItem('is_admin_session');localStorage.removeItem('admin_verified');}catch(e){}
           location.replace('index.html');return;
         }
+        if(window.SchoolNavigationGuard&&typeof window.SchoolNavigationGuard.logout==='function'){
+          window.SchoolNavigationGuard.logout();return;
+        }
+        var sid='';
+        try{sid=String(sessionStorage.getItem('smart_school_tab_school_v1')||localStorage.getItem('active_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||localStorage.getItem('smart_school_id')||'').trim();}catch(e){}
         try{if(window.PlatformCloudSession&&typeof window.PlatformCloudSession.clear==='function') window.PlatformCloudSession.clear();}catch(e){}
-        try{['smart_school_active_school_id','smart_school_active_membership_id','smart_school_active_role','active_school_id','active_school_name','current_school_id','current_school_name','currentRole','user_role','administrative_employee_tab_session_v1'].forEach(function(k){localStorage.removeItem(k);sessionStorage.removeItem(k);});}catch(e){}
-        location.replace('school-login.html');
+        try{[
+          'smart_school_active_school_id','smart_school_active_school_name','smart_school_active_membership_id','smart_school_active_role',
+          'active_school_id','active_school_name','active_school_code','activeSchoolId','selected_school_id','current_school_id','current_school_name',
+          'school_id','school_name','school_code','smart_school_id','smart_school_name','persist_school','smartSchool.currentSchool','smartSchool:activeSchool',
+          'smart_school_active_school','smart_school_current_session','independent_school_mode','currentRole','user_role','administrative_employee_tab_session_v1',
+          'smart_school_tab_school_v1','smart_school_tab_role_v1','platform_tab_session_token_v1','platform_tab_session_school_id_v1','platform_tab_session_role_v1'
+        ].forEach(function(k){localStorage.removeItem(k);sessionStorage.removeItem(k);});}catch(e){}
+        var qp=new URLSearchParams();if(sid)qp.set('schoolId',sid);qp.set('logout','1');location.replace('school-login.html?'+qp.toString());
       });
     }
 

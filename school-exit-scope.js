@@ -77,8 +77,10 @@
   function clearIndependentSession(){
     try{
       [
-        'currentRole','currentUserName','currentUserEmail','smart_school_active_role',
-        'smart_school_current_session','independent_school_mode'
+        'currentRole','currentUserName','currentUserEmail','smart_school_active_role','smart_school_current_session','independent_school_mode',
+        'active_school_id','active_school_name','active_school_code','activeSchoolId','selected_school_id','current_school_id','current_school_name',
+        'school_id','school_name','school_code','smart_school_id','smart_school_name','persist_school','smartSchool.currentSchool','smartSchool:activeSchool',
+        'smart_school_active_school','smart_school_tab_school_v1','smart_school_tab_role_v1'
       ].forEach(function(k){ localStorage.removeItem(k); sessionStorage.removeItem(k); });
     }catch(e){}
   }

@@ -56,7 +56,13 @@
     return role || 'performance';
   }
   function readJsonSafe(key, fallback){ try{return JSON.parse(localStorage.getItem(key)||JSON.stringify(fallback||{}));}catch(e){return fallback||{};} }
-  function currentLoginSchoolId(){ const q=new URLSearchParams(location.search||''); return q.get('schoolId') || q.get('school_id') || q.get('id') || q.get('school') || q.get('schoolCode') || q.get('school_code') || localStorage.getItem('current_school_id') || localStorage.getItem('school_id') || 'default'; }
+  function currentLoginSchoolId(){
+    const q=new URLSearchParams(location.search||'');
+    const explicit=q.get('schoolId')||q.get('school_id')||q.get('id')||q.get('school')||q.get('schoolCode')||q.get('school_code')||'';
+    if(explicit)return explicit;
+    if(q.get('logout')==='1')return 'default';
+    return sessionStorage.getItem('smart_school_tab_school_v1')||localStorage.getItem('current_school_id')||localStorage.getItem('active_school_id')||'default';
+  }
 
   function teacherRoleCode(x){x=String(x||'').trim();var map={'التوجيه الصحي':'health_guidance','موجه صحي':'health_guidance','الموجه الصحي':'health_guidance','health':'health_guidance','health_guidance':'health_guidance','منسق الموهوبين':'gifted_coordinator','منسق/ة الموهوبين':'gifted_coordinator','الجودة':'quality_coordinator','منسق الجودة':'quality_coordinator','منسق/ة الجودة':'quality_coordinator','منصة مدرستي':'madrasati_coordinator','منسق منصة مدرستي':'madrasati_coordinator'};return map[x]||x}
   function normalizeTeacherExtraRoles(v){
@@ -507,6 +513,18 @@
   </main>
 
 <script src="platform-cloud-session.js?v=20260818-clean-session-v1"></script>
+<script id="school-logout-scope-cleanup-v1">
+(function(){
+  try{
+    const q=new URLSearchParams(location.search||'');
+    if(q.get('logout')!=='1')return;
+    const keepSchool=String(q.get('schoolId')||q.get('school_id')||q.get('school')||q.get('schoolCode')||'').trim();
+    const keys=['active_school_id','active_school_name','active_school_code','activeSchoolId','selected_school_id','current_school_id','current_school_name','school_id','school_name','school_code','smart_school_id','smart_school_name','persist_school','smartSchool.currentSchool','smartSchool:activeSchool','smart_school_active_school','smart_school_current_session','independent_school_mode','smart_school_tab_school_v1','smart_school_tab_role_v1'];
+    keys.forEach(k=>{localStorage.removeItem(k);sessionStorage.removeItem(k)});
+    if(keepSchool)sessionStorage.setItem('smart_school_logout_target_v1',keepSchool);else sessionStorage.removeItem('smart_school_logout_target_v1');
+  }catch(e){}
+})();
+</script>
 <script id="independent-school-login-engine">
 (function(){
   'use strict';

@@ -50,14 +50,38 @@ async function ownerLogout(){
  location.replace('index.html');
 }
 
-function schoolLogout(){
- try{window.PlatformCloudSession?.clear?.()}catch(_){}
+function currentSchoolRef(){
  try{
-   ['smart_school_active_school_id','smart_school_active_membership_id','smart_school_active_role','active_school_id','active_school_name',
-    'current_school_id','current_school_name','currentRole','user_role','platform_file_session_school_id','platform_file_session_role','administrative_employee_tab_session_v1']
-    .forEach(k=>{localStorage.removeItem(k);sessionStorage.removeItem(k)});
- }catch(_){}
- location.replace('school-login.html');
+   var q=new URLSearchParams(location.search||'');
+   var session=null;try{session=JSON.parse(localStorage.getItem('smart_school_current_session')||sessionStorage.getItem('smart_school_current_session')||'null')}catch(_){}
+   var current=null;try{current=JSON.parse(localStorage.getItem('smartSchool.currentSchool')||'null')}catch(_){}
+   return String(
+     q.get('schoolId')||q.get('school_id')||q.get('school')||q.get('schoolCode')||
+     sessionStorage.getItem('smart_school_tab_school_v1')||sessionStorage.getItem('current_school_id')||
+     localStorage.getItem('active_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||localStorage.getItem('smart_school_id')||
+     (session&&(session.schoolId||session.school_id))||(current&&(current.schoolId||current.school_id||current.id||current.schoolCode||current.school_code))||''
+   ).trim();
+ }catch(_){return ''}
+}
+function clearSchoolContext(){
+ try{window.PlatformCloudSession?.clear?.()}catch(_){}
+ const keys=[
+   'smart_school_active_school_id','smart_school_active_school_name','smart_school_active_membership_id','smart_school_active_role',
+   'active_school_id','active_school_name','active_school_code','activeSchoolId','selected_school_id',
+   'current_school_id','current_school_name','school_id','school_name','school_code','smart_school_id','smart_school_name','persist_school',
+   'smartSchool.currentSchool','smartSchool:activeSchool','smart_school_active_school','smart_school_current_session','independent_school_mode',
+   'currentRole','user_role','platform_file_session_school_id','platform_file_session_role','administrative_employee_tab_session_v1',
+   'smart_school_tab_school_v1','smart_school_tab_role_v1','platform_tab_session_token_v1','platform_tab_session_school_id_v1','platform_tab_session_role_v1'
+ ];
+ try{keys.forEach(k=>{localStorage.removeItem(k);sessionStorage.removeItem(k)})}catch(_){}
+}
+function schoolLogout(){
+ const sid=currentSchoolRef();
+ clearSchoolContext();
+ const q=new URLSearchParams();
+ if(sid)q.set('schoolId',sid);
+ q.set('logout','1');
+ location.replace('school-login.html?'+q.toString());
 }
 
 function logout(){return isSystemAdminContext()?ownerLogout():schoolLogout()}

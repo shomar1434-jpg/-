@@ -83,13 +83,14 @@ Deno.serve(async(req)=>{
    if(isUuid(userId))mq=mq.eq('user_id',userId);else if(email)mq=mq.eq('email',email);else return json({error:'معرف الوكيل أو بريده مطلوب'},400);
    let {data:member,error:me}=await mq.limit(1).maybeSingle();if(me)throw me;
    let identity:any=null;
-   if(isUuid(userId)){const {data:u,error:e}=await sb.from('users').select('id,email,full_name,role,status').eq('id',userId).maybeSingle();if(e)throw e;identity=u}
-   if(!identity&&email){const {data:u,error:e}=await sb.from('users').select('id,email,full_name,role,status').eq('email',email).maybeSingle();if(e)throw e;identity=u}
+   if(isUuid(userId)){const {data:u,error:e}=await sb.from('users').select('id,email,full_name,role,status,school_id').eq('id',userId).limit(1).maybeSingle();if(e)throw e;identity=u}
+   if(!identity&&isUuid(member?.user_id)){const {data:u,error:e}=await sb.from('users').select('id,email,full_name,role,status,school_id').eq('id',member.user_id).limit(1).maybeSingle();if(e)throw e;identity=u}
+   if(!identity&&email){const {data:rows,error:e}=await sb.from('users').select('id,email,full_name,role,status,school_id').eq('email',email).eq('school_id',s.school_id).limit(2);if(e)throw e;identity=(rows||[])[0]||null}
    if(!identity)return json({error:'حساب الوكيل غير موجود'},404);
    if(String(identity.role||'')!=='agent' && String(member?.role||'')!=='agent')return json({error:'المستخدم المحدد ليس وكيلاً في هذه المدرسة'},409);
    const roleLabel=classifications.join(','); // القائمة الحالية تستبدل التصنيفات القديمة بالكامل
-   if(member){const {data:m,error:e}=await sb.from('school_members').update({role:'agent',role_label:roleLabel,updated_at:now}).eq('id',member.id).select('*').single();if(e)throw e;member=m}
-   else{const {data:m,error:e}=await sb.from('school_members').insert({school_id:s.school_id,user_id:identity.id,email:identity.email,role:'agent',role_label:roleLabel,status:'active',is_primary_manager:false,is_primary:false,updated_at:now}).select('*').single();if(e)throw e;member=m}
+   if(member){const {data:rows,error:e}=await sb.from('school_members').update({role:'agent',role_label:roleLabel,updated_at:now}).eq('id',member.id).select('*');if(e)throw e;member=(rows||[])[0]||member}
+   else{const {data:rows,error:e}=await sb.from('school_members').insert({school_id:s.school_id,user_id:identity.id,email:identity.email,role:'agent',role_label:roleLabel,status:'active',is_primary_manager:false,is_primary:false,updated_at:now}).select('*');if(e)throw e;member=(rows||[])[0]||null}
    return json({ok:true,classification,classifications,roleLabel,member,user:{id:identity.id,email:identity.email,full_name:identity.full_name}});
   }
   if(action==='list-users'){

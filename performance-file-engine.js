@@ -107,7 +107,46 @@
 
   function createModal(){if(document.getElementById(MODAL_ID))return;var m=document.createElement('div');m.id=MODAL_ID;m.className='pf-modal';m.innerHTML='<div class="pf-modal-box"><div class="pf-modal-head"><h2>ملف الأداء الوظيفي — معاينة القوالب</h2><div class="pf-actions"><button onclick="ssPerfRefresh()">تحديث من الأرشيف</button><button onclick="ssPerfPrint()">طباعة / حفظ PDF</button><button class="secondary" onclick="ssPerfDownloadHtml()">تنزيل HTML</button><button class="danger" onclick="ssPerfClose()">إغلاق</button></div></div><div class="pf-modal-body" id="pfModalBody"></div></div>';document.body.appendChild(m);var pr=document.createElement('div');pr.id=PRINT_ID;document.body.appendChild(pr);}
   function render(){var b=document.getElementById('pfModalBody');if(b)b.innerHTML=editor()+documentHtml();}
-  function createCard(){if(document.querySelector('.ss-performance-card,[data-ss-performance-card]'))return;var host=document.querySelector('#welcome-dashboard .grid,#dashboard .grid,.dashboard-grid,.cards-grid,main .grid');if(!host)return;var card=document.createElement('div');card.className='ss-performance-card';card.setAttribute('data-ss-performance-card','1');card.onclick=window.openPerformanceFile;card.innerHTML='<div class="ss-performance-badge">📘</div><div><h3>ملف الأداء الوظيفي</h3><p>قوالب احترافية مرتبطة تلقائيًا بتقارير مجالات الأرشيف.</p></div><div class="ss-performance-open">فتح</div>';host.appendChild(card);}
+  function findCardHost(){
+    var managerGrid=document.getElementById('managerMainSectionsGrid');
+    if(managerGrid)return managerGrid;
+    var dashboard=document.getElementById('welcome-dashboard')||document.getElementById('dashboard')||document.querySelector('main');
+    if(!dashboard)return null;
+    var grids=[].slice.call(dashboard.querySelectorAll('.grid,.dashboard-grid,.cards-grid'));
+    if(!grids.length)return null;
+    var best=null,bestScore=-1;
+    grids.forEach(function(g){
+      var direct=[].slice.call(g.children||[]);
+      if(!direct.length)return;
+      var text=cleanText(g.textContent||'');
+      var score=0;
+      if(/تقارير الأداء|تقرير جديد|الأرشيف|داشبورد|السجلات|الخطة الفصلية/.test(text))score+=10;
+      direct.forEach(function(c){
+        var oc=String(c.getAttribute&&c.getAttribute('onclick')||'');
+        if(/startNewReport|openArchiveView|openStatsView|open.*Records|location\.href/.test(oc))score+=2;
+        if(c.classList&&c.classList.contains('group'))score+=1;
+      });
+      if(g.closest&&g.closest('#welcome-dashboard'))score+=4;
+      if(score>bestScore){bestScore=score;best=g;}
+    });
+    return best||grids[0]||null;
+  }
+  function createCard(){
+    if(document.querySelector('.ss-performance-card,[data-ss-performance-card]'))return true;
+    var host=findCardHost();
+    if(!host)return false;
+    var card=document.createElement('div');
+    card.className='ss-performance-card';
+    card.setAttribute('data-ss-performance-card','1');
+    card.setAttribute('role','button');
+    card.setAttribute('tabindex','0');
+    card.setAttribute('aria-label','فتح ملف الأداء الوظيفي');
+    card.onclick=window.openPerformanceFile;
+    card.onkeydown=function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();window.openPerformanceFile();}};
+    card.innerHTML='<div class="ss-performance-badge">📘</div><div><h3>ملف الأداء الوظيفي</h3><p>قوالب احترافية مرتبطة تلقائيًا بتقارير مجالات الأرشيف.</p></div><div class="ss-performance-open">فتح</div>';
+    host.appendChild(card);
+    return true;
+  }
 
   window.openPerformanceFile=function(){createModal();render();document.getElementById(MODAL_ID).style.display='flex';};
   window.ssPerfClose=function(){var m=document.getElementById(MODAL_ID);if(m)m.style.display='none';};
@@ -127,7 +166,20 @@
   window.ssPerfPrint=function(){var p=document.getElementById(PRINT_ID);p.innerHTML=documentHtml();setTimeout(function(){window.print();},120);};
   window.ssPerfDownloadHtml=function(){var css=(document.getElementById(STYLE_ID)||{}).textContent||'';var html='<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ملف الأداء الوظيفي</title><style>'+css.replace(/@media print[\s\S]*$/,'')+'</style></head><body style="background:#e9eef3;margin:0;padding:20px">'+documentHtml()+'</body></html>';var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([html],{type:'text/html;charset=utf-8'}));a.download='ملف_الأداء_الوظيفي.html';a.click();setTimeout(function(){URL.revokeObjectURL(a.href);},1200);};
 
-  function boot(){installStyle();createModal();createCard();}
+  var perfObserver=null;
+  function ensureCard(){
+    try{createCard();}catch(e){console.warn('[performance-file] card restore',e);}
+  }
+  function watchDashboard(){
+    if(perfObserver||typeof MutationObserver==='undefined')return;
+    var root=document.getElementById('welcome-dashboard')||document.body;
+    if(!root)return;
+    perfObserver=new MutationObserver(function(){
+      if(!document.querySelector('.ss-performance-card,[data-ss-performance-card]'))ensureCard();
+    });
+    perfObserver.observe(root,{childList:true,subtree:true});
+  }
+  function boot(){installStyle();createModal();ensureCard();watchDashboard();}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
-  setTimeout(boot,900);setTimeout(createCard,2200);
+  setTimeout(boot,350);setTimeout(ensureCard,900);setTimeout(ensureCard,2200);setTimeout(ensureCard,4500);
 })();

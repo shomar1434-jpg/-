@@ -1,0 +1,1559 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>بطاقة تحليل نتائج نافس</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Google Fonts: Cairo -->
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- PDF.js Library for Client-Side PDF Reading -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            moe: {
+              teal: '#00675b',
+              lightTeal: '#00897b',
+              mint: '#e0f2f1',
+              darkMint: '#b2dfdb',
+              accent: '#d97706',
+              gold: '#f59e0b',
+              bgLight: '#f4f7f6',
+              redBadge: '#ef4444',
+              yellowBadge: '#eab308',
+              greenBadge: '#10b981'
+            }
+          },
+          fontFamily: {
+            sans: ['Cairo', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    html, body {
+      width: 100%;
+      min-height: 100%;
+      margin: 0;
+    }
+    body {
+      font-family: 'Cairo', sans-serif;
+      background-color: #f3f6f5;
+      color: #1f2937;
+      overflow-x: hidden;
+    }
+    
+    .moe-gradient {
+      background: linear-gradient(135deg, #004d40 0%, #00675b 50%, #00897b 100%);
+    }
+
+    @media print {
+      .no-print {
+        display: none !important;
+      }
+      body {
+        background-color: white !important;
+        padding: 0 !important;
+      }
+      .page-break {
+        page-break-before: always;
+      }
+      .print-shadow-none {
+        box-shadow: none !important;
+        border: 1px solid #d1d5db !important;
+      }
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f1f1;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #00675b;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body class="min-h-screen pb-12">
+
+  <header class="no-print moe-gradient text-white shadow-lg sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-4">
+      <div class="flex items-center gap-3">
+        <img src="https://salogos.b-cdn.net/logos/svg/1774895141785-5zgexuf8.svg" alt="شعار وزارة التعليم" class="h-10 w-auto bg-white p-1 rounded-lg shadow" onerror="this.onerror=null; this.src='https://placehold.co/120x60/00675b/ffffff?text=Ministry+of+Education';">
+        <div>
+          <h1 class="text-xl md:text-2xl font-black leading-tight">بطاقة تحليل نتائج نافس</h1>
+        </div>
+      </div>
+
+      <!-- Action Navigation Buttons -->
+      <div class="flex flex-wrap items-center gap-2">
+        <button type="button" onclick="window.location.href='manager.html'" class="bg-white/15 hover:bg-white/25 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow border border-white/25" aria-label="العودة إلى الأقسام الرئيسية">
+          <i class="fa-solid fa-arrow-right"></i> العودة للأقسام الرئيسية
+        </button>
+        <button onclick="switchView('pdfInput')" class="bg-red-600 hover:bg-red-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow">
+          <i class="fa-solid fa-file-pdf"></i> رفع واستخراج بطاقة PDF
+        </button>
+        <button onclick="openModal('editModal')" class="bg-amber-500 hover:bg-amber-600 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow">
+          <i class="fa-solid fa-pen-to-square"></i> تعديل البيانات
+        </button>
+        <button onclick="window.print()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow">
+          <i class="fa-solid fa-print"></i> طباعة / تصدير PDF
+        </button>
+      </div>
+    </div>
+
+    <!-- Quick Presets selector for official subjects -->
+    <div class="bg-emerald-950/40 border-t border-emerald-600/30 px-4 py-2">
+      <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between text-xs gap-2">
+        <span class="font-bold text-amber-300 flex items-center gap-1">
+          <i class="fa-solid fa-wand-magic-sparkles"></i> نماذج استدلالية لمواد اختبار نافس (القراءة - العلوم - الرياضيات):
+        </span>
+        <div class="flex flex-wrap gap-2">
+          <button onclick="loadPreset(1)" class="bg-white/10 hover:bg-white/20 text-white px-3 py-1 rounded-lg border border-white/20 transition">
+            <i class="fa-solid fa-book-open text-teal-300"></i> نموذج 1: القراءة
+          </button>
+          <button onclick="loadPreset(2)" class="bg-white/10 hover:bg-white/20 text-white px-3 py-1 rounded-lg border border-white/20 transition">
+            <i class="fa-solid fa-calculator text-blue-300"></i> نموذج 2: الرياضيات
+          </button>
+          <button onclick="loadPreset(3)" class="bg-white/10 hover:bg-white/20 text-white px-3 py-1 rounded-lg border border-white/20 transition">
+            <i class="fa-solid fa-flask text-emerald-300"></i> نموذج 3: العلوم
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="no-print max-w-7xl mx-auto mt-4 px-4">
+    <div class="bg-white p-2 rounded-xl shadow-sm border border-gray-200 flex flex-wrap gap-2 justify-center md:justify-start">
+      <button onclick="switchView('pdfInput')" id="tab-pdfInput" class="view-tab active-tab bg-moe-teal text-white border-red-200 border px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2">
+        <i class="fa-solid fa-file-pdf"></i> قسم الإدخال وقراءة بطاقة نافس (PDF)
+      </button>
+      <button onclick="switchView('visualDashboard')" id="tab-visualDashboard" class="view-tab px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 bg-white text-gray-700 border">
+        <i class="fa-solid fa-table-columns"></i> لوحة العرض القيادية (Dashboard)
+      </button>
+      <button onclick="switchView('fullReport')" id="tab-fullReport" class="view-tab px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 bg-white text-gray-700 border">
+        <i class="fa-solid fa-file-lines"></i> التحليل وخطة التحسين
+      </button>
+      <button onclick="switchView('timelineImpact')" id="tab-timelineImpact" class="view-tab px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 bg-white text-gray-700 border">
+        <i class="fa-solid fa-chart-line"></i> خطة التحسين وقياس الأثر
+      </button>
+      <button onclick="switchView('executiveSummary')" id="tab-executiveSummary" class="view-tab px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 bg-white text-gray-700 border">
+        <i class="fa-solid fa-award"></i> الملخص التنفيذي
+      </button>
+    </div>
+  </div>
+
+  <!-- MAIN CONTAINER -->
+  <main class="max-w-7xl mx-auto mt-4 px-4">
+
+    <div id="view-pdfInput" class="view-section space-y-6">
+      
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+        <div class="border-b pb-4 mb-4 flex justify-between items-center flex-wrap gap-2">
+          <div>
+            <h2 class="text-xl font-black text-moe-teal flex items-center gap-2">
+              <i class="fa-solid fa-file-pdf text-red-600"></i> قسم إدخال استمارة/بطاقة نافس المعتمدة (PDF)
+            </h2>
+            <p class="text-xs text-gray-500 mt-1">
+              قم برفع استمارة نتائج نافس المعتمدة وسيتم استخراج البيانات المحددة (المادة، المهارات، المرحلة، الصف، وغيرها) وبناء كافة لوحات التقرير بناءً عليها.
+            </p>
+          </div>
+          <span class="bg-emerald-100 text-moe-teal font-extrabold text-xs px-3 py-1 rounded-full border border-emerald-300">
+            <i class="fa-solid fa-check-double"></i> ربط وتطابق 100% مع البطاقة
+          </span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          
+          <!-- Dropzone Container -->
+          <div class="space-y-4">
+            <label class="block font-bold text-xs text-slate-700">1. اختر أو اسحب ملف استمارة نافس (PDF):</label>
+            <div id="dropZone" onclick="document.getElementById('pdfFileInput').click()" class="border-2 border-dashed border-teal-400 bg-teal-50/50 hover:bg-teal-50 p-8 rounded-2xl text-center cursor-pointer transition flex flex-col items-center justify-center space-y-3">
+              <div class="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center text-2xl shadow-sm">
+                <i class="fa-solid fa-cloud-arrow-up"></i>
+              </div>
+              <div>
+                <p class="font-extrabold text-slate-800 text-sm">اضغط هنا لاختيار ملف PDF أو اسحبه إلى هذا المربع</p>
+                <p class="text-[11px] text-gray-500 mt-1">يدعم بطاقات نتائج نافس في المواد المعتمدة (القراءة - العلوم - الرياضيات)</p>
+              </div>
+              <input type="file" id="pdfFileInput" accept="application/pdf" class="hidden" onchange="handlePdfUpload(event)">
+            </div>
+
+            <!-- Text Content Paste Option Fallback -->
+            <div class="space-y-2">
+              <div class="flex justify-between items-center">
+                <label class="font-bold text-xs text-slate-700">أو لصق النص المستخرج مباشرة من البطاقة:</label>
+                <button onclick="parseRawText()" class="text-xs font-bold text-moe-teal hover:underline">
+                  <i class="fa-solid fa-bolt"></i> قراءة وتطبيق النص
+                </button>
+              </div>
+              <textarea id="rawPdfText" rows="4" placeholder="انسخ نص البطاقة المعتمدة هنا واضغط على 'قراءة وتطبيق النص' لتوليد اللوحة تلقائيًا..." class="w-full border p-3 rounded-xl text-xs font-sans text-gray-700 focus:ring-2 focus:ring-teal-500 focus:outline-none"></textarea>
+            </div>
+          </div>
+
+          <!-- Parsed Data Live Verification Form -->
+          <div class="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-4">
+            <div class="flex items-center justify-between border-b pb-2">
+              <h3 class="font-extrabold text-sm text-slate-800 flex items-center gap-2">
+                <i class="fa-solid fa-list-check text-moe-teal"></i> 2. مراجعة وتأكيد البيانات المستخرجة
+              </h3>
+              <span id="pdfStatusBadge" class="bg-amber-100 text-amber-800 font-bold text-[10px] px-2.5 py-0.5 rounded-full">
+                بانتظار رفع الملف
+              </span>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 text-xs">
+              <div>
+                <label class="block font-bold text-gray-600 mb-1">اسم المدرسة</label>
+                <input type="text" id="pdfSchoolName" class="w-full border p-2 rounded-lg font-bold text-slate-800 bg-white">
+              </div>
+              <div>
+                <label class="block font-bold text-gray-600 mb-1">نوع المدرسة</label>
+                <select id="pdfGender" class="w-full border p-2 rounded-lg font-bold text-slate-800 bg-white">
+                  <option value="بنين">بنين</option>
+                  <option value="بنات">بنات</option>
+                </select>
+              </div>
+              <div>
+                <label class="block font-bold text-gray-600 mb-1">المرحلة الدراسية</label>
+                <select id="pdfStage" class="w-full border p-2 rounded-lg font-bold text-slate-800 bg-white">
+                  <option value="المتوسطة">المتوسطة</option>
+                  <option value="الابتدائية">الابتدائية</option>
+                </select>
+              </div>
+              <div>
+                <label class="block font-bold text-gray-600 mb-1">المادة (مواد نافس)</label>
+                <select id="pdfSubject" class="w-full border p-2 rounded-lg font-bold text-slate-800 bg-white">
+                  <option value="القراءة">القراءة</option>
+                  <option value="العلوم">العلوم</option>
+                  <option value="الرياضيات">الرياضيات</option>
+                </select>
+              </div>
+              <div>
+                <label class="block font-bold text-gray-600 mb-1">الصف الدراسـي</label>
+                <input type="text" id="pdfGrade" class="w-full border p-2 rounded-lg font-bold text-slate-800 bg-white">
+              </div>
+              <div>
+                <label class="block font-bold text-gray-600 mb-1">العام الدراسـي</label>
+                <input type="text" id="pdfYear" class="w-full border p-2 rounded-lg font-bold text-slate-800 bg-white">
+              </div>
+            </div>
+
+            <!-- Skills Data Table in Input Form -->
+            <div class="border-t pt-3 space-y-2">
+              <div class="flex justify-between items-center">
+                <label class="font-black text-xs text-moe-teal">جدول المهارات والدرجات من البطاقة:</label>
+                <button onclick="addPdfSkillRow()" class="bg-slate-200 hover:bg-slate-300 text-slate-800 px-2 py-0.5 rounded text-[11px] font-bold">
+                  + إضافة مهارة
+                </button>
+              </div>
+
+              <div class="overflow-x-auto">
+                <table class="w-full text-xs text-right border bg-white rounded-lg">
+                  <thead class="bg-slate-100 font-bold border-b text-slate-700">
+                    <tr>
+                      <th class="p-2 border">المهارة الواردة بالبطاقة</th>
+                      <th class="p-2 border w-20 text-center">نتيجة المدرسة</th>
+                      <th class="p-2 border w-20 text-center">القيمة المرجعية</th>
+                      <th class="p-2 border w-10 text-center">حذف</th>
+                    </tr>
+                  </thead>
+                  <tbody id="pdfSkillsBody" class="divide-y">
+                    <!-- JS Rows -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Action Apply Button -->
+            <button onclick="applyPdfDataToSystem()" class="w-full bg-moe-teal hover:bg-emerald-800 text-white font-extrabold py-3 rounded-xl shadow transition flex items-center justify-center gap-2 text-sm">
+              <i class="fa-solid fa-sync"></i> اعتماد بيانات البطاقة وتحديث المنظومة
+            </button>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+
+    <div id="view-visualDashboard" class="view-section hidden space-y-6">
+      
+      <!-- Template Selector Bar -->
+      <div class="no-print bg-teal-50 border border-teal-200 p-3 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs">
+        <span class="font-bold text-moe-teal flex items-center gap-1.5">
+          <i class="fa-solid fa-eye"></i> اختر نمط اللوحة:
+        </span>
+        <div class="flex flex-wrap gap-2">
+          <button onclick="setDashboardStyle(1)" id="styleBtn-1" class="style-btn bg-moe-teal text-white px-3 py-1 rounded-lg font-bold shadow-sm">
+            نمط 1: اللوحة الشاملة
+          </button>
+          <button onclick="setDashboardStyle(2)" id="styleBtn-2" class="style-btn bg-white text-gray-700 hover:bg-gray-100 px-3 py-1 rounded-lg font-bold border">
+            نمط 2: بطاقة التفسير والمؤشرات
+          </button>
+          <button onclick="setDashboardStyle(3)" id="styleBtn-3" class="style-btn bg-white text-gray-700 hover:bg-gray-100 px-3 py-1 rounded-lg font-bold border">
+            نمط 3: لوحة المتابعة والدعم
+          </button>
+          <button onclick="setDashboardStyle(4)" id="styleBtn-4" class="style-btn bg-white text-gray-700 hover:bg-gray-100 px-3 py-1 rounded-lg font-bold border">
+            نمط 4: خريطة الأداء والمسارات
+          </button>
+        </div>
+      </div>
+
+      <!-- DASHBOARD CANVAS -->
+      <div id="dashboardCanvas" class="bg-white p-6 md:p-8 rounded-2xl shadow-md border border-gray-200 print-shadow-none relative overflow-hidden">
+        
+        <!-- OFFICIAL MINISTRY HEADER -->
+        <div class="border-b-2 border-emerald-700/20 pb-4 mb-6">
+          <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+            
+            <!-- Ministry Logo -->
+            <div class="flex items-center gap-3">
+              <img src="https://salogos.b-cdn.net/logos/svg/1774895141785-5zgexuf8.svg" alt="شعار وزارة التعليم" class="h-16 w-auto object-contain" onerror="this.onerror=null; this.src='https://placehold.co/120x60/00675b/ffffff?text=Ministry+of+Education';">
+              <div>
+                <h2 class="text-xs font-bold text-gray-500 tracking-wider">المملكة العربية السعودية</h2>
+                <h3 class="text-base font-extrabold text-moe-teal">وزارة الـتـعـلـيـم</h3>
+                <p class="text-[10px] text-gray-400 font-semibold">Ministry of Education</p>
+              </div>
+            </div>
+
+            <!-- Title Header (Clean with no sub-text) -->
+            <div class="text-center">
+              <h2 id="dashTitle" class="text-2xl md:text-3xl font-black text-moe-teal">بطاقة تحليل نتائج نافس</h2>
+            </div>
+
+            <!-- Academic Year Badge -->
+            <div class="text-left hidden md:block">
+              <div class="bg-emerald-50 border border-emerald-200 text-moe-teal p-2 rounded-xl text-center">
+                <span class="block text-[10px] font-bold text-gray-500">العام الدراسي</span>
+                <span id="dashYear" class="text-sm font-extrabold">1447 هـ</span>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- School Meta Details Grid (Populated dynamically from Card) -->
+          <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mt-5 text-center text-xs">
+            <div class="bg-slate-50 border border-slate-200 p-2.5 rounded-xl">
+              <span class="text-gray-400 block text-[10px] font-bold"><i class="fa-solid fa-school text-moe-teal"></i> المدرسة</span>
+              <span id="dashSchoolName" class="font-extrabold text-slate-800 text-xs">--</span>
+            </div>
+            <div class="bg-slate-50 border border-slate-200 p-2.5 rounded-xl">
+              <span class="text-gray-400 block text-[10px] font-bold"><i class="fa-solid fa-layer-group text-moe-teal"></i> المرحلة</span>
+              <span id="dashStage" class="font-extrabold text-slate-800 text-xs">--</span>
+            </div>
+            <div class="bg-slate-50 border border-slate-200 p-2.5 rounded-xl">
+              <span class="text-gray-400 block text-[10px] font-bold"><i class="fa-solid fa-graduation-cap text-moe-teal"></i> الصف</span>
+              <span id="dashGrade" class="font-extrabold text-slate-800 text-xs">--</span>
+            </div>
+            <div class="bg-slate-50 border border-slate-200 p-2.5 rounded-xl">
+              <span class="text-gray-400 block text-[10px] font-bold"><i class="fa-solid fa-book-open text-moe-teal"></i> المادة</span>
+              <span id="dashSubject" class="font-extrabold text-slate-800 text-xs">--</span>
+            </div>
+            <div class="bg-slate-50 border border-slate-200 p-2.5 rounded-xl col-span-2 md:col-span-1">
+              <span class="text-gray-400 block text-[10px] font-bold"><i class="fa-solid fa-venus-mars text-moe-teal"></i> نوع المدرسة</span>
+              <span id="dashGender" class="font-extrabold text-slate-800 text-xs">--</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- DYNAMIC DASHBOARD CONTENT LAYOUTS -->
+        <div id="dynamicDashboardContent">
+          <!-- Rendered dynamically by JS based on input card -->
+        </div>
+
+      </div>
+    </div>
+
+    <div id="view-fullReport" class="view-section hidden space-y-6">
+      
+      <!-- Section Header -->
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+        <h2 class="text-xl font-black text-moe-teal mb-2 flex items-center gap-2">
+          <i class="fa-solid fa-magnifying-glass-chart"></i> أولاً وثانياً: جدول تحليل المهارات والتفسير التفصيلي
+        </h2>
+        <p class="text-xs text-gray-500 mb-4">قراءة تفاعلية مستخرجة مباشرة من بطاقة نافس المدخلة.</p>
+
+        <!-- Skills Main Analytical Table -->
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs text-right border-collapse">
+            <thead>
+              <tr class="bg-moe-teal text-white text-center">
+                <th class="p-3 border">المهارة المستخرجة من البطاقة</th>
+                <th class="p-3 border">نتيجة المدرسة</th>
+                <th class="p-3 border">القيمة المرجعية / الوطني</th>
+                <th class="p-3 border">مقدار الفجوة</th>
+                <th class="p-3 border">مستوى الأداء</th>
+                <th class="p-3 border">الأولوية</th>
+              </tr>
+            </thead>
+            <tbody id="skillsReportTableBody" class="divide-y divide-gray-200 text-center">
+              <!-- JS Populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Detailed Interpretations Cards for Each Skill -->
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+        <h3 class="text-lg font-bold text-moe-teal mb-4 flex items-center gap-2">
+          <i class="fa-solid fa-list-check"></i> تفسير النتائج بالتفصيل الدقيق لكل مهارة
+        </h3>
+        <div id="skillsDetailedInterpretations" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- JS Populated -->
+        </div>
+      </div>
+
+      <!-- Priorities Section -->
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+        <h3 class="text-lg font-bold text-moe-teal mb-4 flex items-center gap-2">
+          <i class="fa-solid fa-bullseye"></i> ثالثاً: ترتيب الأولويات المستندة إلى بيانات البطاقة
+        </h3>
+        <div id="prioritiesReasoning" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <!-- JS Populated -->
+        </div>
+      </div>
+
+      <!-- Multi-Stakeholder Plan (Student, Teacher, Parent, Admin) -->
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 space-y-6">
+        <h3 class="text-lg font-bold text-moe-teal flex items-center gap-2 border-b pb-3">
+          <i class="fa-solid fa-users-gear"></i> الأدوار المساندة وخطة التحسين المعتمدة على بيانات البطاقة
+        </h3>
+
+        <!-- Roles Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <!-- Student -->
+          <div class="bg-emerald-50/60 p-4 rounded-xl border border-emerald-200">
+            <h4 class="font-extrabold text-moe-teal mb-3 flex items-center gap-2 text-sm">
+              <i class="fa-solid fa-user-graduate text-emerald-600"></i> خـطـة الـطـالـب / الـطـالـبـة
+            </h4>
+            <ul id="studentPlanList" class="space-y-2 text-xs text-gray-700 list-disc list-inside">
+              <!-- JS Populated -->
+            </ul>
+          </div>
+
+          <!-- Teacher -->
+          <div class="bg-blue-50/60 p-4 rounded-xl border border-blue-200">
+            <h4 class="font-extrabold text-blue-900 mb-3 flex items-center gap-2 text-sm">
+              <i class="fa-solid fa-chalkboard-user text-blue-600"></i> خـطـة الـمـعـلـم / الـمـعـلـمـة
+            </h4>
+            <ul id="teacherPlanList" class="space-y-2 text-xs text-gray-700 list-disc list-inside">
+              <!-- JS Populated -->
+            </ul>
+          </div>
+
+          <!-- Parent -->
+          <div class="bg-amber-50/60 p-4 rounded-xl border border-amber-200">
+            <h4 class="font-extrabold text-amber-900 mb-3 flex items-center gap-2 text-sm">
+              <i class="fa-solid fa-house-chimney-user text-amber-600"></i> دور الـأســرة (ولـي الأمـر)
+            </h4>
+            <ul id="parentPlanList" class="space-y-2 text-xs text-gray-700 list-disc list-inside">
+              <!-- JS Populated -->
+            </ul>
+          </div>
+        </div>
+
+        <!-- Administrative Table -->
+        <div>
+          <h4 class="font-bold text-slate-800 text-sm mb-3 flex items-center gap-2">
+            <i class="fa-solid fa-sitemap text-moe-teal"></i> جدول متابعة الإدارة المدرسية للمهارات المستهدفة
+          </h4>
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs text-right border">
+              <thead class="bg-slate-100 text-slate-800 font-bold border-b">
+                <tr>
+                  <th class="p-2 border">الأولوية والمهارة</th>
+                  <th class="p-2 border">الإجراء التنفيذي</th>
+                  <th class="p-2 border">المسؤول</th>
+                  <th class="p-2 border">زمن التنفيذ</th>
+                  <th class="p-2 border">أداة القياس</th>
+                  <th class="p-2 border">الشاهد المرفق</th>
+                </tr>
+              </thead>
+              <tbody id="adminTableBody" class="divide-y text-gray-700">
+                <!-- JS Populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <div id="view-timelineImpact" class="view-section hidden space-y-6">
+      
+      <!-- Timeline Card -->
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+        <h2 class="text-xl font-black text-moe-teal mb-4 flex items-center gap-2">
+          <i class="fa-solid fa-calendar-days"></i> خطة التحسين وقياس الأثر (البرنامج الزمني 4 أسابيع)
+        </h2>
+
+        <div id="dynamicTimelineGrid" class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <!-- JS Rendered dynamically based on skill gaps from the card -->
+        </div>
+      </div>
+
+      <!-- Impact Measurement Table (Dynamically Built from Card Data) -->
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+        <h3 class="text-lg font-bold text-moe-teal mb-4 flex items-center gap-2">
+          <i class="fa-solid fa-chart-line"></i> جدول قياس الأثر والتحسن الفعلي المربوط بالبطاقة
+        </h3>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs text-right border">
+            <thead class="bg-moe-teal text-white">
+              <tr>
+                <th class="p-3 border">المهارة المستهدفة من البطاقة</th>
+                <th class="p-3 border">القياس القبلي (%)</th>
+                <th class="p-3 border">التدخل المنفذ</th>
+                <th class="p-3 border">القياس البعدي المتوقع (%)</th>
+                <th class="p-3 border">مقدار التحسن المستهدف</th>
+                <th class="p-3 border">القرار المستقبلي</th>
+              </tr>
+            </thead>
+            <tbody id="impactMeasurementBody" class="divide-y text-gray-700 text-center">
+              <!-- JS Populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <div id="view-executiveSummary" class="view-section hidden">
+      <div class="bg-white p-8 rounded-2xl shadow-sm border border-gray-300 page-break">
+        
+        <!-- Header with Ministry Logo -->
+        <div class="text-center border-b pb-4 mb-6 flex flex-col items-center">
+          <img src="https://salogos.b-cdn.net/logos/svg/1774895141785-5zgexuf8.svg" alt="شعار وزارة التعليم" class="h-14 w-auto object-contain mb-2">
+          <h2 class="text-2xl font-black text-moe-teal">الملخص التنفيذي لنتائج بطاقة نافس</h2>
+          <p class="text-xs text-gray-500 mt-1">تقرير إحصائي قيادي يعكس تحليل بطاقة نافس المدخلة</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
+          
+          <!-- Top Strengths & Weaknesses -->
+          <div class="space-y-4">
+            <div class="bg-emerald-50 p-4 rounded-xl border border-emerald-200">
+              <h3 class="font-black text-emerald-900 text-sm mb-2 flex items-center gap-2">
+                <i class="fa-solid fa-circle-check text-emerald-600"></i> أقوى المهارات (نقاط القوة)
+              </h3>
+              <ul id="execStrengths" class="list-disc list-inside space-y-1 text-emerald-800 font-bold">
+                <!-- JS -->
+              </ul>
+            </div>
+
+            <div class="bg-red-50 p-4 rounded-xl border border-red-200">
+              <h3 class="font-black text-red-900 text-sm mb-2 flex items-center gap-2">
+                <i class="fa-solid fa-triangle-exclamation text-red-600"></i> المهارات الأكثر احتياجاً للتطوير
+              </h3>
+              <ul id="execWeaknesses" class="list-disc list-inside space-y-1 text-red-800 font-bold">
+                <!-- JS -->
+              </ul>
+            </div>
+          </div>
+
+          <!-- Critical Metrics -->
+          <div class="space-y-4">
+            <div class="bg-amber-50 p-4 rounded-xl border border-amber-200">
+              <h3 class="font-black text-amber-900 text-sm mb-2 flex items-center gap-2">
+                <i class="fa-solid fa-chart-pie text-amber-600"></i> أكبر فجوة أداء مسجلة
+              </h3>
+              <p id="execGapText" class="text-slate-700 leading-relaxed font-semibold">
+                --
+              </p>
+            </div>
+
+            <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+              <h3 class="font-black text-slate-800 text-sm mb-2 flex items-center gap-2">
+                <i class="fa-solid fa-list-ol text-moe-teal"></i> أهم الأولويات التطويرية
+              </h3>
+              <ol id="execPriorities" class="list-decimal list-inside space-y-1 text-slate-700 font-semibold">
+                <!-- JS -->
+              </ol>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Immediate Action & Responsibilities -->
+        <div class="mt-6 border-t pt-4 space-y-4 text-xs">
+          <div class="bg-teal-50 p-4 rounded-xl border border-teal-200">
+            <h3 class="font-bold text-moe-teal text-sm mb-1"><i class="fa-solid fa-bolt"></i> الإجراء العاجل المباشر:</h3>
+            <p id="execImmediateAction" class="text-gray-700 leading-relaxed">
+              تطبيق التدخلات العلاجية المباشرة للمهارات ذات الأولوية العاجلة وتفعيل ورش التدريب المركز.
+            </p>
+          </div>
+
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
+            <div class="border p-2 rounded-lg bg-gray-50">
+              <span class="block text-gray-400 text-[10px]">المعلم المسؤول</span>
+              <span class="font-bold text-slate-800" id="execTeacherLabel">معلم المادة</span>
+            </div>
+            <div class="border p-2 rounded-lg bg-gray-50">
+              <span class="block text-gray-400 text-[10px]">المشرف المتابع</span>
+              <span class="font-bold text-slate-800">المشرف التربوي</span>
+            </div>
+            <div class="border p-2 rounded-lg bg-gray-50">
+              <span class="block text-gray-400 text-[10px]">فترة القياس البعدي</span>
+              <span class="font-bold text-slate-800">نهاية الأسبوع 4</span>
+            </div>
+            <div class="border p-2 rounded-lg bg-gray-50">
+              <span class="block text-gray-400 text-[10px]">مدير/ة المدرسة</span>
+              <span class="font-bold text-slate-800">اعتماد اللوحة</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Signatures Footer -->
+        <div class="mt-12 pt-6 border-t flex justify-between items-center text-xs text-center font-bold text-slate-700">
+          <div>
+            <p>معلم/ة المادة</p>
+            <p class="mt-6 text-gray-400">التوقيع: ....................</p>
+          </div>
+          <div>
+            <p>الموجه/ة الطلابي/ة</p>
+            <p class="mt-6 text-gray-400">التوقيع: ....................</p>
+          </div>
+          <div>
+            <p>مدير/ة المدرسة</p>
+            <p class="mt-6 text-gray-400">التوقيع والخاتم: ....................</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </main>
+
+  <div id="editModal" class="no-print fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4 overflow-y-auto">
+    <div class="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-2xl border border-gray-200 my-8">
+      
+      <div class="flex justify-between items-center border-b pb-3 mb-4">
+        <h3 class="text-lg font-black text-moe-teal flex items-center gap-2">
+          <i class="fa-solid fa-sliders"></i> تعديل بيانات بطاقة نافس
+        </h3>
+        <button onclick="closeModal('editModal')" class="text-gray-400 hover:text-red-500 text-xl font-bold">
+          &times;
+        </button>
+      </div>
+
+      <form id="editForm" onsubmit="handleFormSave(event)" class="space-y-4 text-xs">
+        
+        <!-- School Meta -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label class="block font-bold text-gray-700 mb-1">اسم المدرسة</label>
+            <input type="text" id="inputSchool" class="w-full border p-2 rounded-lg font-semibold" required>
+          </div>
+          <div>
+            <label class="block font-bold text-gray-700 mb-1">نوع المدرسة</label>
+            <select id="inputGender" class="w-full border p-2 rounded-lg font-semibold">
+              <option value="بنين">بنين</option>
+              <option value="بنات">بنات</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-bold text-gray-700 mb-1">المرحلة الدراسية</label>
+            <select id="inputStage" class="w-full border p-2 rounded-lg font-semibold">
+              <option value="المتوسطة">المتوسطة</option>
+              <option value="الابتدائية">الابتدائية</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-bold text-gray-700 mb-1">المادة (اختبارات نافس)</label>
+            <select id="inputSubject" class="w-full border p-2 rounded-lg font-semibold">
+              <option value="القراءة">القراءة</option>
+              <option value="العلوم">العلوم</option>
+              <option value="الرياضيات">الرياضيات</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-bold text-gray-700 mb-1">الصف</label>
+            <input type="text" id="inputGrade" class="w-full border p-2 rounded-lg font-semibold" required>
+          </div>
+          <div>
+            <label class="block font-bold text-gray-700 mb-1">العام الدراسي</label>
+            <input type="text" id="inputYear" class="w-full border p-2 rounded-lg font-semibold" required>
+          </div>
+        </div>
+
+        <!-- Dynamic Skills Input Table -->
+        <div class="border-t pt-3">
+          <div class="flex justify-between items-center mb-2">
+            <label class="font-bold text-moe-teal text-sm">المهارات المعتمدة بالبطاقة</label>
+            <button type="button" onclick="addSkillRow()" class="bg-emerald-600 text-white px-2.5 py-1 rounded text-xs font-bold hover:bg-emerald-700">
+              + إضافة مهارة
+            </button>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full border text-right">
+              <thead class="bg-gray-100 font-bold">
+                <tr>
+                  <th class="p-2 border">اسم المهارة</th>
+                  <th class="p-2 border w-24">نتيجة المدرسة</th>
+                  <th class="p-2 border w-24">القيمة المرجعية</th>
+                  <th class="p-2 border w-12 text-center">حذف</th>
+                </tr>
+              </thead>
+              <tbody id="skillsInputBody">
+                <!-- JS Rows -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="border-t pt-4 flex justify-end gap-2">
+          <button type="button" onclick="closeModal('editModal')" class="px-4 py-2 bg-gray-200 text-gray-700 font-bold rounded-lg hover:bg-gray-300">
+            إلغاء
+          </button>
+          <button type="submit" class="px-5 py-2 bg-moe-teal text-white font-bold rounded-lg hover:bg-emerald-800">
+            حفظ وتحديث اللوحة
+          </button>
+        </div>
+
+      </form>
+
+    </div>
+  </div>
+
+  <script>
+    // Configure PDF.js Worker
+    if (typeof pdfjsLib !== 'undefined') {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+
+    // GLOBAL STATE (Only Official Nafs Subjects: القراءة, العلوم, الرياضيات)
+    let appData = {
+      schoolName: "مدرسة الريادة المتوسطة للبنين",
+      gender: "بنين",
+      stage: "المتوسطة",
+      grade: "الثالث المتوسط",
+      subject: "القراءة",
+      academicYear: "1447هـ",
+      dashboardStyle: 1, // 1: Standard Dashboard, 2: Math/Reading Card, 3: Support Monitor, 4: Science/Subject Map
+      skills: [
+        { name: "فهم المقروء", score: 68, benchmark: 74 },
+        { name: "استنتاج المعنى", score: 61, benchmark: 72 },
+        { name: "الفكرة الرئيسة والتفاصيل", score: 75, benchmark: 73 },
+        { name: "توظيف المفردات", score: 64, benchmark: 71 }
+      ]
+    };
+
+    // SAMPLE PRESETS FOR OFFICIAL NAFS SUBJECTS
+    const PRESETS = {
+      1: {
+        schoolName: "مدرسة الريادة المتوسطة",
+        gender: "بنين",
+        stage: "المتوسطة",
+        grade: "الثالث المتوسط",
+        subject: "القراءة",
+        academicYear: "1447هـ",
+        dashboardStyle: 1,
+        skills: [
+          { name: "فهم المقروء", score: 68, benchmark: 74 },
+          { name: "استنتاج المعنى", score: 61, benchmark: 72 },
+          { name: "الفكرة الرئيسة والتفاصيل", score: 75, benchmark: 73 },
+          { name: "توظيف المفردات", score: 64, benchmark: 71 }
+        ]
+      },
+      2: {
+        schoolName: "مدرسة الإبداع المتوسطة",
+        gender: "بنات",
+        stage: "المتوسطة",
+        grade: "الثالث المتوسط",
+        subject: "الرياضيات",
+        academicYear: "1447هـ",
+        dashboardStyle: 2,
+        skills: [
+          { name: "الكسور والنسب", score: 59, benchmark: 70 },
+          { name: "حل المسألة", score: 63, benchmark: 72 },
+          { name: "الهندسة والقياس", score: 74, benchmark: 71 },
+          { name: "تمثيل البيانات", score: 66, benchmark: 73 }
+        ]
+      },
+      3: {
+        schoolName: "مدرسة الأفاق المتوسطة",
+        gender: "بنين",
+        stage: "المتوسطة",
+        grade: "الثالث المتوسط",
+        subject: "العلوم",
+        academicYear: "1447هـ",
+        dashboardStyle: 4,
+        skills: [
+          { name: "تفسير الظواهر العلمية", score: 62, benchmark: 71 },
+          { name: "تصميم الاستقصاء", score: 57, benchmark: 69 },
+          { name: "قراءة الرسوم والجداول", score: 73, benchmark: 72 },
+          { name: "تطبيق المفاهيم العلمية", score: 65, benchmark: 70 }
+        ]
+      }
+    };
+
+    // INIT ON LOAD
+    window.onload = function() {
+      populatePdfInputFormFromState();
+      renderAll();
+    };
+
+    function loadPreset(presetNum) {
+      if (PRESETS[presetNum]) {
+        appData = JSON.parse(JSON.stringify(PRESETS[presetNum]));
+        populatePdfInputFormFromState();
+        renderAll();
+      }
+    }
+
+    function switchView(viewId) {
+      document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
+      document.getElementById('view-' + viewId).classList.remove('hidden');
+
+      document.querySelectorAll('.view-tab').forEach(btn => {
+        btn.classList.remove('bg-moe-teal', 'text-white', 'shadow');
+        btn.classList.add('bg-white', 'text-gray-700', 'border');
+      });
+
+      const activeBtn = document.getElementById('tab-' + viewId);
+      if (activeBtn) {
+        activeBtn.classList.remove('bg-white', 'text-gray-700', 'border');
+        activeBtn.classList.add('bg-moe-teal', 'text-white', 'shadow');
+      }
+    }
+
+    function setDashboardStyle(styleNum) {
+      appData.dashboardStyle = styleNum;
+      
+      document.querySelectorAll('.style-btn').forEach(btn => {
+        btn.classList.remove('bg-moe-teal', 'text-white', 'shadow-sm');
+        btn.classList.add('bg-white', 'text-gray-700');
+      });
+
+      const activeStyleBtn = document.getElementById('styleBtn-' + styleNum);
+      if (activeStyleBtn) {
+        activeStyleBtn.classList.remove('bg-white', 'text-gray-700');
+        activeStyleBtn.classList.add('bg-moe-teal', 'text-white', 'shadow-sm');
+      }
+
+      renderDashboard();
+    }
+
+    async function handlePdfUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const badge = document.getElementById('pdfStatusBadge');
+      badge.className = "bg-blue-100 text-blue-800 font-bold text-[10px] px-2.5 py-0.5 rounded-full";
+      badge.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> جاري قراءة بطاقة نافس (PDF)...';
+
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        let fullText = "";
+
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const textContent = await page.getTextContent();
+          const pageText = textContent.items.map(item => item.str).join(' ');
+          fullText += pageText + "\n";
+        }
+
+        document.getElementById('rawPdfText').value = fullText;
+        parsePdfExtractedText(fullText);
+
+        badge.className = "bg-emerald-100 text-emerald-800 font-bold text-[10px] px-2.5 py-0.5 rounded-full";
+        badge.innerHTML = '<i class="fa-solid fa-check"></i> تم القراءة واستخراج البيانات!';
+      } catch (err) {
+        console.error(err);
+        badge.className = "bg-red-100 text-red-800 font-bold text-[10px] px-2.5 py-0.5 rounded-full";
+        badge.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> يرجى التأكد من اختيار الملف الصحيح.';
+      }
+    }
+
+    function parseRawText() {
+      const text = document.getElementById('rawPdfText').value;
+      if (text.trim()) {
+        parsePdfExtractedText(text);
+      }
+    }
+
+    function parsePdfExtractedText(text) {
+      const cleanText = text.replace(/\s+/g, ' ');
+
+      // 1. Auto detect School Name
+      const schoolMatch = cleanText.match(/(مدرسة\s+[\u0600-\u06FF0-9\s]+?)(?=\s+المرحلة|\s+الصف|\s+المجال|\s+المادة|\s+بنين|\s+بنات|\s+للإناث|\s+للذكور|\s+العام|$)/i);
+      if (schoolMatch && schoolMatch[1]) {
+        document.getElementById('pdfSchoolName').value = schoolMatch[1].trim();
+      }
+
+      // 2. Auto detect Gender
+      if (/بنات|للإناث|إناث/i.test(cleanText)) {
+        document.getElementById('pdfGender').value = "بنات";
+      } else if (/بنين|للذكور|ذكور/i.test(cleanText)) {
+        document.getElementById('pdfGender').value = "بنين";
+      }
+
+      // 3. Auto detect Subject (Restricted to official Nafs subjects: القراءة, العلوم, الرياضيات)
+      if (/الرياضيات|رياضيات/i.test(cleanText)) document.getElementById('pdfSubject').value = "الرياضيات";
+      else if (/العلوم|علوم/i.test(cleanText)) document.getElementById('pdfSubject').value = "العلوم";
+      else document.getElementById('pdfSubject').value = "القراءة";
+
+      // 4. Auto detect Stage & Grade
+      if (/الابتدائية|الابتدائي|ابتدائي/i.test(cleanText)) document.getElementById('pdfStage').value = "الابتدائية";
+      else if (/المتوسطة|المتوسط|متوسط/i.test(cleanText)) document.getElementById('pdfStage').value = "المتوسطة";
+
+      if (/الثالث المتوسط|3 متوسط|الصف الثالث المتوسط/i.test(cleanText)) document.getElementById('pdfGrade').value = "الثالث المتوسط";
+      else if (/السادس الابتدائي|6 ابتدائي|الصف السادس الابتدائي/i.test(cleanText)) document.getElementById('pdfGrade').value = "السادس الابتدائي";
+      else if (/الثالث الابتدائي|3 ابتدائي|الصف الثالث الابتدائي/i.test(cleanText)) document.getElementById('pdfGrade').value = "الثالث الابتدائي";
+
+      // 5. Academic Year
+      const yearMatch = cleanText.match(/(14\d\d\s*هـ?)/);
+      if (yearMatch) {
+        document.getElementById('pdfYear').value = yearMatch[0].trim();
+      }
+
+      // 6. Try parsing numbers and skills
+      const knownSkills = [
+        "فهم المقروء", "استنتاج المعنى", "الفكرة الرئيسة والتفاصيل", "الفكرة الرئيسة", "توظيف المفردات", "المفردات والسياق",
+        "الكسور والنسب", "حل المسألة", "الهندسة والقياس", "تمثيل البيانات",
+        "تفسير الظواهر العلمية", "تصميم الاستقصاء", "قراءة الرسوم والجداول", "تطبيق المفاهيم العلمية"
+      ];
+
+      let foundSkills = [];
+      knownSkills.forEach(skill => {
+        if (cleanText.includes(skill)) {
+          const index = cleanText.indexOf(skill);
+          const snippet = cleanText.substring(index, index + 100);
+          const numbers = snippet.match(/\b\d{2}\b/g);
+          
+          let score = 65;
+          let bench = 72;
+          if (numbers && numbers.length >= 2) {
+            score = parseInt(numbers[0]);
+            bench = parseInt(numbers[1]);
+          }
+          foundSkills.push({ name: skill, score, benchmark: bench });
+        }
+      });
+
+      if (foundSkills.length > 0) {
+        renderPdfSkillsInputRows(foundSkills);
+      }
+    }
+
+    function populatePdfInputFormFromState() {
+      document.getElementById('pdfSchoolName').value = appData.schoolName;
+      document.getElementById('pdfGender').value = appData.gender;
+      document.getElementById('pdfStage').value = appData.stage;
+      document.getElementById('pdfSubject').value = appData.subject;
+      document.getElementById('pdfGrade').value = appData.grade;
+      document.getElementById('pdfYear').value = appData.academicYear;
+
+      renderPdfSkillsInputRows(appData.skills);
+    }
+
+    function renderPdfSkillsInputRows(skillsList) {
+      const tbody = document.getElementById('pdfSkillsBody');
+      tbody.innerHTML = skillsList.map(s => `
+        <tr class="border-b">
+          <td class="p-2 border">
+            <input type="text" value="${s.name}" class="pdf-skill-name w-full p-1 border rounded text-xs font-bold" required>
+          </td>
+          <td class="p-2 border text-center">
+            <input type="number" value="${s.score}" class="pdf-skill-score w-16 p-1 border rounded text-center text-xs font-bold text-moe-teal" required>
+          </td>
+          <td class="p-2 border text-center">
+            <input type="number" value="${s.benchmark}" class="pdf-skill-bench w-16 p-1 border rounded text-center text-xs font-bold text-gray-600" required>
+          </td>
+          <td class="p-2 border text-center">
+            <button type="button" onclick="this.closest('tr').remove()" class="text-red-500 font-bold hover:text-red-700">&times;</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function addPdfSkillRow() {
+      const tbody = document.getElementById('pdfSkillsBody');
+      const tr = document.createElement('tr');
+      tr.className = "border-b";
+      tr.innerHTML = `
+        <td class="p-2 border">
+          <input type="text" placeholder="اسم المهارة الجديد" class="pdf-skill-name w-full p-1 border rounded text-xs font-bold" required>
+        </td>
+        <td class="p-2 border text-center">
+          <input type="number" placeholder="60" class="pdf-skill-score w-16 p-1 border rounded text-center text-xs font-bold text-moe-teal" required>
+        </td>
+        <td class="p-2 border text-center">
+          <input type="number" placeholder="70" class="pdf-skill-bench w-16 p-1 border rounded text-center text-xs font-bold text-gray-600" required>
+        </td>
+        <td class="p-2 border text-center">
+          <button type="button" onclick="this.closest('tr').remove()" class="text-red-500 font-bold hover:text-red-700">&times;</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    }
+
+    function applyPdfDataToSystem() {
+      appData.schoolName = document.getElementById('pdfSchoolName').value || "المدرسة المعينة";
+      appData.gender = document.getElementById('pdfGender').value;
+      appData.stage = document.getElementById('pdfStage').value;
+      appData.subject = document.getElementById('pdfSubject').value || "القراءة";
+      appData.grade = document.getElementById('pdfGrade').value || "الثالث المتوسط";
+      appData.academicYear = document.getElementById('pdfYear').value || "1447هـ";
+
+      const rows = document.querySelectorAll('#pdfSkillsBody tr');
+      const newSkills = [];
+      rows.forEach(r => {
+        const name = r.querySelector('.pdf-skill-name').value;
+        const score = parseFloat(r.querySelector('.pdf-skill-score').value) || 0;
+        const benchmark = parseFloat(r.querySelector('.pdf-skill-bench').value) || 0;
+        if (name) {
+          newSkills.push({ name, score, benchmark });
+        }
+      });
+
+      if (newSkills.length > 0) {
+        appData.skills = newSkills;
+      }
+
+      if (appData.subject.includes("رياضيات")) appData.dashboardStyle = 2;
+      else if (appData.subject.includes("علوم")) appData.dashboardStyle = 4;
+      else appData.dashboardStyle = 1;
+
+      renderAll();
+      switchView('visualDashboard');
+    }
+
+    function getSkillStatus(gap) {
+      if (gap >= 0) {
+        return {
+          label: "🟢 نقطة قوة",
+          badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-300",
+          icon: "fa-circle-check",
+          color: "emerald"
+        };
+      } else if (gap >= -8) {
+        return {
+          label: "🟡 تحتاج تحسينًا",
+          badgeClass: "bg-amber-100 text-amber-800 border-amber-300",
+          icon: "fa-triangle-exclamation",
+          color: "amber"
+        };
+      } else {
+        return {
+          label: "🔴 أولوية عاجلة",
+          badgeClass: "bg-red-100 text-red-800 border-red-300",
+          icon: "fa-circle-exclamation",
+          color: "red"
+        };
+      }
+    }
+
+    function renderAll() {
+      document.getElementById('dashSchoolName').innerText = appData.schoolName;
+      document.getElementById('dashStage').innerText = appData.stage;
+      document.getElementById('dashGrade').innerText = appData.grade;
+      document.getElementById('dashSubject').innerText = appData.subject;
+      document.getElementById('dashGender').innerText = appData.gender;
+      document.getElementById('dashYear').innerText = appData.academicYear;
+
+      renderDashboard();
+      renderAnalyticalReport();
+      renderTimelineAndImpact();
+      renderExecutiveSummary();
+    }
+
+    function renderDashboard() {
+      const container = document.getElementById('dynamicDashboardContent');
+      const skills = appData.skills.map(s => {
+        const gap = s.score - s.benchmark;
+        const status = getSkillStatus(gap);
+        return { ...s, gap, status };
+      });
+
+      if (appData.dashboardStyle === 1) {
+        let skillsRowsHtml = skills.map(s => `
+          <tr class="border-b hover:bg-slate-50">
+            <td class="p-3 font-bold text-slate-800 text-right">${s.name}</td>
+            <td class="p-3 font-extrabold text-moe-teal">${s.score}</td>
+            <td class="p-3 font-semibold text-slate-600">${s.benchmark}</td>
+            <td class="p-3 font-bold ${s.gap < 0 ? 'text-red-600' : 'text-emerald-600'}">${s.gap > 0 ? '+' + s.gap : s.gap}</td>
+            <td class="p-3">
+              <span class="inline-block px-2.5 py-1 rounded-full text-[11px] font-bold border ${s.status.badgeClass}">
+                ${s.status.label}
+              </span>
+            </td>
+          </tr>
+        `).join('');
+
+        const weakSkills = skills.filter(s => s.gap < 0).sort((a,b) => a.gap - b.gap);
+        const topPriorities = weakSkills.slice(0, 3);
+
+        let prioritiesHtml = topPriorities.map((p, idx) => `
+          <div class="flex items-center gap-2 bg-emerald-50 p-2.5 rounded-xl border border-emerald-200">
+            <span class="bg-moe-teal text-white w-6 h-6 rounded-full flex items-center justify-center font-black text-xs">${idx + 1}</span>
+            <span class="font-bold text-slate-800 text-xs">${p.name}</span>
+          </div>
+        `).join('');
+
+        container.innerHTML = `
+          <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 mt-4">
+            <div class="lg:col-span-3 space-y-6">
+              <div class="bg-white border rounded-2xl p-4 shadow-sm">
+                <h3 class="font-black text-moe-teal text-sm mb-3 flex items-center gap-2">
+                  <i class="fa-solid fa-chart-simple"></i> تحليل مهارات بطاقة نافس
+                </h3>
+                <div class="overflow-x-auto">
+                  <table class="w-full text-xs text-center border-collapse">
+                    <thead class="bg-slate-100 text-slate-700 border-b">
+                      <tr>
+                        <th class="p-2.5 text-right">المهارة</th>
+                        <th class="p-2.5">نتيجة المدرسة</th>
+                        <th class="p-2.5">القيمة المرجعية</th>
+                        <th class="p-2.5">الفجوة</th>
+                        <th class="p-2.5">مستوى الأداء</th>
+                      </tr>
+                    </thead>
+                    <tbody>${skillsRowsHtml}</tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="bg-emerald-50/70 border border-emerald-200 p-3.5 rounded-xl text-xs">
+                  <h4 class="font-extrabold text-moe-teal mb-2 flex items-center gap-1.5">
+                    <i class="fa-solid fa-user-graduate"></i> للـطـالـب / الـطـالـبـة:
+                  </h4>
+                  <ul class="space-y-1.5 text-slate-700 list-disc list-inside font-semibold">
+                    <li>تطبيقات مهارية مركزة لـ (${appData.subject})</li>
+                    <li>تدريب أسبوعي قصير</li>
+                    <li>اختبار قياس محاكي قصير</li>
+                  </ul>
+                </div>
+
+                <div class="bg-blue-50/70 border border-blue-200 p-3.5 rounded-xl text-xs">
+                  <h4 class="font-extrabold text-blue-900 mb-2 flex items-center gap-1.5">
+                    <i class="fa-solid fa-chalkboard-user"></i> لـلـمـعـلـم / لـلـمـعـلـمـة:
+                  </h4>
+                  <ul class="space-y-1.5 text-slate-700 list-disc list-inside font-semibold">
+                    <li>تحليل أسئلة الأخطاء الشائعة</li>
+                    <li>استراتيجيات معالجة مهارات (${appData.subject})</li>
+                    <li>متابعة وتحليل الأداء الفردي</li>
+                  </ul>
+                </div>
+
+                <div class="bg-amber-50/70 border border-amber-200 p-3.5 rounded-xl text-xs">
+                  <h4 class="font-extrabold text-amber-900 mb-2 flex items-center gap-1.5">
+                    <i class="fa-solid fa-house-user"></i> لـولـي الأمـر:
+                  </h4>
+                  <ul class="space-y-1.5 text-slate-700 list-disc list-inside font-semibold">
+                    <li>متابعة منزلية (10 دقائق يومياً)</li>
+                    <li>تعزيز مهارات (${appData.subject})</li>
+                    <li>التواصل المستمر مع المدرسة</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div class="space-y-6">
+              <div class="bg-teal-50/80 border border-teal-200 p-4 rounded-2xl">
+                <h3 class="font-black text-moe-teal text-sm mb-3 flex items-center gap-2">
+                  <i class="fa-solid fa-bullseye"></i> الأولويات المستهدفة بالبطاقة
+                </h3>
+                <div class="space-y-2">
+                  ${prioritiesHtml || '<p class="text-xs text-emerald-700 font-bold">جميع المهارات مستقرة وأعلى من المرجعي</p>'}
+                </div>
+              </div>
+
+              <div class="bg-slate-900 text-white p-4 rounded-2xl text-xs space-y-2">
+                <h4 class="font-black text-amber-400 flex items-center gap-2">
+                  <i class="fa-solid fa-clock"></i> الخطة الزمنية لـ (${appData.subject})
+                </h4>
+                <div class="space-y-1 text-[11px]">
+                  <p><span class="text-emerald-400 font-bold">الأسبوع 1:</span> تشخيص الاحتياج</p>
+                  <p><span class="text-amber-400 font-bold">الأسبوع 2:</span> التدخل العلاجي</p>
+                  <p><span class="text-blue-400 font-bold">الأسبوع 3:</span> التدريب المحاكي</p>
+                  <p><span class="text-purple-400 font-bold">الأسبوع 4:</span> قياس الأثر والتحسن</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      } else if (appData.dashboardStyle === 2) {
+        let skillsCardsHtml = skills.map(s => `
+          <div class="bg-white border-2 border-slate-200 p-4 rounded-xl flex flex-col justify-between">
+            <div class="flex justify-between items-center mb-2">
+              <span class="font-extrabold text-slate-800 text-sm">${s.name}</span>
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold ${s.status.badgeClass}">${s.status.label}</span>
+            </div>
+            <div class="grid grid-cols-3 text-center my-3 text-xs bg-slate-50 p-2 rounded-lg">
+              <div>
+                <span class="block text-[10px] text-gray-400 font-bold">نتيجة المدرسة</span>
+                <span class="font-black text-moe-teal text-sm">${s.score}</span>
+              </div>
+              <div>
+                <span class="block text-[10px] text-gray-400 font-bold">المعيار الوطني</span>
+                <span class="font-black text-slate-600 text-sm">${s.benchmark}</span>
+              </div>
+              <div>
+                <span class="block text-[10px] text-gray-400 font-bold">الفجوة</span>
+                <span class="font-black ${s.gap < 0 ? 'text-red-600' : 'text-emerald-600'} text-sm">${s.gap > 0 ? '+' + s.gap : s.gap}</span>
+              </div>
+            </div>
+            <p class="text-[11px] text-gray-600 font-semibold bg-emerald-50/50 p-2 rounded text-right border border-emerald-100">
+              <i class="fa-solid fa-lightbulb text-amber-500"></i> التفسير: ${s.gap < 0 ? 'تحتاج دعم واستراتيجيات حل مركزة' : 'أداء متميز يتطلب الاستمرار والمحافظة'}
+            </p>
+          </div>
+        `).join('');
+
+        container.innerHTML = `
+          <div class="mt-4 space-y-6">
+            <h3 class="font-black text-moe-teal text-base text-center border-b pb-2">
+              مؤشرات مهارات نافس في مادة (${appData.subject})
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              ${skillsCardsHtml}
+            </div>
+          </div>
+        `;
+      } else if (appData.dashboardStyle === 3) {
+        const strongest = [...skills].sort((a,b) => b.gap - a.gap)[0];
+        const weakest = [...skills].sort((a,b) => a.gap - b.gap)[0];
+
+        container.innerHTML = `
+          <div class="mt-4 space-y-6">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-center text-xs">
+              <div class="bg-emerald-50 border border-emerald-200 p-3 rounded-xl">
+                <span class="block text-emerald-800 text-[10px] font-bold">أقوى مهارة</span>
+                <span class="font-extrabold text-emerald-900 text-xs">${strongest ? strongest.name : '--'}</span>
+              </div>
+              <div class="bg-red-50 border border-red-200 p-3 rounded-xl">
+                <span class="block text-red-800 text-[10px] font-bold">أكبر فجوة</span>
+                <span class="font-extrabold text-red-900 text-xs">${weakest ? weakest.name + ' (' + weakest.gap + ')' : '--'}</span>
+              </div>
+              <div class="bg-amber-50 border border-amber-200 p-3 rounded-xl">
+                <span class="block text-amber-800 text-[10px] font-bold">أولوية أولى</span>
+                <span class="font-extrabold text-amber-900 text-xs">${weakest ? weakest.name : '--'}</span>
+              </div>
+              <div class="bg-blue-50 border border-blue-200 p-3 rounded-xl">
+                <span class="block text-blue-800 text-[10px] font-bold">أداة القياس القادمة</span>
+                <span class="font-extrabold text-blue-900 text-xs">اختبار قصير</span>
+              </div>
+            </div>
+
+            <div class="bg-white border rounded-xl overflow-hidden text-xs text-center">
+              <table class="w-full">
+                <thead class="bg-moe-teal text-white font-bold">
+                  <tr>
+                    <th class="p-2.5 text-right">المهارة المستهدفة</th>
+                    <th class="p-2.5">النتيجة</th>
+                    <th class="p-2.5">المرجعي</th>
+                    <th class="p-2.5">القرار والتوجيه</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y">
+                  ${skills.map(s => `
+                    <tr>
+                      <td class="p-2.5 text-right font-bold text-slate-800">${s.name}</td>
+                      <td class="p-2.5 font-black text-moe-teal">${s.score}</td>
+                      <td class="p-2.5 font-bold text-gray-500">${s.benchmark}</td>
+                      <td class="p-2.5">
+                        <span class="px-3 py-1 rounded-full font-bold ${s.gap >= 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}">
+                          ${s.gap >= 0 ? 'المحافظة على المستوى' : 'خطة علاجية ودعم عاجل'}
+                        </span>
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      } else if (appData.dashboardStyle === 4) {
+        container.innerHTML = `
+          <div class="mt-4 space-y-6">
+            <h3 class="font-black text-moe-teal text-base text-center">خريطة تحسين الأداء لبطاقة نافس (${appData.subject})</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              ${skills.map(s => `
+                <div class="bg-white border-2 rounded-2xl p-4 text-center space-y-2 shadow-sm">
+                  <span class="text-xs font-black text-slate-800 block border-b pb-2">${s.name}</span>
+                  <div class="text-2xl font-black text-moe-teal">${s.score}</div>
+                  <div class="text-[10px] text-gray-500 font-bold">المرجعي: ${s.benchmark}</div>
+                  <div class="pt-2">
+                    <span class="px-3 py-1 rounded-full text-[10px] font-bold ${s.status.badgeClass}">
+                      ${s.status.label}
+                    </span>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    function renderAnalyticalReport() {
+      const skills = appData.skills.map(s => ({
+        ...s,
+        gap: s.score - s.benchmark,
+        status: getSkillStatus(s.score - s.benchmark)
+      }));
+
+      const tableBody = document.getElementById('skillsReportTableBody');
+      tableBody.innerHTML = skills.map((s, idx) => `
+        <tr class="hover:bg-slate-50">
+          <td class="p-3 border text-right font-bold text-slate-800">${s.name}</td>
+          <td class="p-3 border font-extrabold text-moe-teal">${s.score}</td>
+          <td class="p-3 border font-semibold text-slate-600">${s.benchmark}</td>
+          <td class="p-3 border font-extrabold ${s.gap < 0 ? 'text-red-600' : 'text-emerald-600'}">${s.gap > 0 ? '+' + s.gap : s.gap}</td>
+          <td class="p-3 border">
+            <span class="px-2.5 py-1 rounded-full font-bold text-[11px] ${s.status.badgeClass}">${s.status.label}</span>
+          </td>
+          <td class="p-3 border font-bold text-slate-700">أولوية ${idx + 1}</td>
+        </tr>
+      `).join('');
+
+      const interpContainer = document.getElementById('skillsDetailedInterpretations');
+      interpContainer.innerHTML = skills.map(s => `
+        <div class="border rounded-xl p-4 bg-slate-50 space-y-2 text-xs">
+          <div class="flex justify-between items-center border-b pb-2">
+            <span class="font-extrabold text-moe-teal text-sm">${s.name}</span>
+            <span class="px-2 py-0.5 rounded font-bold ${s.status.badgeClass}">${s.status.label}</span>
+          </div>
+          <p><strong class="text-slate-800">ماذا تقيس المهارة؟</strong> تقيس قدرة الطالب/ة على استيعاب وفهم المعايير الأساسية في مادة (${appData.subject}).</p>
+          <p><strong class="text-slate-800">نتيجة المدرسة والفرق:</strong> بلغت النتيجة ${s.score} بمرجعي ${s.benchmark} (فجوة فعليّة: ${s.gap}).</p>
+          <p><strong class="text-slate-800">التوجيه الإجرائي:</strong> ${s.gap < 0 ? 'تتطلب خطة علاجية مركزة، إعادة بناء المفاهيم وتحليل أخطاء الأسئلة.' : 'مهارة ممتازة؛ يجب تقديم الأنشطة الإثرائية والمحافظة على المستوى.'}</p>
+        </div>
+      `).join('');
+
+      const weakSkills = skills.filter(s => s.gap < 0).sort((a,b) => a.gap - b.gap);
+      const prioritiesContainer = document.getElementById('prioritiesReasoning');
+      
+      prioritiesContainer.innerHTML = weakSkills.slice(0, 3).map((s, idx) => `
+        <div class="bg-red-50/70 border border-red-200 p-4 rounded-xl space-y-2 text-xs">
+          <span class="bg-red-600 text-white font-bold px-2 py-0.5 rounded text-[10px]">أولوية ${idx + 1}</span>
+          <h4 class="font-extrabold text-slate-800 text-sm">${s.name}</h4>
+          <p class="text-gray-700"><strong>الفجوة المسجلة:</strong> ${s.gap}</p>
+          <p class="text-gray-600 leading-relaxed">سبب الاختيار: تم تسجيل أداء منخفض مقارنة بالقيمة المرجعية بالبطاقة، مما يستدعي تدخلًا عاجلًا.</p>
+        </div>
+      `).join('') || '<p class="text-xs text-emerald-700 font-bold col-span-3">جميع المهارات أعلاه أعلى من القيمة المرجعية بالبطاقة!</p>';
+
+      document.getElementById('studentPlanList').innerHTML = `
+        <li>متابعة البرامج العلاجية المخصصة لمهارات (${appData.subject}).</li>
+        <li>المشاركة في الورش التدريبية داخل الصف.</li>
+        <li>حل أسئلة المحاكاة التفاعلية لاختبارات نافس.</li>
+      `;
+
+      document.getElementById('teacherPlanList').innerHTML = `
+        <li>تحليل أخطاء الطلاب الشائعة في مادة (${appData.subject}).</li>
+        <li>تطبيق استراتيجيات تدريس حديثة ومباشرة معالجة الفجوات.</li>
+        <li>إعداد نماذج أسئلة محاكية لنمط نافس.</li>
+      `;
+
+      document.getElementById('parentPlanList').innerHTML = `
+        <li>متابعة أداء الطالب/ة في المادة بانتظام (10 دقائق يومياً).</li>
+        <li>توفير البيئة المنزلية المشجعة للتعلم والاستيعاب.</li>
+      `;
+
+      document.getElementById('adminTableBody').innerHTML = weakSkills.slice(0, 3).map((s, idx) => `
+        <tr class="hover:bg-slate-50 border-b">
+          <td class="p-2 border font-bold">أولوية ${idx + 1} (${s.name})</td>
+          <td class="p-2 border">متابعة التدخل العلاجي والقياس في مادة (${appData.subject})</td>
+          <td class="p-2 border font-semibold">مدير/ة المدرسة + المعلم/ة</td>
+          <td class="p-2 border">الأسبوع 1 - 4</td>
+          <td class="p-2 border">بطاقة الزيارة والاختبار البعدي</td>
+          <td class="p-2 border">كشوفات المتابعة والنتائج</td>
+        </tr>
+      `).join('') || `<tr><td colspan="6" class="p-3 text-emerald-700 font-bold text-center">لا توجد مهارات تتطلب تدخل متابعة إدارية عاجلة.</td></tr>`;
+    }
+
+    function renderTimelineAndImpact() {
+      const skills = appData.skills.map(s => ({
+        ...s,
+        gap: s.score - s.benchmark
+      }));
+
+      const weakSkills = skills.filter(s => s.gap < 0);
+
+      const grid = document.getElementById('dynamicTimelineGrid');
+      grid.innerHTML = `
+        <div class="bg-slate-50 border-t-4 border-teal-600 p-4 rounded-xl shadow-sm space-y-1">
+          <span class="bg-teal-600 text-white text-[10px] font-bold px-2 py-0.5 rounded">الأسبوع الأول</span>
+          <h3 class="font-bold text-slate-800 text-sm mt-1">التشخيص وتحديد الاحتياج</h3>
+          <p class="text-xs text-gray-600">تطبيق التشخيص الأولي لمهارات (${appData.subject}) وتصنيف مستويات الطلاب.</p>
+        </div>
+        <div class="bg-slate-50 border-t-4 border-amber-500 p-4 rounded-xl shadow-sm space-y-1">
+          <span class="bg-amber-500 text-white text-[10px] font-bold px-2 py-0.5 rounded">الأسبوع الثاني</span>
+          <h3 class="font-bold text-slate-800 text-sm mt-1">التدخل والتعليم المركز</h3>
+          <p class="text-xs text-gray-600">تنفيذ التدخل العلاجي المباشر للمهارات الضعيفة بالبطاقة (${weakSkills.map(w => w.name).join(' ، ') || 'جميع المهارات مستقرة'}).</p>
+        </div>
+        <div class="bg-slate-50 border-t-4 border-blue-600 p-4 rounded-xl shadow-sm space-y-1">
+          <span class="bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 rounded">الأسبوع الثالث</span>
+          <h3 class="font-bold text-slate-800 text-sm mt-1">التدريب والتطبيق المستمر</h3>
+          <p class="text-xs text-gray-600">تدريب مكثف على نمط الأسئلة المعتمدة في نافس والتطبيق مع الأسرة.</p>
+        </div>
+        <div class="bg-slate-50 border-t-4 border-emerald-600 p-4 rounded-xl shadow-sm space-y-1">
+          <span class="bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded">الأسبوع الرابع</span>
+          <h3 class="font-bold text-slate-800 text-sm mt-1">القياس البعدي وتقييم الأثر</h3>
+          <p class="text-xs text-gray-600">تطبيق الاختبار البعدي وحساب حجم التحسن المستهدف مقارنة بالبطاقة.</p>
+        </div>
+      `;
+
+      const impactBody = document.getElementById('impactMeasurementBody');
+
+      impactBody.innerHTML = weakSkills.map(s => `
+        <tr class="hover:bg-slate-50">
+          <td class="p-3 border font-bold text-slate-800 text-right">${s.name}</td>
+          <td class="p-3 border font-black text-red-600">${s.score}%</td>
+          <td class="p-3 border text-xs">تدخل علاجي + تدريب محاكي في (${appData.subject})</td>
+          <td class="p-3 border font-bold text-moe-teal">${s.benchmark + 2}%</td>
+          <td class="p-3 border font-bold text-emerald-600">+${Math.abs(s.gap) + 2}%</td>
+          <td class="p-3 border text-xs font-semibold">تأكيد إتقان المهارة بعد الأسبوع 4</td>
+        </tr>
+      `).join('') || `<tr><td colspan="6" class="p-4 text-emerald-700 font-bold">جميع مهارات البطاقة متجاوزة للقيمة المرجعية ولا تتطلب خطة علاجية عاجلة.</td></tr>`;
+    }
+
+    function renderExecutiveSummary() {
+      const skills = appData.skills.map(s => ({
+        ...s,
+        gap: s.score - s.benchmark
+      }));
+
+      const strengths = skills.filter(s => s.gap >= 0);
+      const weaknesses = skills.filter(s => s.gap < 0).sort((a,b) => a.gap - b.gap);
+
+      document.getElementById('execStrengths').innerHTML = strengths.map(s => `
+        <li>${s.name} (نتيجة: ${s.score} | الفجوة: +${s.gap})</li>
+      `).join('') || '<li>لا توجد مهارات متجاوزة للمعيار</li>';
+
+      document.getElementById('execWeaknesses').innerHTML = weaknesses.map(s => `
+        <li>${s.name} (نتيجة: ${s.score} | الفجوة: ${s.gap})</li>
+      `).join('') || '<li>لا توجد مهارات ضعيفة</li>';
+
+      const maxGapSkill = weaknesses[0];
+      document.getElementById('execGapText').innerText = maxGapSkill ? 
+        `سُجلت أكبر فجوة أداء في مهارة (${maxGapSkill.name}) بمادة (${appData.subject}) بفجوة قدرها (${maxGapSkill.gap}) عن القيمة المرجعية.` :
+        `جميع مهارات البطاقة في مادة (${appData.subject}) مستقرة وحققت المستهدف.`;
+
+      document.getElementById('execPriorities').innerHTML = weaknesses.slice(0, 3).map(s => `
+        <li>التركيز الفوري على مهارة: ${s.name}</li>
+      `).join('') || '<li>المحافظة على المستوى الحالي وتعزيز التفوق</li>';
+
+      document.getElementById('execImmediateAction').innerText = maxGapSkill ?
+        `البدء المباشر في التدخل العلاجي للمهارات ذات الأولوية العاجلة بمادة (${appData.subject}) وتطبيق أسئلة المحاكاة.` :
+        `الاستمرار في دعم مهارات (${appData.subject}) ببرامج إثرائية.`;
+
+      document.getElementById('execTeacherLabel').innerText = `معلم/ة (${appData.subject})`;
+    }
+
+    function openModal(id) {
+      document.getElementById(id).classList.remove('hidden');
+      populateEditForm();
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.add('hidden');
+    }
+
+    function populateEditForm() {
+      document.getElementById('inputSchool').value = appData.schoolName;
+      document.getElementById('inputGender').value = appData.gender;
+      document.getElementById('inputStage').value = appData.stage;
+      document.getElementById('inputSubject').value = appData.subject;
+      document.getElementById('inputGrade').value = appData.grade;
+      document.getElementById('inputYear').value = appData.academicYear;
+
+      const body = document.getElementById('skillsInputBody');
+      body.innerHTML = appData.skills.map((s, idx) => `
+        <tr class="border-b">
+          <td class="p-2 border">
+            <input type="text" value="${s.name}" class="skill-name-input w-full p-1 border rounded" required>
+          </td>
+          <td class="p-2 border">
+            <input type="number" value="${s.score}" class="skill-score-input w-full p-1 border rounded" required>
+          </td>
+          <td class="p-2 border">
+            <input type="number" value="${s.benchmark}" class="skill-bench-input w-full p-1 border rounded" required>
+          </td>
+          <td class="p-2 border text-center">
+            <button type="button" onclick="removeSkillRow(this)" class="text-red-500 font-bold hover:text-red-700">&times;</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function addSkillRow() {
+      const body = document.getElementById('skillsInputBody');
+      const tr = document.createElement('tr');
+      tr.className = "border-b";
+      tr.innerHTML = `
+        <td class="p-2 border">
+          <input type="text" placeholder="اسم المهارة" class="skill-name-input w-full p-1 border rounded" required>
+        </td>
+        <td class="p-2 border">
+          <input type="number" placeholder="65" class="skill-score-input w-full p-1 border rounded" required>
+        </td>
+        <td class="p-2 border">
+          <input type="number" placeholder="70" class="skill-bench-input w-full p-1 border rounded" required>
+        </td>
+        <td class="p-2 border text-center">
+          <button type="button" onclick="removeSkillRow(this)" class="skill-remove-btn text-red-500 font-bold hover:text-red-700">&times;</button>
+        </td>
+      `;
+      body.appendChild(tr);
+    }
+
+    function removeSkillRow(btn) {
+      btn.closest('tr').remove();
+    }
+
+    function handleFormSave(e) {
+      e.preventDefault();
+
+      appData.schoolName = document.getElementById('inputSchool').value;
+      appData.gender = document.getElementById('inputGender').value;
+      appData.stage = document.getElementById('inputStage').value;
+      appData.subject = document.getElementById('inputSubject').value;
+      appData.grade = document.getElementById('inputGrade').value;
+      appData.academicYear = document.getElementById('inputYear').value;
+
+      const skillRows = document.querySelectorAll('#skillsInputBody tr');
+      const newSkills = [];
+
+      skillRows.forEach(row => {
+        const name = row.querySelector('.skill-name-input').value;
+        const score = parseFloat(row.querySelector('.skill-score-input').value) || 0;
+        const benchmark = parseFloat(row.querySelector('.skill-bench-input').value) || 0;
+        if (name) {
+          newSkills.push({ name, score, benchmark });
+        }
+      });
+
+      if (newSkills.length > 0) {
+        appData.skills = newSkills;
+      }
+
+      closeModal('editModal');
+      renderAll();
+    }
+  </script>
+</body>
+</html>

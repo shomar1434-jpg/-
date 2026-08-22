@@ -309,6 +309,60 @@ Deno.serve(async (req) => {
       return json({ event, matchedRules: (rules || []).length, actions }, 201);
     }
 
+
+    // ===== Semester plans: role-isolated weekly plans + manager approval =====
+    const semesterPlanRoleMap:Record<string,string> = {
+      student_advisor:'التوجيه الطلابي', activity_leader:'النشاط الطلابي',
+      kindergarten_teacher:'رياض الأطفال', health_advisor:'التوجيه الصحي'
+    };
+    const normalizedSessionRole=String(session.role||'').toLowerCase();
+    const semesterPlanTypeForRole=semesterPlanRoleMap[normalizedSessionRole]||'';
+    const isSemesterPlanManager=/manager|principal|school_manager|مدير|مديرة/.test(normalizedSessionRole)||isOwner;
+
+    if (action === 'semester-plan-list') {
+      let q=sb.from('semester_plan_weeks').select('*').eq('school_id',session.school_id)
+        .eq('academic_year',String(body.academicYear||'1448 هـ')).eq('semester',String(body.semester||'الفصل الدراسي الأول'))
+        .order('plan_type').order('week_order');
+      if(!isSemesterPlanManager){ if(!semesterPlanTypeForRole)return json({error:'الدور الحالي غير مخول بالخطة الفصلية'},403); q=q.eq('plan_type',semesterPlanTypeForRole).eq('owner_user_id',session.user_id); }
+      else if(body.planType) q=q.eq('plan_type',String(body.planType));
+      const {data,error}=await q;if(error)throw error;return json({rows:data||[],planType:semesterPlanTypeForRole,isManager:isSemesterPlanManager});
+    }
+
+    if (action === 'semester-plan-save-week') {
+      if(!semesterPlanTypeForRole)return json({error:'لا يمكن تعديل هذه الخطة من الدور الحالي'},403);
+      const w:any=body.week||{}; const weekKey=String(w.weekKey||w.id||'').trim(); if(!weekKey)return json({error:'معرف الأسبوع مفقود'},400);
+      const academicYear=String(body.academicYear||'1448 هـ'), semester=String(body.semester||'الفصل الدراسي الأول');
+      const existing=await sb.from('semester_plan_weeks').select('id,plan_status').eq('school_id',session.school_id).eq('plan_type',semesterPlanTypeForRole).eq('academic_year',academicYear).eq('semester',semester).eq('week_key',weekKey).maybeSingle();
+      if(existing.error)throw existing.error; if(existing.data && !['draft','returned'].includes(String(existing.data.plan_status||'')))return json({error:'لا يمكن تعديل أسبوع بعد إرساله أو اعتماده إلا إذا أعاده المدير للتعديل'},409);
+      const row:any={school_id:session.school_id,owner_user_id:session.user_id,owner_role:normalizedSessionRole,plan_type:semesterPlanTypeForRole,academic_year:academicYear,semester,week_key:weekKey,week_order:Number(w.weekOrder||0),title:String(w.title||''),dates:String(w.dates||''),behavior:String(w.behavior||''),event_name:w.event||null,is_vacation:!!w.isVacation,programs:Array.isArray(w.programs)?w.programs:[],notes:String(w.notes||''),plan_status:existing.data?.plan_status||'draft',updated_at:now};
+      const {data,error}=await sb.from('semester_plan_weeks').upsert(row,{onConflict:'school_id,plan_type,academic_year,semester,week_key'}).select('*').single();if(error)throw error;return json({row});
+    }
+
+    if (action === 'semester-plan-submit-week') {
+      if(!semesterPlanTypeForRole)return json({error:'الدور الحالي غير مخول'},403);
+      const id=String(body.id||''); const {data,error}=await sb.from('semester_plan_weeks').update({plan_status:'pending_manager',plan_submitted_at:now,manager_note:null,updated_at:now}).eq('id',id).eq('school_id',session.school_id).eq('owner_user_id',session.user_id).eq('plan_type',semesterPlanTypeForRole).in('plan_status',['draft','returned']).select('*').maybeSingle();if(error)throw error;if(!data)return json({error:'تعذر إرسال الأسبوع للاعتماد'},409);return json({row:data});
+    }
+
+    if (action === 'semester-plan-manager-decision') {
+      if(!isSemesterPlanManager)return json({error:'الاعتماد متاح لمدير المدرسة فقط'},403);
+      const id=String(body.id||''), decision=String(body.decision||''), note=String(body.note||'');
+      const patch:any= decision==='approve'?{plan_status:'approved',plan_approved_at:now,plan_approved_by:session.user_id,execution_status:'awaiting_evidence',manager_note:note,updated_at:now}:{plan_status:'returned',manager_note:note,plan_approved_at:null,plan_approved_by:null,updated_at:now};
+      const {data,error}=await sb.from('semester_plan_weeks').update(patch).eq('id',id).eq('school_id',session.school_id).in('plan_status',['pending_manager','approved']).select('*').maybeSingle();if(error)throw error;if(!data)return json({error:'تعذر تحديث قرار الاعتماد'},409);return json({row:data});
+    }
+
+    if (action === 'semester-plan-submit-evidence') {
+      if(!semesterPlanTypeForRole)return json({error:'الدور الحالي غير مخول'},403);
+      const id=String(body.id||''), fileId=String(body.fileId||''); if(!fileId)return json({error:'ملف الشاهد مفقود'},400);
+      const {data,error}=await sb.from('semester_plan_weeks').update({evidence_file_id:fileId,evidence_name:String(body.fileName||''),evidence_submitted_at:now,execution_status:'pending_manager',updated_at:now}).eq('id',id).eq('school_id',session.school_id).eq('owner_user_id',session.user_id).eq('plan_status','approved').select('*').maybeSingle();if(error)throw error;if(!data)return json({error:'يجب اعتماد خطة الأسبوع قبل رفع شاهد التنفيذ'},409);return json({row:data});
+    }
+
+    if (action === 'semester-plan-execution-decision') {
+      if(!isSemesterPlanManager)return json({error:'اعتماد التنفيذ متاح للمدير فقط'},403);
+      const id=String(body.id||''), decision=String(body.decision||''), note=String(body.note||'');
+      const patch:any=decision==='approve'?{execution_status:'approved',execution_approved_at:now,execution_approved_by:session.user_id,manager_note:note,updated_at:now}:{execution_status:'awaiting_evidence',manager_note:note,updated_at:now};
+      const {data,error}=await sb.from('semester_plan_weeks').update(patch).eq('id',id).eq('school_id',session.school_id).eq('plan_status','approved').select('*').maybeSingle();if(error)throw error;if(!data)return json({error:'تعذر اعتماد التنفيذ'},409);return json({row:data});
+    }
+
     if (action === 'dashboard') {
       const filters:any = body.filters || {};
       const period = String(filters.period || 'month');

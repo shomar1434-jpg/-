@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 if(window.__SCHOOL_AGENT_CORE_V2__)return;window.__SCHOOL_AGENT_CORE_V2__=true;
-const VERSION='2.3.0';
+const VERSION='2.4.0';
 const LS={conv:'school_agent_v2_conversations',memory:'school_agent_v2_memory',audit:'school_agent_v2_audit',actions:'school_agent_v2_actions'};
 const sensitive=/password|token|secret|anonkey|service_role|api[_-]?key/i;
 function parse(v,d){
@@ -25,11 +25,17 @@ function inferRoleFromFile(){const f=file();for(const k of Object.keys(roots))if
 function activeYear(){return clean(get(['smartSchoolActiveAcademicYear','platformAcademicYear','academic_year','school_year']))||'1448'}
 function yearStatus(y=activeYear()){try{const rows=parse(localStorage.getItem('smartSchoolAcademicYearsV1'),[]);const r=rows.find(x=>String(x.year)===String(y));return r?.status||'active'}catch(e){return'active'}}
 function context(){
- const rawRole=sessionStorage.getItem('smart_school_tab_role_v1')||get(['smart_school_active_role','platform_file_session_role','currentRole','user_role','role'])||inferRoleFromFile();
+ let managedSchool='',managedUser='',managedRole='';
+ try{managedSchool=clean(window.PlatformCloudSession?.schoolId?.()||'');managedUser=clean(window.PlatformCloudSession?.userId?.()||'');managedRole=clean(window.PlatformCloudSession?.role?.()||'')}catch(_){}
+ const tabSchool=clean(sessionStorage.getItem('platform_tab_session_school_v1')||'');
+ const tabUser=clean(sessionStorage.getItem('platform_tab_session_user_v1')||'');
+ const tabRole=clean(sessionStorage.getItem('smart_school_tab_role_v1')||'');
+ const rawRole=tabRole||managedRole||get(['smart_school_active_role','platform_file_session_role','currentRole','user_role','role'])||inferRoleFromFile();
  const role=(window.AgentRoleProfiles?AgentRoleProfiles.normalize(rawRole):rawRole)||'performance';
- const schoolId=get(['active_school_id','platform_file_session_school_id','current_school_id','currentSchoolId','activeSchool','school_id']);
- const sessionSchool=get(['platform_file_session_school_id']);
- const userId=get(['platform_file_session_user_id','currentUserId','current_user_id','currentUser','user_id']);
+ // جلسة التبويب/الجلسة السحابية هي المصدر الأول لهوية المدرسة لمنع فقد السياق أو استخدام مدرسة قديمة من localStorage.
+ const sessionSchool=tabSchool||managedSchool||clean(get(['platform_file_session_school_id']));
+ const schoolId=sessionSchool||get(['active_school_id','current_school_id','currentSchoolId','activeSchool','school_id','smart_school_id']);
+ const userId=tabUser||managedUser||get(['platform_file_session_user_id','currentUserId','current_user_id','currentUser','user_id']);
  const membershipId=get(['smart_school_active_membership_id']);
  const schoolName=get(['current_school_name','school_name','persist_school','active_school_name']);
  const userName=get(['currentUserName','current_user_name','userName','teacherName','managerName','persist_name_m']);
@@ -38,6 +44,7 @@ function context(){
  const adapter=window.AgentSectionAdapters?.current?.()||{id:'workspace',label:'مساحة العمل'};return {version:VERSION,schoolId,sessionSchoolId:sessionSchool,schoolName,userId,userName,userEmail,role,rawRole,membershipId,academicYear:activeYear(),academicYearStatus:yearStatus(),module:adapter.id,moduleLabel:adapter.label,file:file(),title:clean(document.title),url:location.pathname+location.search,delegated,taskId:new URLSearchParams(location.search||'').get('task_id')||get(['delegated_task_id'])||'',timestamp:new Date().toISOString()};
 }
 function assertContext(c){if(!c.schoolId)throw new Error('تعذر تحديد المدرسة الحالية. أعد الدخول أو اختر المدرسة.');if(c.sessionSchoolId&&String(c.sessionSchoolId)!==String(c.schoolId))throw new Error('تم اكتشاف اختلاف بين جلسة السحابة والمدرسة الحالية. أعد تحميل الصفحة قبل استخدام الوكيل.');return c}
+async function resolvedContext(){let c=context();if(!c.schoolId||!c.sessionSchoolId){try{if(window.PlatformCloudSession?.ensure)await window.PlatformCloudSession.ensure()}catch(_){}c=context()}return assertContext(c)}
 function visiblePage(){const nodes=[...document.querySelectorAll('h1,h2,h3,h4,p,label,th,td,button,[data-agent-context]')].filter(x=>!x.closest('#agentV2Modal')&&x.offsetParent!==null);return nodes.map(x=>clean(x.innerText)).filter(Boolean).slice(0,140).join('\n').slice(0,12000)}
 function fields(){return[...document.querySelectorAll('input,textarea,select,[contenteditable="true"]')].filter(x=>!x.closest('#agentV2Modal')&&x.type!=='password'&&x.type!=='hidden'&&!x.disabled).slice(0,100).map((x,i)=>{let label='';if(x.id){try{label=clean(document.querySelector('label[for="'+CSS.escape(x.id)+'"]')?.innerText)}catch(e){}}if(!label)label=clean(x.getAttribute('aria-label')||x.placeholder||x.name||x.id||'حقل '+(i+1));return{id:x.id||'',name:x.name||'',label,value:clean(x.value||x.innerText||'').slice(0,1000),type:x.tagName.toLowerCase()}})}
 function localRecords(){
@@ -130,7 +137,7 @@ async function recoverPlatformSession(){
   return await window.PlatformCloudSession.recover();
 }
 async function api(action,payload,opts){
-  const c=assertContext(context());
+  const c=await resolvedContext();
   let token=sessionToken();
   if(!token)token=await recoverPlatformSession();
   const body={action,context:c,payload:payload||{},client:{version:VERSION,page:{text:visiblePage(),fields:fields()},memory:memory().slice(0,20),localSummary:action==='chat'?localRecords():undefined}};
@@ -148,7 +155,7 @@ async function api(action,payload,opts){
   audit('api.'+action,{requestId:res.data.requestId||'',tools:res.data.toolsUsed||[]});
   return res.data
 }
-async function chat(message,convId){const c=assertContext(context());let conv=conversations().find(x=>x.id===convId)||{id:convId||uuid(),title:clean(message).slice(0,70)||'محادثة جديدة',messages:[],createdAt:new Date().toISOString(),schoolId:c.schoolId,role:c.role,academicYear:c.academicYear};conv.messages.push({role:'user',content:message,at:new Date().toISOString()});saveConversation(conv);const data=await api('chat',{message,conversation:conv.messages.slice(-16),conversationId:conv.id,title:conv.title});conv.messages.push({role:'assistant',content:data.answer||'',at:new Date().toISOString(),toolsUsed:data.toolsUsed||[],sources:Array.isArray(data.sources)?data.sources:[],suggestedActions:data.suggestedActions||[]});conv.updatedAt=new Date().toISOString();saveConversation(conv);(data.suggestedActions||[]).forEach(x=>proposeAction(x.type,x.payload,x.label));return{conversation:conv,data}}
+async function chat(message,convId){const c=await resolvedContext();let conv=conversations().find(x=>x.id===convId)||{id:convId||uuid(),title:clean(message).slice(0,70)||'محادثة جديدة',messages:[],createdAt:new Date().toISOString(),schoolId:c.schoolId,role:c.role,academicYear:c.academicYear};conv.messages.push({role:'user',content:message,at:new Date().toISOString()});saveConversation(conv);const data=await api('chat',{message,conversation:conv.messages.slice(-16),conversationId:conv.id,title:conv.title});conv.messages.push({role:'assistant',content:data.answer||'',at:new Date().toISOString(),toolsUsed:data.toolsUsed||[],sources:Array.isArray(data.sources)?data.sources:[],suggestedActions:data.suggestedActions||[]});conv.updatedAt=new Date().toISOString();saveConversation(conv);(data.suggestedActions||[]).forEach(x=>proposeAction(x.type,x.payload,x.label));return{conversation:conv,data}}
 async function brief(){return api('brief',{})}
 async function searchSchool(query){return api('chat',{message:'ابحث داخل بيانات المدرسة الحالية عن: '+query+'، واستخدم أداة البحث المناسبة. اعرض النتائج ذات الصلة فقط مع توضيح مصدرها، ولا تفترض شيئًا غير موجود.',conversation:[]})}
 async function analyzeCurrent(){return api('analyze_current',{page:{text:visiblePage(),fields:fields()}})}
@@ -160,6 +167,6 @@ async function deleteCloudMemory(id){const d=await api('memory_delete',{id});for
 async function cloudHistory(){const d=await api('history',{});return d.conversations||[]}
 async function cloudConversation(id){const d=await api('history_messages',{conversationId:id});return d}
 function exportContext(){return{context:context(),profile:window.AgentRoleProfiles?.get(context().role)||{},page:{text:visiblePage(),fields:fields()},memory:memory(),actions:proposedActions(),audit:(()=>{const a=parse(localStorage.getItem(LS.audit),[]);return Array.isArray(a)?a.slice(0,80):[]})()}}
-window.AgentCoreV2={VERSION,context,assertContext,fields,visiblePage,api,recoverPlatformSession,chat,brief,searchSchool,analyzeCurrent,analyzeFile,memory,remember,forgetMemory,proactiveSuggestions,cloudMemory,rememberCloud,deleteCloudMemory,cloudHistory,cloudConversation,conversations,saveConversation,proposedActions,proposeAction,approveAction,rejectAction,audit,exportContext};
+window.AgentCoreV2={VERSION,context,assertContext,resolvedContext,fields,visiblePage,api,recoverPlatformSession,chat,brief,searchSchool,analyzeCurrent,analyzeFile,memory,remember,forgetMemory,proactiveSuggestions,cloudMemory,rememberCloud,deleteCloudMemory,cloudHistory,cloudConversation,conversations,saveConversation,proposedActions,proposeAction,approveAction,rejectAction,audit,exportContext};
 window.dispatchEvent(new CustomEvent('agent-core-v2-ready',{detail:{version:VERSION}}));
 })();

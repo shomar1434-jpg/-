@@ -70,12 +70,15 @@ Deno.serve(async(req)=>{
   };
   const uniqueGrantRows=(rows:any[])=>{const m=new Map();for(const r of rows||[]){const k=[r.module_key,r.record_type||'',r.record_id||''].join('|');if(!m.has(k))m.set(k,r)}return Array.from(m.values())};
   console.log('[platform-tasks]',{requestId,action,schoolId:s.school_id,userId:s.user_id,role:s.role});
-  if(action==='health')return json({ok:true,version:'2.2.0-admin-assignee-list',schoolId:s.school_id,userId:s.user_id,role:s.role});
+  if(action==='health')return json({ok:true,version:'2.3.0-deputy-multi-role-refresh',schoolId:s.school_id,userId:s.user_id,role:s.role});
   if(action==='set-deputy-classification'){
    if(!['manager','owner','school_manager','principal','مدير','مديرة'].includes(role))return json({error:'تحديد تصنيف الوكيل متاح لمدير المدرسة فقط'},403);
    const userId=String(body.userId||'');const email=String(body.email||'').trim().toLowerCase();
-   const allowed=new Set(['educational','school_affairs','student_affairs']);const classification=String(body.classification||'').trim();
-   if(!allowed.has(classification))return json({error:'تصنيف الوكيل غير صالح'},400);
+   const allowed=new Set(['educational','school_affairs','student_affairs']);
+   const requested=Array.isArray(body.classifications)?body.classifications:[body.classification];
+   const classifications=Array.from(new Set(requested.map((x:any)=>String(x||'').trim()).filter((x:string)=>allowed.has(x))));
+   if(!classifications.length)return json({error:'يجب اختيار اختصاص واحد على الأقل للوكيل'},400);
+   const classification=classifications[0];
    let mq=sb.from('school_members').select('*').eq('school_id',s.school_id);
    if(isUuid(userId))mq=mq.eq('user_id',userId);else if(email)mq=mq.eq('email',email);else return json({error:'معرف الوكيل أو بريده مطلوب'},400);
    let {data:member,error:me}=await mq.limit(1).maybeSingle();if(me)throw me;
@@ -84,10 +87,10 @@ Deno.serve(async(req)=>{
    if(!identity&&email){const {data:u,error:e}=await sb.from('users').select('id,email,full_name,role,status').eq('email',email).maybeSingle();if(e)throw e;identity=u}
    if(!identity)return json({error:'حساب الوكيل غير موجود'},404);
    if(String(identity.role||'')!=='agent' && String(member?.role||'')!=='agent')return json({error:'المستخدم المحدد ليس وكيلاً في هذه المدرسة'},409);
-   const roleLabel=classification;
+   const roleLabel=classifications.join(','); // القائمة الحالية تستبدل التصنيفات القديمة بالكامل
    if(member){const {data:m,error:e}=await sb.from('school_members').update({role:'agent',role_label:roleLabel,updated_at:now}).eq('id',member.id).select('*').single();if(e)throw e;member=m}
    else{const {data:m,error:e}=await sb.from('school_members').insert({school_id:s.school_id,user_id:identity.id,email:identity.email,role:'agent',role_label:roleLabel,status:'active',is_primary_manager:false,is_primary:false,updated_at:now}).select('*').single();if(e)throw e;member=m}
-   return json({ok:true,classification,roleLabel,member,user:{id:identity.id,email:identity.email,full_name:identity.full_name}});
+   return json({ok:true,classification,classifications,roleLabel,member,user:{id:identity.id,email:identity.email,full_name:identity.full_name}});
   }
   if(action==='list-users'){
    if(!isOwner)return json({error:'لا توجد صلاحية لعرض المستخدمين'},403);

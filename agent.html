@@ -4,6 +4,70 @@
 <head>
 <style id="platform-first-paint-guard">#elsPicker{display:none!important;visibility:hidden!important}html[data-system-admin-context="1"] #activeSchoolLabel{display:none!important;visibility:hidden!important}</style>
 <script src="system-admin-context.js"></script>
+<script id="agent-agency-cloud-sync-v2">
+(function(){
+  var root=document.documentElement;
+  root.setAttribute('data-agent-agency-sync','pending');
+  var released=false;
+  function release(){if(released)return;released=true;root.setAttribute('data-agent-agency-sync','ready');}
+  var timer=setTimeout(release,2200);
+  function parse(v,d){try{return JSON.parse(v||'')}catch(e){return d}}
+  function canonical(v){
+    var x=String(v||'').trim().replace(/\s+/g,' ');
+    var map={
+      educational:'educational',deputy_academic:'educational','وكيل شؤون تعليمية':'educational','وكيل الشؤون التعليمية':'educational','وكيل/وكيلة شؤون تعليمية':'educational','وكيل/وكيلة الشؤون التعليمية':'educational','وكيلة شؤون تعليمية':'educational','وكيلة الشؤون التعليمية':'educational',
+      school_affairs:'school_affairs',deputy_admin:'school_affairs','وكيل شؤون مدرسية':'school_affairs','وكيل الشؤون المدرسية':'school_affairs','وكيل/وكيلة شؤون مدرسية':'school_affairs','وكيل/وكيلة الشؤون المدرسية':'school_affairs','وكيلة شؤون مدرسية':'school_affairs','وكيلة الشؤون المدرسية':'school_affairs',
+      student_affairs:'student_affairs',deputy_students:'student_affairs','وكيل شؤون الطلاب':'student_affairs','وكيل الشؤون الطلابية':'student_affairs','وكيل/وكيلة شؤون الطلاب':'student_affairs','وكيلة شؤون الطلاب':'student_affairs'
+    };
+    return map[x]||'';
+  }
+  function normalize(v){
+    if(Array.isArray(v)) return Array.from(new Set(v.map(canonical).filter(Boolean)));
+    v=String(v||'').trim(); if(!v)return [];
+    if(v.charAt(0)==='['){try{return normalize(JSON.parse(v))}catch(e){}}
+    return Array.from(new Set(v.split(/[،,|]/).map(canonical).filter(Boolean)));
+  }
+  function currentProfile(){
+    var keys=['currentSchoolUser','smart_school_current_session','currentUser'];
+    for(var i=0;i<keys.length;i++){var o=parse(localStorage.getItem(keys[i]),null);if(o&&typeof o==='object')return o;}
+    return {};
+  }
+  function schoolIdOf(profile){return String(localStorage.getItem('active_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||profile.schoolId||profile.school_id||'');}
+  function apply(profile,list,roleLabel){
+    list=normalize(list);
+    window.__AGENT_CATEGORIES__=list.slice();
+    window.__AGENT_ROLE_LABEL__=roleLabel||list.join(',');
+    profile=Object.assign({},profile,{agent_categories:list,agency_categories:list,agency_types:list,agency_type:list.join(','),agencyType:list.join(','),roleLabel:roleLabel||list.join(','),role_label:roleLabel||list.join(',')});
+    ['currentSchoolUser','smart_school_current_session','currentUser'].forEach(function(k){try{localStorage.setItem(k,JSON.stringify(profile))}catch(e){}});
+    try{sessionStorage.setItem('agent_current_agency_categories',JSON.stringify(list));}catch(e){}
+    root.setAttribute('data-agent-agency-categories',list.join(','));
+    try{window.dispatchEvent(new CustomEvent('agent-agency-categories-updated',{detail:{categories:list.slice(),roleLabel:window.__AGENT_ROLE_LABEL__}}));}catch(e){}
+  }
+  window.__getAgentCategories=function(){
+    var direct=normalize(window.__AGENT_CATEGORIES__||[]); if(direct.length)return direct;
+    try{var ss=normalize(JSON.parse(sessionStorage.getItem('agent_current_agency_categories')||'[]'));if(ss.length)return ss;}catch(e){}
+    var p=currentProfile();return normalize(p.agent_categories||p.agency_categories||p.agency_types||p.agency_type||p.agencyType||p.roleLabel||p.role_label||'');
+  };
+  var profile=currentProfile();
+  var initial=normalize(profile.agent_categories||profile.agency_categories||profile.agency_types||profile.agency_type||profile.agencyType||profile.roleLabel||profile.role_label||'');
+  apply(profile,initial,profile.roleLabel||profile.role_label||'');
+  var token=localStorage.getItem('platform_file_session_token')||'';
+  var sid=schoolIdOf(profile);
+  var base=String(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'');
+  var key=localStorage.getItem('smartSchoolSupabaseAnonKey')||'';
+  if(!token||!sid){clearTimeout(timer);release();return;}
+  fetch(base+'/functions/v1/platform-session',{method:'POST',headers:{'content-type':'application/json','apikey':key,'x-platform-session':token},body:JSON.stringify({action:'memberships'})})
+    .then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.error||'تعذر تحديث اختصاصات الوكيل');return j})})
+    .then(function(j){
+      var rows=Array.isArray(j.memberships)?j.memberships:[];
+      var m=rows.find(function(x){return String(x.schoolId||'')===sid && String(x.role||'').toLowerCase()==='agent';}) || rows.find(function(x){return String(x.schoolId||'')===sid;});
+      if(m){var list=normalize(m.roleLabel||'');apply(profile,list,m.roleLabel||'');}
+    })
+    .catch(function(e){console.warn('[agent-agency-sync]',e&&e.message||e)})
+    .finally(function(){clearTimeout(timer);release();});
+})();
+</script>
+<style id="agent-agency-first-paint-v2">html[data-agent-agency-sync="pending"] body{visibility:hidden!important}</style>
 <style id="evidence-picker-prehide">#elsPicker[hidden],#elsPicker[style*="display:none"]{display:none!important;visibility:hidden!important}</style>
 <!-- SAFE_PATCH: bypass activation without touching archived data -->
 <style id="safe-activation-bypass-style">
@@ -5613,10 +5677,18 @@ bWw+
 
   const RECORDS_KEY = 'wakil_records_pdf_archive_v3';
   const LEGACY_KEYS = ['agent_records_archive', 'wakil_records_archive_v1', 'wakil_records_pdf_archive_v2'];
-  const RECORD_FOLDERS = [{"id": "school-timetables", "name": "الجداول المدرسية", "kind": "table", "category": "educational"}, {"id": "waiting-register", "name": "حصص الانتظار", "kind": "waiting", "category": "educational"}, {"id": "daily-supervision", "name": "المناوبة والإشراف اليومي", "kind": "supervision", "category": "educational"}, {"id": "daily-duty-report", "name": "تقرير المناوبة اليومي", "kind": "table", "category": "educational"}, {"id": "study-plans", "name": "الخطط الدراسية", "kind": "table", "category": "educational"}, {"id": "teaching-staff-development", "name": "دعم وتطوير الهيئة التعليمية", "kind": "table", "category": "educational"}, {"id": "teacher-admin-followup", "name": "متابعة أعمال المعلمين والإداريين", "kind": "table", "category": "educational"}, {"id": "achievement-learning-loss", "name": "التحصيل الدراسي والفاقد التعليمي", "kind": "table", "category": "educational"}, {"id": "general-exams-file", "name": "ملف الاختبار العام", "kind": "table", "category": "educational"}, {"id": "international-tests-file", "name": "ملف الاختبارات الدولية", "kind": "table", "category": "educational"}, {"id": "madrasati-platform", "name": "منصة مدرستي", "kind": "table", "category": "educational"}, {"id": "professional-growth", "name": "النمو المهني", "kind": "table", "category": "educational"}, {"id": "gifted-file", "name": "ملف الموهوبين / الموهوبات", "kind": "table", "category": "educational"}, {"id": "special-education", "name": "التربية الخاصة", "kind": "table", "category": "educational"}, {"id": "official-work-register", "name": "سجل العمل الرسمي", "kind": "table", "category": "school_affairs"}, {"id": "staff-permission", "name": "استئذان الموظفين", "kind": "permission", "category": "school_affairs"}, {"id": "staff-absence-inventory", "name": "حصر غياب الموظفين", "kind": "table", "category": "school_affairs"}, {"id": "delay-minutes-inventory", "name": "حصر دقائق التأخير", "kind": "table", "category": "school_affairs"}, {"id": "referrals", "name": "التحويلات", "kind": "table", "category": "school_affairs"}, {"id": "custody-warehouses-archive", "name": "العهد والمستودعات والأرشفة", "kind": "table", "category": "school_affairs"}, {"id": "maintenance-cleaning", "name": "الصيانة والنظافة", "kind": "table", "category": "school_affairs"}, {"id": "school-transport", "name": "النقل المدرسي", "kind": "table", "category": "school_affairs"}, {"id": "school-canteen", "name": "المقصف المدرسي", "kind": "table", "category": "school_affairs"}, {"id": "facilities", "name": "المرافق", "kind": "table", "category": "school_affairs"}, {"id": "labs-sources", "name": "المعامل والمختبرات ومصادر التعلم", "kind": "table", "category": "school_affairs"}, {"id": "admin-teacher-followup", "name": "متابعة الإداريين والمعلمين", "kind": "table", "category": "school_affairs"}, {"id": "visitors-register", "name": "سجل الزائرين", "kind": "table", "category": "school_affairs"}, {"id": "noor-leaves-followup", "name": "متابعة إدخال الإجازات في نظام نور", "kind": "table", "category": "school_affairs"}, {"id": "fares-entry-followup", "name": "متابعة الإدخال في نظام فارس", "kind": "table", "category": "school_affairs"}, {"id": "summary-print", "name": "طباعة الخلاصة", "kind": "table", "category": "school_affairs"}, {"id": "student-referral", "name": "تحويل طالب للوكيل", "kind": "student", "category": "shared"}, {"id": "repeated-absence-referral", "name": "تحويل طالب متكرر الغياب", "kind": "student", "category": "shared"}, {"id": "student-permission", "name": "سجل استئذان الطلاب", "kind": "permission", "category": "shared"}, {"id": "late-students-list", "name": "كشف بأسماء الطلاب المتأخرين", "kind": "late-list", "category": "shared"}, {"id": "late-leave-warning", "name": "تنبيه عن تأخر أو انصراف", "kind": "notice", "category": "shared"}, {"id": "deduction-late-leave", "name": "قرار حسم تأخر وخروج", "kind": "decision", "category": "shared"}, {"id": "deduction-absence", "name": "قرار حسم غياب", "kind": "decision", "category": "shared"}, {"id": "absence-inquiry", "name": "مساءلة غياب", "kind": "inquiry", "category": "shared"}];
-  const WAKIL_RECORD_CATEGORY_LABELS = {educational:'أرشيف الشؤون التعليمية', school_affairs:'أرشيف الشؤون المدرسية', shared:'الأرشيف المشترك'};
-  const WAKIL_RECORD_CATEGORY_ORDER = ['educational','school_affairs','shared'];
+  const RECORD_FOLDERS = [{"id":"school-timetables","name":"الجداول المدرسية","kind":"table","category":"educational"},{"id":"waiting-register","name":"حصص الانتظار","kind":"waiting","category":"educational"},{"id":"daily-supervision","name":"المناوبة والإشراف اليومي","kind":"supervision","category":"educational"},{"id":"daily-duty-report","name":"تقرير المناوبة اليومي","kind":"table","category":"educational"},{"id":"study-plans","name":"الخطط الدراسية","kind":"table","category":"educational"},{"id":"teaching-staff-development","name":"دعم وتطوير الهيئة التعليمية","kind":"table","category":"educational"},{"id":"teacher-admin-followup","name":"متابعة أعمال المعلمين والإداريين","kind":"table","category":"educational"},{"id":"achievement-learning-loss","name":"التحصيل الدراسي والفاقد التعليمي","kind":"table","category":"educational"},{"id":"general-exams-file","name":"ملف الاختبار العام","kind":"table","category":"educational"},{"id":"international-tests-file","name":"ملف الاختبارات الدولية","kind":"table","category":"educational"},{"id":"madrasati-platform","name":"منصة مدرستي","kind":"table","category":"educational"},{"id":"professional-growth","name":"النمو المهني","kind":"table","category":"educational"},{"id":"gifted-file","name":"ملف الموهوبين / الموهوبات","kind":"table","category":"educational"},{"id":"special-education","name":"التربية الخاصة","kind":"table","category":"educational"},{"id":"official-work-register","name":"سجل العمل الرسمي","kind":"table","category":"school_affairs"},{"id":"staff-permission","name":"استئذان الموظفين","kind":"permission","category":"school_affairs"},{"id":"staff-absence-inventory","name":"حصر غياب الموظفين","kind":"table","category":"school_affairs"},{"id":"delay-minutes-inventory","name":"حصر دقائق التأخير","kind":"table","category":"school_affairs"},{"id":"referrals","name":"التحويلات","kind":"table","category":"school_affairs"},{"id":"custody-warehouses-archive","name":"العهد والمستودعات والأرشفة","kind":"table","category":"school_affairs"},{"id":"maintenance-cleaning","name":"الصيانة والنظافة","kind":"table","category":"school_affairs"},{"id":"school-transport","name":"النقل المدرسي","kind":"table","category":"school_affairs"},{"id":"school-canteen","name":"المقصف المدرسي","kind":"table","category":"school_affairs"},{"id":"facilities","name":"المرافق","kind":"table","category":"school_affairs"},{"id":"labs-sources","name":"المعامل والمختبرات ومصادر التعلم","kind":"table","category":"school_affairs"},{"id":"admin-teacher-followup","name":"متابعة الإداريين والمعلمين","kind":"table","category":"school_affairs"},{"id":"visitors-register","name":"سجل الزائرين","kind":"table","category":"school_affairs"},{"id":"noor-leaves-followup","name":"متابعة إدخال الإجازات في نظام نور","kind":"table","category":"school_affairs"},{"id":"fares-entry-followup","name":"متابعة الإدخال في نظام فارس","kind":"table","category":"school_affairs"},{"id":"summary-print","name":"طباعة الخلاصة","kind":"table","category":"school_affairs"},{"id":"student-referral","name":"تحويل طالب للوكيل","kind":"student","category":"shared"},{"id":"repeated-absence-referral","name":"تحويل طالب متكرر الغياب","kind":"student","category":"shared"},{"id":"student-permission","name":"سجل استئذان الطلاب","kind":"permission","category":"shared"},{"id":"late-students-list","name":"كشف بأسماء الطلاب المتأخرين","kind":"late-list","category":"shared"},{"id":"late-leave-warning","name":"تنبيه عن تأخر أو انصراف","kind":"notice","category":"shared"},{"id":"deduction-late-leave","name":"قرار حسم تأخر وخروج","kind":"decision","category":"shared"},{"id":"deduction-absence","name":"قرار حسم غياب","kind":"decision","category":"shared"},{"id":"absence-inquiry","name":"مساءلة غياب","kind":"inquiry","category":"shared"},{"id":"student-daily-attendance","name":"متابعة الحضور اليومي للطلاب","kind":"table","category":"student_affairs"},{"id":"student-absence-inventory","name":"حصر غياب الطلاب","kind":"table","category":"student_affairs"},{"id":"student-morning-late","name":"حصر التأخر الصباحي للطلاب","kind":"table","category":"student_affairs"},{"id":"student-behavior-violations","name":"سجل المخالفات السلوكية","kind":"table","category":"student_affairs"},{"id":"student-cases-register","name":"سجل القضايا الطلابية","kind":"table","category":"student_affairs"},{"id":"special-student-cases","name":"الحالات الخاصة","kind":"table","category":"student_affairs"},{"id":"behavioral-risk-followup","name":"متابعة التعثر السلوكي","kind":"table","category":"student_affairs"},{"id":"student-remedial-plans","name":"متابعة الخطط العلاجية للطلاب","kind":"table","category":"student_affairs"},{"id":"student-profile","name":"ملف الطالب","kind":"table","category":"student_affairs"},{"id":"student-guidance-programs","name":"برامج التوجيه والإرشاد","kind":"table","category":"student_affairs"},{"id":"student-services","name":"الخدمات الطلابية والتكافل","kind":"table","category":"student_affairs"},{"id":"parent-communication","name":"سجل التواصل مع أولياء الأمور","kind":"table","category":"student_affairs"},{"id":"family-meetings","name":"محاضر الاجتماعات الأسرية والاستدعاءات","kind":"table","category":"student_affairs"},{"id":"student-safety-incidents","name":"الحوادث والإصابات والبلاغات الطلابية","kind":"table","category":"student_affairs"}];
+  const WAKIL_RECORD_CATEGORY_LABELS = {educational:'أرشيف الشؤون التعليمية', school_affairs:'أرشيف الشؤون المدرسية', student_affairs:'أرشيف شؤون الطلاب', shared:'الأرشيف المشترك'};
+  const WAKIL_RECORD_CATEGORY_ORDER = ['educational','school_affairs','student_affairs','shared'];
   function recordCategoryLabel(cat){ return WAKIL_RECORD_CATEGORY_LABELS[cat] || 'أرشيف آخر'; }
+  function activeAgencyCategories(){
+    var list=[];
+    try{if(typeof window.__getAgentCategories==='function')list=window.__getAgentCategories()||[];}catch(e){}
+    return Array.from(new Set((Array.isArray(list)?list:[]).filter(function(x){return ['educational','school_affairs','student_affairs'].indexOf(x)>-1;})));
+  }
+  function visibleRecordCategories(){var list=activeAgencyCategories();list.push('shared');return Array.from(new Set(list));}
+  function isRecordCategoryVisible(cat){return visibleRecordCategories().indexOf(cat||'shared')>-1;}
+
   const DIGITAL_ARCHIVE_FOLDERS = [{"id": "1", "name": "أداء الواجبات الوظيفية"}, {"id": "2", "name": "التفاعل مع المجتمع المهني"}, {"id": "3", "name": "التفاعل مع أولياء الأمور"}, {"id": "4", "name": "مرن وقادر على تنفيذ أعماله"}, {"id": "5", "name": "يدعم ويشارك في المبادرات النوعية"}, {"id": "6", "name": "يتخذ إجراءات تربوية تحقق الانضباط المدرسي"}, {"id": "7", "name": "يدير الموارد في المدرسة بكفاءة"}, {"id": "8", "name": "يشارك في إعداد خطة للتطوير المهني"}, {"id": "9", "name": "يقدم التغذية الراجعة ويتابع تحقق مؤشرات الأداء"}, {"id": "10", "name": "يدعم تنفيذ برامج التطوير المهني"}, {"id": "11", "name": "يقيم أداء منسوبي المدرسة"}, {"id": "12", "name": "ينفذ إجراءات علمية لتحسين نتائج التعلم"}, {"id": "13", "name": "يسهم في تحسين مستوى أداء المدرسة"}, {"id": "14", "name": "يشارك في إعداد الخطط المدرسية اللازمة"}, {"id": "15", "name": "يتابع تنفيذ الخطط المدرسية بمختلف أنواعها"}, {"id": "16", "name": "يهيئ الفرص والإمكانات لمشاركة الطلاب في الأنشطة"}, {"id": "17", "name": "يوظف المنصات الرقمية وتطبيقاتها المعتمدة"}, {"id": "18", "name": "يتابع تعزيز السلوك الإيجابي للطلاب"}, {"id": "19", "name": "يهيئ بيئة مدرسية آمنة ومحفزة على التعلم"}];
   let currentRecordsFolder = null;
 
@@ -5651,7 +5723,9 @@ bWw+
   }
 
   function folderById(id){
-    return RECORD_FOLDERS.find(function(f){ return f.id === id; }) || RECORD_FOLDERS[0] || {id:'other',name:'سجل'};
+    const found=RECORD_FOLDERS.find(function(f){ return f.id === id; });
+    if(found && isRecordCategoryVisible(found.category || 'shared')) return found;
+    return RECORD_FOLDERS.find(function(f){ return isRecordCategoryVisible(f.category || 'shared'); }) || {id:'other',name:'سجل',category:'shared'};
   }
 
   function hideMainViews(){
@@ -5671,6 +5745,10 @@ bWw+
     }
   }
 
+
+  window.addEventListener('agent-agency-categories-updated',function(){
+    try{var v=document.getElementById('records-archive-view');if(v && !v.classList.contains('hidden'))renderRecordsArchiveFolders();}catch(e){}
+  });
   window.openRecordsArchiveView = function(){
     const v = document.getElementById('records-archive-view');
     if(!v){
@@ -5710,8 +5788,9 @@ bWw+
       }
     });
 
-    c.innerHTML = WAKIL_RECORD_CATEGORY_ORDER.map(function(cat){
-      const group = RECORD_FOLDERS.filter(function(f){ return (f.category || 'shared') === cat; });
+    const allowedCategories = visibleRecordCategories();
+    c.innerHTML = WAKIL_RECORD_CATEGORY_ORDER.filter(function(cat){ return allowedCategories.indexOf(cat)>-1; }).map(function(cat){
+      const group = RECORD_FOLDERS.filter(function(f){ return (f.category || 'shared') === cat && isRecordCategoryVisible(f.category || 'shared'); });
       if(!group.length) return '';
       return '<section class="mb-8">'
         + '<div class="mb-4 bg-white/80 border border-emerald-100 rounded-[24px] p-4 flex items-center justify-between">'

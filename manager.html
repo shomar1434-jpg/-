@@ -1535,7 +1535,14 @@ body{overflow-x:hidden}
 </div><div class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-cyan-400 cursor-pointer transition-all flex flex-col items-center gap-4 group manager-section-card" onclick="openManagerAIAssistantGenerator()">
 <div class="w-14 h-14 bg-cyan-700 text-white rounded-2xl flex items-center justify-center shadow-lg text-2xl">🤖</div>
 <h3 class="font-bold text-lg text-slate-700">وكيل المدرسة الذكي</h3>
-</div><div class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-emerald-400 cursor-pointer transition-all flex flex-col items-center gap-4 group manager-section-card" onclick="window.location.href='performance_evaluation.html'">
+</div><div class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-cyan-400 cursor-pointer transition-all flex flex-col items-center gap-4 group manager-section-card ss-performance-card-static" data-ss-performance-card="1" role="button" tabindex="0" onclick="if(typeof window.openPerformanceFile==='function'){window.openPerformanceFile();}else{alert('تعذر تحميل محرك ملف الأداء الوظيفي. تأكد من وجود performance-file-engine.js');}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();if(typeof window.openPerformanceFile==='function'){window.openPerformanceFile();}}" aria-label="فتح ملف الأداء الوظيفي">
+<div class="w-20 h-20 bg-gradient-to-br from-cyan-600 to-slate-700 text-white rounded-[26px] flex items-center justify-center shadow-xl text-3xl">📘</div>
+<div class="text-center">
+<h3 class="font-black text-xl text-slate-800">ملف الأداء الوظيفي</h3>
+<p class="text-[11px] text-slate-400 font-bold mt-2">ملف الأداء المرتبط بتقارير مجالات الأرشيف والشواهد المهنية</p>
+</div>
+</div>
+<div class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-emerald-400 cursor-pointer transition-all flex flex-col items-center gap-4 group manager-section-card" onclick="window.location.href='performance_evaluation.html'">
 <div class="w-20 h-20 bg-gradient-to-br from-emerald-600 to-teal-800 text-white rounded-[26px] flex items-center justify-center shadow-xl text-3xl">⭐</div>
 <div class="text-center">
 <h3 class="font-black text-xl text-slate-800">تقييم الأداء الوظيفي</h3>
@@ -4792,22 +4799,44 @@ document.addEventListener("click", function(e){
 (function(){
  if(window.__SUPERVISOR_VISIT_MANAGER_LINK_ENGINE__) return;
  window.__SUPERVISOR_VISIT_MANAGER_LINK_ENGINE__=true;
- function schoolId(){return localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||new URLSearchParams(location.search).get('school_id')||'school_'+location.hostname.replace(/\W/g,'_')}
+ function schoolId(){
+   try{
+     var q=new URLSearchParams(location.search||'');
+     var u={}; var s={};
+     try{u=JSON.parse(localStorage.getItem('currentSchoolUser')||localStorage.getItem('currentUser')||'{}')||{};}catch(_){}
+     try{s=JSON.parse(localStorage.getItem('smartSchool.currentSchool')||localStorage.getItem('activeSchool')||localStorage.getItem('currentSchool')||'{}')||{};}catch(_){}
+     var sid=(typeof currentSchoolId==='function'?currentSchoolId():'')||
+       localStorage.getItem('active_school_id')||
+       localStorage.getItem('smart_school_active_school_id')||
+       localStorage.getItem('platform_file_session_school_id')||
+       sessionStorage.getItem('active_school_id')||
+       localStorage.getItem('current_school_id')||
+       localStorage.getItem('school_id')||
+       localStorage.getItem('smart_school_id')||
+       q.get('schoolId')||q.get('school_id')||
+       u.schoolId||u.school_id||u.activeSchoolId||
+       s.schoolId||s.school_id||s.id||'';
+     sid=String(sid||'').trim();
+     return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(sid)?sid:'';
+   }catch(e){return '';}
+ }
  function schoolName(){return localStorage.getItem('school_name')||localStorage.getItem('persist_school')||new URLSearchParams(location.search).get('school_name')||'المدرسة'}
- function tokenKey(){return 'supervisor_visit_token_'+schoolId()}
+ function tokenKey(){var sid=schoolId();return sid?'supervisor_visit_token_'+sid:'supervisor_visit_token_unresolved'}
  function token(){let t=localStorage.getItem(tokenKey()); if(!t){t='sv_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8); localStorage.setItem(tokenKey(),t)} return t}
  function base(){return location.origin + location.pathname.replace(/manager\.html.*$/,'')}
- function link(){return base() + 'supervisor_visit.html?school_id=' + encodeURIComponent(schoolId()) + '&school_name=' + encodeURIComponent(schoolName()) + '&token=' + encodeURIComponent(token())}
+ function link(){var sid=schoolId();if(!sid)throw new Error('تعذر تحديد school_id الصحيح للمدرسة من الجلسة الحالية');return base() + 'supervisor_visit.html?school_id=' + encodeURIComponent(sid) + '&school_name=' + encodeURIComponent(schoolName()) + '&token=' + encodeURIComponent(token())}
  function currentManagerId(){try{var u=JSON.parse(localStorage.getItem('currentSchoolUser')||localStorage.getItem('currentUser')||'{}');return u.id||u.user_id||null}catch(e){return null}}
  async function syncSupervisorToken(){
    if(!window.SmartSchoolSupabase||!SmartSchoolSupabase.registerExternalAccess) throw new Error('محرك الروابط السحابية غير جاهز');
    var uid=currentManagerId(); if(!uid) throw new Error('تعذر تحديد حساب مدير المدرسة');
-   return await SmartSchoolSupabase.registerExternalAccess({token:token(),school_id:schoolId(),access_type:'supervisor_visit',created_by:uid,visit_number:'SUP-'+new Date().getFullYear(),permissions:{manager:true,agent:true,teacher:true,student_advisor:true},metadata:{school_name:schoolName(),read_only:true}});
+   var sid=schoolId(); if(!sid) throw new Error('تعذر تحديد school_id الصحيح للمدرسة. أعد تسجيل الدخول إلى حساب المدرسة ثم حاول مجددًا');
+   return await SmartSchoolSupabase.registerExternalAccess({token:token(),school_id:sid,access_type:'supervisor_visit',created_by:uid,visit_number:'SUP-'+new Date().getFullYear(),permissions:{manager:true,agent:true,teacher:true,student_advisor:true},metadata:{school_name:schoolName(),read_only:true}});
  }
  async function revokeSupervisorToken(t){
    if(!t||!window.SmartSchoolSupabase||!SmartSchoolSupabase.revokeExternalAccess)return false;
    var uid=currentManagerId(); if(!uid)return false;
-   return await SmartSchoolSupabase.revokeExternalAccess({token:t,school_id:schoolId(),revoked_by:uid});
+   var sid=schoolId(); if(!sid)return false;
+   return await SmartSchoolSupabase.revokeExternalAccess({token:t,school_id:sid,revoked_by:uid});
  }
  window.openSupervisorVisitLinkModal=async function(){
    document.getElementById('supervisorVisitLinkModal').style.display='flex';

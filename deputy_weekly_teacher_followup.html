@@ -172,11 +172,28 @@
   let teachers=[], weeks=[], activeWeekId='', archives=[];
   const $=id=>document.getElementById(id); const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
   function toast(msg){const d=document.createElement('div');d.className='toast';d.textContent=msg;document.body.appendChild(d);setTimeout(()=>d.remove(),2600)}
-  function schoolId(){try{let a=JSON.parse(localStorage.getItem('activeSchool')||localStorage.getItem('currentSchool')||'{}'); if(a&&(a.id||a.school_id))return a.id||a.school_id}catch(e){} try{let keys=Object.keys(localStorage).filter(k=>k.startsWith('deputyWeeklyFollowupTeachers:')); if(keys[0])return keys[0].split(':')[1]}catch(e){} return 'DEV_SCHOOL'}
+  function schoolId(){
+    try{
+      const q=new URLSearchParams(location.search||'');
+      let a={},u={};
+      try{a=JSON.parse(localStorage.getItem('smartSchool.currentSchool')||localStorage.getItem('activeSchool')||localStorage.getItem('currentSchool')||'{}')||{}}catch(_){}
+      try{u=JSON.parse(localStorage.getItem('currentSchoolUser')||localStorage.getItem('currentUser')||'{}')||{}}catch(_){}
+      const sid=q.get('schoolId')||q.get('school_id')||
+        localStorage.getItem('active_school_id')||sessionStorage.getItem('active_school_id')||
+        localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||
+        localStorage.getItem('smart_school_id')||localStorage.getItem('platform_file_session_school_id')||
+        a.id||a.school_id||u.school_id||u.schoolId||'';
+      return String(sid||'').trim();
+    }catch(e){return ''}
+  }
   function weeksKey(){return 'deputyWeeklyFollowupWeeks:'+schoolId()} function archiveKey(){return 'deputyWeeklyFollowupArchive:'+schoolId()} function activeKey(){return 'deputyWeeklyFollowupActiveWeek:'+schoolId()} function manualTeacherKey(){return 'deputyWeeklyTeacherManualProfiles:'+schoolId()} function teacherKeys(){return ['deputyWeeklyFollowupTeachers:'+schoolId(),'deputyWeeklyFollowupTeachers:lastExport']}
   function readManualTeacherProfiles(){try{return JSON.parse(localStorage.getItem(manualTeacherKey())||'{}')||{}}catch(e){return {}}}
   function saveManualTeacherProfiles(v){try{localStorage.setItem(manualTeacherKey(),JSON.stringify(v||{}))}catch(e){}}
-  function loadTeacherPayload(){for(const k of teacherKeys()){try{const p=JSON.parse(localStorage.getItem(k)||sessionStorage.getItem(k)||'null'); if(p&&Array.isArray(p.teachers))return p}catch(e){}} try{const all=Object.keys(localStorage).filter(k=>k.startsWith('deputyWeeklyFollowupTeachers:')).map(k=>JSON.parse(localStorage.getItem(k)||'null')).filter(p=>p&&Array.isArray(p.teachers)); return all.sort((a,b)=>String(b.updated_at||'').localeCompare(String(a.updated_at||'')))[0]||null}catch(e){} return null}
+  function loadTeacherPayload(){
+    const sid=schoolId();
+    for(const k of teacherKeys()){try{const p=JSON.parse(localStorage.getItem(k)||sessionStorage.getItem(k)||'null'); if(p&&Array.isArray(p.teachers)&&(!p.school_id||String(p.school_id)===String(sid)))return p}catch(e){}}
+    return null
+  }
   function normalizeTeacher(t){const subject=t.subject||'',lessons=t.weekly_lessons||'',assignments=Array.isArray(t.assignments)?t.assignments:[];return {user_id:String(t.user_id||t.id||t.uid||t.email||('T'+Math.random().toString(36).slice(2))),name:t.name||t.teacher_name||t.full_name||'معلم',email:t.email||'',subject,weekly_lessons:lessons,assignments,extra_roles:Array.isArray(t.extra_roles)?t.extra_roles:[],status:t.status||t.user_status||'active',source:t.source||'',subject_source:t.subject_source||'',lessons_source:t.lessons_source||'',assignments_source:t.assignments_source||'',profile_status:t.profile_status||((subject&&lessons&&assignments.length)?'complete':'missing')}}
   function activeTeacherRow(t){const st=String(t?.status||'active').toLowerCase();return !/pending|inactive|disabled|deleted|محذوف|معطل|معلق|بانتظار/.test(st)}
   function mergeTeacherRows(base,details){
@@ -207,6 +224,11 @@
   }
   async function refreshTeachers(opts={}){
     const silent=!!opts.silent;
+    const sid=schoolId();
+    if(!sid){
+      if($('sourceInfo'))$('sourceInfo').textContent='تعذر تحديد المدرسة النشطة؛ أعد فتح القسم من حساب الوكيل.';
+      if(!silent)toast('تعذر تحديد المدرسة النشطة'); return false;
+    }
     if($('sourceInfo'))$('sourceInfo').textContent='جارٍ قراءة المعلمين مباشرة من مركز المعلومات للمدرسة النشطة...';
     let central=[];
     try{
@@ -222,11 +244,15 @@
       if($('sourceInfo'))$('sourceInfo').textContent='لا توجد حسابات معلمين مفعّلة في مركز المعلومات لهذه المدرسة. فعّل المعلمين في مركز المعلومات أولًا.';
       renderAll(); if(!silent)toast('لا توجد حسابات معلمين مفعّلة لهذه المدرسة'); return false;
     }
-    const payload={source:'school_information_center_direct',school_id:schoolId(),updated_at:new Date().toISOString(),teachers:teachers};
-    try{localStorage.setItem('deputyWeeklyFollowupTeachers:'+schoolId(),JSON.stringify(payload));localStorage.setItem('deputyWeeklyFollowupTeachers:lastExport',JSON.stringify(payload))}catch(e){}
-    ensureWeekTeacherStatuses();
-    saveWeeks();
-    if($('sourceInfo'))$('sourceInfo').textContent='المصدر المباشر: مركز المعلومات المدرسية — '+teachers.length+' معلم/معلمة مفعّلين — آخر مزامنة '+new Date().toLocaleString('ar-SA');
+    const payload={source:'school_information_center_direct',school_id:sid,updated_at:new Date().toISOString(),teachers:teachers};
+    try{localStorage.setItem('deputyWeeklyFollowupTeachers:'+sid,JSON.stringify(payload));localStorage.setItem('deputyWeeklyFollowupTeachers:lastExport',JSON.stringify(payload))}catch(e){}
+    // استيراد المعلمين مستقل تماماً عن توليد الأسابيع.
+    // نهيئ حالات الأسابيع فقط إن كانت موجودة مسبقاً.
+    if(weeks.length){ensureWeekTeacherStatuses();saveWeeks();}
+    if($('sourceInfo'))$('sourceInfo').textContent='المصدر المباشر: مركز المعلومات المدرسية — '+teachers.length+' معلم/معلمة مفعّلين'
+      +(central.length?' (قراءة مركز المعلومات: '+central.length+')':'')
+      +' — '+(weeks.length?'تم ربطهم بالأسابيع الموجودة':'لا يلزم توليد الأسابيع لعرض المعلمين')
+      +' — آخر مزامنة '+new Date().toLocaleString('ar-SA');
     renderAll(); if(!silent)toast('تمت مزامنة '+teachers.length+' معلم/معلمة من مركز المعلومات'); return true
   }
   function loadWeeks(){try{weeks=JSON.parse(localStorage.getItem(weeksKey())||'[]')}catch(e){weeks=[]} try{archives=JSON.parse(localStorage.getItem(archiveKey())||'[]')}catch(e){archives=[]} activeWeekId=localStorage.getItem(activeKey())||(weeks.find(w=>w.status==='نشط')||weeks[0]||{}).id||''}
@@ -320,7 +346,7 @@
   function submissionBadge(w,t){const sub=(w?.teacherSubmissions||{})[t.user_id]; if(!sub)return '<span class="badge gray">لم يطلع</span>'; if(sub.submitted_at)return '<span class="badge blue">مرسل للوكيل</span>'; if(sub.viewed_at)return '<span class="badge gold">تم الاطلاع</span>'; return '<span class="badge gray">لم يطلع</span>'}
   function weekMetrics(w){const scores=teachers.map(t=>({teacher:t,score:executiveScore(w,t),discipline:disciplineScore(w,t)})); const avg=Math.round(scores.reduce((a,b)=>a+b.score,0)/(scores.length||1)); const disciplineAvg=Math.round(scores.reduce((a,b)=>a+b.discipline,0)/(scores.length||1)); const completed=scores.filter(x=>x.score>=85).length, need=scores.filter(x=>x.score<70).length; return {avg,disciplineAvg,executiveAvg:avg,completed,need,scores,total:teachers.length, variable:(w?.variableAssignments||[]).length, extra:(w?.extraTasks||[]).length}}
   function renderCalendar(){const body=$('calendarBody'); body.innerHTML=weeks.map(w=>`<tr><td><b>الأسبوع ${esc(w.number)}</b></td><td>${esc(w.year||'—')}</td><td>${esc(w.term||'—')}</td><td>${dateLabel(w.start)}</td><td>${dateLabel(w.end)}</td><td><span class="badge ${w.status==='مغلق'||w.status==='مؤرشف'?'gold':w.status==='نشط'?'':'gray'}">${esc(w.status||'لم يبدأ')}</span></td><td class="noPrint"><button class="btn small secondary" onclick="setActiveWeek('${esc(w.id)}');switchTab('teachers')">اختيار</button><button class="btn small" onclick="editWeekDrawer('${esc(w.id)}')">تعديل</button></td></tr>`).join('')||'<tr><td colspan="7"><div class="empty">لم يتم توليد الأسابيع بعد. اضغط توليد الأسابيع وحدد بداية الفصل الدراسي.</div></td></tr>'}
-  function renderTeachers(){const rows=filteredTeachers(), w=currentWeek(); $('teachersBody').innerHTML=rows.map((t,i)=>{let sc=teacherScore(w,t); return `<tr><td>${i+1}</td><td><b>${esc(t.name)}</b><div class="muted">${esc(t.email)}</div></td><td>${esc(t.subject||'—')}<div>${sourceBadge(t.subject_source)}</div></td><td>${esc(t.weekly_lessons||'—')}<div>${sourceBadge(t.lessons_source)}</div></td><td>${assBadges(t)}<div>${sourceBadge(t.assignments_source)}</div></td><td>${badges(t.extra_roles,'gold')}</td><td>${t.profile_status==='complete'?'<span class="badge">جاهز</span>':'<span class="badge red">بيانات ناقصة</span>'}</td><td><b>${sc}%</b><div class="progress"><i style="width:${sc}%"></i></div></td><td>${submissionBadge(w,t)}</td><td class="noPrint"><button class="btn small secondary" onclick="openTeacherWeekDrawer('${esc(t.user_id)}')">متابعة</button> <button class="btn small gold" onclick="openTeacherProfileCompletion('${esc(t.user_id)}')">استكمال البيانات</button></td></tr>`}).join('')||'<tr><td colspan="10"><div class="empty">لا توجد حسابات معلمين مفعّلة في مركز المعلومات لهذه المدرسة.</div></td></tr>'}
+  function renderTeachers(){const rows=filteredTeachers(), w=currentWeek(); $('teachersBody').innerHTML=rows.map((t,i)=>{let sc=teacherScore(w,t); return `<tr><td>${i+1}</td><td><b>${esc(t.name)}</b><div class="muted">${esc(t.email)}</div></td><td>${esc(t.subject||'—')}<div>${sourceBadge(t.subject_source)}</div></td><td>${esc(t.weekly_lessons||'—')}<div>${sourceBadge(t.lessons_source)}</div></td><td>${assBadges(t)}<div>${sourceBadge(t.assignments_source)}</div></td><td>${badges(t.extra_roles,'gold')}</td><td>${t.profile_status==='complete'?'<span class="badge">جاهز</span>':'<span class="badge red">بيانات ناقصة</span>'}</td><td><b>${sc}%</b><div class="progress"><i style="width:${sc}%"></i></div></td><td>${submissionBadge(w,t)}</td><td class="noPrint">${w?`<button class="btn small secondary" onclick="openTeacherWeekDrawer('${esc(t.user_id)}')">متابعة</button>`:`<span class="badge gray">أنشئ أسبوعًا للمتابعة</span>`} <button class="btn small gold" onclick="openTeacherProfileCompletion('${esc(t.user_id)}')">استكمال البيانات</button></td></tr>`}).join('')||'<tr><td colspan="10"><div class="empty">لا توجد حسابات معلمين مفعّلة في مركز المعلومات لهذه المدرسة.</div></td></tr>'}
   function optionSelected(value,label){return String(value||'')===label?'selected':''}
   function updateDailyFollowup(id,day,field,value){const w=currentWeek(); if(!w)return toast('اختر أسبوعًا نشطًا أولًا'); w.teacherStatuses=w.teacherStatuses||{}; const st=w.teacherStatuses[id]||blankTeacherStatus(); st.attendance=st.attendance||{}; st.lineup=st.lineup||{}; if(field==='attendance')st.attendance[day]=value; if(field==='lineup')st.lineup[day]=value; w.teacherStatuses[id]=st; saveWeeks(); renderStats(); renderReport(); renderAnalytics(); renderC1WeeklyAnalysis();}
   function renderDailyFollowupList(){const body=$('dailyFollowupBody'); if(!body)return; const w=currentWeek(); if(!w){body.innerHTML='<tr><td colspan="6"><div class="empty">أنشئ أو ولّد الأسبوع أولًا ثم اختره من الأعلى.</div></td></tr>';return} const rows=filteredTeachers(); body.innerHTML=rows.flatMap((t,ti)=>{const st=(w.teacherStatuses||{})[t.user_id]||blankTeacherStatus(); return DAYS.map((d,di)=>`<tr><td>${di===0?ti+1:''}</td><td>${di===0?'<b>'+esc(t.name)+'</b><div class="muted">'+esc(t.subject||'—')+'</div>':''}</td><td><b>${esc(d)}</b></td><td><select onchange="updateDailyFollowup('${esc(t.user_id)}','${esc(d)}','attendance',this.value)"><option ${optionSelected(st.attendance?.[d]||'حاضر','حاضر')}>حاضر</option><option ${optionSelected(st.attendance?.[d]||'حاضر','غائب')}>غائب</option></select></td><td><select onchange="updateDailyFollowup('${esc(t.user_id)}','${esc(d)}','lineup',this.value)"><option ${optionSelected(st.lineup?.[d]||'حاضر','حاضر')}>حاضر</option><option ${optionSelected(st.lineup?.[d]||'حاضر','متأخر')}>متأخر</option><option ${optionSelected(st.lineup?.[d]||'حاضر','لم يحضر')}>لم يحضر</option></select></td><td>${di===0?'<b>'+disciplineScore(w,t)+'%</b><div class="progress"><i style="width:'+disciplineScore(w,t)+'%"></i></div>':''}</td></tr>`)}).join('')||'<tr><td colspan="6"><div class="empty">لا توجد بيانات معلمين. يجب التصدير من مركز المعلومات أولًا.</div></td></tr>'}
@@ -602,7 +628,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-bridge.js"></script>
-<script src="school-information-source.js?v=20260818-deputy-teachers-1"></script>
+<script src="school-information-source.js?v=20260823-deputy-teachers-2"></script>
 <script src="internal-messaging.js"></script>
 <script defer src="unified_workspace.js"></script>
 <script defer src="school_navigation_guard.js"></script>

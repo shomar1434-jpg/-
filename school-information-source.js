@@ -44,8 +44,9 @@ async function rest(path){const res=await fetch(CFG.url()+'/rest/v1/'+path,{head
 async function cloudStudents(){const sid=schoolId();if(!sid)return[];try{return await rest('students?select=*&school_id=eq.'+encodeURIComponent(sid)+'&student_status=neq.%D9%85%D8%AD%D8%B0%D9%88%D9%81&limit=5000')}catch(_){return[]}}
 async function cloudStaff(){
   const sid=schoolId();if(!sid)return[];
-  try{if(window.SmartSchoolSupabase&&typeof SmartSchoolSupabase.listUsersBySchool==='function')return await SmartSchoolSupabase.listUsersBySchool(sid)}catch(_){}
-  // المدارس المستقلة ومتعددة المدارس: school_members هو المرجع الصحيح للعضوية،
+  // المدارس المستقلة ومتعددة المدارس: school_members هو المرجع الصحيح للعضوية.
+  // لا نُرجع listUsersBySchool مباشرة لأنها قد تكون نسخة وسيطة/محدودة؛
+  // نقرأ عضويات المدرسة كاملة أولاً ثم ندمج أي مصدر مساعد لاحقاً.
   // وليس users.school_id فقط، لأن المستخدم قد يعمل في أكثر من مدرسة بنفس الحساب.
   try{
     const members=await rest('school_members?select=*&school_id=eq.'+encodeURIComponent(sid)+'&status=neq.deleted&limit=3000');
@@ -64,7 +65,8 @@ async function cloudStaff(){
       return Object.assign({},u,{id:m.user_id||u.id,email:m.email||u.email,school_id:sid,role:m.role||u.role,role_label:m.role_label||u.role_label,status:m.status||u.status||'active'});
     }).filter(x=>safe(x.id||x.email||x.name));
     let direct=[]; try{direct=await rest('users?select=*&school_id=eq.'+encodeURIComponent(sid)+'&status=neq.deleted&limit=2000')}catch(_){}
-    return dedupe([...fromMembers,...direct],x=>safe(x.id)||norm(x.email)||norm(x.name)+'|'+norm(x.role));
+    let bridge=[]; try{if(window.SmartSchoolSupabase&&typeof SmartSchoolSupabase.listUsersBySchool==='function')bridge=await SmartSchoolSupabase.listUsersBySchool(sid)||[]}catch(_){}
+    return dedupe([...fromMembers,...direct,...bridge],x=>safe(x.id)||norm(x.email)||norm(x.name)+'|'+norm(x.role));
   }catch(_){}
   try{return await rest('users?select=*&school_id=eq.'+encodeURIComponent(sid)+'&status=neq.deleted&limit=2000')}catch(_){return[]}
 }

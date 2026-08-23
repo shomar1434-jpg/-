@@ -186,13 +186,52 @@
       return String(sid||'').trim();
     }catch(e){return ''}
   }
-  function weeksKey(){return 'deputyWeeklyFollowupWeeks:'+schoolId()} function archiveKey(){return 'deputyWeeklyFollowupArchive:'+schoolId()} function activeKey(){return 'deputyWeeklyFollowupActiveWeek:'+schoolId()} function manualTeacherKey(){return 'deputyWeeklyTeacherManualProfiles:'+schoolId()} function teacherKeys(){return ['deputyWeeklyFollowupTeachers:'+schoolId(),'deputyWeeklyFollowupTeachers:lastExport']}
+  function weeksKey(){return 'deputyWeeklyFollowupWeeks:'+schoolId()} function archiveKey(){return 'deputyWeeklyFollowupArchive:'+schoolId()} function activeKey(){return 'deputyWeeklyFollowupActiveWeek:'+schoolId()} function manualTeacherKey(){return 'deputyWeeklyTeacherManualProfiles:'+schoolId()}
+  function teacherVisibleKey(){return 'deputyWeeklyFollowupTeachersVisible:'+schoolId()}
+  function teacherLegacyKeys(){return ['deputyWeeklyFollowupTeachers:'+schoolId(),'deputyWeeklyFollowupTeachers:lastExport']}
   function readManualTeacherProfiles(){try{return JSON.parse(localStorage.getItem(manualTeacherKey())||'{}')||{}}catch(e){return {}}}
   function saveManualTeacherProfiles(v){try{localStorage.setItem(manualTeacherKey(),JSON.stringify(v||{}))}catch(e){}}
+
+  function readPayloadFromKey(k){
+    try{
+      const raw=localStorage.getItem(k)||sessionStorage.getItem(k);
+      if(!raw)return null;
+      const p=JSON.parse(raw);
+      if(!p||!Array.isArray(p.teachers))return null;
+      const sid=schoolId();
+      if(p.school_id&&String(p.school_id)!==String(sid))return null;
+      return p;
+    }catch(e){return null}
+  }
   function loadTeacherPayload(){
-    const sid=schoolId();
-    for(const k of teacherKeys()){try{const p=JSON.parse(localStorage.getItem(k)||sessionStorage.getItem(k)||'null'); if(p&&Array.isArray(p.teachers)&&(!p.school_id||String(p.school_id)===String(sid)))return p}catch(e){}}
+    // القائمة المرئية الجديدة أولاً، ثم أي نسخة قديمة دون الكتابة فوقها.
+    const keys=[teacherVisibleKey(),...teacherLegacyKeys()];
+    for(const k of keys){const p=readPayloadFromKey(k);if(p)return p}
     return null
+  }
+  function loadRecoveryTeacherRows(){
+    const rows=[],seenKeys=new Set();
+    const keys=[teacherVisibleKey(),...teacherLegacyKeys()];
+    // استرجاع محافظ من أي مفاتيح تاريخية لنفس المدرسة دون حذفها أو تعديلها.
+    try{
+      for(let i=0;i<localStorage.length;i++){
+        const k=localStorage.key(i)||'';
+        if(k===manualTeacherKey())continue;
+        if(k.startsWith('deputyWeeklyFollowupTeachers')||k.startsWith('deputyWeeklyTeacher')){
+          keys.push(k);
+        }
+      }
+    }catch(e){}
+    for(const k of keys){
+      if(!k||seenKeys.has(k))continue;seenKeys.add(k);
+      const p=readPayloadFromKey(k);
+      if(p&&Array.isArray(p.teachers))rows.push(...p.teachers.map(x=>({...x,__recovery_key:k})));
+    }
+    return rows;
+  }
+  function saveVisibleTeacherPayload(payload){
+    // لا نكتب مطلقاً فوق المفاتيح القديمة التي قد تحتوي بيانات استكملها الوكيل سابقاً.
+    try{localStorage.setItem(teacherVisibleKey(),JSON.stringify(payload))}catch(e){}
   }
 
   function isWeeklyFollowupTeacher(t){
@@ -213,32 +252,90 @@
     return exactLabels.includes(roleLabel);
   }
 
-  function normalizeTeacher(t){const subject=t.subject||'',lessons=t.weekly_lessons||'',assignments=Array.isArray(t.assignments)?t.assignments:[];return {user_id:String(t.user_id||t.id||t.uid||t.email||('T'+Math.random().toString(36).slice(2))),name:t.name||t.teacher_name||t.full_name||'معلم',email:t.email||'',subject,weekly_lessons:lessons,assignments,extra_roles:Array.isArray(t.extra_roles)?t.extra_roles:[],status:t.status||t.user_status||'active',source:t.source||'',subject_source:t.subject_source||'',lessons_source:t.lessons_source||'',assignments_source:t.assignments_source||'',profile_status:t.profile_status||((subject&&lessons&&assignments.length)?'complete':'missing')}}
+  function normalizeTeacher(t){const subject=t.subject||'',lessons=t.weekly_lessons||'',assignments=Array.isArray(t.assignments)?t.assignments:[];return {user_id:String(t.user_id||t.id||t.uid||t.email||('T'+Math.random().toString(36).slice(2))),name:t.name||t.teacher_name||t.full_name||'معلم',email:t.email||'',role:t.role||t.user_role||'',role_label:t.role_label||t.job_title||t.position||'',subject,weekly_lessons:lessons,assignments,extra_roles:Array.isArray(t.extra_roles)?t.extra_roles:[],status:t.status||t.user_status||'active',source:t.source||'',subject_source:t.subject_source||'',lessons_source:t.lessons_source||'',assignments_source:t.assignments_source||'',profile_status:t.profile_status||((subject&&lessons&&assignments.length)?'complete':'missing')}}
   function activeTeacherRow(t){const st=String(t?.status||'active').toLowerCase();return !/pending|inactive|disabled|deleted|محذوف|معطل|معلق|بانتظار/.test(st)}
+  function teacherIdentityValues(t){
+    const vals=[];
+    const id=String(t?.user_id||t?.id||t?.uid||'').trim().toLowerCase();
+    const email=String(t?.email||'').trim().toLowerCase();
+    const name=String(t?.name||t?.teacher_name||t?.full_name||'').trim().replace(/\s+/g,' ').toLowerCase();
+    if(id)vals.push('id:'+id);if(email)vals.push('email:'+email);if(name)vals.push('name:'+name);
+    return vals
+  }
   function mergeTeacherRows(base,details){
-    const by=new Map(), manual=readManualTeacherProfiles();
-    function key(t){return String(t?.user_id||t?.id||t?.uid||t?.email||'').trim().toLowerCase()}
-    ;(base||[]).forEach(x=>{const n=normalizeTeacher(x); n.subject_source=n.subject?'مركز المعلومات':''; n.lessons_source=n.weekly_lessons?'مركز المعلومات':''; n.assignments_source=n.assignments.length?'مركز المعلومات':''; const k=key(n);if(k)by.set(k,n)});
-    ;(details||[]).forEach(x=>{const n=normalizeTeacher(x),k=key(n);if(!k)return;const prev=by.get(k)||{}; const profileSource=n.source==='school_teacher_profiles'; const subject=(profileSource&&n.subject)?n.subject:(prev.subject||n.subject); const weekly_lessons=(profileSource&&n.weekly_lessons)?n.weekly_lessons:(prev.weekly_lessons||n.weekly_lessons); const assignments=(profileSource&&n.assignments&&n.assignments.length)?n.assignments:((prev.assignments&&prev.assignments.length)?prev.assignments:(n.assignments||[])); const merged=normalizeTeacher(Object.assign({},prev,n,{name:prev.name||n.name,email:prev.email||n.email,subject,weekly_lessons,assignments,extra_roles:(prev.extra_roles&&prev.extra_roles.length)?prev.extra_roles:(n.extra_roles||[])})); merged.subject_source=(profileSource&&n.subject)?'مركز المعلومات':(prev.subject_source||(n.subject?(n.source||'مركز المعلومات'):'')); merged.lessons_source=(profileSource&&n.weekly_lessons)?'مركز المعلومات':(prev.lessons_source||(n.weekly_lessons?(n.source||'مركز المعلومات'):'')); merged.assignments_source=(profileSource&&n.assignments&&n.assignments.length)?'مركز المعلومات':(prev.assignments_source||((n.assignments&&n.assignments.length)?(n.source||'مركز المعلومات'):'')); by.set(k,merged)});
-    for(const [k,t] of by){const m=manual[t.user_id]||manual[k]||{}; if(!t.subject&&m.subject){t.subject=m.subject;t.subject_source='إدخال الوكيل'} if(!t.weekly_lessons&&m.weekly_lessons){t.weekly_lessons=m.weekly_lessons;t.lessons_source='إدخال الوكيل'} if((!t.assignments||!t.assignments.length)&&Array.isArray(m.assignments)&&m.assignments.length){t.assignments=m.assignments;t.assignments_source='إدخال الوكيل'} t.profile_status=(t.subject&&t.weekly_lessons&&t.assignments&&t.assignments.length)?'complete':'missing'; by.set(k,t)}
-    return [...by.values()].filter(activeTeacherRow)
+    const roster=(base||[]).filter(x=>isWeeklyFollowupTeacher(x)&&activeTeacherRow(x));
+    const teachersById=new Map(), aliases=new Map(), manual=readManualTeacherProfiles();
+
+    function register(t){
+      const n=normalizeTeacher(t);
+      const canonical=String(n.user_id||n.email||n.name).trim().toLowerCase();
+      if(!canonical)return null;
+      teachersById.set(canonical,n);
+      teacherIdentityValues(n).forEach(k=>aliases.set(k,canonical));
+      return canonical
+    }
+    function findCanonical(t){
+      for(const k of teacherIdentityValues(t)){if(aliases.has(k))return aliases.get(k)}
+      return null
+    }
+    function enrich(prev,src,sourceLabel){
+      const n=normalizeTeacher(src||{});
+      // لا نسمح للبيانات التاريخية بتغيير هوية أو دور المعلم الحالي.
+      const out={...prev};
+      if(!out.subject&&n.subject){out.subject=n.subject;out.subject_source=n.subject_source||sourceLabel}
+      if(!out.weekly_lessons&&n.weekly_lessons){out.weekly_lessons=n.weekly_lessons;out.lessons_source=n.lessons_source||sourceLabel}
+      if((!out.assignments||!out.assignments.length)&&n.assignments&&n.assignments.length){out.assignments=n.assignments;out.assignments_source=n.assignments_source||sourceLabel}
+      if((!out.extra_roles||!out.extra_roles.length)&&n.extra_roles?.length)out.extra_roles=n.extra_roles;
+      out.profile_status=(out.subject&&out.weekly_lessons&&out.assignments&&out.assignments.length)?'complete':'missing';
+      return out
+    }
+
+    // 1) قائمة مركز المعلومات الحالية هي المرجع الوحيد لمن يظهر.
+    roster.forEach(x=>{
+      const n=normalizeTeacher(x);
+      n.subject_source=n.subject?'مركز المعلومات':'';
+      n.lessons_source=n.weekly_lessons?'مركز المعلومات':'';
+      n.assignments_source=n.assignments.length?'مركز المعلومات':'';
+      register(n);
+    });
+
+    // 2) البيانات السحابية/التاريخية تُستخدم للإثراء فقط إذا طابقت معلماً حالياً.
+    ;(details||[]).forEach(x=>{
+      const c=findCanonical(x);if(!c)return;
+      const prev=teachersById.get(c);teachersById.set(c,enrich(prev,x,x?.source==='school_teacher_profiles'?'مركز المعلومات':'بيانات سابقة مسترجعة'));
+    });
+
+    // 3) استرجاع بيانات الوكيل اليدوية القديمة بالمُعرّف، ثم البريد، ثم الاسم.
+    for(const [key,m] of Object.entries(manual||{})){
+      let c=aliases.get('id:'+String(key).trim().toLowerCase())||aliases.get('email:'+String(key).trim().toLowerCase())||null;
+      if(!c&&m&&typeof m==='object')c=findCanonical(m);
+      if(!c)continue;
+      const prev=teachersById.get(c);
+      const recovered={...prev};
+      if(m.subject){recovered.subject=m.subject;recovered.subject_source='إدخال الوكيل المسترجع'}
+      if(m.weekly_lessons){recovered.weekly_lessons=m.weekly_lessons;recovered.lessons_source='إدخال الوكيل المسترجع'}
+      if(Array.isArray(m.assignments)&&m.assignments.length){recovered.assignments=m.assignments;recovered.assignments_source='إدخال الوكيل المسترجع'}
+      recovered.profile_status=(recovered.subject&&recovered.weekly_lessons&&recovered.assignments&&recovered.assignments.length)?'complete':'missing';
+      teachersById.set(c,recovered);
+    }
+
+    return [...teachersById.values()].filter(activeTeacherRow);
   }
   async function readTeacherCloudDetails(){
     const sid=schoolId(), rows=[];
+    // جداول الإثراء السحابي اختيارية؛ عدم وجودها لا يوقف المزامنة.
     try{
       if(window.SmartSchoolSupabase&&typeof SmartSchoolSupabase.getClient==='function'){
         const sb=SmartSchoolSupabase.getClient();
         if(sb&&sid){
-          const [profiles,exported]=await Promise.all([
-            sb.from('school_teacher_profiles').select('*').eq('school_id',sid).limit(2000),
-            sb.from('deputy_weekly_teacher_source').select('*').eq('school_id',sid).maybeSingle()
-          ]);
-          if(!profiles.error)(profiles.data||[]).forEach(r=>rows.push({user_id:r.user_id,id:r.user_id,name:r.teacher_name||r.name||'',email:r.email||'',subject:r.subject||'',weekly_lessons:r.weekly_lessons||'',assignments:Array.isArray(r.assignments)?r.assignments:[],extra_roles:Array.isArray(r.extra_roles)?r.extra_roles:[],source:'school_teacher_profiles'}));
-          if(!exported.error&&exported.data&&Array.isArray(exported.data.teachers))rows.push(...exported.data.teachers);
+          try{
+            const exported=await sb.from('deputy_weekly_teacher_source').select('*').eq('school_id',sid).maybeSingle();
+            if(!exported.error&&exported.data&&Array.isArray(exported.data.teachers))rows.push(...exported.data.teachers.map(x=>({...x,source:x.source||'deputy_weekly_teacher_source'})));
+          }catch(_){}
         }
       }
     }catch(e){console.warn('teacher cloud details',e)}
-    const local=loadTeacherPayload(); if(local&&Array.isArray(local.teachers))rows.push(...local.teachers);
+    rows.push(...loadRecoveryTeacherRows());
     return rows
   }
   async function refreshTeachers(opts={}){
@@ -257,23 +354,23 @@
         if(typeof SchoolInformationSource.getTeachers==='function') central=await SchoolInformationSource.getTeachers(true)||[];
       }
     }catch(e){console.warn('SchoolInformationSource teachers',e)}
+    // الفلترة تتم على بيانات مركز المعلومات الأصلية قبل أي تحويل أو دمج.
+    const centralTeachers=(Array.isArray(central)?central:[]).filter(x=>isWeeklyFollowupTeacher(x)&&activeTeacherRow(x));
     const details=await readTeacherCloudDetails();
-    teachers=mergeTeacherRows(central,details);
+    teachers=mergeTeacherRows(centralTeachers,details);
     if(!teachers.length){
       if($('sourceInfo'))$('sourceInfo').textContent='لا توجد حسابات معلمين مفعّلة في مركز المعلومات لهذه المدرسة. فعّل المعلمين في مركز المعلومات أولًا.';
       renderAll(); if(!silent)toast('لا توجد حسابات معلمين مفعّلة لهذه المدرسة'); return false;
     }
 
-    // فلتر نهائي إلزامي لقسم متابعة الأعمال الأسبوعية:
-    // لا يسمح إلا بحسابات المعلمين/المعلمات الفعلية.
-    teachers=(Array.isArray(teachers)?teachers:[]).filter(isWeeklyFollowupTeacher);
     const payload={source:'school_information_center_direct',school_id:sid,updated_at:new Date().toISOString(),teachers:teachers};
-    try{localStorage.setItem('deputyWeeklyFollowupTeachers:'+sid,JSON.stringify(payload));localStorage.setItem('deputyWeeklyFollowupTeachers:lastExport',JSON.stringify(payload))}catch(e){}
+    saveVisibleTeacherPayload(payload);
     // استيراد المعلمين مستقل تماماً عن توليد الأسابيع.
     // نهيئ حالات الأسابيع فقط إن كانت موجودة مسبقاً.
     if(weeks.length){ensureWeekTeacherStatuses();saveWeeks();}
     if($('sourceInfo'))$('sourceInfo').textContent='المصدر المباشر: مركز المعلومات المدرسية — '+teachers.length+' معلم/معلمة فقط'
-      +(central.length?' (قراءة مركز المعلومات: '+central.length+')':'')
+      +' (المعلمون الفعليون في مركز المعلومات: '+centralTeachers.length+')'
+      +(details.length?' — تم فحص '+details.length+' سجلًا سابقًا لاسترجاع البيانات المكملة':'')
       +' — '+(weeks.length?'تم ربطهم بالأسابيع الموجودة':'لا يلزم توليد الأسابيع لعرض المعلمين')
       +' — آخر مزامنة '+new Date().toLocaleString('ar-SA');
     renderAll(); if(!silent)toast('تمت مزامنة '+teachers.length+' معلم/معلمة من مركز المعلومات'); return true
@@ -310,7 +407,7 @@
   function assBadges(t){let a=t.assignments||[]; if(!a.length)return '<span class="badge gray">لم تستكمل</span>'; return a.map(x=>'<span class="badge blue">'+esc(assignmentLabel(x))+'</span>').join(' ')}
   function sourceBadge(src){return src?'<span class="badge '+(src==='إدخال الوكيل'?'gold':'')+'">'+esc(src)+'</span>':''}
   function openTeacherProfileCompletion(id){const t=teachers.find(x=>x.user_id===id);if(!t)return; const subjectLocked=!!(t.subject&&t.subject_source!=='إدخال الوكيل'),lessonsLocked=!!(t.weekly_lessons&&t.lessons_source!=='إدخال الوكيل'),assignLocked=!!((t.assignments||[]).length&&t.assignments_source!=='إدخال الوكيل'); const ass=(t.assignments||[]).map(assignmentLabel).join('\n'); openDrawer(`<div class="drawerHead"><div><h2>استكمال بيانات ${esc(t.name)}</h2><div class="muted">تُستخدم هذه البيانات داخل متابعة أعمال المعلمين فقط. بيانات مركز المعلومات لها الأولوية متى توفرت.</div></div><button class="btn secondary" onclick="closeDrawer()">إغلاق</button></div><div class="row"><div class="field"><label>المادة ${sourceBadge(t.subject_source)}</label><input id="mpSubject" value="${esc(t.subject||'')}" ${subjectLocked?'readonly':''} placeholder="أدخل المادة عند عدم توفرها"></div><div class="field"><label>عدد الحصص الأسبوعية ${sourceBadge(t.lessons_source)}</label><input id="mpLessons" type="number" min="0" value="${esc(t.weekly_lessons||'')}" ${lessonsLocked?'readonly':''} placeholder="عدد الحصص"></div></div><div class="field"><label>التكليفات التدريسية ${sourceBadge(t.assignments_source)}</label><textarea id="mpAssignments" ${assignLocked?'readonly':''} placeholder="كل تكليف في سطر مستقل">${esc(ass)}</textarea></div><div class="empty">الحقول القادمة من مركز المعلومات تظهر للقراءة فقط. الحقول الناقصة يمكن للوكيل استكمالها يدويًا، وتُستبدل تلقائيًا بالمصدر الرسمي إذا أُضيفت لاحقًا إلى مركز المعلومات.</div><button class="btn" onclick="saveTeacherProfileCompletion('${esc(id)}')">حفظ البيانات المكملة</button>`)}
-  function saveTeacherProfileCompletion(id){const t=teachers.find(x=>x.user_id===id);if(!t)return; const m=readManualTeacherProfiles(),old=m[id]||{}; const canSubject=!(t.subject&&t.subject_source!=='إدخال الوكيل'),canLessons=!(t.weekly_lessons&&t.lessons_source!=='إدخال الوكيل'),canAssign=!((t.assignments||[]).length&&t.assignments_source!=='إدخال الوكيل'); if(canSubject)old.subject=($('mpSubject').value||'').trim(); if(canLessons)old.weekly_lessons=($('mpLessons').value||'').trim(); if(canAssign)old.assignments=($('mpAssignments').value||'').split(/\n|،|,/).map(x=>x.trim()).filter(Boolean); old.updated_at=new Date().toISOString();m[id]=old;saveManualTeacherProfiles(m);closeDrawer();refreshTeachers();toast('تم حفظ البيانات المكملة للمعلم')}
+  function saveTeacherProfileCompletion(id){const t=teachers.find(x=>x.user_id===id);if(!t)return; const m=readManualTeacherProfiles(),old=m[id]||{}; const canSubject=!(t.subject&&t.subject_source!=='إدخال الوكيل'),canLessons=!(t.weekly_lessons&&t.lessons_source!=='إدخال الوكيل'),canAssign=!((t.assignments||[]).length&&t.assignments_source!=='إدخال الوكيل'); if(canSubject)old.subject=($('mpSubject').value||'').trim(); if(canLessons)old.weekly_lessons=($('mpLessons').value||'').trim(); if(canAssign)old.assignments=($('mpAssignments').value||'').split(/\n|،|,/).map(x=>x.trim()).filter(Boolean); old.user_id=t.user_id;old.email=t.email||'';old.name=t.name||'';old.updated_at=new Date().toISOString();m[id]=old;saveManualTeacherProfiles(m);closeDrawer();refreshTeachers();toast('تم حفظ البيانات المكملة للمعلم')}
   function scoreStatus(v){
     v=String(v||'').trim();
     if(['حاضر','حضر','مكتمل','تم التنفيذ','مكلف وتم التنفيذ','منجز','تم','مرسل للوكيل'].includes(v))return 100;
@@ -651,7 +748,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-bridge.js"></script>
-<script src="school-information-source.js?v=20260823-deputy-teachers-3"></script>
+<script src="school-information-source.js?v=20260823-deputy-teachers-4"></script>
 <script src="internal-messaging.js"></script>
 <script defer src="unified_workspace.js"></script>
 <script defer src="school_navigation_guard.js"></script>

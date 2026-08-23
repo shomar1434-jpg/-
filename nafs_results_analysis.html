@@ -54,20 +54,161 @@
       background: linear-gradient(135deg, #004d40 0%, #00675b 50%, #00897b 100%);
     }
 
+    @page {
+      size: A4 landscape;
+      margin: 7mm;
+    }
+
     @media print {
+      html, body {
+        width: 100% !important;
+        height: auto !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #fff !important;
+        overflow: visible !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+
       .no-print {
         display: none !important;
       }
-      body {
-        background-color: white !important;
+
+      body > header,
+      body > .no-print {
+        display: none !important;
+      }
+
+      main {
+        width: 100% !important;
+        max-width: none !important;
+        margin: 0 !important;
         padding: 0 !important;
       }
-      .page-break {
-        page-break-before: always;
+
+      /* اطبع البطاقة النشطة فقط، لمنع الصفحات البيضاء الإضافية. */
+      .view-section {
+        display: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
       }
-      .print-shadow-none {
+      .view-section:not(.hidden) {
+        display: block !important;
+      }
+
+      /* إلغاء فاصل الصفحة القديم الذي كان يولد صفحة فارغة. */
+      .page-break {
+        break-before: auto !important;
+        page-break-before: auto !important;
+      }
+
+      .print-shadow-none,
+      .view-section .bg-white {
         box-shadow: none !important;
-        border: 1px solid #d1d5db !important;
+      }
+
+      /* الحفاظ على وحدات المحتوى كاملة. */
+      table {
+        width: 100% !important;
+        table-layout: fixed;
+        border-collapse: collapse !important;
+      }
+      thead {
+        display: table-header-group;
+      }
+      tfoot {
+        display: table-footer-group;
+      }
+      tr, th, td,
+      .rounded-xl,
+      .rounded-2xl,
+      .rounded-3xl {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+      }
+
+      .overflow-x-auto,
+      .overflow-hidden {
+        overflow: visible !important;
+      }
+
+      img, svg, canvas {
+        max-width: 100% !important;
+      }
+
+      /* البطاقات القصيرة: ضبط تلقائي إلى صفحة واحدة A4 بالعرض. */
+      #view-visualDashboard:not(.hidden),
+      #view-fullReport:not(.hidden),
+      #view-executiveSummary:not(.hidden) {
+        zoom: var(--nafs-print-zoom, 1);
+        transform-origin: top right;
+      }
+
+      #view-visualDashboard:not(.hidden) #dashboardCanvas,
+      #view-executiveSummary:not(.hidden) > div {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+        margin: 0 !important;
+      }
+
+      /* التقرير الكامل يبقى متماسكاً قدر الإمكان في صفحة واحدة. */
+      #view-fullReport:not(.hidden) {
+        gap: 5px !important;
+      }
+      #view-fullReport:not(.hidden) > div {
+        margin-top: 0 !important;
+        margin-bottom: 5px !important;
+        padding: 12px !important;
+      }
+      #view-fullReport:not(.hidden) .p-6 {
+        padding: 12px !important;
+      }
+      #view-fullReport:not(.hidden) .gap-6 {
+        gap: 10px !important;
+      }
+      #view-fullReport:not(.hidden) .space-y-6 > :not([hidden]) ~ :not([hidden]) {
+        margin-top: 8px !important;
+      }
+
+      /* خطة التحسين: يمكن أن تمتد لصفحات متعددة، ولكن بدون شطر العناصر والجداول. */
+      #view-timelineImpact:not(.hidden) {
+        zoom: 0.92;
+      }
+      #view-timelineImpact:not(.hidden) > .bg-white {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+        margin: 0 0 7mm 0 !important;
+      }
+      #view-timelineImpact:not(.hidden) #dynamicTimelineGrid > div {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+      }
+      #view-timelineImpact:not(.hidden) table,
+      #view-timelineImpact:not(.hidden) tbody,
+      #view-timelineImpact:not(.hidden) tr {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+      }
+
+      /* تقليل الفراغات مع إبقاء الهوية البصرية. */
+      .view-section:not(.hidden) .mb-6 { margin-bottom: 10px !important; }
+      .view-section:not(.hidden) .mt-5 { margin-top: 10px !important; }
+      .view-section:not(.hidden) .gap-4 { gap: 9px !important; }
+      .view-section:not(.hidden) .gap-6 { gap: 11px !important; }
+
+      /* أحجام طباعة مقروءة ومنضبطة. */
+      .view-section:not(.hidden) .text-3xl { font-size: 22px !important; line-height: 1.2 !important; }
+      .view-section:not(.hidden) .text-2xl { font-size: 19px !important; line-height: 1.2 !important; }
+      .view-section:not(.hidden) .text-xl { font-size: 16px !important; line-height: 1.25 !important; }
+      .view-section:not(.hidden) .text-lg { font-size: 14px !important; line-height: 1.3 !important; }
+
+      /* لا ارتفاعات أو مسافات قسرية تسبب فراغاً أسفل البطاقة. */
+      #dashboardCanvas,
+      #dynamicDashboardContent,
+      #view-executiveSummary > div {
+        min-height: 0 !important;
+        height: auto !important;
       }
     }
 
@@ -84,6 +225,47 @@
       border-radius: 4px;
     }
   </style>
+
+  <style id="nafs-output-refinement-v2">
+    /* منع الأرقام المحسوبة من دفع حدود البطاقات */
+    .nafs-number,
+    #dynamicDashboardContent td,
+    #dynamicDashboardContent .font-black,
+    #skillsReportTableBody td,
+    #impactMeasurementBody td {
+      font-variant-numeric: tabular-nums;
+      overflow-wrap: normal;
+      word-break: keep-all;
+    }
+
+    #dashboardCanvas {
+      height: auto;
+      min-height: 0;
+    }
+
+    #dynamicDashboardContent > :first-child {
+      margin-top: .35rem !important;
+    }
+
+    #dynamicDashboardContent .grid {
+      align-items: stretch;
+    }
+
+    @media (min-width: 1024px) {
+      #dashboardCanvas {
+        padding-top: 1.35rem !important;
+        padding-bottom: 1.35rem !important;
+      }
+      #dashboardCanvas > .border-b-2 {
+        margin-bottom: 1.05rem !important;
+        padding-bottom: .9rem !important;
+      }
+      #dynamicDashboardContent .gap-6 {
+        gap: 1rem !important;
+      }
+    }
+  </style>
+
 </head>
 <body class="min-h-screen pb-12">
 
@@ -98,16 +280,13 @@
 
       <!-- Action Navigation Buttons -->
       <div class="flex flex-wrap items-center gap-2">
-        <button onclick="window.location.href='manager.html'" class="bg-white/15 hover:bg-white/25 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow border border-white/25" title="العودة إلى الأقسام الرئيسية">
-          <i class="fa-solid fa-arrow-right"></i> العودة للأقسام الرئيسية
-        </button>
         <button onclick="switchView('pdfInput')" class="bg-red-600 hover:bg-red-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow">
           <i class="fa-solid fa-file-pdf"></i> رفع واستخراج بطاقة PDF
         </button>
         <button onclick="openModal('editModal')" class="bg-amber-500 hover:bg-amber-600 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow">
           <i class="fa-solid fa-pen-to-square"></i> تعديل البيانات
         </button>
-        <button onclick="window.print()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow">
+        <button onclick="prepareNafsPrintLayout(); setTimeout(()=>window.print(),60)" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow">
           <i class="fa-solid fa-print"></i> طباعة / تصدير PDF
         </button>
       </div>
@@ -967,7 +1146,58 @@
       }
     }
 
-    function switchView(viewId) {
+    
+    function fmt2(value) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return value == null ? '' : String(value);
+      return n.toLocaleString('en-US', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+        useGrouping: false
+      });
+    }
+
+    function fmtSigned2(value) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return value == null ? '' : String(value);
+      const v = fmt2(n);
+      return n > 0 ? '+' + v : v;
+    }
+
+    function activePrintableView() {
+      return [...document.querySelectorAll('.view-section')].find(el => !el.classList.contains('hidden')) || null;
+    }
+
+    function prepareNafsPrintLayout() {
+      const root = document.documentElement;
+      root.style.setProperty('--nafs-print-zoom', '1');
+
+      const view = activePrintableView();
+      if (!view || view.id === 'view-pdfInput' || view.id === 'view-timelineImpact') return;
+
+      /*
+       * A4 landscape printable area at 96dpi with 7mm margins is roughly:
+       * 1069 × 741 CSS px. Measure the active card and fit it without
+       * changing its internal visual arrangement.
+       */
+      const availableWidth = 1060;
+      const availableHeight = 735;
+      const rect = view.getBoundingClientRect();
+      const contentWidth = Math.max(view.scrollWidth, rect.width, 1);
+      const contentHeight = Math.max(view.scrollHeight, rect.height, 1);
+
+      let scale = Math.min(1, availableWidth / contentWidth, availableHeight / contentHeight);
+      /* Avoid excessive shrinking; compact print CSS handles the rest. */
+      scale = Math.max(0.62, Math.min(1, scale * 0.985));
+      root.style.setProperty('--nafs-print-zoom', String(scale));
+    }
+
+    window.addEventListener('beforeprint', prepareNafsPrintLayout);
+    window.addEventListener('afterprint', () => {
+      document.documentElement.style.setProperty('--nafs-print-zoom', '1');
+    });
+
+function switchView(viewId) {
       document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
       document.getElementById('view-' + viewId).classList.remove('hidden');
 
@@ -1437,9 +1667,9 @@
         let skillsRowsHtml = skills.map(s => `
           <tr class="border-b hover:bg-slate-50">
             <td class="p-3 font-bold text-slate-800 text-right">${s.name}</td>
-            <td class="p-3 font-extrabold text-moe-teal">${s.score}</td>
-            <td class="p-3 font-semibold text-slate-600">${s.benchmark}</td>
-            <td class="p-3 font-bold ${s.gap < 0 ? 'text-red-600' : 'text-emerald-600'}">${s.gap > 0 ? '+' + s.gap : s.gap}</td>
+            <td class="p-3 font-extrabold text-moe-teal">${fmt2(s.score)}</td>
+            <td class="p-3 font-semibold text-slate-600">${fmt2(s.benchmark)}</td>
+            <td class="p-3 font-bold ${s.gap < 0 ? 'text-red-600' : 'text-emerald-600'}">${fmtSigned2(s.gap)}</td>
             <td class="p-3">
               <span class="inline-block px-2.5 py-1 rounded-full text-[11px] font-bold border ${s.status.badgeClass}">
                 ${s.status.label}
@@ -1551,15 +1781,15 @@
             <div class="grid grid-cols-3 text-center my-3 text-xs bg-slate-50 p-2 rounded-lg">
               <div>
                 <span class="block text-[10px] text-gray-400 font-bold">نتيجة المدرسة</span>
-                <span class="font-black text-moe-teal text-sm">${s.score}</span>
+                <span class="font-black text-moe-teal text-sm">${fmt2(s.score)}</span>
               </div>
               <div>
                 <span class="block text-[10px] text-gray-400 font-bold">المعيار الوطني</span>
-                <span class="font-black text-slate-600 text-sm">${s.benchmark}</span>
+                <span class="font-black text-slate-600 text-sm">${fmt2(s.benchmark)}</span>
               </div>
               <div>
                 <span class="block text-[10px] text-gray-400 font-bold">الفجوة</span>
-                <span class="font-black ${s.gap < 0 ? 'text-red-600' : 'text-emerald-600'} text-sm">${s.gap > 0 ? '+' + s.gap : s.gap}</span>
+                <span class="font-black ${s.gap < 0 ? 'text-red-600' : 'text-emerald-600'} text-sm">${fmtSigned2(s.gap)}</span>
               </div>
             </div>
             <p class="text-[11px] text-gray-600 font-semibold bg-emerald-50/50 p-2 rounded text-right border border-emerald-100">
@@ -1617,8 +1847,8 @@
                   ${skills.map(s => `
                     <tr>
                       <td class="p-2.5 text-right font-bold text-slate-800">${s.name}</td>
-                      <td class="p-2.5 font-black text-moe-teal">${s.score}</td>
-                      <td class="p-2.5 font-bold text-gray-500">${s.benchmark}</td>
+                      <td class="p-2.5 font-black text-moe-teal">${fmt2(s.score)}</td>
+                      <td class="p-2.5 font-bold text-gray-500">${fmt2(s.benchmark)}</td>
                       <td class="p-2.5">
                         <span class="px-3 py-1 rounded-full font-bold ${s.gap >= 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}">
                           ${s.gap >= 0 ? 'المحافظة على المستوى' : 'خطة علاجية ودعم عاجل'}
@@ -1639,8 +1869,8 @@
               ${skills.map(s => `
                 <div class="bg-white border-2 rounded-2xl p-4 text-center space-y-2 shadow-sm">
                   <span class="text-xs font-black text-slate-800 block border-b pb-2">${s.name}</span>
-                  <div class="text-2xl font-black text-moe-teal">${s.score}</div>
-                  <div class="text-[10px] text-gray-500 font-bold">المرجعي: ${s.benchmark}</div>
+                  <div class="text-2xl font-black text-moe-teal">${fmt2(s.score)}</div>
+                  <div class="text-[10px] text-gray-500 font-bold">المرجعي: ${fmt2(s.benchmark)}</div>
                   <div class="pt-2">
                     <span class="px-3 py-1 rounded-full text-[10px] font-bold ${s.status.badgeClass}">
                       ${s.status.label}
@@ -1665,9 +1895,9 @@
       tableBody.innerHTML = skills.map((s, idx) => `
         <tr class="hover:bg-slate-50">
           <td class="p-3 border text-right font-bold text-slate-800">${s.name}</td>
-          <td class="p-3 border font-extrabold text-moe-teal">${s.score}</td>
-          <td class="p-3 border font-semibold text-slate-600">${s.benchmark}</td>
-          <td class="p-3 border font-extrabold ${s.gap < 0 ? 'text-red-600' : 'text-emerald-600'}">${s.gap > 0 ? '+' + s.gap : s.gap}</td>
+          <td class="p-3 border font-extrabold text-moe-teal">${fmt2(s.score)}</td>
+          <td class="p-3 border font-semibold text-slate-600">${fmt2(s.benchmark)}</td>
+          <td class="p-3 border font-extrabold ${s.gap < 0 ? 'text-red-600' : 'text-emerald-600'}">${fmtSigned2(s.gap)}</td>
           <td class="p-3 border">
             <span class="px-2.5 py-1 rounded-full font-bold text-[11px] ${s.status.badgeClass}">${s.status.label}</span>
           </td>
@@ -1683,7 +1913,7 @@
             <span class="px-2 py-0.5 rounded font-bold ${s.status.badgeClass}">${s.status.label}</span>
           </div>
           <p><strong class="text-slate-800">ماذا تقيس المهارة؟</strong> تقيس قدرة الطالب/ة على استيعاب وفهم المعايير الأساسية في مادة (${appData.subject}).</p>
-          <p><strong class="text-slate-800">نتيجة المدرسة والفرق:</strong> بلغت النتيجة ${s.score} بمرجعي ${s.benchmark} (فجوة فعليّة: ${s.gap}).</p>
+          <p><strong class="text-slate-800">نتيجة المدرسة والفرق:</strong> بلغت النتيجة ${fmt2(s.score)} بمرجعي ${fmt2(s.benchmark)} (فجوة فعليّة: ${fmtSigned2(s.gap)}).</p>
           <p><strong class="text-slate-800">التوجيه الإجرائي:</strong> ${s.gap < 0 ? 'تتطلب خطة علاجية مركزة، إعادة بناء المفاهيم وتحليل أخطاء الأسئلة.' : 'مهارة ممتازة؛ يجب تقديم الأنشطة الإثرائية والمحافظة على المستوى.'}</p>
         </div>
       `).join('');
@@ -1695,7 +1925,7 @@
         <div class="bg-red-50/70 border border-red-200 p-4 rounded-xl space-y-2 text-xs">
           <span class="bg-red-600 text-white font-bold px-2 py-0.5 rounded text-[10px]">أولوية ${idx + 1}</span>
           <h4 class="font-extrabold text-slate-800 text-sm">${s.name}</h4>
-          <p class="text-gray-700"><strong>الفجوة المسجلة:</strong> ${s.gap}</p>
+          <p class="text-gray-700"><strong>الفجوة المسجلة:</strong> ${fmtSigned2(s.gap)}</p>
           <p class="text-gray-600 leading-relaxed">سبب الاختيار: تم تسجيل أداء منخفض مقارنة بالقيمة المرجعية بالبطاقة، مما يستدعي تدخلًا عاجلًا.</p>
         </div>
       `).join('') || '<p class="text-xs text-emerald-700 font-bold col-span-3">جميع المهارات أعلاه أعلى من القيمة المرجعية بالبطاقة!</p>';
@@ -1769,10 +1999,10 @@
       impactBody.innerHTML = weakSkills.map(s => `
         <tr class="hover:bg-slate-50">
           <td class="p-3 border font-bold text-slate-800 text-right">${s.name}</td>
-          <td class="p-3 border font-black text-red-600">${s.score}%</td>
+          <td class="p-3 border font-black text-red-600">${fmt2(s.score)}%</td>
           <td class="p-3 border text-xs">تدخل علاجي + تدريب محاكي في (${appData.subject})</td>
-          <td class="p-3 border font-bold text-moe-teal">${s.benchmark + 2}%</td>
-          <td class="p-3 border font-bold text-emerald-600">+${Math.abs(s.gap) + 2}%</td>
+          <td class="p-3 border font-bold text-moe-teal">${fmt2(Number(s.benchmark) + 2)}%</td>
+          <td class="p-3 border font-bold text-emerald-600">+${fmt2(Math.abs(Number(s.gap)) + 2)}%</td>
           <td class="p-3 border text-xs font-semibold">تأكيد إتقان المهارة بعد الأسبوع 4</td>
         </tr>
       `).join('') || `<tr><td colspan="6" class="p-4 text-emerald-700 font-bold">جميع مهارات البطاقة متجاوزة للقيمة المرجعية ولا تتطلب خطة علاجية عاجلة.</td></tr>`;
@@ -1788,16 +2018,16 @@
       const weaknesses = skills.filter(s => s.gap < 0).sort((a,b) => a.gap - b.gap);
 
       document.getElementById('execStrengths').innerHTML = strengths.map(s => `
-        <li>${s.name} (نتيجة: ${s.score} | الفجوة: +${s.gap})</li>
+        <li>${s.name} (نتيجة: ${fmt2(s.score)} | الفجوة: ${fmtSigned2(s.gap)})</li>
       `).join('') || '<li>لا توجد مهارات متجاوزة للمعيار</li>';
 
       document.getElementById('execWeaknesses').innerHTML = weaknesses.map(s => `
-        <li>${s.name} (نتيجة: ${s.score} | الفجوة: ${s.gap})</li>
+        <li>${s.name} (نتيجة: ${fmt2(s.score)} | الفجوة: ${fmtSigned2(s.gap)})</li>
       `).join('') || '<li>لا توجد مهارات ضعيفة</li>';
 
       const maxGapSkill = weaknesses[0];
       document.getElementById('execGapText').innerText = maxGapSkill ? 
-        `سُجلت أكبر فجوة أداء في مهارة (${maxGapSkill.name}) بمادة (${appData.subject}) بفجوة قدرها (${maxGapSkill.gap}) عن القيمة المرجعية.` :
+        `سُجلت أكبر فجوة أداء في مهارة (${maxGapSkill.name}) بمادة (${appData.subject}) بفجوة قدرها (${fmtSigned2(maxGapSkill.gap)}) عن القيمة المرجعية.` :
         `جميع مهارات البطاقة في مادة (${appData.subject}) مستقرة وحققت المستهدف.`;
 
       document.getElementById('execPriorities').innerHTML = weaknesses.slice(0, 3).map(s => `

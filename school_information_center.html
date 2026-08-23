@@ -577,16 +577,38 @@
   }
   async function readCloudUsers(){
     try{
-      const client=getClient();
-      const tables=['users','school_users','profiles'];
-      for(const table of tables){
-        const q=await client.from(table).select('*').limit(500);
-        if(q.error) continue;
-        const rows=(q.data||[]).filter(u=>isTeacherUser(u)&&isActiveUser(u)&&sameSchoolUser(u)).map(u=>({id:safe(u.id||u.user_id||u.uid||u.email||u.name),user_id:safe(u.user_id||u.id||u.uid||u.email||u.name),name:safe(u.name||u.full_name||u.display_name||u.username||u.email||'معلم'),email:safe(u.email||u.user_email||''),school_id:currentSchool.id,source:table}));
-        if(rows.length) return rows;
+      const client=getClient(), sid=safe(currentSchool.id);
+      if(!client||!sid) return [];
+
+      // المصدر الأول: الجسر الموحد لأنه يجمع users + school_members للمدارس المستقلة ومتعددة المدارس.
+      try{
+        if(window.SmartSchoolSupabase&&typeof SmartSchoolSupabase.listUsersBySchool==='function'){
+          const all=await SmartSchoolSupabase.listUsersBySchool(sid)||[];
+          const rows=all.filter(u=>isTeacherUser(u)&&isActiveUser(u)&&sameSchoolUser(u)).map(u=>({
+            id:safe(u.id||u.user_id||u.uid||u.email||u.name),
+            user_id:safe(u.user_id||u.id||u.uid||u.email||u.name),
+            name:safe(u.name||u.full_name||u.display_name||u.username||u.email||'معلم'),
+            email:safe(u.email||u.user_email||''),school_id:sid,source:'school_members+users'
+          }));
+          if(rows.length) return rows;
+        }
+      }catch(e){console.warn('listUsersBySchool teachers',e)}
+
+      // مسار احتياطي: الاستعلام يكون مفلترًا بالمدرسة قبل أي limit/range، مع pagination كاملة.
+      const by=new Map();
+      const pageSize=500;
+      for(let from=0;;from+=pageSize){
+        const q=await client.from('users').select('*').eq('school_id',sid).range(from,from+pageSize-1);
+        if(q.error) break;
+        const batch=q.data||[];
+        batch.filter(u=>isTeacherUser(u)&&isActiveUser(u)&&sameSchoolUser(u)).forEach(u=>{
+          const id=safe(u.id||u.user_id||u.uid||u.email||u.name); if(!id)return;
+          by.set(id,{id,user_id:safe(u.user_id||u.id||u.uid||u.email||u.name),name:safe(u.name||u.full_name||u.display_name||u.username||u.email||'معلم'),email:safe(u.email||u.user_email||''),school_id:sid,source:'users'});
+        });
+        if(batch.length<pageSize) break;
       }
-    }catch(e){}
-    return [];
+      return [...by.values()];
+    }catch(e){console.warn('readCloudUsers teachers',e);return []}
   }
   function loadTeacherProfiles(){try{return JSON.parse(localStorage.getItem(teacherStoreKey())||'[]')}catch(e){return []}}
   async function readCloudTeacherProfiles(){

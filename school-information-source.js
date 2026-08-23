@@ -172,7 +172,7 @@ window.SchoolInformationSource={
   load,
   getStudents:async()=>{await load(false);return state.students.slice()},
   getStaff:async()=>{await load(false);return state.staff.slice()},
-  getTeachers:async()=>{await load(false);return teachers().slice()},
+  getTeachers:async(force=false)=>{await load(!!force);return teachers().slice()},
   getAdministrativeEmployees:async()=>{await load(false);return administrativeEmployees().slice()},
   getSnapshot:async()=>{await load(false);return snapshot()},
   findStudent:async q=>{await load(false);return findStudent(q)},
@@ -183,7 +183,7 @@ window.SchoolInformationSource={
   refresh:async()=>{const s=await load(true);emit('school-information-updated',snapshot());return s},
   notifyUpdated:()=>{state.loaded=false;emit('school-information-updated',snapshot());return load(true)},
   state,
-  version:'2.1.0'
+  version:'2.4.0-teacher-force-refresh'
 };
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })();

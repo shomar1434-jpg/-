@@ -210,7 +210,11 @@
     if($('sourceInfo'))$('sourceInfo').textContent='جارٍ قراءة المعلمين مباشرة من مركز المعلومات للمدرسة النشطة...';
     let central=[];
     try{
-      if(window.SchoolInformationSource&&typeof SchoolInformationSource.getTeachers==='function') central=await SchoolInformationSource.getTeachers()||[];
+      if(window.SchoolInformationSource){
+        // التحديث هنا يجب أن يكون تحديثاً سحابياً حقيقياً لا إعادة قراءة الذاكرة المخبأة.
+        if(typeof SchoolInformationSource.refresh==='function') await SchoolInformationSource.refresh();
+        if(typeof SchoolInformationSource.getTeachers==='function') central=await SchoolInformationSource.getTeachers(true)||[];
+      }
     }catch(e){console.warn('SchoolInformationSource teachers',e)}
     const details=await readTeacherCloudDetails();
     teachers=mergeTeacherRows(central,details);

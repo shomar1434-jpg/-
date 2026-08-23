@@ -194,6 +194,25 @@
     for(const k of teacherKeys()){try{const p=JSON.parse(localStorage.getItem(k)||sessionStorage.getItem(k)||'null'); if(p&&Array.isArray(p.teachers)&&(!p.school_id||String(p.school_id)===String(sid)))return p}catch(e){}}
     return null
   }
+
+  function isWeeklyFollowupTeacher(t){
+    const role=String(t?.role||t?.user_role||t?.type||'').trim().toLowerCase();
+    const roleLabel=String(t?.role_label||t?.job_title||t?.position||'').trim().toLowerCase();
+
+    // المرجع الأساسي: الدور البرمجي teacher فقط.
+    if(role==='teacher') return true;
+
+    // لا نعتمد المسميات العربية العامة إذا كان هناك دور برمجي مختلف،
+    // لمنع دخول محضر المختبر والإداريين وبقية الموظفين إلى متابعة المعلمين.
+    if(role && role!=='teacher') return false;
+
+    // توافق احتياطي فقط للبيانات القديمة التي لا تحتوي role برمجيًا.
+    const exactLabels=[
+      'معلم','معلمة','teacher','male teacher','female teacher'
+    ];
+    return exactLabels.includes(roleLabel);
+  }
+
   function normalizeTeacher(t){const subject=t.subject||'',lessons=t.weekly_lessons||'',assignments=Array.isArray(t.assignments)?t.assignments:[];return {user_id:String(t.user_id||t.id||t.uid||t.email||('T'+Math.random().toString(36).slice(2))),name:t.name||t.teacher_name||t.full_name||'معلم',email:t.email||'',subject,weekly_lessons:lessons,assignments,extra_roles:Array.isArray(t.extra_roles)?t.extra_roles:[],status:t.status||t.user_status||'active',source:t.source||'',subject_source:t.subject_source||'',lessons_source:t.lessons_source||'',assignments_source:t.assignments_source||'',profile_status:t.profile_status||((subject&&lessons&&assignments.length)?'complete':'missing')}}
   function activeTeacherRow(t){const st=String(t?.status||'active').toLowerCase();return !/pending|inactive|disabled|deleted|محذوف|معطل|معلق|بانتظار/.test(st)}
   function mergeTeacherRows(base,details){
@@ -244,12 +263,16 @@
       if($('sourceInfo'))$('sourceInfo').textContent='لا توجد حسابات معلمين مفعّلة في مركز المعلومات لهذه المدرسة. فعّل المعلمين في مركز المعلومات أولًا.';
       renderAll(); if(!silent)toast('لا توجد حسابات معلمين مفعّلة لهذه المدرسة'); return false;
     }
+
+    // فلتر نهائي إلزامي لقسم متابعة الأعمال الأسبوعية:
+    // لا يسمح إلا بحسابات المعلمين/المعلمات الفعلية.
+    teachers=(Array.isArray(teachers)?teachers:[]).filter(isWeeklyFollowupTeacher);
     const payload={source:'school_information_center_direct',school_id:sid,updated_at:new Date().toISOString(),teachers:teachers};
     try{localStorage.setItem('deputyWeeklyFollowupTeachers:'+sid,JSON.stringify(payload));localStorage.setItem('deputyWeeklyFollowupTeachers:lastExport',JSON.stringify(payload))}catch(e){}
     // استيراد المعلمين مستقل تماماً عن توليد الأسابيع.
     // نهيئ حالات الأسابيع فقط إن كانت موجودة مسبقاً.
     if(weeks.length){ensureWeekTeacherStatuses();saveWeeks();}
-    if($('sourceInfo'))$('sourceInfo').textContent='المصدر المباشر: مركز المعلومات المدرسية — '+teachers.length+' معلم/معلمة مفعّلين'
+    if($('sourceInfo'))$('sourceInfo').textContent='المصدر المباشر: مركز المعلومات المدرسية — '+teachers.length+' معلم/معلمة فقط'
       +(central.length?' (قراءة مركز المعلومات: '+central.length+')':'')
       +' — '+(weeks.length?'تم ربطهم بالأسابيع الموجودة':'لا يلزم توليد الأسابيع لعرض المعلمين')
       +' — آخر مزامنة '+new Date().toLocaleString('ar-SA');
@@ -628,7 +651,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-bridge.js"></script>
-<script src="school-information-source.js?v=20260823-deputy-teachers-2"></script>
+<script src="school-information-source.js?v=20260823-deputy-teachers-3"></script>
 <script src="internal-messaging.js"></script>
 <script defer src="unified_workspace.js"></script>
 <script defer src="school_navigation_guard.js"></script>

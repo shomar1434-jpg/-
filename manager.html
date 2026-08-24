@@ -2,32 +2,6 @@
 
 <html dir="rtl" lang="ar">
 <head>
-
-<style id="manager-first-paint-no-flash-v1">
-html.ss-manager-booting body{
-  visibility:hidden!important;
-  opacity:0!important;
-}
-html.ss-manager-ready body{
-  visibility:visible!important;
-  opacity:1!important;
-  transition:opacity .08s ease-out;
-}
-</style>
-<script id="manager-first-paint-no-flash-head-v1">
-(function(){
-  var root=document.documentElement;
-  root.classList.add('ss-manager-booting');
-  function reveal(){
-    root.classList.remove('ss-manager-booting');
-    root.classList.add('ss-manager-ready');
-  }
-  window.__revealManagerUI=reveal;
-  /* مهلة أمان: لا يمكن أن تبقى الواجهة مخفية بسبب خطأ سكربت آخر. */
-  setTimeout(reveal,1400);
-})();
-</script>
-
 <style id="platform-first-paint-guard">#elsPicker{display:none!important;visibility:hidden!important}html[data-system-admin-context="1"] #activeSchoolLabel{display:none!important;visibility:hidden!important}</style>
 <script src="system-admin-context.js"></script>
 <style id="evidence-picker-prehide">#elsPicker[hidden],#elsPicker[style*="display:none"]{display:none!important;visibility:hidden!important}</style>
@@ -1397,6 +1371,14 @@ body{overflow-x:hidden}
 #ssFinalBackdrop.uw-workspace-dialog .ss-final-head{position:sticky;top:0;background:#fff;z-index:5;padding-top:4px}
 </style>
 <link rel="stylesheet" href="responsive-layout.css?v=20260818-responsive-1">
+
+<style id="manager-first-paint-fix-v2">
+html.manager-boot body{visibility:hidden!important;opacity:0!important}
+html.manager-ready body{visibility:visible!important;opacity:1!important}
+</style>
+<script id="manager-first-paint-head-v2">
+(function(){var r=document.documentElement;r.classList.add('manager-boot');window.__managerReveal=function(){r.classList.remove('manager-boot');r.classList.add('manager-ready')};setTimeout(window.__managerReveal,1200)})();
+</script>
 </head>
 <body class="global-app-bg" data-ss-role="manager">
 <script data-openai-engine="true" defer="" src="./openai-engine.js"></script>
@@ -3262,8 +3244,8 @@ body{overflow-x:hidden}
                             <div style="color:#334155; font-weight:bold; font-size:13px;">📄 ${escapeManagerHTML(record.name)}</div>
                             <div style="color:#94a3b8; font-size:10px; margin-top:4px;">${new Date(record.createdAt).toLocaleString('ar-SA')} - ${formatManagerFileSize(record.size)}</div>
                         </div>
-                        <button data-manager-action="preview" data-manager-id="${escapeManagerOfficeHTML(String(record.id))}" class="manager-record-btn" style="background:#0ea5e9; color:white;">معاينة</button>
-                        <button data-manager-action="delete" data-manager-id="${escapeManagerOfficeHTML(String(record.id))}" class="manager-record-btn" style="background:#ef4444; color:white;">حذف</button>
+                        <button data-manager-action="preview" data-manager-id="${escapeManagerHTML(String(record.id))}" class="manager-record-btn" style="background:#0ea5e9; color:white;">معاينة</button>
+                        <button data-manager-action="delete" data-manager-id="${escapeManagerHTML(String(record.id))}" class="manager-record-btn" style="background:#ef4444; color:white;">حذف</button>
                     </div>
                 `).join('');
             } catch (error) {
@@ -4583,10 +4565,10 @@ document.addEventListener("click", function(e){
               <div style="color:#334155;font-weight:bold;font-size:13px;">${kindIcon(kind)} — ${escapeManagerOfficeHTML(record.name)}</div>
               <div style="color:#94a3b8;font-size:10px;margin-top:4px;">${new Date(record.createdAt).toLocaleString('ar-SA')} - ${formatManagerFileSize(record.size)}</div>
             </div>
-            <button data-manager-action="preview" data-manager-id="${escapeManagerOfficeHTML(String(record.id))}" class="manager-record-btn" style="background:#0ea5e9;color:white;">معاينة</button>
-            ${canEdit ? `<button data-manager-action="preview" data-manager-id="${escapeManagerOfficeHTML(String(record.id))}" class="manager-record-btn" style="background:#2563eb;color:white;">تعديل</button>` : ''}
+            <button data-manager-action="preview" data-manager-id="${escapeManagerHTML(String(record.id))}" class="manager-record-btn" style="background:#0ea5e9;color:white;">معاينة</button>
+            ${canEdit ? `<button data-manager-action="preview" data-manager-id="${escapeManagerHTML(String(record.id))}" class="manager-record-btn" style="background:#2563eb;color:white;">تعديل</button>` : ''}
             <button data-manager-action="download" data-manager-id="${escapeManagerOfficeHTML(String(record.id))}" class="manager-record-btn" style="background:#7c3aed;color:white;">تحميل</button>
-            <button data-manager-action="delete" data-manager-id="${escapeManagerOfficeHTML(String(record.id))}" class="manager-record-btn" style="background:#ef4444;color:white;">حذف</button>
+            <button data-manager-action="delete" data-manager-id="${escapeManagerHTML(String(record.id))}" class="manager-record-btn" style="background:#ef4444;color:white;">حذف</button>
           </div>
         `;
       }).join('');
@@ -4688,69 +4670,6 @@ document.addEventListener("click", function(e){
 </style>
 </head><body>${editor.innerHTML}\n
 <!-- SCHOOL COMMAND CENTER M1-M4 -->
-
-<script id="MANAGER_REMOVE_RECORD_ALIAS_V1">
-(function(){
-  try{
-    if(typeof removeManagerRecord==='function' && typeof window.removeManagerRecord!=='function'){
-      window.removeManagerRecord=removeManagerRecord;
-    }
-    if(typeof deleteManagerLocalRecord==='function' && typeof window.deleteManagerLocalRecord!=='function'){
-      window.deleteManagerLocalRecord=deleteManagerLocalRecord;
-    }
-  }catch(e){}
-})();
-</script>
-
-<script id="MANAGER_LIBRARY_ACTION_DELEGATION_FIX_V1">
-(function(){
-  if(window.__MANAGER_LIBRARY_ACTION_DELEGATION_FIX_V1__) return;
-  window.__MANAGER_LIBRARY_ACTION_DELEGATION_FIX_V1__=true;
-
-  document.addEventListener('click', async function(ev){
-    const btn=ev.target.closest('[data-manager-action][data-manager-id]');
-    if(!btn) return;
-    const action=btn.getAttribute('data-manager-action')||'';
-    const id=btn.getAttribute('data-manager-id')||'';
-    if(!id) return;
-    ev.preventDefault();
-    try{
-      if(action==='preview' && typeof window.previewManagerLocalPDF==='function') return await window.previewManagerLocalPDF(id);
-      if(action==='edit' && typeof window.editManagerRecordSafe==='function') return await window.editManagerRecordSafe(id);
-      if(action==='print' && typeof window.printManagerRecordSafe==='function') return await window.printManagerRecordSafe(id);
-      if(action==='delete' && typeof window.removeManagerRecord==='function') return await window.removeManagerRecord(id);
-      if(action==='delete' && typeof window.deleteManagerLocalRecord==='function'){
-        if(!confirm('هل تريد حذف هذا الملف؟')) return;
-        await window.deleteManagerLocalRecord(id);
-        if(typeof window.renderManagerRecordsList==='function') await window.renderManagerRecordsList();
-        if(typeof window.showToast==='function') window.showToast('تم حذف الملف');
-        return;
-      }
-      if(action==='download' && typeof window.downloadManagerRecord==='function') return await window.downloadManagerRecord(id);
-    }catch(e){
-      console.error('[manager-library-action]',action,id,e);
-      if(typeof window.showToast==='function') window.showToast('تعذر تنفيذ العملية: '+(e?.message||e));
-      else alert('تعذر تنفيذ العملية: '+(e?.message||e));
-    }
-  });
-})();
-</script>
-
-
-<script id="manager-first-paint-no-flash-tail-v1">
-(function(){
-  function ready(){
-    requestAnimationFrame(function(){
-      requestAnimationFrame(function(){
-        if(typeof window.__revealManagerUI==='function') window.__revealManagerUI();
-      });
-    });
-  }
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',ready,{once:true});
-  else ready();
-})();
-</script>
-
 </body></html>`;
       record.file = new Blob([htmlDoc], {type:'application/msword'});
       if(!/\.doc$/i.test(record.name)) record.name = record.name.replace(/\.(docx|doc)$/i,'') + '_معدل.doc';
@@ -5041,7 +4960,7 @@ function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
       const records=await getAllManagerLocalRecords();
       const rows=records.filter(r=>(r.folder||'عام')===activeFolder).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
       if(!rows.length){list.innerHTML='<div style="padding:18px;background:#fff8e1;border:1px solid #ffe08a;border-radius:18px;color:#777;text-align:center;font-size:12px;font-weight:bold;">لا توجد ملفات داخل مجلد '+esc(activeFolder)+'.</div>';return;}
-      list.innerHTML=rows.map(record=>{const k=record.kind||kind(record); return '<div class="manager-record-item"><div style="flex:1;min-width:200px;"><div style="color:#334155;font-weight:bold;font-size:13px;">'+icon(k)+' — '+esc(record.name)+'</div><div style="color:#94a3b8;font-size:10px;margin-top:4px;">'+new Date(record.createdAt).toLocaleString('ar-SA')+' - '+fmt(record.size)+' - مجلد: '+esc(record.folder||'عام')+'</div></div><button onclick="editManagerRecordSafe('+record.id+')" class="manager-record-btn" style="background:#2563eb;color:white;">تعديل</button><button onclick="previewManagerLocalPDF('+record.id+')" class="manager-record-btn" style="background:#0ea5e9;color:white;">معاينة</button><button onclick="printManagerRecordSafe('+record.id+')" class="manager-record-btn" style="background:#7c3aed;color:white;">طباعة</button><button onclick="removeManagerRecord('+record.id+')" class="manager-record-btn" style="background:#ef4444;color:white;">حذف</button></div>';}).join('');
+      list.innerHTML=rows.map(record=>{const k=record.kind||kind(record),rid=esc(String(record.id)); return '<div class="manager-record-item"><div style="flex:1;min-width:200px;"><div style="color:#334155;font-weight:bold;font-size:13px;">'+icon(k)+' — '+esc(record.name)+'</div><div style="color:#94a3b8;font-size:10px;margin-top:4px;">'+new Date(record.createdAt).toLocaleString('ar-SA')+' - '+fmt(record.size)+' - مجلد: '+esc(record.folder||'عام')+'</div></div><button data-manager-action="edit" data-manager-id="'+rid+'" class="manager-record-btn" style="background:#2563eb;color:white;">تعديل</button><button data-manager-action="preview" data-manager-id="'+rid+'" class="manager-record-btn" style="background:#0ea5e9;color:white;">معاينة</button><button data-manager-action="print" data-manager-id="'+rid+'" class="manager-record-btn" style="background:#7c3aed;color:white;">طباعة</button><button data-manager-action="delete" data-manager-id="'+rid+'" class="manager-record-btn" style="background:#ef4444;color:white;">حذف</button></div>';}).join('');
     }catch(error){list.innerHTML='<div style="padding:15px;color:#dc2626;text-align:center;font-size:12px;">'+esc(error)+'</div>';}
   };
 
@@ -5602,5 +5521,27 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
 <script src="top-ai-center.js"></script>
 
 <script src="platform-page-navigation.js?v=20260818-nav1"></script>
+
+<script id="manager-library-action-router-v2">
+(function(){
+ if(window.__managerLibraryActionRouterV2)return;window.__managerLibraryActionRouterV2=true;
+ document.addEventListener('click',async function(e){
+   var b=e.target.closest('[data-manager-action][data-manager-id]');if(!b)return;
+   var a=b.getAttribute('data-manager-action')||'',id=b.getAttribute('data-manager-id')||'';if(!id)return;e.preventDefault();
+   try{
+    if(a==='preview'&&typeof window.previewManagerLocalPDF==='function')return await window.previewManagerLocalPDF(id);
+    if(a==='edit'&&typeof window.editManagerRecordSafe==='function')return await window.editManagerRecordSafe(id);
+    if(a==='print'&&typeof window.printManagerRecordSafe==='function')return await window.printManagerRecordSafe(id);
+    if(a==='download'&&typeof window.downloadManagerRecord==='function')return await window.downloadManagerRecord(id);
+    if(a==='delete'){
+      if(typeof window.removeManagerRecord==='function')return await window.removeManagerRecord(id);
+      if(typeof deleteManagerLocalRecord==='function'){if(!confirm('هل تريد حذف هذا الملف؟'))return;await deleteManagerLocalRecord(id);if(typeof window.renderManagerRecordsList==='function')await window.renderManagerRecordsList();return;}
+    }
+   }catch(err){console.error('[manager-library-action]',a,id,err);if(typeof showToast==='function')showToast('تعذر تنفيذ العملية: '+(err&&err.message?err.message:err));}
+ });
+ function reveal(){if(typeof window.__managerReveal==='function')window.__managerReveal()}
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){requestAnimationFrame(function(){requestAnimationFrame(reveal)})},{once:true});else requestAnimationFrame(function(){requestAnimationFrame(reveal)});
+})();
+</script>
 </body>
 </html>

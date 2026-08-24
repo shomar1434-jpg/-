@@ -298,6 +298,7 @@ const fields=['type','name','nid','decisionNo','day','date','greg','start','scho
 let digitalAssets={signature:'',stamp:''};
 let currentArchiveRecordId=null;
 const MANAGER_ARCHIVE_KEY='school_manager_records_archive_v1';
+const DECISIONS_ARCHIVE_KEY='school_manager_decisions_assignments_archive_v1';
 const DECISIONS_FOLDER_ID='decisionsAssignments';
 const DECISIONS_FOLDER_NAME='القرارات والتكليفات';
 function safe(v,f){return (v||'').trim()||f}
@@ -372,14 +373,24 @@ function render(){
  else if(finalTasks.length>20 || chars>3000) pg.classList.add('dense');
 }
 
+function readArchiveArray(key){
+ try{const v=JSON.parse(localStorage.getItem(key)||'[]');return Array.isArray(v)?v:[]}catch(e){return []}
+}
+function migrateLegacyDecisionRecords(){
+ const dedicated=readArchiveArray(DECISIONS_ARCHIVE_KEY);
+ const legacy=readArchiveArray(MANAGER_ARCHIVE_KEY).filter(r=>r&&r.recordType==='decision_assignment');
+ if(!legacy.length)return dedicated;
+ const map=new Map();
+ [...legacy,...dedicated].forEach(r=>{if(r&&r.id)map.set(String(r.id),r)});
+ const merged=[...map.values()].sort((a,b)=>String(b.updatedAt||b.savedAt||b.createdAt||'').localeCompare(String(a.updatedAt||a.savedAt||a.createdAt||'')));
+ try{localStorage.setItem(DECISIONS_ARCHIVE_KEY,JSON.stringify(merged))}catch(e){}
+ return merged;
+}
 function archiveRead(){
- try{
-   const v=JSON.parse(localStorage.getItem(MANAGER_ARCHIVE_KEY)||'[]');
-   return Array.isArray(v)?v:[];
- }catch(e){return []}
+ return migrateLegacyDecisionRecords();
 }
 function archiveWrite(rows){
- try{localStorage.setItem(MANAGER_ARCHIVE_KEY,JSON.stringify(rows||[]));return true}catch(e){return false}
+ try{localStorage.setItem(DECISIONS_ARCHIVE_KEY,JSON.stringify(rows||[]));return true}catch(e){console.error('decision archive save failed',e);return false}
 }
 function normalizePersonName(v){return String(v||'').replace(/\s+/g,' ').trim()}
 function nextSequenceForAssignee(name,rows,excludeId){
@@ -533,6 +544,8 @@ function saveData(){
  const next=rows.filter(r=>String(r.id)!==String(id));
  next.unshift(record);
  if(!archiveWrite(next)){alert('تعذر الحفظ في أرشيف السجلات. تحقق من مساحة التخزين المتاحة.');return}
+ const verifySaved=readArchiveArray(DECISIONS_ARCHIVE_KEY).some(r=>String(r.id)===String(id));
+ if(!verifySaved){alert('تعذر التحقق من حفظ القرار في مجلد القرارات والتكليفات. لم يتم اعتبار العملية ناجحة.');return}
  currentArchiveRecordId=id;
  // نسخة استعادة مؤقتة للنموذج فقط، وليست أرشيفًا ثانيًا.
  try{localStorage.setItem('takleef1448_approved',JSON.stringify(o))}catch(e){}

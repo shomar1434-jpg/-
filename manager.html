@@ -5370,7 +5370,15 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
     v.style.display='block'; if(v.classList)v.classList.remove('hidden');
     renderFolders(kind);
   }
-  function archive(kind){return readArray(keys(kind));}
+  function decisionArchive(){return readArray(['school_manager_decisions_assignments_archive_v1']);}
+  function archive(kind){
+    var base=readArray(keys(kind));
+    if(kind!=='manager')return base;
+    var dedicated=decisionArchive(), map=new Map();
+    base.forEach(function(r){var id=String(r.id||r.createdAt||r.title||Math.random());map.set(id,r);});
+    dedicated.forEach(function(r){var id=String(r.id||r.createdAt||r.title||Math.random());map.set(id,r);});
+    return Array.from(map.values()).sort(function(a,b){return String(b.updatedAt||b.savedAt||b.createdAt||'').localeCompare(String(a.updatedAt||a.savedAt||a.createdAt||''));});
+  }
   function itemFolderId(kind,r){
     var list=listFor(kind);
     var f=folderByName(list, r.recordName||r.folderName||r.title||r.name||'');
@@ -5433,7 +5441,19 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
     return html;
   }
   function previewItem(kind,id,autoPrint){var r=findItem(kind,id); if(!r){alert('تعذر العثور على السجل.');return;} var w=window.open('','_blank'); if(!w){alert('يرجى السماح بالنوافذ المنبثقة.');return;} w.document.open(); w.document.write(safeDoc(r,autoPrint)); w.document.close();}
-  function deleteItem(kind,id){if(!confirm('هل تريد حذف هذا السجل نهائيًا من الأرشيف؟ لا يؤثر الحذف على أي سجل آخر بالاسم نفسه.'))return; var key=primaryKey(kind); var arr=readArray([key]).filter(function(r){return String(r.id||r.createdAt||r.title)!==String(id);}); writeArray(key,arr); if(currentArchiveFolder&&currentArchiveFolder.kind===kind) openFolder(kind,currentArchiveFolder.id); else renderFolders(kind);}
+  function deleteItem(kind,id){
+    if(!confirm('هل تريد حذف هذا السجل نهائيًا من الأرشيف؟ لا يؤثر الحذف على أي سجل آخر بالاسم نفسه.'))return;
+    var item=findItem(kind,id);
+    if(kind==='manager'&&item&&item.recordType==='decision_assignment'){
+      var dk='school_manager_decisions_assignments_archive_v1';
+      writeArray(dk,readArray([dk]).filter(function(r){return String(r.id||r.createdAt||r.title)!==String(id);}));
+      var pk=primaryKey(kind);
+      writeArray(pk,readArray([pk]).filter(function(r){return String(r.id||r.createdAt||r.title)!==String(id);}));
+    }else{
+      var key=primaryKey(kind);var arr=readArray([key]).filter(function(r){return String(r.id||r.createdAt||r.title)!==String(id);});writeArray(key,arr);
+    }
+    if(currentArchiveFolder&&currentArchiveFolder.kind===kind)openFolder(kind,currentArchiveFolder.id);else renderFolders(kind);
+  }
   window.openManagerRecordsArchiveView=function(){showArchive('manager');};
   window.closeManagerRecordsArchiveView=function(){var v=document.getElementById('manager-records-archive-view'); if(v){v.style.display='none'; if(v.classList)v.classList.add('hidden');} showDashboard();};
   window.renderManagerRecordsArchiveFolders=function(){renderFolders('manager');};
@@ -5442,7 +5462,16 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
   window.closeSelfEvaluationArchiveView=function(){var v=document.getElementById('self-evaluation-archive-view'); if(v){v.style.display='none'; if(v.classList)v.classList.add('hidden');} showDashboard();};
   window.renderSelfEvaluationArchiveFolders=function(){renderFolders('self');};
   window.openSelfEvaluationArchiveFolder=function(id){openFolder('self',id);};
+  function migrateDecisionArchive(){
+    var dk='school_manager_decisions_assignments_archive_v1';
+    var dedicated=readArray([dk]);
+    var legacy=readArray([primaryKey('manager')]).filter(function(r){return r&&r.recordType==='decision_assignment';});
+    if(!legacy.length)return;
+    var map=new Map();legacy.concat(dedicated).forEach(function(r){if(r&&r.id)map.set(String(r.id),r);});
+    writeArray(dk,Array.from(map.values()));
+  }
   function bindCards(){
+    migrateDecisionArchive();
     document.querySelectorAll('.manager-section-card').forEach(function(card){
       var t=(card.textContent||'').replace(/\s+/g,' ').trim();
       if(t.indexOf('أرشيف التقويم الذاتي')>-1){card.onclick=function(e){e.preventDefault();showArchive('self');};card.style.cursor='pointer';}

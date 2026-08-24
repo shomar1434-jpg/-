@@ -3236,8 +3236,8 @@ body{overflow-x:hidden}
                             <div style="color:#334155; font-weight:bold; font-size:13px;">📄 ${escapeManagerHTML(record.name)}</div>
                             <div style="color:#94a3b8; font-size:10px; margin-top:4px;">${new Date(record.createdAt).toLocaleString('ar-SA')} - ${formatManagerFileSize(record.size)}</div>
                         </div>
-                        <button onclick="previewManagerLocalPDF(${record.id})" class="manager-record-btn" style="background:#0ea5e9; color:white;">معاينة</button>
-                        <button onclick="removeManagerRecord(${record.id})" class="manager-record-btn" style="background:#ef4444; color:white;">حذف</button>
+                        <button data-manager-action="preview" data-manager-id="${escapeManagerOfficeHTML(String(record.id))}" class="manager-record-btn" style="background:#0ea5e9; color:white;">معاينة</button>
+                        <button data-manager-action="delete" data-manager-id="${escapeManagerOfficeHTML(String(record.id))}" class="manager-record-btn" style="background:#ef4444; color:white;">حذف</button>
                     </div>
                 `).join('');
             } catch (error) {
@@ -4557,10 +4557,10 @@ document.addEventListener("click", function(e){
               <div style="color:#334155;font-weight:bold;font-size:13px;">${kindIcon(kind)} — ${escapeManagerOfficeHTML(record.name)}</div>
               <div style="color:#94a3b8;font-size:10px;margin-top:4px;">${new Date(record.createdAt).toLocaleString('ar-SA')} - ${formatManagerFileSize(record.size)}</div>
             </div>
-            <button onclick="previewManagerLocalPDF(${record.id})" class="manager-record-btn" style="background:#0ea5e9;color:white;">معاينة</button>
-            ${canEdit ? `<button onclick="previewManagerLocalPDF(${record.id})" class="manager-record-btn" style="background:#2563eb;color:white;">تعديل</button>` : ''}
-            <button onclick="downloadManagerRecord(${record.id})" class="manager-record-btn" style="background:#7c3aed;color:white;">تحميل</button>
-            <button onclick="removeManagerRecord(${record.id})" class="manager-record-btn" style="background:#ef4444;color:white;">حذف</button>
+            <button data-manager-action="preview" data-manager-id="${escapeManagerOfficeHTML(String(record.id))}" class="manager-record-btn" style="background:#0ea5e9;color:white;">معاينة</button>
+            ${canEdit ? `<button data-manager-action="preview" data-manager-id="${escapeManagerOfficeHTML(String(record.id))}" class="manager-record-btn" style="background:#2563eb;color:white;">تعديل</button>` : ''}
+            <button data-manager-action="download" data-manager-id="${escapeManagerOfficeHTML(String(record.id))}" class="manager-record-btn" style="background:#7c3aed;color:white;">تحميل</button>
+            <button data-manager-action="delete" data-manager-id="${escapeManagerOfficeHTML(String(record.id))}" class="manager-record-btn" style="background:#ef4444;color:white;">حذف</button>
           </div>
         `;
       }).join('');
@@ -4662,6 +4662,54 @@ document.addEventListener("click", function(e){
 </style>
 </head><body>${editor.innerHTML}\n
 <!-- SCHOOL COMMAND CENTER M1-M4 -->
+
+<script id="MANAGER_REMOVE_RECORD_ALIAS_V1">
+(function(){
+  try{
+    if(typeof removeManagerRecord==='function' && typeof window.removeManagerRecord!=='function'){
+      window.removeManagerRecord=removeManagerRecord;
+    }
+    if(typeof deleteManagerLocalRecord==='function' && typeof window.deleteManagerLocalRecord!=='function'){
+      window.deleteManagerLocalRecord=deleteManagerLocalRecord;
+    }
+  }catch(e){}
+})();
+</script>
+
+<script id="MANAGER_LIBRARY_ACTION_DELEGATION_FIX_V1">
+(function(){
+  if(window.__MANAGER_LIBRARY_ACTION_DELEGATION_FIX_V1__) return;
+  window.__MANAGER_LIBRARY_ACTION_DELEGATION_FIX_V1__=true;
+
+  document.addEventListener('click', async function(ev){
+    const btn=ev.target.closest('[data-manager-action][data-manager-id]');
+    if(!btn) return;
+    const action=btn.getAttribute('data-manager-action')||'';
+    const id=btn.getAttribute('data-manager-id')||'';
+    if(!id) return;
+    ev.preventDefault();
+    try{
+      if(action==='preview' && typeof window.previewManagerLocalPDF==='function') return await window.previewManagerLocalPDF(id);
+      if(action==='edit' && typeof window.editManagerRecordSafe==='function') return await window.editManagerRecordSafe(id);
+      if(action==='print' && typeof window.printManagerRecordSafe==='function') return await window.printManagerRecordSafe(id);
+      if(action==='delete' && typeof window.removeManagerRecord==='function') return await window.removeManagerRecord(id);
+      if(action==='delete' && typeof window.deleteManagerLocalRecord==='function'){
+        if(!confirm('هل تريد حذف هذا الملف؟')) return;
+        await window.deleteManagerLocalRecord(id);
+        if(typeof window.renderManagerRecordsList==='function') await window.renderManagerRecordsList();
+        if(typeof window.showToast==='function') window.showToast('تم حذف الملف');
+        return;
+      }
+      if(action==='download' && typeof window.downloadManagerRecord==='function') return await window.downloadManagerRecord(id);
+    }catch(e){
+      console.error('[manager-library-action]',action,id,e);
+      if(typeof window.showToast==='function') window.showToast('تعذر تنفيذ العملية: '+(e?.message||e));
+      else alert('تعذر تنفيذ العملية: '+(e?.message||e));
+    }
+  });
+})();
+</script>
+
 </body></html>`;
       record.file = new Blob([htmlDoc], {type:'application/msword'});
       if(!/\.doc$/i.test(record.name)) record.name = record.name.replace(/\.(docx|doc)$/i,'') + '_معدل.doc';

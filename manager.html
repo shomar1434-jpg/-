@@ -2170,6 +2170,23 @@ html.manager-ready body{visibility:visible!important;opacity:1!important}
         }
 
         function enterApp() { document.getElementById('welcome-gate').style.display='none'; document.getElementById('welcome-dashboard').style.display='block'; }
+
+        function showManagerSectionsHome() {
+            const activation = document.getElementById('activation-overlay');
+            const gate = document.getElementById('welcome-gate');
+            const dashboard = document.getElementById('welcome-dashboard');
+            const app = document.getElementById('main-report-app');
+            const views = ['archive-view','stats-view','portfolio-view','manager-records-view','manager-records-archive-view','self-evaluation-archive-view','school-performance-dashboard-view'];
+            if (activation) activation.style.display = 'none';
+            if (gate) gate.style.display = 'none';
+            if (app) app.classList.add('hidden');
+            views.forEach(id => { const el=document.getElementById(id); if(el) el.style.display='none'; });
+            if (dashboard) {
+                dashboard.style.display='block';
+                dashboard.classList.remove('hidden');
+            }
+        }
+
         function goHome() { 
             document.getElementById('main-report-app').classList.add('hidden'); 
             document.getElementById('stats-view').style.display='none';
@@ -5918,6 +5935,24 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',run,{once:true});
   else run();
+})();
+</script>
+
+<script id="manager-return-to-sections-v1">
+(function(){
+  function apply(){
+    const p=new URLSearchParams(location.search);
+    if(p.get('return_to')!=='sections') return;
+    try{ if(typeof showManagerSectionsHome==='function') showManagerSectionsHome(); }catch(e){console.warn('[return sections]',e)}
+    try{
+      const u=new URL(location.href);
+      u.searchParams.delete('return_to');
+      history.replaceState(null,'',u.pathname+u.search+u.hash);
+    }catch(e){}
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',()=>setTimeout(apply,80),{once:true});
+  else setTimeout(apply,80);
+  window.addEventListener('load',()=>setTimeout(apply,120),{once:true});
 })();
 </script>
 </body>

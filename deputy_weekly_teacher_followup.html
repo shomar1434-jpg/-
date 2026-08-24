@@ -319,7 +319,7 @@
       teachersById.set(c,recovered);
     }
 
-    return [...teachersById.values()].filter(activeTeacherRow);
+    return [...teachersById.values()].filter(x=>isWeeklyFollowupTeacher(x)&&activeTeacherRow(x));
   }
   async function readTeacherCloudDetails(){
     const sid=schoolId(), rows=[];
@@ -338,42 +338,75 @@
     rows.push(...loadRecoveryTeacherRows());
     return rows
   }
+  let teacherRefreshPromise=null;
+  let teacherRefreshRunning=false;
   async function refreshTeachers(opts={}){
-    const silent=!!opts.silent;
-    const sid=schoolId();
-    if(!sid){
-      if($('sourceInfo'))$('sourceInfo').textContent='تعذر تحديد المدرسة النشطة؛ أعد فتح القسم من حساب الوكيل.';
-      if(!silent)toast('تعذر تحديد المدرسة النشطة'); return false;
-    }
-    if($('sourceInfo'))$('sourceInfo').textContent='جارٍ قراءة المعلمين مباشرة من مركز المعلومات للمدرسة النشطة...';
-    let central=[];
-    try{
-      if(window.SchoolInformationSource){
-        // التحديث هنا يجب أن يكون تحديثاً سحابياً حقيقياً لا إعادة قراءة الذاكرة المخبأة.
-        if(typeof SchoolInformationSource.refresh==='function') await SchoolInformationSource.refresh();
-        if(typeof SchoolInformationSource.getTeachers==='function') central=await SchoolInformationSource.getTeachers(true)||[];
-      }
-    }catch(e){console.warn('SchoolInformationSource teachers',e)}
-    // الفلترة تتم على بيانات مركز المعلومات الأصلية قبل أي تحويل أو دمج.
-    const centralTeachers=(Array.isArray(central)?central:[]).filter(x=>isWeeklyFollowupTeacher(x)&&activeTeacherRow(x));
-    const details=await readTeacherCloudDetails();
-    teachers=mergeTeacherRows(centralTeachers,details);
-    if(!teachers.length){
-      if($('sourceInfo'))$('sourceInfo').textContent='لا توجد حسابات معلمين مفعّلة في مركز المعلومات لهذه المدرسة. فعّل المعلمين في مركز المعلومات أولًا.';
-      renderAll(); if(!silent)toast('لا توجد حسابات معلمين مفعّلة لهذه المدرسة'); return false;
-    }
+    // منع تشغيل أكثر من مزامنة في الوقت نفسه. أي استدعاء ثانٍ ينتظر نفس العملية الحالية.
+    if(teacherRefreshPromise) return teacherRefreshPromise;
 
-    const payload={source:'school_information_center_direct',school_id:sid,updated_at:new Date().toISOString(),teachers:teachers};
-    saveVisibleTeacherPayload(payload);
-    // استيراد المعلمين مستقل تماماً عن توليد الأسابيع.
-    // نهيئ حالات الأسابيع فقط إن كانت موجودة مسبقاً.
-    if(weeks.length){ensureWeekTeacherStatuses();saveWeeks();}
-    if($('sourceInfo'))$('sourceInfo').textContent='المصدر المباشر: مركز المعلومات المدرسية — '+teachers.length+' معلم/معلمة فقط'
-      +' (المعلمون الفعليون في مركز المعلومات: '+centralTeachers.length+')'
-      +(details.length?' — تم فحص '+details.length+' سجلًا سابقًا لاسترجاع البيانات المكملة':'')
-      +' — '+(weeks.length?'تم ربطهم بالأسابيع الموجودة':'لا يلزم توليد الأسابيع لعرض المعلمين')
-      +' — آخر مزامنة '+new Date().toLocaleString('ar-SA');
-    renderAll(); if(!silent)toast('تمت مزامنة '+teachers.length+' معلم/معلمة من مركز المعلومات'); return true
+    teacherRefreshPromise=(async()=>{
+      teacherRefreshRunning=true;
+      const silent=!!opts.silent;
+      const skipSourceRefresh=!!opts.skipSourceRefresh;
+      const sid=schoolId();
+      if(!sid){
+        if($('sourceInfo'))$('sourceInfo').textContent='تعذر تحديد المدرسة النشطة؛ أعد فتح القسم من حساب الوكيل.';
+        if(!silent)toast('تعذر تحديد المدرسة النشطة');
+        return false;
+      }
+
+      if($('sourceInfo'))$('sourceInfo').textContent='جارٍ قراءة المعلمين مباشرة من مركز المعلومات للمدرسة النشطة...';
+      let central=[];
+      try{
+        if(window.SchoolInformationSource){
+          // التحديث اليدوي/الأولي يطلب قراءة سحابية حقيقية مرة واحدة فقط.
+          // عند وصول حدث من مركز المعلومات نفسه نقرأ البيانات الجاهزة فقط حتى لا نولد حلقة تحديث ثانية.
+          if(!skipSourceRefresh && typeof SchoolInformationSource.refresh==='function'){
+            await SchoolInformationSource.refresh();
+          }
+          if(typeof SchoolInformationSource.getTeachers==='function'){
+            central=await SchoolInformationSource.getTeachers(!skipSourceRefresh)||[];
+          }
+        }
+      }catch(e){console.warn('SchoolInformationSource teachers',e)}
+
+      // الفلترة تتم على بيانات مركز المعلومات الأصلية قبل أي تحويل أو دمج.
+      const centralTeachers=(Array.isArray(central)?central:[]).filter(x=>isWeeklyFollowupTeacher(x)&&activeTeacherRow(x));
+      const details=await readTeacherCloudDetails();
+      teachers=mergeTeacherRows(centralTeachers,details);
+
+      if(!teachers.length){
+        if($('sourceInfo'))$('sourceInfo').textContent='لا توجد حسابات معلمين مفعّلة في مركز المعلومات لهذه المدرسة. فعّل المعلمين في مركز المعلومات أولًا.';
+        renderAll();
+        if(!silent)toast('لا توجد حسابات معلمين مفعّلة لهذه المدرسة');
+        return false;
+      }
+
+      // حماية نهائية: لا يظهر في متابعة الأعمال الأسبوعية إلا المعلم/المعلمة.
+      teachers=(Array.isArray(teachers)?teachers:[]).filter(x=>isWeeklyFollowupTeacher(x)&&activeTeacherRow(x));
+      const payload={source:'school_information_center_direct',school_id:sid,updated_at:new Date().toISOString(),teachers:teachers};
+      saveVisibleTeacherPayload(payload);
+
+      // المزامنة لا تعتمد على توليد الأسابيع. إن كانت الأسابيع موجودة نربط القائمة بها مرة واحدة فقط.
+      if(weeks.length){ensureWeekTeacherStatuses();saveWeeks();}
+
+      if($('sourceInfo'))$('sourceInfo').textContent='المصدر المباشر: مركز المعلومات المدرسية — '+teachers.length+' معلم/معلمة فقط'
+        +' (المعلمون الفعليون في مركز المعلومات: '+centralTeachers.length+')'
+        +(details.length?' — تم فحص '+details.length+' سجلًا سابقًا لاسترجاع البيانات المكملة':'')
+        +' — '+(weeks.length?'تم ربطهم بالأسابيع الموجودة':'لا يلزم توليد الأسابيع لعرض المعلمين')
+        +' — آخر مزامنة '+new Date().toLocaleString('ar-SA');
+
+      renderAll();
+      if(!silent)toast('تمت مزامنة '+teachers.length+' معلم/معلمة من مركز المعلومات');
+      return true;
+    })();
+
+    try{
+      return await teacherRefreshPromise;
+    }finally{
+      teacherRefreshRunning=false;
+      teacherRefreshPromise=null;
+    }
   }
   function loadWeeks(){try{weeks=JSON.parse(localStorage.getItem(weeksKey())||'[]')}catch(e){weeks=[]} try{archives=JSON.parse(localStorage.getItem(archiveKey())||'[]')}catch(e){archives=[]} activeWeekId=localStorage.getItem(activeKey())||(weeks.find(w=>w.status==='نشط')||weeks[0]||{}).id||''}
   function saveWeeks(){localStorage.setItem(weeksKey(),JSON.stringify(weeks)); localStorage.setItem(archiveKey(),JSON.stringify(archives)); localStorage.setItem(activeKey(),activeWeekId||'')}
@@ -738,9 +771,20 @@
     const rows=(a.teachers||[]).map((t,idx)=>{const pt=(prev.teachers||[]).find(x=>x.user_id===t.user_id)||{}; const dd=(t.discipline||0)-(pt.discipline||0), ed=(t.score||0)-(pt.score||0); return `<tr><td>${idx+1}</td><td><b>${esc(t.name)}</b></td><td>${esc(t.subject||'')}</td><td>${esc(pt.discipline||0)}% → <b>${esc(t.discipline||0)}%</b> ${c4DeltaBadge(dd,'%')}</td><td>${esc(pt.score||0)}% → <b>${esc(t.score||0)}%</b> ${c4DeltaBadge(ed,'%')}</td><td><span class="badge ${t.class_cls==='risk'?'red':t.class_cls==='follow'?'gold':t.class_cls==='good'?'blue':''}">${esc(t.classification||'—')}</span></td></tr>`}).join('')||'<tr><td colspan="6"><div class="empty">لا توجد بيانات مقارنة.</div></td></tr>';
     openDrawer(`<div class="drawerHead"><h2>📊 مقارنة الأسبوع ${esc(a.week_number)} مع الأسبوع ${esc(prev.week_number)}</h2><button class="btn secondary" onclick="closeDrawer()">إغلاق</button></div><div class="tablewrap"><table><thead><tr><th>م</th><th>المعلم</th><th>المادة</th><th>الانضباط</th><th>الإنجاز التنفيذي</th><th>التصنيف الحالي</th></tr></thead><tbody>${rows}</tbody></table></div>`);
   }
-  document.addEventListener('DOMContentLoaded',async()=>{loadWeeks();renderAll();await refreshTeachers({silent:true});renderAll()});
-  window.addEventListener('school-information-updated',()=>refreshTeachers({silent:true}));
-  window.addEventListener('school-information-ready',()=>{if(!teachers.length)refreshTeachers({silent:true})});
+  document.addEventListener('DOMContentLoaded',async()=>{
+    loadWeeks();
+    renderAll();
+    await refreshTeachers({silent:true});
+  });
+  window.addEventListener('school-information-updated',()=>{
+    // الحدث يعني أن المصدر أنهى تحديثه بالفعل؛ لا نعيد استدعاء refresh للمصدر مرة ثانية.
+    if(teacherRefreshRunning)return;
+    refreshTeachers({silent:true,skipSourceRefresh:true});
+  });
+  window.addEventListener('school-information-ready',()=>{
+    if(teacherRefreshRunning||teachers.length)return;
+    refreshTeachers({silent:true,skipSourceRefresh:true});
+  });
   </script>
 
 <script src="platform-record-catalog.js"></script>
@@ -748,7 +792,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-bridge.js"></script>
-<script src="school-information-source.js?v=20260823-deputy-teachers-4"></script>
+<script src="school-information-source.js?v=20260824-deputy-single-refresh-1"></script>
 <script src="internal-messaging.js"></script>
 <script defer src="unified_workspace.js"></script>
 <script defer src="school_navigation_guard.js"></script>

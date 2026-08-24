@@ -174,7 +174,7 @@ button{border:0;border-radius:9px;padding:10px 13px;font:700 12px 'Alyamama';cur
   <button class="secondary" onclick="saveData()">حفظ في أرشيف السجلات</button>
   <button class="ghost" onclick="clearData()">مسح</button>
  </div>
- <div class="note" style="border-right:4px solid #0a7978;background:#f0fdfa">مكان الحفظ: <b>أرشيف السجلات ← القرارات والتكليفات</b>. يمكن تعديل القرار أو حذفه لاحقًا من الأرشيف. ويُرقّم تلقائيًا عند تكرار اسم المكلف.</div><div class="note">الصفحة الأولى: القرار بتنسيق الخطاب الرسمي المعتمد. الصفحة الثانية: المهام والمسؤوليات المرتبطة بالتكليف في عمودين. ويمكن اختيار «أخرى» لإنشاء تكليف مخصص باسم ومهمة ومسؤوليات يحددها مدير المدرسة، مع بقاء المخرج في صفحتين A4.</div>
+ <div class="note" style="border-right:4px solid #0a7978;background:#f0fdfa">مكان الحفظ: <b>أرشيف السجلات ← القرارات والتكليفات</b>. يتم التحقق من وجود السجل بعد كل عملية حفظ قبل إظهار رسالة النجاح. يمكن تعديل القرار أو حذفه لاحقًا من الأرشيف. ويُرقّم تلقائيًا عند تكرار اسم المكلف.</div><div class="note">الصفحة الأولى: القرار بتنسيق الخطاب الرسمي المعتمد. الصفحة الثانية: المهام والمسؤوليات المرتبطة بالتكليف في عمودين. ويمكن اختيار «أخرى» لإنشاء تكليف مخصص باسم ومهمة ومسؤوليات يحددها مدير المدرسة، مع بقاء المخرج في صفحتين A4.</div>
 </aside>
 
 <main class="workspace">
@@ -386,6 +386,69 @@ function migrateLegacyDecisionRecords(){
  try{localStorage.setItem(DECISIONS_ARCHIVE_KEY,JSON.stringify(merged))}catch(e){}
  return merged;
 }
+
+function recoverLastLegacyDecisionDraft(){
+  /*
+   * النسخ القديمة كانت تحتفظ بنموذج واحد فقط في takleef1448_approved.
+   * نستعيده إذا كان يحتوي اسماً ولم نجد سجلاً مطابقاً له في الأرشيف.
+   * لا يمكن لهذه الآلية استعادة نماذج لم تُحفظ في أي تخزين أصلاً.
+   */
+  let draft=null;
+  try{
+    draft=JSON.parse(localStorage.getItem('takleef1448_approved')||'null');
+  }catch(e){draft=null}
+  if(!draft||typeof draft!=='object')return {recovered:false,reason:'no_draft'};
+
+  const assignee=normalizePersonName(draft.name||'');
+  if(!assignee)return {recovered:false,reason:'no_name'};
+
+  const rows=migrateLegacyDecisionRecords();
+  const same=rows.find(r=>{
+    if(!r||r.recordType!=='decision_assignment')return false;
+    const f=r.formData||{};
+    return normalizePersonName(r.assigneeName||f.name||'')===assignee
+      && String(f.decisionNo||r.decisionNo||'')===String(draft.decisionNo||'')
+      && String(f.date||'')===String(draft.date||'')
+      && String(f.type||'')===String(draft.type||'');
+  });
+  if(same)return {recovered:false,reason:'already_archived',id:same.id};
+
+  const now=new Date().toISOString();
+  const seq=nextSequenceForAssignee(assignee,rows,'');
+  let idx=Number(draft.type||0);
+  if(!Number.isFinite(idx)||!decisions[idx])idx=0;
+  const d=decisions[idx]||decisions[0];
+  const role=(d&&d.custom)
+    ? safe(draft.customTitle,'تكليف مخصص')
+    : cleanRole((d&&d.title)||'قرار تكليف');
+
+  const id='decision_recovered_'+Date.now()+'_'+Math.random().toString(36).slice(2,8);
+  const record={
+    id,
+    recordType:'decision_assignment',
+    folderId:DECISIONS_FOLDER_ID,
+    folderName:DECISIONS_FOLDER_NAME,
+    recordName:DECISIONS_FOLDER_NAME,
+    title:assignee+' - '+seq,
+    displayName:assignee+' - '+seq+' (مستعاد)',
+    assigneeName:assignee,
+    sequence:seq,
+    assignmentTitle:role,
+    decisionNo:draft.decisionNo||'',
+    createdAt:now,
+    updatedAt:now,
+    savedAt:now,
+    recoveredFromLegacyDraft:true,
+    formData:{...draft},
+    digitalAssets:{signature:'',stamp:''},
+    officialHtml:'',
+    notes:'سجل مستعاد تلقائياً من آخر بيانات محفوظة في النسخة القديمة. يجب مراجعته قبل الاعتماد.'
+  };
+  const next=[record,...rows];
+  if(!archiveWrite(next))return {recovered:false,reason:'write_failed'};
+  return {recovered:true,id};
+}
+
 function archiveRead(){
  return migrateLegacyDecisionRecords();
 }
@@ -466,8 +529,12 @@ async function init(){
  $('signatureFile').addEventListener('change',e=>readAsset(e,'signature'));
  $('stampFile').addEventListener('change',e=>readAsset(e,'stamp'));
  loadData();
+ const recoveryResult=recoverLastLegacyDecisionDraft();
  await loadAssigneeNames($('name').value);
  const editing=await loadArchiveRecordForEdit();
+ if(recoveryResult&&recoveryResult.recovered&&!editing){
+   setTimeout(()=>alert('تم العثور على آخر نموذج قديم محفوظ على هذا الجهاز واستعادته داخل أرشيف السجلات ← القرارات والتكليفات باسم «مستعاد». يرجى مراجعته قبل الاعتماد.'),250);
+ }
  if(!editing)render();
 }
 function readAsset(event,type){

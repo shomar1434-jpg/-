@@ -460,7 +460,11 @@ function cloudReady(){
   return !!(window.CloudFileEngine && (window.PlatformCloudSession?.token?.() || sessionStorage.getItem('platform_tab_session_token_v1') || localStorage.getItem('platform_file_session_token')));
 }
 function recordBlob(record){
-  return new Blob([JSON.stringify(record)],{type:'application/json;charset=utf-8'});
+  // platform-files يسمح text/*؛ نحفظ البيانات المنظمة كنص UTF-8
+  // بدل application/json غير المسموح، مع بقاء المحتوى JSON قابلاً للقراءة والتعديل.
+  const body=JSON.stringify(record);
+  const fileName='decision_'+String(record?.id||Date.now()).replace(/[^a-zA-Z0-9_-]/g,'_')+'.txt';
+  return new File([body],fileName,{type:'text/plain;charset=utf-8'});
 }
 async function cloudListDecisionFiles(){
   if(!cloudReady())return [];
@@ -487,7 +491,7 @@ async function uploadDecisionRecordToCloud(record, replaceFileId){
     recordType:DECISIONS_CLOUD_RECORD_TYPE,
     recordId:String(record.id),
     relationType:DECISIONS_CLOUD_RELATION,
-    displayName:(record.displayName||record.title||'قرار تكليف')+'.json',
+    displayName:(record.displayName||record.title||'قرار تكليف')+'.txt',
     metadata:{
       folder:DECISIONS_FOLDER_NAME,
       folderId:DECISIONS_FOLDER_ID,
@@ -498,7 +502,7 @@ async function uploadDecisionRecordToCloud(record, replaceFileId){
       assignmentTitle:record.assignmentTitle||'',
       decisionNo:record.decisionNo||'',
       updatedAt:record.updatedAt||record.savedAt||new Date().toISOString(),
-      source:'decisions_assignments.html'
+      source:'decisions_assignments.html',storageFormat:'json-in-text-v1'
     }
   });
   return r?.file?.id||r?.fileId||replaceFileId||'';

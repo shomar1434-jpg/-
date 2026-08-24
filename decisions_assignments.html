@@ -115,6 +115,8 @@ button{border:0;border-radius:9px;padding:10px 13px;font:700 12px 'Alyamama';cur
 @media(max-width:1000px){.manager-return-btn{position:sticky;top:8px;margin:8px;left:auto}}
 </style>
 <script src="school-information-source.js?v=20260824-decisions-assignees-1"></script>
+<script src="platform-cloud-session.js?v=20260818-session-v12"></script>
+<script src="cloud-file-engine.js"></script>
 </head>
 <body>
 <a class="manager-return-btn" href="manager.html" aria-label="العودة للأقسام الرئيسية">↩ العودة للأقسام الرئيسية</a>
@@ -301,6 +303,10 @@ const MANAGER_ARCHIVE_KEY='school_manager_records_archive_v1';
 const DECISIONS_ARCHIVE_KEY='school_manager_decisions_assignments_archive_v1';
 const DECISIONS_FOLDER_ID='decisionsAssignments';
 const DECISIONS_FOLDER_NAME='القرارات والتكليفات';
+const DECISIONS_CLOUD_MODULE='manager_decisions_assignments';
+const DECISIONS_CLOUD_RECORD_TYPE='decision_assignment_archive';
+const DECISIONS_CLOUD_RELATION='decision_record';
+
 function safe(v,f){return (v||'').trim()||f}
 function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
 function cleanRole(title){
@@ -449,6 +455,97 @@ function recoverLastLegacyDecisionDraft(){
   return {recovered:true,id};
 }
 
+
+function cloudReady(){
+  return !!(window.CloudFileEngine && (window.PlatformCloudSession?.token?.() || sessionStorage.getItem('platform_tab_session_token_v1') || localStorage.getItem('platform_file_session_token')));
+}
+function recordBlob(record){
+  return new Blob([JSON.stringify(record)],{type:'application/json;charset=utf-8'});
+}
+async function cloudListDecisionFiles(){
+  if(!cloudReady())return [];
+  const r=await CloudFileEngine.list({
+    ownershipScope:'school',
+    moduleKey:DECISIONS_CLOUD_MODULE,
+    recordType:DECISIONS_CLOUD_RECORD_TYPE,
+    limit:1000
+  });
+  return (r&&r.files)||[];
+}
+function cloudMetaLocalId(file){
+  return String(file?.metadata?.recordLocalId||file?.metadata?.decisionRecordId||'');
+}
+async function uploadDecisionRecordToCloud(record, replaceFileId){
+  if(!window.CloudFileEngine)throw new Error('محرك الحفظ السحابي غير متاح');
+  if(window.PlatformCloudSession?.ensure)await window.PlatformCloudSession.ensure();
+  const file=recordBlob(record);
+  const r=await CloudFileEngine.upload({
+    file,
+    replaceFileId:replaceFileId||undefined,
+    ownershipScope:'school',
+    moduleKey:DECISIONS_CLOUD_MODULE,
+    recordType:DECISIONS_CLOUD_RECORD_TYPE,
+    recordId:String(record.id),
+    relationType:DECISIONS_CLOUD_RELATION,
+    displayName:(record.displayName||record.title||'قرار تكليف')+'.json',
+    metadata:{
+      folder:DECISIONS_FOLDER_NAME,
+      folderId:DECISIONS_FOLDER_ID,
+      recordLocalId:String(record.id),
+      recordType:'decision_assignment',
+      assigneeName:record.assigneeName||'',
+      sequence:Number(record.sequence)||1,
+      assignmentTitle:record.assignmentTitle||'',
+      decisionNo:record.decisionNo||'',
+      updatedAt:record.updatedAt||record.savedAt||new Date().toISOString(),
+      source:'decisions_assignments.html'
+    }
+  });
+  return r?.file?.id||r?.fileId||replaceFileId||'';
+}
+async function readCloudDecisionRecord(fileRow){
+  if(!fileRow?.id)return null;
+  try{
+    const blob=await CloudFileEngine.getBlob(String(fileRow.id));
+    const txt=await blob.text();
+    const rec=JSON.parse(txt);
+    if(!rec||typeof rec!=='object')return null;
+    rec.cloudFileId=String(fileRow.id);
+    rec.cloudSynced=true;
+    return rec;
+  }catch(e){
+    console.warn('[decisions cloud read]',fileRow?.id,e);
+    return null;
+  }
+}
+async function findCloudDecision(localId){
+  const files=await cloudListDecisionFiles();
+  return files.find(f=>cloudMetaLocalId(f)===String(localId)||String(f.record_id||'')===String(localId))||null;
+}
+async function migrateLocalDecisionsToCloud(){
+  if(!cloudReady())return {migrated:0,skipped:0,offline:true};
+  const rows=archiveRead();
+  if(!rows.length)return {migrated:0,skipped:0};
+  const files=await cloudListDecisionFiles();
+  const byLocal=new Map(files.map(f=>[cloudMetaLocalId(f),f]).filter(x=>x[0]));
+  let migrated=0,skipped=0,changed=false;
+  const next=[];
+  for(const original of rows){
+    const rec={...original};
+    if(rec.recordType!=='decision_assignment'){next.push(rec);continue}
+    const existing=rec.cloudFileId ? files.find(f=>String(f.id)===String(rec.cloudFileId)) : byLocal.get(String(rec.id));
+    if(existing){
+      rec.cloudFileId=String(existing.id);rec.cloudSynced=true;skipped++;
+    }else{
+      const fid=await uploadDecisionRecordToCloud(rec);
+      if(fid){rec.cloudFileId=String(fid);rec.cloudSynced=true;migrated++;changed=true;}
+    }
+    next.push(rec);
+  }
+  if(changed)archiveWrite(next);
+  return {migrated,skipped};
+}
+
 function archiveRead(){
  return migrateLegacyDecisionRecords();
 }
@@ -508,8 +605,16 @@ function findArchivedDecision(id){
 async function loadArchiveRecordForEdit(){
  const id=new URLSearchParams(location.search).get('editAssignment')||'';
  if(!id)return false;
- const r=findArchivedDecision(id);
- if(!r){alert('تعذر العثور على قرار التكليف المطلوب في الأرشيف.');return false}
+ let r=findArchivedDecision(id);
+ if(!r && cloudReady()){
+   const f=await findCloudDecision(id);
+   if(f)r=await readCloudDecisionRecord(f);
+   if(r){
+     const rows=archiveRead().filter(x=>String(x.id)!==String(r.id));
+     rows.unshift(r);archiveWrite(rows);
+   }
+ }
+ if(!r){alert('تعذر العثور على قرار التكليف المطلوب في الأرشيف السحابي أو المحلي.');return false}
  currentArchiveRecordId=r.id;
  const data=r.formData||{};
  await loadAssigneeNames(data.name||r.assigneeName||'');
@@ -531,9 +636,14 @@ async function init(){
  loadData();
  const recoveryResult=recoverLastLegacyDecisionDraft();
  await loadAssigneeNames($('name').value);
+ let migrationResult={};
+ try{migrationResult=await migrateLocalDecisionsToCloud();}catch(e){console.warn('[decision migration]',e)}
  const editing=await loadArchiveRecordForEdit();
  if(recoveryResult&&recoveryResult.recovered&&!editing){
-   setTimeout(()=>alert('تم العثور على آخر نموذج قديم محفوظ على هذا الجهاز واستعادته داخل أرشيف السجلات ← القرارات والتكليفات باسم «مستعاد». يرجى مراجعته قبل الاعتماد.'),250);
+   setTimeout(()=>alert('تم العثور على آخر نموذج قديم محفوظ على هذا الجهاز. تمت إضافته إلى قائمة الاستعادة وسيتم رفعه للسحابة عند توفر الجلسة. يرجى مراجعته قبل الاعتماد.'),250);
+ }
+ if(migrationResult?.migrated>0&&!editing){
+   setTimeout(()=>alert('تم ترحيل '+migrationResult.migrated+' قرار/تكليف قديم من هذا الجهاز إلى الأرشيف السحابي للمدرسة دون تكرار.'),450);
  }
  if(!editing)render();
 }
@@ -574,11 +684,16 @@ function removeAsset(type){
  const inp=type==='signature'?$('signatureFile'):$('stampFile');
  if(inp) inp.value='';
 }
-function saveData(){
+async function saveData(){
  render();
  const o={};fields.forEach(id=>o[id]=$(id)?.value||'');
  const assignee=normalizePersonName(o.name);
  if(!assignee){alert('اختر اسم المكلف من قائمة معلمي المدرسة أولاً.');return}
+ if(!window.CloudFileEngine){alert('الحفظ السحابي غير متاح في هذه الجلسة. لم يتم حفظ القرار.');return}
+ try{
+   if(window.PlatformCloudSession?.ensure)await window.PlatformCloudSession.ensure();
+ }catch(e){alert('تعذر استعادة جلسة المدرسة السحابية. لم يتم حفظ القرار.');return}
+
  const rows=archiveRead();
  const old=currentArchiveRecordId?rows.find(r=>String(r.id)===String(currentArchiveRecordId)):null;
  let sequence=old&&normalizePersonName(old.assigneeName)===assignee
@@ -608,17 +723,36 @@ function saveData(){
    officialHtml:buildArchivedOfficialHtml(),
    notes:'قرار تكليف: '+role+' — المكلف: '+assignee
  };
- const next=rows.filter(r=>String(r.id)!==String(id));
- next.unshift(record);
- if(!archiveWrite(next)){alert('تعذر الحفظ في أرشيف السجلات. تحقق من مساحة التخزين المتاحة.');return}
- const verifySaved=readArchiveArray(DECISIONS_ARCHIVE_KEY).some(r=>String(r.id)===String(id));
- if(!verifySaved){alert('تعذر التحقق من حفظ القرار في مجلد القرارات والتكليفات. لم يتم اعتبار العملية ناجحة.');return}
- currentArchiveRecordId=id;
- // نسخة استعادة مؤقتة للنموذج فقط، وليست أرشيفًا ثانيًا.
- try{localStorage.setItem('takleef1448_approved',JSON.stringify(o))}catch(e){}
- persistAssets();
- const url=new URL(location.href);url.searchParams.set('editAssignment',id);history.replaceState(null,'',url);
- alert('تم الحفظ بنجاح في: أرشيف السجلات ← القرارات والتكليفات\\nاسم السجل: '+record.displayName);
+
+ try{
+   let cloudFileId=old?.cloudFileId||'';
+   if(!cloudFileId && currentArchiveRecordId){
+     const f=await findCloudDecision(currentArchiveRecordId);
+     if(f)cloudFileId=String(f.id);
+   }
+   const fid=await uploadDecisionRecordToCloud(record,cloudFileId);
+   if(!fid)throw new Error('لم يرجع محرك الملفات معرفًا للسجل السحابي');
+   record.cloudFileId=String(fid);
+   record.cloudSynced=true;
+
+   // Cache محلي بعد نجاح الحفظ السحابي فقط.
+   const next=rows.filter(r=>String(r.id)!==String(id));
+   next.unshift(record);
+   if(!archiveWrite(next))console.warn('تعذر تحديث Cache المحلي، لكن السجل محفوظ سحابيًا.');
+
+   // تحقق سحابي حقيقي بعد الحفظ.
+   const verify=await findCloudDecision(id);
+   if(!verify)throw new Error('تعذر التحقق من وجود القرار في الأرشيف السحابي بعد الحفظ');
+
+   currentArchiveRecordId=id;
+   try{localStorage.setItem('takleef1448_approved',JSON.stringify(o))}catch(e){}
+   persistAssets();
+   const url=new URL(location.href);url.searchParams.set('editAssignment',id);history.replaceState(null,'',url);
+   alert('تم الحفظ السحابي بنجاح في: أرشيف السجلات ← القرارات والتكليفات\\nاسم السجل: '+record.displayName);
+ }catch(e){
+   console.error('[decision cloud save]',e);
+   alert('تعذر حفظ القرار سحابيًا: '+(e?.message||e)+'\\nلم يتم اعتبار العملية ناجحة.');
+ }
 }
 function loadData(){
  try{const o=JSON.parse(localStorage.getItem('takleef1448_approved')||'{}');fields.forEach(id=>{if(o[id]!=null)$(id).value=o[id]})}catch(e){}

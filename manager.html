@@ -5371,14 +5371,47 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
     });
   }
   function showDashboard(){var d=document.getElementById('welcome-dashboard'); if(d){d.style.display='block'; if(d.classList)d.classList.remove('hidden');}}
-  function showArchive(kind){
+  async function showArchive(kind){
     var v=document.getElementById(viewId(kind));
     if(!v){alert('واجهة '+title(kind)+' غير موجودة.');return;}
     hideAllManagerViews();
     v.style.display='block'; if(v.classList)v.classList.remove('hidden');
+    if(kind==='manager'){
+      var c=document.getElementById(contentId(kind));
+      if(c)c.innerHTML='<div class="text-center text-slate-400 p-8 font-bold">جارٍ مزامنة أرشيف القرارات والتكليفات من السحابة...</div>';
+      await syncCloudDecisionArchive();
+    }
     renderFolders(kind);
   }
   function decisionArchive(){return readArray(['school_manager_decisions_assignments_archive_v1']);}
+
+  const DECISIONS_CLOUD_MODULE='manager_decisions_assignments';
+  const DECISIONS_CLOUD_RECORD_TYPE='decision_assignment_archive';
+  async function syncCloudDecisionArchive(){
+    if(!window.CloudFileEngine)return decisionArchive();
+    try{
+      if(window.PlatformCloudSession?.ensure)await window.PlatformCloudSession.ensure();
+      const res=await CloudFileEngine.list({ownershipScope:'school',moduleKey:DECISIONS_CLOUD_MODULE,recordType:DECISIONS_CLOUD_RECORD_TYPE,limit:1000});
+      const files=(res&&res.files)||[], local=decisionArchive(), map=new Map();
+      local.forEach(r=>{if(r&&r.id)map.set(String(r.id),r);});
+      for(const f of files){
+        try{
+          const blob=await CloudFileEngine.getBlob(String(f.id));
+          const rec=JSON.parse(await blob.text());
+          if(!rec||rec.recordType!=='decision_assignment'||!rec.id)continue;
+          rec.cloudFileId=String(f.id);rec.cloudSynced=true;
+          map.set(String(rec.id),rec);
+        }catch(e){console.warn('[manager decision cloud row]',f?.id,e)}
+      }
+      const rows=Array.from(map.values()).sort((a,b)=>String(b.updatedAt||b.savedAt||b.createdAt||'').localeCompare(String(a.updatedAt||a.savedAt||a.createdAt||'')));
+      writeArray('school_manager_decisions_assignments_archive_v1',rows);
+      return rows;
+    }catch(e){
+      console.warn('[manager decision cloud sync]',e);
+      return decisionArchive();
+    }
+  }
+
   function archive(kind){
     var base=readArray(keys(kind));
     if(kind!=='manager')return base;
@@ -5449,10 +5482,20 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
     return html;
   }
   function previewItem(kind,id,autoPrint){var r=findItem(kind,id); if(!r){alert('تعذر العثور على السجل.');return;} var w=window.open('','_blank'); if(!w){alert('يرجى السماح بالنوافذ المنبثقة.');return;} w.document.open(); w.document.write(safeDoc(r,autoPrint)); w.document.close();}
-  function deleteItem(kind,id){
+  async function deleteItem(kind,id){
     if(!confirm('هل تريد حذف هذا السجل نهائيًا من الأرشيف؟ لا يؤثر الحذف على أي سجل آخر بالاسم نفسه.'))return;
     var item=findItem(kind,id);
     if(kind==='manager'&&item&&item.recordType==='decision_assignment'){
+      if(item.cloudFileId&&window.CloudFileEngine){
+        try{await CloudFileEngine.trash(String(item.cloudFileId));}
+        catch(e){alert('تعذر حذف القرار سحابيًا: '+(e?.message||e));return;}
+      }else if(window.CloudFileEngine){
+        try{
+          const rr=await CloudFileEngine.list({ownershipScope:'school',moduleKey:DECISIONS_CLOUD_MODULE,recordType:DECISIONS_CLOUD_RECORD_TYPE,limit:1000});
+          const f=(rr.files||[]).find(x=>String(x?.metadata?.recordLocalId||x?.record_id||'')===String(id));
+          if(f)await CloudFileEngine.trash(String(f.id));
+        }catch(e){alert('تعذر حذف القرار سحابيًا: '+(e?.message||e));return;}
+      }
       var dk='school_manager_decisions_assignments_archive_v1';
       writeArray(dk,readArray([dk]).filter(function(r){return String(r.id||r.createdAt||r.title)!==String(id);}));
       var pk=primaryKey(kind);

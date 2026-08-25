@@ -40,8 +40,39 @@ Deno.serve(async(req)=>{
    const linked=body.linked||{};const row:any={id:mid,school_id:schoolId,sender_user_id:isUuid(userId)?userId:null,sender_name:safe(body.senderName||s.user_name||email||'مستخدم',200),sender_role:role,subject,body:text,priority:['important','urgent'].includes(String(body.priority))?String(body.priority):'normal',message_type:type,require_ack:requireAck,acknowledgement_mode:ackMode,due_at:body.dueAt||null,thread_id:thread,parent_message_id:isUuid(body.parentMessageId)?body.parentMessageId:null,linked_module:safe(linked.module,120)||null,linked_record_type:safe(linked.recordType,120)||null,linked_record_id:safe(linked.recordId,240)||null,linked_title:safe(linked.title,500)||null,linked_url:safeUrl(linked.url)||null,metadata:body.metadata||{}};
    const {error:me}=await sb.from('internal_messages').insert(row);if(me)throw me;
    const recs=targets.map((u:any)=>({school_id:schoolId,message_id:mid,recipient_user_id:u.id,recipient_email:String(u.email||'').toLowerCase()||null,recipient_name:u.full_name||u.email||'',recipient_role:u.role||''}));if(recs.length){const {error}=await sb.from('internal_message_recipients').insert(recs);if(error)throw error;}
-   const att=Array.isArray(body.attachments)?body.attachments.slice(0,15):[];if(att.length){const ids=att.map((a:any)=>a.fileId).filter(isUuid);if(ids.length){const {data:fs,error:fe}=await sb.from('platform_files').select('id,school_id,display_name,original_name,mime_type,file_size,status').eq('school_id',schoolId).in('id',ids);if(fe)throw fe;const fmap:Map<string,any>=new Map((fs||[]).filter((f:any)=>f.status==='active').map((f:any)=>[String(f.id),f]));const rows=[];for(const a of att){const f=fmap.get(String(a.fileId));if(!f)continue;rows.push({school_id:schoolId,message_id:mid,file_id:f.id,file_name:f.display_name||f.original_name||'مرفق',mime_type:f.mime_type||null,file_size:Number(f.file_size||0),source:a.source==='library'?'library':'device'});await sb.from('platform_file_links').upsert({school_id:schoolId,file_id:f.id,module_key:'internal_messages',record_type:'internal_message',record_id:mid,relation_type:'attachment',linked_by:isUuid(userId)?userId:null,is_primary:false,metadata:{source:a.source||'device'}},{onConflict:'school_id,file_id,module_key,record_type,record_id,relation_type'});}if(rows.length){const {error:ae}=await sb.from('internal_message_attachments').insert(rows);if(ae)throw ae;}}}
+   const att=Array.isArray(body.attachments)?body.attachments.slice(0,15):[];if(att.length){const ids=att.map((a:any)=>a.fileId).filter(isUuid);if(ids.length){const {data:fs,error:fe}=await sb.from('platform_files').select('id,school_id,ownership_scope,owner_user_id,uploaded_by,display_name,original_name,mime_type,file_size,status,bucket_name,storage_path').eq('school_id',schoolId).in('id',ids);if(fe)throw fe;const fmap:Map<string,any>=new Map((fs||[]).filter((f:any)=>f.status==='active').map((f:any)=>[String(f.id),f]));const rows=[];for(const a of att){
+    const f=fmap.get(String(a.fileId));if(!f)continue;
+    const senderCanAttach=String(f.school_id)===schoolId&&(String(f.ownership_scope)==='school'||String(f.owner_user_id||'')===userId||isManager);
+    if(!senderCanAttach)throw new Error('لا توجد صلاحية لإرفاق أحد الملفات المحددة');
+    rows.push({school_id:schoolId,message_id:mid,file_id:f.id,file_name:f.display_name||f.original_name||'مرفق',mime_type:f.mime_type||null,file_size:Number(f.file_size||0),source:a.source==='library'?'library':'device'});
+    const linkKey={school_id:schoolId,file_id:f.id,module_key:'internal_messages',record_type:'internal_message',record_id:mid,relation_type:'attachment'};
+    const {data:existingLinks,error:linkFindError}=await sb.from('platform_file_links').select('id,deleted_at').match(linkKey).order('created_at',{ascending:false}).limit(1);
+    if(linkFindError)throw linkFindError;
+    const existingLink=(existingLinks||[])[0]||null;
+    const linkedBy=isUuid(userId)?userId:f.uploaded_by;
+    if(!linkedBy)throw new Error('تعذر تحديد مالك ربط المرفق');
+    if(existingLink){
+      const {error:linkRestoreError}=await sb.from('platform_file_links').update({deleted_at:null,linked_by:linkedBy,is_primary:false,metadata:{source:a.source||'device'}}).eq('id',existingLink.id);
+      if(linkRestoreError)throw linkRestoreError;
+    }else{
+      const {error:linkInsertError}=await sb.from('platform_file_links').insert({...linkKey,linked_by:linkedBy,is_primary:false,metadata:{source:a.source||'device'}});
+      if(linkInsertError)throw linkInsertError;
+    }
+   }if(rows.length){const {error:ae}=await sb.from('internal_message_attachments').insert(rows);if(ae)throw ae;}}}
    return json({ok:true,messageId:mid,recipientCount:recs.length});
+  }
+  if(action==='attachment-url'){
+   const messageId=safe(body.messageId,60),fileId=safe(body.fileId,60);
+   if(!isUuid(messageId)||!isUuid(fileId))return json({error:'معرف المرفق أو الرسالة غير صالح'},400);
+   const {m,r}=await canAccess(messageId);
+   if(!m||(!r&&String(m.sender_user_id)!==userId))return json({error:'لا توجد صلاحية لفتح مرفق هذه الرسالة'},403);
+   const {data:a,error:ae}=await sb.from('internal_message_attachments').select('id,file_id,file_name,mime_type,file_size').eq('school_id',schoolId).eq('message_id',messageId).eq('file_id',fileId).maybeSingle();
+   if(ae)throw ae;if(!a)return json({error:'المرفق غير مرتبط بهذه الرسالة'},404);
+   const {data:f,error:fe}=await sb.from('platform_files').select('id,bucket_name,storage_path,status,display_name,original_name,mime_type').eq('school_id',schoolId).eq('id',fileId).maybeSingle();
+   if(fe)throw fe;if(!f)return json({error:'ملف المرفق غير موجود'},404);if(String(f.status)!=='active')return json({error:'ملف المرفق غير متاح'},409);
+   const signed=await sb.storage.from(f.bucket_name).createSignedUrl(f.storage_path,300);
+   if(signed.error)throw signed.error;
+   return json({ok:true,signedUrl:signed.data.signedUrl,fileName:a.file_name||f.display_name||f.original_name||'مرفق',mimeType:a.mime_type||f.mime_type||null,expiresIn:300});
   }
   if(action==='read'){
    const id=safe(body.messageId,60);if(!isUuid(id))return json({error:'معرف الرسالة غير صالح'},400);const {m,r}=await canAccess(id);if(!m||(!r&&String(m.sender_user_id)!==userId))return json({error:'لا توجد صلاحية لقراءة الرسالة'},403);if(r&&!r.read_at)await sb.from('internal_message_recipients').update({read_at:now}).eq('id',r.id);

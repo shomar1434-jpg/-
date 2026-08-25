@@ -190,7 +190,20 @@
   function teacherVisibleKey(){return 'deputyWeeklyFollowupTeachersVisible:'+schoolId()}
   function teacherLegacyKeys(){return ['deputyWeeklyFollowupTeachers:'+schoolId(),'deputyWeeklyFollowupTeachers:lastExport']}
   function readManualTeacherProfiles(){try{return JSON.parse(localStorage.getItem(manualTeacherKey())||'{}')||{}}catch(e){return {}}}
-  function saveManualTeacherProfiles(v){try{localStorage.setItem(manualTeacherKey(),JSON.stringify(v||{}))}catch(e){}}
+  async function commitDeputyTeacherProfileCloud(){
+    const k=manualTeacherKey();
+    if(window.PlatformPersistenceGuard&&typeof PlatformPersistenceGuard.commit==='function'){
+      const r=await PlatformPersistenceGuard.commit([k]);
+      if(!r||r.ok===false)throw new Error((r&&r.error)||'تعذر التحقق من الحفظ السحابي');
+    }
+    return true;
+  }
+  async function saveManualTeacherProfiles(v){
+    const k=manualTeacherKey();
+    localStorage.setItem(k,JSON.stringify(v||{}));
+    await commitDeputyTeacherProfileCloud();
+    return true;
+  }
 
   function readPayloadFromKey(k){
     try{
@@ -439,9 +452,66 @@
   function assignmentLabel(x){if(typeof x==='string')return x; return [x?.stage,x?.grade,x?.track,x?.section,x?.subject,x?.title].filter(Boolean).join(' / ')||'تكليف تدريسي'}
   function assBadges(t){let a=t.assignments||[]; if(!a.length)return '<span class="badge gray">لم تستكمل</span>'; return a.map(x=>'<span class="badge blue">'+esc(assignmentLabel(x))+'</span>').join(' ')}
   function sourceBadge(src){return src?'<span class="badge '+(src==='إدخال الوكيل'?'gold':'')+'">'+esc(src)+'</span>':''}
-  function openTeacherProfileCompletion(id){const t=teachers.find(x=>x.user_id===id);if(!t)return; const subjectLocked=!!(t.subject&&t.subject_source!=='إدخال الوكيل'),lessonsLocked=!!(t.weekly_lessons&&t.lessons_source!=='إدخال الوكيل'),assignLocked=!!((t.assignments||[]).length&&t.assignments_source!=='إدخال الوكيل'); const ass=(t.assignments||[]).map(assignmentLabel).join('\n'); openDrawer(`<div class="drawerHead"><div><h2>استكمال بيانات ${esc(t.name)}</h2><div class="muted">تُستخدم هذه البيانات داخل متابعة أعمال المعلمين فقط. بيانات مركز المعلومات لها الأولوية متى توفرت.</div></div><button class="btn secondary" onclick="closeDrawer()">إغلاق</button></div><div class="row"><div class="field"><label>المادة ${sourceBadge(t.subject_source)}</label><input id="mpSubject" value="${esc(t.subject||'')}" ${subjectLocked?'readonly':''} placeholder="أدخل المادة عند عدم توفرها"></div><div class="field"><label>عدد الحصص الأسبوعية ${sourceBadge(t.lessons_source)}</label><input id="mpLessons" type="number" min="0" value="${esc(t.weekly_lessons||'')}" ${lessonsLocked?'readonly':''} placeholder="عدد الحصص"></div></div><div class="field"><label>التكليفات التدريسية ${sourceBadge(t.assignments_source)}</label><textarea id="mpAssignments" ${assignLocked?'readonly':''} placeholder="كل تكليف في سطر مستقل">${esc(ass)}</textarea></div><div class="empty">الحقول القادمة من مركز المعلومات تظهر للقراءة فقط. الحقول الناقصة يمكن للوكيل استكمالها يدويًا، وتُستبدل تلقائيًا بالمصدر الرسمي إذا أُضيفت لاحقًا إلى مركز المعلومات.</div><button class="btn" onclick="saveTeacherProfileCompletion('${esc(id)}')">حفظ البيانات المكملة</button>`)}
-  function saveTeacherProfileCompletion(id){const t=teachers.find(x=>x.user_id===id);if(!t)return; const m=readManualTeacherProfiles(),old=m[id]||{}; const canSubject=!(t.subject&&t.subject_source!=='إدخال الوكيل'),canLessons=!(t.weekly_lessons&&t.lessons_source!=='إدخال الوكيل'),canAssign=!((t.assignments||[]).length&&t.assignments_source!=='إدخال الوكيل'); if(canSubject)old.subject=($('mpSubject').value||'').trim(); if(canLessons)old.weekly_lessons=($('mpLessons').value||'').trim(); if(canAssign)old.assignments=($('mpAssignments').value||'').split(/\n|،|,/).map(x=>x.trim()).filter(Boolean); old.user_id=t.user_id;old.email=t.email||'';old.name=t.name||'';old.updated_at=new Date().toISOString();m[id]=old;saveManualTeacherProfiles(m);closeDrawer();refreshTeachers();toast('تم حفظ البيانات المكملة للمعلم')}
-  function scoreStatus(v){
+  function manualProfileForTeacher(t){
+    const m=readManualTeacherProfiles();
+    if(m[t.user_id])return m[t.user_id];
+    const email=String(t.email||'').trim().toLowerCase();
+    const name=String(t.name||'').trim().replace(/\s+/g,' ').toLowerCase();
+    return Object.values(m).find(x=>{
+      if(!x||typeof x!=='object')return false;
+      return (email&&String(x.email||'').trim().toLowerCase()===email)||
+             (name&&String(x.name||'').trim().replace(/\s+/g,' ').toLowerCase()===name);
+    })||null;
+  }
+  function openTeacherProfileCompletion(id){
+    const t=teachers.find(x=>x.user_id===id);if(!t)return;
+    const manual=manualProfileForTeacher(t);
+    const subjectLocked=!!(t.subject&&t.subject_source==='مركز المعلومات');
+    const lessonsLocked=!!(t.weekly_lessons&&t.lessons_source==='مركز المعلومات');
+    const assignLocked=!!((t.assignments||[]).length&&t.assignments_source==='مركز المعلومات');
+    const ass=(t.assignments||[]).map(assignmentLabel).join('\n');
+    openDrawer(`<div class="drawerHead"><div><h2>${manual?'تعديل البيانات المكملة':'استكمال بيانات'} ${esc(t.name)}</h2><div class="muted">بيانات مركز المعلومات الرسمية للقراءة فقط. أما البيانات التي أدخلها الوكيل فيمكن حفظها وتعديلها وحذفها لاحقًا، وتُحفظ سحابيًا على مستوى المدرسة.</div></div><button class="btn secondary" onclick="closeDrawer()">إغلاق</button></div><div class="row"><div class="field"><label>المادة ${sourceBadge(t.subject_source)}</label><input id="mpSubject" value="${esc(t.subject||'')}" ${subjectLocked?'readonly':''} placeholder="أدخل المادة عند عدم توفرها"></div><div class="field"><label>عدد الحصص الأسبوعية ${sourceBadge(t.lessons_source)}</label><input id="mpLessons" type="number" min="0" value="${esc(t.weekly_lessons||'')}" ${lessonsLocked?'readonly':''} placeholder="عدد الحصص"></div></div><div class="field"><label>التكليفات التدريسية ${sourceBadge(t.assignments_source)}</label><textarea id="mpAssignments" ${assignLocked?'readonly':''} placeholder="كل تكليف في سطر مستقل">${esc(ass)}</textarea></div><div class="empty">لا يؤدي التعديل أو الحذف هنا إلى حذف المعلم من مركز المعلومات. الحذف يزيل فقط البيانات المكملة التي أدخلها الوكيل، ثم يعيد عرض البيانات الرسمية إن كانت متوفرة.</div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" onclick="saveTeacherProfileCompletion('${esc(id)}')">${manual?'💾 حفظ التعديل':'💾 حفظ البيانات المكملة'}</button>${manual?`<button class="btn red" onclick="deleteTeacherProfileCompletion('${esc(id)}')">🗑️ حذف البيانات المكملة</button>`:''}</div>`);
+  }
+  async function saveTeacherProfileCompletion(id){
+    const t=teachers.find(x=>x.user_id===id);if(!t)return;
+    const m=readManualTeacherProfiles(),before=JSON.stringify(m),old={...(m[id]||manualProfileForTeacher(t)||{})};
+    const canSubject=!(t.subject&&t.subject_source==='مركز المعلومات');
+    const canLessons=!(t.weekly_lessons&&t.lessons_source==='مركز المعلومات');
+    const canAssign=!((t.assignments||[]).length&&t.assignments_source==='مركز المعلومات');
+    if(canSubject)old.subject=($('mpSubject').value||'').trim();
+    if(canLessons)old.weekly_lessons=($('mpLessons').value||'').trim();
+    if(canAssign)old.assignments=($('mpAssignments').value||'').split(/\n|،|,/).map(x=>x.trim()).filter(Boolean);
+    old.user_id=t.user_id;old.email=t.email||'';old.name=t.name||'';old.updated_at=new Date().toISOString();
+    m[id]=old;
+    try{
+      await saveManualTeacherProfiles(m);
+      closeDrawer();await refreshTeachers({silent:true,skipSourceRefresh:true});
+      toast('تم حفظ بيانات المعلم وتأكيدها سحابيًا');
+    }catch(e){
+      try{localStorage.setItem(manualTeacherKey(),before)}catch(_){}
+      toast('تعذر تأكيد الحفظ السحابي؛ لم يتم اعتماد التعديل');
+      console.error('teacher profile cloud save',e);
+    }
+  }
+  async function deleteTeacherProfileCompletion(id){
+    const t=teachers.find(x=>x.user_id===id);if(!t)return;
+    if(!confirm('سيتم حذف البيانات المكملة التي أدخلها الوكيل لهذا المعلم فقط. لن يُحذف المعلم أو بيانات مركز المعلومات. هل تريد المتابعة؟'))return;
+    const m=readManualTeacherProfiles(),before=JSON.stringify(m);
+    delete m[id];
+    // إزالة أي نسخة يدوية قديمة لنفس المعلم بالبريد/الاسم مع عدم لمس بيانات بقية المعلمين.
+    const email=String(t.email||'').trim().toLowerCase(),name=String(t.name||'').trim().replace(/\s+/g,' ').toLowerCase();
+    Object.keys(m).forEach(k=>{const x=m[k];if(!x||typeof x!=='object')return;const xe=String(x.email||'').trim().toLowerCase(),xn=String(x.name||'').trim().replace(/\s+/g,' ').toLowerCase();if((email&&xe===email)||(name&&xn===name))delete m[k]});
+    try{
+      await saveManualTeacherProfiles(m);
+      closeDrawer();await refreshTeachers({silent:true,skipSourceRefresh:true});
+      toast('تم حذف البيانات المكملة وتأكيد الحذف سحابيًا');
+    }catch(e){
+      try{localStorage.setItem(manualTeacherKey(),before)}catch(_){}
+      toast('تعذر تأكيد الحذف السحابي؛ تمت استعادة البيانات السابقة');
+      console.error('teacher profile cloud delete',e);
+    }
+  }
+    function scoreStatus(v){
     v=String(v||'').trim();
     if(['حاضر','حضر','مكتمل','تم التنفيذ','مكلف وتم التنفيذ','منجز','تم','مرسل للوكيل'].includes(v))return 100;
     if(['متأخر','ناقص','جزئي','منفذ جزئيًا'].includes(v))return 70;

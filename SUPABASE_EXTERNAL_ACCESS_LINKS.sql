@@ -44,7 +44,7 @@ begin
   if p_access_type not in ('external_evaluation','supervisor_visit') then raise exception 'INVALID_ACCESS_TYPE'; end if;
   select role into v_role from public.users where id=p_created_by and school_id=p_school_id and coalesce(status,'active')='active' limit 1;
   if coalesce(v_role,'') not in ('manager','owner') then raise exception 'NOT_AUTHORIZED'; end if;
-  v_hash := encode(digest(p_token,'sha256'),'hex');
+  v_hash := encode(extensions.digest(p_token,'sha256'),'hex');
   insert into public.school_external_access_tokens(
     school_id,access_type,token_hash,visit_number,permissions,metadata,status,created_by,expires_at,updated_at,revoked_at,revoked_by
   ) values (
@@ -87,7 +87,7 @@ as $$
          a.expires_at
   from public.school_external_access_tokens a
   join public.schools s on s.id=a.school_id
-  where a.token_hash=encode(digest(p_token,'sha256'),'hex')
+  where a.token_hash=encode(extensions.digest(p_token,'sha256'),'hex')
     and a.access_type=p_access_type
   limit 1
 $$;
@@ -105,7 +105,7 @@ begin
   if coalesce(v_role,'') not in ('manager','owner') then raise exception 'NOT_AUTHORIZED'; end if;
   update public.school_external_access_tokens
      set status='revoked', revoked_at=now(), revoked_by=p_revoked_by, updated_at=now()
-   where school_id=p_school_id and token_hash=encode(digest(p_token,'sha256'),'hex') and status<>'revoked';
+   where school_id=p_school_id and token_hash=encode(extensions.digest(p_token,'sha256'),'hex') and status<>'revoked';
   get diagnostics v_count = row_count;
   return v_count>0;
 end $$;
@@ -117,7 +117,7 @@ as $$
   with access as (
     select a.school_id
     from public.school_external_access_tokens a
-    where a.token_hash=encode(digest(p_token,'sha256'),'hex')
+    where a.token_hash=encode(extensions.digest(p_token,'sha256'),'hex')
       and a.access_type='supervisor_visit'
       and a.status='active'
       and (a.expires_at is null or a.expires_at>now())
@@ -125,7 +125,7 @@ as $$
   )
   select u.id,coalesce(to_jsonb(u)->>'full_name',to_jsonb(u)->>'name',''),coalesce(to_jsonb(u)->>'email',''),u.role,coalesce(u.status,'active')
   from public.users u join access a on a.school_id=u.school_id
-  where coalesce(u.status,'active')='active' and u.role in ('manager','agent','teacher','student_advisor')
+  where coalesce(u.status,'active')='active' and u.role in ('manager','agent','teacher','student_advisor','health_advisor','activity_leader','administrative_employee','kindergarten_teacher')
   order by u.role,coalesce(to_jsonb(u)->>'full_name',to_jsonb(u)->>'name',to_jsonb(u)->>'email','')
 $$;
 

@@ -5159,14 +5159,14 @@ document.addEventListener("click", function(e){
  function schoolName(){return localStorage.getItem('school_name')||localStorage.getItem('persist_school')||new URLSearchParams(location.search).get('school_name')||'المدرسة'}
  function tokenKey(){var sid=schoolId();return sid?'supervisor_visit_token_'+sid:'supervisor_visit_token_unresolved'}
  function token(){let t=localStorage.getItem(tokenKey()); if(!t){t='sv_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8); localStorage.setItem(tokenKey(),t)} return t}
- function base(){return location.origin + location.pathname.replace(/manager\.html.*$/,'')}
+ function base(){var path=String(location.pathname||'/');return location.origin+path.replace(/[^/]*$/,'')}
  function link(){var sid=schoolId();if(!sid)throw new Error('تعذر تحديد school_id الصحيح للمدرسة من الجلسة الحالية');return base() + 'supervisor_visit.html?school_id=' + encodeURIComponent(sid) + '&school_name=' + encodeURIComponent(schoolName()) + '&token=' + encodeURIComponent(token())}
  function currentManagerId(){try{var u=JSON.parse(localStorage.getItem('currentSchoolUser')||localStorage.getItem('currentUser')||'{}');return u.id||u.user_id||null}catch(e){return null}}
  async function syncSupervisorToken(){
    if(!window.SmartSchoolSupabase||!SmartSchoolSupabase.registerExternalAccess) throw new Error('محرك الروابط السحابية غير جاهز');
    var uid=currentManagerId(); if(!uid) throw new Error('تعذر تحديد حساب مدير المدرسة');
    var sid=schoolId(); if(!sid) throw new Error('تعذر تحديد school_id الصحيح للمدرسة. أعد تسجيل الدخول إلى حساب المدرسة ثم حاول مجددًا');
-   return await SmartSchoolSupabase.registerExternalAccess({token:token(),school_id:sid,access_type:'supervisor_visit',created_by:uid,visit_number:'SUP-'+new Date().getFullYear(),permissions:{manager:true,agent:true,teacher:true,student_advisor:true},metadata:{school_name:schoolName(),read_only:true}});
+   return await SmartSchoolSupabase.registerExternalAccess({token:token(),school_id:sid,access_type:'supervisor_visit',created_by:uid,visit_number:'SUP-'+new Date().getFullYear(),permissions:{manager:true,agent:true,teacher:true,student_advisor:true,health_advisor:true,activity_leader:true,administrative_employee:true,kindergarten_teacher:true},metadata:{school_name:schoolName(),read_only:true}});
  }
  async function revokeSupervisorToken(t){
    if(!t||!window.SmartSchoolSupabase||!SmartSchoolSupabase.revokeExternalAccess)return false;

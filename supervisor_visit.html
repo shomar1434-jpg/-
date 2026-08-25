@@ -59,17 +59,29 @@
   </section>
 
   <section class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
-    <div class="card role-card p-7 text-center" onclick="openRole('manager')">
+    <div class="card role-card p-7 text-center" data-visit-role="manager" onclick="openRole('manager')">
       <div class="text-5xl mb-3">🏛️</div><h2 class="font-black text-xl">قسم المدير/المديرة</h2><p class="text-xs text-slate-500 mt-2 font-bold">معاينة الإنجاز والسجلات</p>
     </div>
-    <div class="card role-card p-7 text-center" onclick="openRole('agent')">
+    <div class="card role-card p-7 text-center" data-visit-role="agent" onclick="openRole('agent')">
       <div class="text-5xl mb-3">📑</div><h2 class="font-black text-xl">قسم الوكيل/الوكيلة</h2><p class="text-xs text-slate-500 mt-2 font-bold">معاينة الأرشيف والسجلات</p>
     </div>
-    <div class="card role-card p-7 text-center" onclick="openRole('teacher')">
+    <div class="card role-card p-7 text-center" data-visit-role="teacher" onclick="openRole('teacher')">
       <div class="text-5xl mb-3">👨‍🏫</div><h2 class="font-black text-xl">قسم المعلم/المعلمة</h2><p class="text-xs text-slate-500 mt-2 font-bold">معاينة فقط</p>
     </div>
-    <div class="card role-card p-7 text-center" onclick="openRole('student_advisor')">
+    <div class="card role-card p-7 text-center" data-visit-role="student_advisor" onclick="openRole('student_advisor')">
       <div class="text-5xl mb-3">🧭</div><h2 class="font-black text-xl">قسم الموجه/الموجهة الطلابية</h2><p class="text-xs text-slate-500 mt-2 font-bold">معاينة فقط</p>
+    </div>
+    <div class="card role-card p-7 text-center" data-visit-role="health_advisor" onclick="openRole('health_advisor')">
+      <div class="text-5xl mb-3">🩺</div><h2 class="font-black text-xl">قسم الموجه الصحي</h2><p class="text-xs text-slate-500 mt-2 font-bold">معاينة السجلات والأعمال الصحية</p>
+    </div>
+    <div class="card role-card p-7 text-center" data-visit-role="activity_leader" onclick="openRole('activity_leader')">
+      <div class="text-5xl mb-3">🏃</div><h2 class="font-black text-xl">قسم رائد/رائدة النشاط</h2><p class="text-xs text-slate-500 mt-2 font-bold">معاينة البرامج والسجلات</p>
+    </div>
+    <div class="card role-card p-7 text-center" data-visit-role="administrative_employee" onclick="openRole('administrative_employee')">
+      <div class="text-5xl mb-3">💼</div><h2 class="font-black text-xl">قسم الموظف/الموظفة الإدارية</h2><p class="text-xs text-slate-500 mt-2 font-bold">معاينة الأعمال والسجلات</p>
+    </div>
+    <div class="card role-card p-7 text-center" data-visit-role="kindergarten_teacher" onclick="openRole('kindergarten_teacher')">
+      <div class="text-5xl mb-3">🧸</div><h2 class="font-black text-xl">قسم معلمة رياض الأطفال</h2><p class="text-xs text-slate-500 mt-2 font-bold">معاينة القسم عند توفره بالمدرسة</p>
     </div>
   </section>
 </main>
@@ -98,6 +110,7 @@ const token = qs.get('token') || '';
 let currentRole = '';
 let visitUsersRemote=[];
 let supervisorAccessValid=false;
+let visitPermissions={};
 
 document.getElementById('school-title').textContent = 'جارٍ التحقق من رابط الزيارة الإشرافية...';
 
@@ -117,8 +130,21 @@ async function validateSupervisorVisitAccess(){
     const row=await SmartSchoolSupabase.validateExternalAccess(token,'supervisor_visit');
     if(!row||String(row.status)!=='active') throw new Error(row&&row.status==='expired'?'انتهت صلاحية الرابط':'الرابط مغلق أو غير صالح');
     if(schoolIdParam&&String(row.school_id)!==String(schoolIdParam)) throw new Error('الرابط لا يخص هذه المدرسة');
-    schoolId=String(row.school_id||''); schoolName=row.school_name||schoolName; supervisorAccessValid=true;
+    schoolId=String(row.school_id||''); schoolName=row.school_name||schoolName; visitPermissions=row.permissions||{}; supervisorAccessValid=true;
     visitUsersRemote=await SmartSchoolSupabase.listExternalVisitUsers(token);
+    visitUsersRemote=(visitUsersRemote||[]).map(function(u){return Object.assign({},u,{name:u.name||u.full_name||'',isActive:String(u.status||'active')==='active',active:String(u.status||'active')==='active'});});
+    try{
+      sessionStorage.setItem('supervisor_visit_school_id',schoolId);
+      sessionStorage.setItem('active_school_id',schoolId);
+      sessionStorage.setItem('active_school_name',schoolName);
+      sessionStorage.setItem('supervisor_visit_token',token);
+      sessionStorage.setItem('supervisor_visit_readonly','1');
+    }catch(_){}
+    document.querySelectorAll('[data-visit-role]').forEach(function(card){
+      var role=card.getAttribute('data-visit-role');
+      if(Object.prototype.hasOwnProperty.call(visitPermissions,role) && visitPermissions[role]===false) card.style.display='none';
+      else card.style.display='';
+    });
     document.getElementById('school-title').textContent=schoolName+' — الزيارة الإشرافية';
     return true;
   }catch(e){
@@ -128,17 +154,41 @@ async function validateSupervisorVisitAccess(){
   }
 }
 function pageFor(role){
-  return role==='manager'?'manager.html':role==='agent'?'agent.html':role==='teacher'?'teacher.html':'student_advisor.html';
+  const pages={
+    manager:'manager.html',
+    agent:'agent.html',
+    teacher:'teacher.html',
+    student_advisor:'student_advisor.html',
+    health_advisor:'health_advisor.html',
+    activity_leader:'activity_leader.html',
+    administrative_employee:'administrative_employee_portal.html',
+    kindergarten_teacher:'kindergarten_teacher.html'
+  };
+  return pages[role]||'teacher.html';
 }
 function roleName(role){
-  return role==='manager'?'قسم المدير/المديرة':role==='agent'?'قسم الوكيل/الوكيلة':role==='teacher'?'قسم المعلم/المعلمة':'قسم الموجه/الموجهة الطلابية';
+  const names={
+    manager:'قسم المدير/المديرة',
+    agent:'قسم الوكيل/الوكيلة',
+    teacher:'قسم المعلم/المعلمة',
+    student_advisor:'قسم الموجه/الموجهة الطلابية',
+    health_advisor:'قسم الموجه الصحي',
+    activity_leader:'قسم رائد/رائدة النشاط',
+    administrative_employee:'قسم الموظف/الموظفة الإدارية',
+    kindergarten_teacher:'قسم معلمة رياض الأطفال'
+  };
+  return names[role]||'القسم';
 }
 function readVisitUsers(){return visitUsersRemote||[];}
 function normalizeVisitRole(role){
   role=String(role||'').toLowerCase();
   if(role==='leadership'||role==='manager') return 'manager';
   if(role==='agency'||role==='agent') return 'agent';
-  if(role==='advisor'||role==='student_advisor') return 'student_advisor';
+  if(role==='advisor'||role==='student_advisor'||role==='counselor') return 'student_advisor';
+  if(role==='administrative_employee'||role==='admin_employee') return 'administrative_employee';
+  if(role==='activity_leader') return 'activity_leader';
+  if(role==='health_advisor') return 'health_advisor';
+  if(role==='kindergarten_teacher') return 'kindergarten_teacher';
   return role || 'teacher';
 }
 function usersForVisitRole(role){
@@ -272,6 +322,17 @@ function copyVisitLink(){
   const url = location.origin + location.pathname + '?school_id=' + encodeURIComponent(schoolId) + '&school_name=' + encodeURIComponent(schoolName) + '&token=' + encodeURIComponent(token);
   navigator.clipboard && navigator.clipboard.writeText(url);
   alert('تم نسخ رابط الزيارة الإشرافية');
+}
+
+async function initializeSupervisorVisit(){
+  const ok=await validateSupervisorVisitAccess();
+  if(!ok)return;
+  document.getElementById('portal').style.display='block';
+}
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded',initializeSupervisorVisit,{once:true});
+}else{
+  initializeSupervisorVisit();
 }
 </script>
 

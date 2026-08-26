@@ -777,8 +777,8 @@ td textarea,
     </div>
 
     <section id="archivePanel" class="archivePanel">
-      <h3 style="margin:0 0 8px;color:var(--primary2)">أرشيف السجلات</h3>
-      <div class="small">يتم حفظ السجلات للمدرسة المستقلة مع مزامنة سحابية، ويمكن استرجاع السجل وتعديله أو حذفه.</div>
+      <h3 style="margin:0 0 8px;color:var(--primary2)">الأرشيف المحلي</h3>
+      <div class="small">يتم الحفظ داخل متصفح الجهاز باستخدام LocalStorage.</div>
       <div id="archiveList"></div>
     </section>
 
@@ -1114,39 +1114,59 @@ function fill(data){
 }
 function autoDraft(){localStorage.setItem(key()+"_draft",JSON.stringify(collect()))}
 function loadDraft(){fill(JSON.parse(localStorage.getItem(key()+"_draft")||"{}"))}
-function saveArchive(){
- const data=collect();
- const list=JSON.parse(localStorage.getItem(key()+"_archive")||"[]");
- list.unshift(data);
- localStorage.setItem(key()+"_archive",JSON.stringify(list));
+let managerRecordEditingIndex=null;
+async function saveArchive(){
+ const data=collect(), localKey=key()+"_archive", platformKey="school_manager_records_archive_v1";
+ const beforeLocal=localStorage.getItem(localKey)||"[]", beforePlatform=localStorage.getItem(platformKey)||"[]";
+ let list=[],platformArchive=[];try{list=JSON.parse(beforeLocal);if(!Array.isArray(list))list=[]}catch(e){list=[]}
+ try{platformArchive=JSON.parse(beforePlatform);if(!Array.isArray(platformArchive))platformArchive=[]}catch(e){platformArchive=[]}
+ const nowIso=new Date().toISOString();
+
+ let recordId=null;
+ if(managerRecordEditingIndex!==null && list[managerRecordEditingIndex]){
+   const old=list[managerRecordEditingIndex];
+   recordId=old.id||old.archiveId||Date.now();
+   data.id=recordId;data.createdAt=old.createdAt||old.savedAt;data.updatedAt=nowIso;
+   list[managerRecordEditingIndex]=data;
+ }else{
+   recordId=Date.now();data.id=recordId;data.updatedAt=nowIso;list.unshift(data);
+ }
+ localStorage.setItem(localKey,JSON.stringify(list));
  localStorage.removeItem(key()+"_draft");
 
- // حفظ موحد داخل أرشيف سجلات مدير/مديرة المدرسة في المنصة
- const archiveKey="school_manager_records_archive_v1";
- let platformArchive=[];
- try{platformArchive=JSON.parse(localStorage.getItem(archiveKey)||"[]");}catch(e){platformArchive=[];}
  const folderId=current.id;
- const sameFolderCount=platformArchive.filter(x=>x.folderId===folderId).length+1;
- const displayName=current.title + " - نسخة " + sameFolderCount;
- platformArchive.push({
-   id:Date.now(),
-   folderId:folderId,
-   folderName:current.title,
-   recordId:current.id,
-   title:current.title,
-   displayName:displayName,
-   duplicateNo:sameFolderCount,
+ const existingIndex=platformArchive.findIndex(x=>String(x.sourceLocalKey||'')===localKey && String(x.sourceRecordId||x.id)===String(recordId));
+ const oldPlatform=existingIndex>=0?platformArchive[existingIndex]:null;
+ const sameFolderCount=platformArchive.filter(x=>x.folderId===folderId).length+(existingIndex>=0?0:1);
+ const platformRow={
+   id:oldPlatform?.id||recordId,
+   sourceRecordId:recordId,sourceLocalKey:localKey,
+   folderId,folderName:current.title,recordId:current.id,title:current.title,
+   displayName:oldPlatform?.displayName||(current.title+" - نسخة "+sameFolderCount),
+   duplicateNo:oldPlatform?.duplicateNo||sameFolderCount,
    values:data.values,
    htmlContent:"<!DOCTYPE html>"+document.documentElement.outerHTML,
-   createdAt:new Date().toLocaleString('ar-SA')
- });
- localStorage.setItem(archiveKey,JSON.stringify(platformArchive));
+   createdAt:oldPlatform?.createdAt||new Date().toLocaleString('ar-SA'),
+   updatedAt:nowIso
+ };
+ if(existingIndex>=0)platformArchive[existingIndex]=platformRow;else platformArchive.push(platformRow);
+ localStorage.setItem(platformKey,JSON.stringify(platformArchive));
 
- if(window.parent && window.parent!==window){
-   try{window.parent.postMessage({type:'MANAGER_RECORD_SAVED',payload:platformArchive[platformArchive.length-1]},'*');}catch(e){}
+ try{
+   if(window.PlatformPersistenceGuard&&typeof PlatformPersistenceGuard.commit==='function'){
+     const r=await PlatformPersistenceGuard.commit([localKey,platformKey]);
+     if(!r||r.ok===false)throw new Error(r?.error||'تعذر تأكيد الحفظ السحابي');
+   }
+   managerRecordEditingIndex=null;
+   if(window.parent&&window.parent!==window){try{window.parent.postMessage({type:'MANAGER_RECORD_SAVED',payload:platformRow},'*')}catch(e){}}
+   renderArchive();
+   alert("تم حفظ سجل المدير والتحقق منه سحابيًا داخل أرشيف السجلات.");
+   return true;
+ }catch(e){
+   localStorage.setItem(localKey,beforeLocal);localStorage.setItem(platformKey,beforePlatform);
+   alert("تعذر تأكيد الحفظ السحابي؛ تمت استعادة النسخة السابقة.");
+   console.error('[manager record save]',e);renderArchive();return false;
  }
- renderArchive();
- alert("تم حفظ سجل المدير في الأرشيف داخل مجلده الخاص، ولن يتم حذف النسخ السابقة.");
 }
 function toggleArchive(){document.getElementById('archivePanel').classList.toggle('show');renderArchive()}
 function renderArchive(){
@@ -1155,19 +1175,37 @@ function renderArchive(){
  box.innerHTML = list.length ? "" : "<p class='small'>لا توجد سجلات مؤرشفة لهذا النموذج.</p>";
  list.forEach((item,i)=>{
    const d=document.createElement('div');d.className="archiveItem";
-   d.innerHTML=`<div><b>${item.title}</b><div class="small">${item.savedAt}</div></div>
-   <div><button class="btn light" onclick="restoreArchive(${i})">استرجاع</button>
+   d.innerHTML=`<div><b>${item.title}</b><div class="small">${item.updatedAt||item.savedAt||''}</div></div>
+   <div><button class="btn light" onclick="editArchive(${i})">تعديل</button>
+   <button class="btn light" onclick="restoreArchive(${i})">استرجاع للمعاينة</button>
    <button class="btn danger" onclick="deleteArchive(${i})">حذف</button></div>`;
    box.appendChild(d);
  });
 }
 function restoreArchive(i){
  const list=JSON.parse(localStorage.getItem(key()+"_archive")||"[]");
- fill(list[i]); autoDraft();
+ if(!list[i])return;fill(list[i]);autoDraft();
 }
-function deleteArchive(i){
+function editArchive(i){
  const list=JSON.parse(localStorage.getItem(key()+"_archive")||"[]");
- if(confirm("هل تريد حذف هذا السجل من الأرشيف؟")){list.splice(i,1);localStorage.setItem(key()+"_archive",JSON.stringify(list));renderArchive();}
+ if(!list[i])return;managerRecordEditingIndex=i;fill(list[i]);autoDraft();
+ alert("تم فتح السجل للتعديل. اضغط «حفظ في الأرشيف» لتحديث نفس السجل.");
+}
+async function deleteArchive(i){
+ const localKey=key()+"_archive",platformKey="school_manager_records_archive_v1";
+ const beforeLocal=localStorage.getItem(localKey)||"[]",beforePlatform=localStorage.getItem(platformKey)||"[]";
+ const list=JSON.parse(beforeLocal),item=list[i];if(!item)return;
+ if(!confirm("هل تريد حذف هذا السجل من الأرشيف؟"))return;
+ list.splice(i,1);localStorage.setItem(localKey,JSON.stringify(list));
+ let pa=[];try{pa=JSON.parse(beforePlatform);if(!Array.isArray(pa))pa=[]}catch(e){}
+ pa=pa.filter(x=>!(String(x.sourceLocalKey||'')===localKey&&String(x.sourceRecordId||x.id)===String(item.id||item.archiveId)));
+ localStorage.setItem(platformKey,JSON.stringify(pa));
+ try{
+   if(window.PlatformPersistenceGuard&&typeof PlatformPersistenceGuard.commit==='function'){
+     const r=await PlatformPersistenceGuard.commit([localKey,platformKey]);if(!r||r.ok===false)throw new Error(r?.error||'cloud');
+   }
+   if(managerRecordEditingIndex===i)managerRecordEditingIndex=null;renderArchive();
+ }catch(e){localStorage.setItem(localKey,beforeLocal);localStorage.setItem(platformKey,beforePlatform);alert("تعذر تأكيد الحذف سحابيًا؛ تمت استعادة السجل.");renderArchive();}
 }
 function clearForm(){
  if(confirm("سيتم مسح بيانات النموذج الحالي فقط، هل أنت متأكد؟")){
@@ -1276,6 +1314,5 @@ document.addEventListener("blur", function(e){
 <script src="openai-engine.js"></script>
 <script src="top-ai-center.js"></script>
 <script src="platform-page-navigation.js?v=20260818-nav1"></script>
-<script src="platform-archive-crud.js"></script>
 </body>
 </html>

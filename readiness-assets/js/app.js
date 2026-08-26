@@ -29,7 +29,7 @@
 
     function _buildSnapshot(date) {
         if (!W.SECTIONS || !W.state) return { date, overall: 0 };
-        let done = 0, notDone = 0, blocked = 0, evidence = 0, total = 0;
+        let done = 0, notDone = 0, blocked = 0, total = 0;
         const bySection = {};
         W.SECTIONS.forEach(s => {
             let sd = 0, st = 0;
@@ -37,15 +37,14 @@
                 const d = W.state.tasks[s.id]?.[i];
                 if (!d || d.status === 'na') return;
                 st++; total++;
-                const ok = d.execution?.result === 'done' && Array.isArray(d.evidence) && d.evidence.length > 0;
+                const ok = d.execution?.result === 'done';
                 if (ok) { done++; sd++; }
                 else if (d.execution?.result === 'not_done') notDone++;
                 if (d.status === 'blocked') blocked++;
-                evidence += Array.isArray(d.evidence) ? d.evidence.length : 0;
             });
             bySection[s.id] = st > 0 ? Math.round(sd / st * 100) : 0;
         });
-        return { date, overall: total > 0 ? Math.round(done / total * 100) : 0, bySection, done, notDone, blocked, evidence };
+        return { date, overall: total > 0 ? Math.round(done / total * 100) : 0, bySection, done, notDone, blocked };
     }
 
     function getProgressHistory() {
@@ -79,18 +78,12 @@
             s.tasks.forEach((title, i) => {
                 const d = W.state.tasks[s.id]?.[i];
                 if (!d || d.status === 'na') return;
-                const isDone = d.execution?.result === 'done' && d.evidence?.length > 0;
+                const isDone = d.execution?.result === 'done';
 
                 /* 🔴 بند حرج متأخر */
                 if (d.priority === 'critical' && !isDone && d.due && d.due <= today) {
                     const late = Math.ceil((new Date(today) - new Date(d.due)) / 86400000);
                     alerts.push({ level: 'critical', icon: '🔴', type: 'بند حرج متأخر', task: title, section: s.title, sectionId: s.id, taskIndex: i, responsible: d.responsible || 'غير مسند', detail: `الموعد كان ${d.due} — تأخر ${late} يوم` });
-                }
-
-                /* 🔴 شاهد مرفوض معلّق +3 أيام */
-                if (d.review?.status === 'rejected') {
-                    const rejDays = d.review.date ? Math.floor((Date.now() - new Date(d.review.date)) / 86400000) : 999;
-                    if (rejDays >= 3) alerts.push({ level: 'critical', icon: '🔴', type: 'شاهد مرفوض معلّق', task: title, section: s.title, sectionId: s.id, taskIndex: i, responsible: d.reviewer || d.responsible || 'غير محدد', detail: `رُفض منذ ${rejDays} يوم بدون معالجة` });
                 }
 
                 /* 🟡 SLA متجاوز */
@@ -140,7 +133,7 @@
             W.SECTIONS.forEach(s => s.tasks.forEach((_, i) => {
                 const d = W.state.tasks[s.id]?.[i];
                 if (!d || d.status === 'na') return;
-                const ok = d.execution?.result === 'done' && d.evidence?.length > 0;
+                const ok = d.execution?.result === 'done';
                 if (!ok) {
                     const sla = computeSLAStatus(d, d.priority);
                     if (sla?.days >= 14) open14++; else if (sla?.days >= 7) open7++;
@@ -378,7 +371,7 @@
     function _execBadge(d) {
         const isDone = d.execution?.result === 'done' || ['completed', 'verified', 'approved'].includes(d.status);
         const isNo = d.execution?.result === 'not_done' || d.status === 'blocked';
-        if (isDone) return d.evidence?.length > 0 ? '<span class="rpt-ok">✓ نُفذ مع شاهد</span>' : '<span class="rpt-ok">✓ نُفذ</span>';
+        if (isDone) return '<span class="rpt-ok">✓ نُفذ</span>';
         if (isNo) return '<span class="rpt-no">✕ لم يُنفذ</span>';
         return '<span class="rpt-pend">○ معلق</span>';
     }
@@ -393,14 +386,13 @@
             const notDone = d.execution?.result === 'not_done' || d.status === 'blocked';
             if (done) {
                 allDone++;
-                if (d.evidence?.length > 0) withEv++; else noEv++;
             } else if (notDone) {
                 allNo++;
             } else {
                 allPend++;
             }
         }));
-        return _rptHeader('محضر التنفيذ الشامل', `إجمالي البنود: ${allTotal} — مُنفَّذ: ${allDone} (مع شاهد: ${withEv} / بدون شاهد: ${noEv}) — لم يُنفَّذ: ${allNo} — معلق: ${allPend}`) +
+        return _rptHeader('محضر التنفيذ الشامل', `إجمالي البنود: ${allTotal} — مُنفَّذ: ${allDone} — لم يُنفَّذ: ${allNo} — معلق: ${allPend}`) +
         `<div class="rpt-strip">
             <div class="rpt-strip-item"><div class="rpt-big-num" style="color:#0aa293">${allDone}</div><div>إجمالي البنود المنفذة</div></div>
             <div class="rpt-strip-item"><div class="rpt-big-num" style="color:#168b78">${withEv}</div><div>شواهد مرفوعة</div></div>
@@ -418,14 +410,13 @@
                         <th style="width:110px">مسؤول التنفيذ</th>
                         <th style="width:52px;text-align:center">☐<br>نُفذ</th>
                         <th style="width:60px;text-align:center">☐<br>لم يُنفذ</th>
-                        <th>ملاحظات والشواهد</th>
+                        <th>ملاحظات</th>
                     </tr></thead>
                     <tbody>${s.tasks.map((t, i) => {
                         const d = W.state.tasks[s.id]?.[i]; if (!d) return '';
                         const done = d.execution?.result === 'done' || ['completed', 'verified', 'approved'].includes(d.status);
                         const notDone = d.execution?.result === 'not_done' || d.status === 'blocked';
-                        const evCount = d.evidence?.length || 0;
-                        const statusNote = done ? (evCount > 0 ? `نُفذ (${evCount} شاهد)` : 'نُفذ (بدون شاهد)') : '';
+                        const statusNote = done ? 'نُفذ' : '';
                         const noteText = statusNote + (d.notes ? (statusNote ? ' - ' : '') + d.notes : '') + (notDone && d.execution?.reason ? d.execution.reason : '');
                         return `<tr class="${d.priority === 'critical' && !done ? 'rpt-row-crit' : ''}">
                             <td class="rpt-c">${i + 1}</td>
@@ -506,13 +497,13 @@
         }));
         return _rptHeader('محضر التحقق والاعتماد', `المهام المنفذة: ${done.length}`) +
         `<table class="rpt-tbl">
-            <thead><tr><th>م</th><th>المجال</th><th>البند</th><th>المسؤول</th><th>الشواهد</th><th>تاريخ الإنجاز</th><th>حالة المراجعة</th><th>المراجع</th><th>تأكيد المراجع</th></tr></thead>
+            <thead><tr><th>م</th><th>المجال</th><th>البند</th><th>المسؤول</th><th>تاريخ الإنجاز</th><th>حالة المراجعة</th><th>المراجع</th><th>تأكيد المراجع</th></tr></thead>
             <tbody>${done.map((r, idx) => {
                 const rv = r.d.review?.status === 'accepted' ? '<span class="rpt-ok">✓ مقبول</span>' : r.d.review?.status === 'rejected' ? '<span class="rpt-no">✕ مرفوض</span>' : '<span class="rpt-pend">○ قيد المراجعة</span>';
                 return `<tr>
                     <td class="rpt-c">${idx + 1}</td><td>${r.section}</td><td>${r.t}</td>
                     <td>${r.d.responsible || '—'}</td>
-                    <td class="rpt-c">${r.d.evidence?.length || 0}</td>
+                    
                     <td class="rpt-c">${r.d.execution?.date?.slice(0, 10) || r.d.done || '—'}</td>
                     <td class="rpt-c">${rv}</td>
                     <td>${r.d.reviewer || '—'}</td>
@@ -529,15 +520,15 @@
         const stat = typeof W.stageExecutionSummary === 'function' ? W.stageExecutionSummary(idx) : {};
         return _rptHeader(`تقرير ${pName}`, `الإنجاز: ${stat.percent || 0}% — مُنفذ: ${stat.done || 0}/${stat.total || 0}`) +
         `<table class="rpt-tbl">
-            <thead><tr><th>م</th><th>المجال</th><th>البند</th><th>الأولوية</th><th>المسؤول</th><th>نتيجة التنفيذ</th><th>الشواهد</th><th>الموعد</th><th>ملاحظات</th></tr></thead>
+            <thead><tr><th>م</th><th>المجال</th><th>البند</th><th>الأولوية</th><th>المسؤول</th><th>نتيجة التنفيذ</th><th>الموعد</th><th>ملاحظات</th></tr></thead>
             <tbody>${tasks.map((r, i) => {
-                const ok = r.data.execution?.result === 'done' && r.data.evidence?.length > 0;
+                const ok = r.data.execution?.result === 'done';
                 return `<tr class="${r.data.priority === 'critical' && !ok ? 'rpt-row-crit' : ''}">
                     <td class="rpt-c">${i + 1}</td><td>${r.section.title}</td><td>${r.task}</td>
                     <td class="rpt-c">${r.data.priority === 'critical' ? '<span class="rpt-badge-crit">حرج</span>' : 'عادي'}</td>
                     <td>${r.data.responsible || '—'}</td>
                     <td class="rpt-c">${_execBadge(r.data)}</td>
-                    <td class="rpt-c">${r.data.evidence?.length || 0}</td>
+                    
                     <td class="rpt-c">${r.data.due || '—'}</td>
                     <td>${r.data.notes || ''}</td>
                 </tr>`;
@@ -553,14 +544,14 @@
         const sRows = (W.SECTIONS || []).map(s => {
             const sc = typeof W.sectionScore === 'function' ? W.sectionScore(s) : 0;
             const tot = s.tasks.filter((_, i) => W.state?.tasks?.[s.id]?.[i]?.status !== 'na').length;
-            const dn = s.tasks.filter((_, i) => { const d = W.state?.tasks?.[s.id]?.[i]; return d?.execution?.result === 'done' && d?.evidence?.length > 0; }).length;
+            const dn = s.tasks.filter((_, i) => { const d = W.state?.tasks?.[s.id]?.[i]; return d?.execution?.result === 'done'; }).length;
             return { title: s.title, sc, tot, dn };
         });
         return _rptHeader('التقرير القيادي المختصر', 'ملخص تنفيذي لمستوى الجاهزية المدرسية') +
         `<div class="rpt-strip">
             <div class="rpt-strip-item"><div class="rpt-big-num" style="color:#0aa293">${ov}%</div><div>الجاهزية العامة</div></div>
             <div class="rpt-strip-item"><div class="rpt-big-num" style="color:#357fc1">${kpi.kpis?.execution || 0}%</div><div>التنفيذ الموثق</div></div>
-            <div class="rpt-strip-item"><div class="rpt-big-num" style="color:#b47922">${kpi.kpis?.evidence || 0}%</div><div>تغطية الشواهد</div></div>
+            
             <div class="rpt-strip-item"><div class="rpt-big-num" style="color:${rk > 5 ? '#c85a5a' : '#27805f'}">${rk}</div><div>مخاطر نشطة</div></div>
             <div class="rpt-strip-item"><div class="rpt-big-num">${kpi.grade || '—'}</div><div>درجة الإنجاز</div></div>
         </div>
@@ -581,7 +572,7 @@
     function _rpt_kpi() {
         const kpi = W.KPIEngine?.compute() || { oai: 0, kpis: {}, grade: '—', status: '—' };
         const hist = getProgressHistory().slice(-7);
-        const labels = { execution: ['التنفيذ الموثق', '35%'], evidence: ['تغطية الشواهد', '25%'], quality: ['جودة المراجعة', '15%'], timing: ['الالتزام الزمني', '10%'], assignment: ['إسناد البنود الحرجة', '15%'] };
+        const labels = { execution: ['التنفيذ', '75%'], timing: ['الالتزام الزمني', '10%'], assignment: ['إسناد البنود الحرجة', '15%'] };
         return _rptHeader('تقرير مؤشرات الأداء الإجمالي — KPI', `الدرجة الكلية: ${kpi.grade} — ${kpi.status}`) +
         `<div class="rpt-strip" style="grid-template-columns:repeat(3,1fr)">
             <div class="rpt-strip-item"><div class="rpt-big-num" style="font-size:52px;color:#0aa293">${kpi.oai}%</div><div>المؤشر العام المركّب</div></div>
@@ -602,8 +593,8 @@
         ${hist.length >= 2 ? `
         <h3 style="margin:16px 0 8px;font-size:16px">سجل التقدم (آخر ${hist.length} أيام)</h3>
         <table class="rpt-tbl">
-            <thead><tr><th>التاريخ</th><th>الجاهزية</th><th>مُنجز</th><th>لم يُنفذ</th><th>الشواهد</th><th>متعثرة</th></tr></thead>
-            <tbody>${hist.map(h => `<tr><td class="rpt-c">${h.date}</td><td class="rpt-c"><strong>${h.overall}%</strong></td><td class="rpt-c">${h.done || 0}</td><td class="rpt-c">${h.notDone || 0}</td><td class="rpt-c">${h.evidence || 0}</td><td class="rpt-c">${h.blocked || 0}</td></tr>`).join('')}</tbody>
+            <thead><tr><th>التاريخ</th><th>الجاهزية</th><th>مُنجز</th><th>لم يُنفذ</th><th>متعثرة</th></tr></thead>
+            <tbody>${hist.map(h => `<tr><td class="rpt-c">${h.date}</td><td class="rpt-c"><strong>${h.overall}%</strong></td><td class="rpt-c">${h.done || 0}</td><td class="rpt-c">${h.notDone || 0}</td><td class="rpt-c">${h.blocked || 0}</td></tr>`).join('')}</tbody>
         </table>` : ''}` +
         _rptSigs(['مدير المدرسة', 'رئيس لجنة الجاهزية', 'الختم']);
     }
@@ -649,7 +640,7 @@
         return rows;
     }
     function _kpiExec(rows)    { const a = rows.filter(r => r.data.status !== 'na'); return a.length ? a.filter(r => r.data.execution?.result === 'done' || ['completed','verified','approved'].includes(r.data.status)).length / a.length : 0; }
-    function _kpiEvid(rows)    { const d = rows.filter(r => r.data.execution?.result === 'done' || ['completed','verified','approved'].includes(r.data.status)); return d.length ? d.filter(r => r.data.evidence?.length > 0).length / d.length : 1; }
+    function _kpiEvid(rows)    { return _kpiExec(rows); }
     function _kpiQual(rows)    { const rv = rows.filter(r => r.data.review?.status && r.data.review.status !== 'pending'); return rv.length ? rv.filter(r => r.data.review.status === 'accepted').length / rv.length : 0.5; }
     function _kpiTime(rows)    { const w = rows.filter(r => r.data.due && r.data.status !== 'na'); if (!w.length) return 1; const t = new Date().toISOString().slice(0, 10); return w.filter(r => r.data.due >= t || ['completed', 'verified', 'approved'].includes(r.data.status)).length / w.length; }
     function _kpiAssign(rows)  { const c = rows.filter(r => r.data.priority === 'critical' && r.data.status !== 'na'); return c.length ? c.filter(r => r.data.responsible).length / c.length : 1; }
@@ -658,8 +649,8 @@
         const rows = _allRows();
         if (!rows.length) return { oai: 0, kpis: {}, grade: 'N/A', status: 'لا توجد بيانات', failing: [] };
         const W_ = W.state?.weights || {};
-        const wt = { execution: (W_.execution ?? 35) / 100, evidence: (W_.evidence ?? 25) / 100, quality: (W_.quality ?? 15) / 100, timing: (W_.timing ?? 10) / 100, assignment: (W_.approval ?? 15) / 100 };
-        const kv = { execution: _kpiExec(rows), evidence: _kpiEvid(rows), quality: _kpiQual(rows), timing: _kpiTime(rows), assignment: _kpiAssign(rows) };
+        const wt = { execution: .75, timing: .10, assignment: .15 };
+        const kv = { execution: _kpiExec(rows), timing: _kpiTime(rows), assignment: _kpiAssign(rows) };
         const tw = Object.values(wt).reduce((a, b) => a + b, 0);
         const oai = Math.max(0, Math.min(1, Object.keys(wt).reduce((s, k) => s + kv[k] * wt[k], 0) / tw));
         const pct = Math.round(oai * 100);
@@ -679,21 +670,21 @@
         _st('premiumOperationalState', res.status);
         _st('premiumCriticalCount', rows.filter(r => r.data.priority === 'critical' && !['completed', 'verified', 'approved', 'na'].includes(r.data.status)).length);
         _st('premiumLateCount', rows.filter(r => { if (!r.data.due || r.data.status === 'na') return false; return r.data.due < new Date().toISOString().slice(0, 10) && !['completed', 'verified', 'approved'].includes(r.data.status); }).length);
-        _st('premiumEvidenceCount', rows.reduce((s, r) => s + (r.data.evidence?.length || 0), 0));
+        _st('premiumExecutedCount', rows.filter(r => r.data.execution?.result === 'done').length);
         const mbox = D.getElementById('dashboardMetrics');
         if (mbox) {
             const tot = rows.filter(r => r.data.status !== 'na').length;
             const dn  = rows.filter(r => r.data.execution?.result === 'done' || ['completed', 'verified', 'approved'].includes(r.data.status)).length;
             const blk = rows.filter(r => r.data.status === 'blocked' || r.data.execution?.result === 'not_done').length;
             const appr= rows.filter(r => ['verified', 'approved'].includes(r.data.status)).length;
-            const ev  = rows.reduce((s, r) => s + (r.data.evidence?.length || 0), 0);
+            const ev  = rows.filter(r => r.data.execution?.result === 'done').length;
             const gc  = pct => pct >= 80 ? '#0aa293' : pct >= 60 ? '#b47922' : '#c85a5a';
             mbox.innerHTML =
                 _mCard('الجاهزية الكلية',    res.oai + '%',  res.oai, gc(res.oai)) +
                 _mCard('إجمالي المهام',       tot,            null,    '#357fc1') +
                 _mCard('المهام المنفذة',       dn,             Math.round(dn / Math.max(1, tot) * 100), '#0aa293') +
                 _mCard('متعثرة / لم تُنفذ',  blk,            null,    '#c85a5a') +
-                _mCard('الشواهد المرفوعة',   ev,             null,    '#b47922');
+                _mCard('المهام المنفذة',     ev,             null,    '#b47922');
         }
         _updateKPIBreakdown(res);
     }
@@ -705,7 +696,7 @@
     function _updateKPIBreakdown(res) {
         const kBox = D.getElementById('kpiBreakdownPanel');
         if (kBox) {
-            const map = { execution: ['التنفيذ الموثق', '#0aa293'], evidence: ['تغطية الشواهد', '#357fc1'], quality: ['جودة المراجعة', '#b47922'], timing: ['الالتزام الزمني', '#27805f'], assignment: ['إسناد البنود الحرجة', '#7c3e8a'] };
+            const map = { execution: ['التنفيذ', '#0aa293'], timing: ['الالتزام الزمني', '#27805f'], assignment: ['إسناد البنود الحرجة', '#7c3e8a'] };
             kBox.innerHTML = Object.entries(res.kpis).map(([k, v]) => {
                 const [lbl, col] = map[k] || [k, '#888'];
                 return `<div class="score-line"><span>${lbl}</span><div class="progress"><i style="width:${v}%;background:${col}"></i></div><strong style="color:${col}">${v}%</strong></div>`;

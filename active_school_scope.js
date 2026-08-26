@@ -204,6 +204,34 @@
     });
   }
 
+  var ACTIVE_SCHOOL_LABEL_DURATION = 7000;
+  var activeSchoolLabelTimer = null;
+
+  function currentLoginSessionMarker(school){
+    try{
+      var token =
+        sessionStorage.getItem('platform_tab_session_token_v1') ||
+        localStorage.getItem('platform_file_session_token') || '';
+      var user =
+        sessionStorage.getItem('platform_tab_session_user_v1') ||
+        localStorage.getItem('platform_file_session_user_id') ||
+        String(getCurrentUser().id || getCurrentUser().user_id || getCurrentUser().email || '');
+      var raw = String(school?.schoolId||'') + '|' + String(user||'') + '|' + String(token||'');
+      var h = 2166136261;
+      for(var i=0;i<raw.length;i++){ h ^= raw.charCodeAt(i); h = Math.imul(h,16777619); }
+      return 'active_school_label_session_v2:' + (h>>>0).toString(36);
+    }catch(e){
+      return 'active_school_label_session_v2:' + String(school?.schoolId||'school');
+    }
+  }
+
+  function scheduleActiveSchoolLabelRemoval(ms){
+    try{ if(activeSchoolLabelTimer) clearTimeout(activeSchoolLabelTimer); }catch(e){}
+    activeSchoolLabelTimer = setTimeout(function(){
+      try{ document.getElementById('activeSchoolLabel')?.remove(); }catch(e){}
+    }, Math.max(0, Number(ms)||0));
+  }
+
   function updateSchoolLabels(){
     if(isSystemAdminContext()){ removeActiveSchoolLabel(); return; }
     var s = activeSchool();
@@ -212,15 +240,34 @@
     document.documentElement.setAttribute('data-active-school-id', s.schoolId);
     document.documentElement.setAttribute('data-active-school-name', s.schoolName || '');
 
+    var markerKey = currentLoginSessionMarker(s);
+    var startedAt = Number(sessionStorage.getItem(markerKey) || 0);
+    var now = Date.now();
+
+    // أول واجهة بعد تسجيل الدخول تبدأ نافذة الظهور ذات السبع ثواني.
+    if(!startedAt || startedAt > now){
+      startedAt = now;
+      try{ sessionStorage.setItem(markerKey, String(startedAt)); }catch(e){}
+    }
+
+    var remaining = ACTIVE_SCHOOL_LABEL_DURATION - (now - startedAt);
+    if(remaining <= 0){
+      try{ document.getElementById('activeSchoolLabel')?.remove(); }catch(e){}
+      return;
+    }
+
     var label = document.getElementById('activeSchoolLabel');
     if(!label){
       label = document.createElement('div');
       label.id = 'activeSchoolLabel';
       label.dir = 'rtl';
-      label.style.cssText = 'position:fixed;top:12px;left:calc(50% + 8px);z-index:2147482000;background:rgba(15,118,110,.95);color:#fff;border-radius:999px;padding:8px 13px;font:900 11px Cairo,Tahoma,Arial;box-shadow:0 8px 20px rgba(0,0,0,.18);max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+      label.setAttribute('role','status');
+      label.setAttribute('aria-live','polite');
+      label.style.cssText = 'position:fixed;top:12px;left:calc(50% + 8px);z-index:2147482000;background:rgba(15,118,110,.95);color:#fff;border-radius:999px;padding:8px 13px;font:900 11px Cairo,Tahoma,Arial;box-shadow:0 8px 20px rgba(0,0,0,.18);max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:opacity .28s ease,transform .28s ease';
       document.body.appendChild(label);
     }
     label.textContent = 'المدرسة النشطة: ' + s.schoolName;
+    scheduleActiveSchoolLabelRemoval(remaining);
   }
 
   function install(){

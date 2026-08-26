@@ -577,38 +577,16 @@
   }
   async function readCloudUsers(){
     try{
-      const client=getClient(), sid=safe(currentSchool.id);
-      if(!client||!sid) return [];
-
-      // المصدر الأول: الجسر الموحد لأنه يجمع users + school_members للمدارس المستقلة ومتعددة المدارس.
-      try{
-        if(window.SmartSchoolSupabase&&typeof SmartSchoolSupabase.listUsersBySchool==='function'){
-          const all=await SmartSchoolSupabase.listUsersBySchool(sid)||[];
-          const rows=all.filter(u=>isTeacherUser(u)&&isActiveUser(u)&&sameSchoolUser(u)).map(u=>({
-            id:safe(u.id||u.user_id||u.uid||u.email||u.name),
-            user_id:safe(u.user_id||u.id||u.uid||u.email||u.name),
-            name:safe(u.name||u.full_name||u.display_name||u.username||u.email||'معلم'),
-            email:safe(u.email||u.user_email||''),school_id:sid,source:'school_members+users'
-          }));
-          if(rows.length) return rows;
-        }
-      }catch(e){console.warn('listUsersBySchool teachers',e)}
-
-      // مسار احتياطي: الاستعلام يكون مفلترًا بالمدرسة قبل أي limit/range، مع pagination كاملة.
-      const by=new Map();
-      const pageSize=500;
-      for(let from=0;;from+=pageSize){
-        const q=await client.from('users').select('*').eq('school_id',sid).range(from,from+pageSize-1);
-        if(q.error) break;
-        const batch=q.data||[];
-        batch.filter(u=>isTeacherUser(u)&&isActiveUser(u)&&sameSchoolUser(u)).forEach(u=>{
-          const id=safe(u.id||u.user_id||u.uid||u.email||u.name); if(!id)return;
-          by.set(id,{id,user_id:safe(u.user_id||u.id||u.uid||u.email||u.name),name:safe(u.name||u.full_name||u.display_name||u.username||u.email||'معلم'),email:safe(u.email||u.user_email||''),school_id:sid,source:'users'});
-        });
-        if(batch.length<pageSize) break;
+      const client=getClient();
+      const tables=['users','school_users','profiles'];
+      for(const table of tables){
+        const q=await client.from(table).select('*').limit(500);
+        if(q.error) continue;
+        const rows=(q.data||[]).filter(u=>isTeacherUser(u)&&isActiveUser(u)&&sameSchoolUser(u)).map(u=>({id:safe(u.id||u.user_id||u.uid||u.email||u.name),user_id:safe(u.user_id||u.id||u.uid||u.email||u.name),name:safe(u.name||u.full_name||u.display_name||u.username||u.email||'معلم'),email:safe(u.email||u.user_email||''),school_id:currentSchool.id,source:table}));
+        if(rows.length) return rows;
       }
-      return [...by.values()];
-    }catch(e){console.warn('readCloudUsers teachers',e);return []}
+    }catch(e){}
+    return [];
   }
   function loadTeacherProfiles(){try{return JSON.parse(localStorage.getItem(teacherStoreKey())||'[]')}catch(e){return []}}
   async function readCloudTeacherProfiles(){
@@ -728,9 +706,33 @@
     $('teachersBody').innerHTML=rows.map((t,i)=>'<tr><td>'+(i+1)+'</td><td><b>'+html(t.name)+'</b><div class="muted">'+html(t.email||'')+'</div></td><td>'+html(t.subject||'—')+'</td><td>'+html(t.weekly_lessons||'—')+'</td><td>'+assText(t)+'</td><td>'+extraText(t)+'</td><td class="'+(teacherComplete(t)?'teacherStatusComplete':'teacherStatusMissing')+'">'+(teacherComplete(t)?'مكتملة':'تحتاج استكمال')+'</td><td class="noPrint"><button class="btn small" onclick="openTeacherDrawer(\''+html(t.user_id)+'\')">استكمال/تعديل</button></td></tr>').join('') || '<tr><td colspan="8" class="muted">لا توجد حسابات معلمين مفعلة لهذه المدرسة. استخدم زر الاستيراد بعد تفعيل المستخدمين من قسم المدير.</td></tr>';
     renderTeacherStats();
   }
-  function stageOptions(selected){return ['','ابتدائي','متوسط','ثانوي'].map(v=>'<option value="'+html(v)+'" '+(v===selected?'selected':'')+'>'+(v||'اختر المرحلة')+'</option>').join('')}
-  function gradeOptions(stage,selected){const arr=stageGrades[stage]||[]; return [''].concat(arr).map(v=>'<option value="'+html(v)+'" '+(v===selected?'selected':'')+'>'+(v||'اختر الصف')+'</option>').join('')}
-  function trackOptions(stage,selected){const arr=stage==='ثانوي'?secondaryTracks:['']; return arr.map(v=>'<option value="'+html(v)+'" '+(v===selected?'selected':'')+'>'+(v||'لا يوجد')+'</option>').join('')}
+  function canonicalTeacherStage(v){
+    const n=normText(v||'');
+    if(/ابتدائ/.test(n)) return 'ابتدائي';
+    if(/متوسط/.test(n)) return 'متوسط';
+    if(/ثانو/.test(n)) return 'ثانوي';
+    return safe(v);
+  }
+  function canonicalTeacherGrade(stage,v){
+    const st=canonicalTeacherStage(stage), raw=safe(v), n=normText(raw);
+    if(!raw) return '';
+    const arr=stageGrades[st]||[];
+    const exact=arr.find(x=>normText(x)===n); if(exact) return exact;
+    if(st==='ابتدائي'){
+      const words=[['الأول',/اول|الأول/],['الثاني',/ثاني|الثاني/],['الثالث',/ثالث|الثالث/],['الرابع',/رابع|الرابع/],['الخامس',/خامس|الخامس/],['السادس',/سادس|السادس/]];
+      const hit=words.find(x=>x[1].test(n)); if(hit)return hit[0];
+    }
+    if(st==='متوسط'||st==='ثانوي'){
+      const suffix=st==='متوسط'?' المتوسط':' الثانوي';
+      if(/اول|الأول/.test(n))return 'الأول'+suffix;
+      if(/ثاني|الثاني/.test(n))return 'الثاني'+suffix;
+      if(/ثالث|الثالث/.test(n))return 'الثالث'+suffix;
+    }
+    return raw;
+  }
+  function stageOptions(selected){selected=canonicalTeacherStage(selected);return ['','ابتدائي','متوسط','ثانوي'].map(v=>'<option value="'+html(v)+'" '+(v===selected?'selected':'')+'>'+(v||'اختر المرحلة')+'</option>').join('')}
+  function gradeOptions(stage,selected){stage=canonicalTeacherStage(stage);selected=canonicalTeacherGrade(stage,selected);const arr=stageGrades[stage]||[]; const values=arr.slice(); if(selected&&!values.includes(selected))values.unshift(selected); return [''].concat(values).map(v=>'<option value="'+html(v)+'" '+(v===selected?'selected':'')+'>'+(v||'اختر الصف')+'</option>').join('')}
+  function trackOptions(stage,selected){stage=canonicalTeacherStage(stage);const arr=stage==='ثانوي'?secondaryTracks:['']; return arr.map(v=>'<option value="'+html(v)+'" '+(v===selected?'selected':'')+'>'+(v||'لا يوجد')+'</option>').join('')}
   function sectionOptions(selected){const fromStudents=unique(allStudents.map(x=>x.section_name)); const arr=(fromStudents.length?fromStudents:['أ','ب','ج','د','هـ','و']); return [''].concat(arr).map(v=>'<option value="'+html(v)+'" '+(v===selected?'selected':'')+'>'+(v||'اختر الشعبة')+'</option>').join('')}
   function subjectSelect(v){return '<select id="tdSubject">'+[''].concat(subjectOptions).map(x=>'<option value="'+html(x)+'" '+(x===v?'selected':'')+'>'+(x||'اختر المادة')+'</option>').join('')+'</select>'}
   function renderAssignmentEditor(assignments){
@@ -749,7 +751,7 @@
   window.closeTeacherDrawer=function(){$('teacherDrawerHost').className='hidden noPrint'; $('teacherDrawerHost').innerHTML='';}
   window.saveTeacherProfile=async function(userId){
     const t=allTeachers.find(x=>String(x.user_id)===String(userId)); if(!t) return;
-    const assignments=[...document.querySelectorAll('.assignmentBox')].map(box=>({stage:safe(box.querySelector('.assStage').value),grade:safe(box.querySelector('.assGrade').value),track:safe(box.querySelector('.assTrack').value),section:safe(box.querySelector('.assSection').value)})).filter(x=>x.stage&&x.grade&&x.section);
+    const assignments=[...document.querySelectorAll('.assignmentBox')].map(box=>{const stage=canonicalTeacherStage(box.querySelector('.assStage').value);return {stage,grade:canonicalTeacherGrade(stage,box.querySelector('.assGrade').value),track:safe(box.querySelector('.assTrack').value),section:safe(box.querySelector('.assSection').value)}}).filter(x=>x.stage&&x.grade&&x.section);
     t.subject=safe($('tdSubject').value); t.weekly_lessons=safe($('tdLessons').value); t.assignments=assignments; t.extra_roles=[...document.querySelectorAll('.extraRoleCheck:checked')].map(x=>x.value); t.profile_status=teacherComplete(t)?'complete':'missing'; t.updated_at=new Date().toISOString();
     allTeachers=allTeachers.map(x=>String(x.user_id)===String(userId)?t:x);
     saveTeacherProfiles(allTeachers);

@@ -2347,7 +2347,7 @@ body{overflow-x:hidden}
             const container = document.getElementById('stats-content');
             const reports = JSON.parse(localStorage.getItem('school_reports') || '[]');
             const goals = JSON.parse(localStorage.getItem('category_goals') || '{}');
-            const counts = reports.reduce((acc, r) => { acc[r.category] = (acc[r.category] || 0) + 1; return acc; }, {});
+            const counts = reports.reduce((acc, r) => { { const fid=performanceArchiveFolderId(r); acc[fid]=(acc[fid]||0)+1; }; return acc; }, {});
             const total = reports.length;
 
             const aiInsights = generateAssistantInsights(reports, counts, goals);
@@ -2411,7 +2411,7 @@ body{overflow-x:hidden}
             const data = CATEGORY_DATA[id];
             const reports = JSON.parse(localStorage.getItem('school_reports') || '[]');
             const goals = JSON.parse(localStorage.getItem('category_goals') || '{}');
-            const count = reports.filter(r => r.category == id).length;
+            const count = reports.filter(r => performanceArchiveFolderId(r) === String(id)).length;
             const goal = goals[id] || 10;
             const percent = Math.min((count / goal) * 100, 100).toFixed(0);
 
@@ -2467,7 +2467,7 @@ body{overflow-x:hidden}
             Object.entries(CATEGORY_DATA).forEach(([catId, data]) => {
                 const domain = data.selfEval;
                 if (domainStats[domain]) {
-                    const achievedCount = reports.filter(r => r.category == catId).length;
+                    const achievedCount = reports.filter(r => performanceArchiveFolderId(r) === String(catId)).length;
                     const targetGoal = goals[catId] || 10;
                     
                     domainStats[domain].achieved += achievedCount;
@@ -2787,7 +2787,7 @@ body{overflow-x:hidden}
             const container = document.getElementById('archive-content');
             document.getElementById('back-to-folders').classList.add('hidden');
             const reports = JSON.parse(localStorage.getItem('school_reports') || '[]');
-            const counts = reports.reduce((acc, r) => { acc[r.category] = (acc[r.category] || 0) + 1; return acc; }, {});
+            const counts = reports.reduce((acc, r) => { { const fid=performanceArchiveFolderId(r); acc[fid]=(acc[fid]||0)+1; }; return acc; }, {});
 
             container.innerHTML = `<div class="grid grid-cols-1 md:grid-cols-3 gap-6">` + 
                 Object.entries(CATEGORY_DATA).map(([id, data]) => `
@@ -2833,7 +2833,7 @@ body{overflow-x:hidden}
             currentArchiveFolder = catId;
             const searchTerm = document.getElementById('archiveSearchInput').value.trim().toLowerCase();
             const reports = JSON.parse(localStorage.getItem('school_reports') || '[]');
-            let filtered = reports.filter(r => r.category == catId);
+            let filtered = reports.filter(r => performanceArchiveFolderId(r) === String(catId));
             
             if (searchTerm) filtered = filtered.filter(r => r.title.toLowerCase().includes(searchTerm));
 
@@ -2917,58 +2917,36 @@ body{overflow-x:hidden}
             }
         }
 
-        async function saveReportToArchive() {
-            const beforeRaw = localStorage.getItem('school_reports') || '[]';
-            let reports = [];
-            try { reports = JSON.parse(beforeRaw); if(!Array.isArray(reports)) reports=[]; } catch(e) { reports=[]; }
-            const systemDateStr = new Date().toLocaleDateString('ar-SA-u-ca-islamic-uma');
+        function performanceArchiveFolderId(report){ return String((report && (report.archiveFolderId || report.category)) || ''); }
+function performanceArchiveFolderName(catId){
+    const data=(typeof CATEGORY_DATA!=='undefined' && CATEGORY_DATA)?CATEGORY_DATA[String(catId)]:null;
+    if(data && data.name) return String(data.name);
+    const sel=document.getElementById('categorySelect');
+    const opt=sel && sel.options && sel.selectedIndex>=0 ? sel.options[sel.selectedIndex] : null;
+    return String((opt && (opt.textContent||opt.innerText)) || catId || '').trim();
+}
 
-            // تثبيت الحالة الفعلية لجميع عناصر الإدخال قبل أخذ HTML؛ لا نعيد تعبئة الأهداف من المكتبة هنا.
-            document.querySelectorAll('#report-content-container select').forEach(sel => {
-                Array.from(sel.options).forEach(opt => opt.removeAttribute('selected'));
-                if(sel.selectedIndex >= 0 && sel.options[sel.selectedIndex]) {
-                    sel.options[sel.selectedIndex].setAttribute('selected','selected');
-                }
-                sel.setAttribute('data-saved-value', sel.value || '');
-            });
-            document.querySelectorAll('#report-content-container input').forEach(inp => {
-                if(inp.type==='checkbox'||inp.type==='radio'){
-                    if(inp.checked) inp.setAttribute('checked','checked'); else inp.removeAttribute('checked');
-                }else if(inp.type!=='file') inp.setAttribute('value',inp.value||'');
-            });
-            document.querySelectorAll('#report-content-container textarea').forEach(t => { t.textContent=t.value||''; });
-
-            const data = {
-                id: currentEditingId || Date.now(),
-                title: (document.getElementById('field_prog_name')?.innerText || "تقرير بدون عنوان").trim(),
-                category: document.getElementById('categorySelect')?.value || '',
-                content: document.getElementById('report-content-container').innerHTML,
-                createdAt: currentEditingId ? (reports.find(r=>String(r.id)===String(currentEditingId))?.createdAt || systemDateStr) : systemDateStr,
-                updatedAt: new Date().toISOString(),
-                archiveType:'performanceReport'
-            };
-            if(!data.category) { showToast("يرجى اختيار مجال البرنامج"); return false; }
-
-            const idx = reports.findIndex(r => String(r.id) === String(data.id));
-            if(idx >= 0) reports[idx] = data; else reports.push(data);
-            localStorage.setItem('school_reports', JSON.stringify(reports));
-
-            try {
-                if(window.PlatformPersistenceGuard && typeof PlatformPersistenceGuard.commit === 'function'){
-                    const r=await PlatformPersistenceGuard.commit(['school_reports']);
-                    if(!r || r.ok===false) throw new Error(r?.error || 'تعذر تأكيد الحفظ السحابي');
-                }
-                const check=JSON.parse(localStorage.getItem('school_reports')||'[]').find(r=>String(r.id)===String(data.id));
-                if(!check) throw new Error('تعذر التحقق من وجود التقرير في الأرشيف بعد الحفظ');
-                currentEditingId=data.id;
-                showToast("تم الحفظ والتحقق في أرشيف تقارير الأداء الوظيفي ✅");
-                return true;
-            } catch(e) {
-                localStorage.setItem('school_reports', beforeRaw);
-                showToast("تعذر تأكيد الحفظ السحابي؛ تمت استعادة النسخة السابقة.");
-                console.error('[performance archive save]',e);
-                return false;
-            }
+async function saveReportToArchive() {
+            const archiveKey='school_reports', beforeRaw=localStorage.getItem(archiveKey)||'[]', previousEditingId=currentEditingId;
+            let reports=[];try{reports=JSON.parse(beforeRaw);if(!Array.isArray(reports))reports=[]}catch(e){reports=[]}
+            const systemDateStr=new Date().toLocaleDateString('ar-SA-u-ca-islamic-uma');
+            document.querySelectorAll('#report-content-container select').forEach(sel=>{Array.from(sel.options).forEach(opt=>opt.removeAttribute('selected'));if(sel.selectedIndex>=0&&sel.options[sel.selectedIndex])sel.options[sel.selectedIndex].setAttribute('selected','selected');sel.setAttribute('data-saved-value',sel.value||'')});
+            document.querySelectorAll('#report-content-container input').forEach(inp=>{if(inp.type==='checkbox'||inp.type==='radio'){if(inp.checked)inp.setAttribute('checked','checked');else inp.removeAttribute('checked')}else if(inp.type!=='file')inp.setAttribute('value',inp.value||'')});
+            document.querySelectorAll('#report-content-container textarea').forEach(t=>{t.textContent=t.value||''});
+            const cat=String(document.getElementById('categorySelect')?.value||'');
+            if(!cat){showToast('يرجى اختيار مجال البرنامج');return false}
+            const old=previousEditingId?reports.find(r=>String(r.id)===String(previousEditingId)):null;
+            const folderName=performanceArchiveFolderName(cat);
+            const data={id:previousEditingId||Date.now(),title:(document.getElementById('field_prog_name')?.innerText||'تقرير بدون عنوان').trim(),category:cat,categoryName:folderName,archiveFolderId:cat,archiveFolderName:folderName,archiveRole:'manager',content:document.getElementById('report-content-container').innerHTML,createdAt:old?.createdAt||systemDateStr,updatedAt:new Date().toISOString(),archiveType:'performanceReport'};
+            const idx=reports.findIndex(r=>String(r.id)===String(data.id));if(idx>=0)reports[idx]=data;else reports.push(data);
+            currentEditingId=data.id;localStorage.setItem(archiveKey,JSON.stringify(reports));
+            try{
+              if(!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.commit!=='function')throw new Error('محرك التحقق السحابي غير متاح');
+              const cloud=await PlatformPersistenceGuard.commit([archiveKey]);if(!cloud||cloud.ok===false)throw new Error(cloud?.error||'تعذر تأكيد الحفظ السحابي');
+              const saved=JSON.parse(localStorage.getItem(archiveKey)||'[]').find(r=>String(r.id)===String(data.id));
+              if(!saved||performanceArchiveFolderId(saved)!==cat)throw new Error('لم يظهر التقرير داخل مجلد المجال المحدد');
+              showToast('تم الحفظ في أرشيف تقارير الأداء الوظيفي / '+folderName+' ✅');return true;
+            }catch(e){localStorage.setItem(archiveKey,beforeRaw);currentEditingId=previousEditingId;showToast('تعذر تأكيد حفظ التقرير داخل مجلد المجال؛ تمت استعادة الأرشيف السابق.');console.error('[performance folder save]',e);return false}
         }
         function syncDayFromDate() {
             const dateSel = document.getElementById('dateInputHeader');

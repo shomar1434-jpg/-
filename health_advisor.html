@@ -2164,12 +2164,6 @@ body{overflow-x:hidden}
 </div>
 </div>
 <div class="grid grid-cols-1 md:grid-cols-2 gap-8 w-full mb-8">
-<div class="bg-white/90 backdrop-blur p-10 rounded-[45px] shadow-lg border border-white hover:border-emerald-400 cursor-pointer transition-all flex flex-col items-center gap-4 group hover:-translate-y-2" onclick="window.location.href='semester_plan.html?role=health_advisor'">
-<div class="w-20 h-20 bg-gradient-to-br from-emerald-600 to-teal-800 text-white rounded-3xl flex items-center justify-center shadow-lg group-hover:rotate-6 transition-transform text-4xl">🗓️</div>
-<h3 class="font-bold text-xl text-slate-700">الخطة الفصلية</h3>
-<p class="text-[10px] text-slate-500 text-center leading-relaxed font-bold">خطة التوجيه الصحي فقط، مع اعتماد المدير وشاهد التنفيذ الأسبوعي</p>
-</div>
-
 <div class="bg-white/90 backdrop-blur p-10 rounded-[45px] shadow-lg border border-white hover:border-teal-400 cursor-pointer transition-all flex flex-col items-center gap-4 group hover:-translate-y-2" onclick="startNewReport()">
 <div class="w-20 h-20 bg-teal-600 text-white rounded-3xl flex items-center justify-center shadow-lg group-hover:rotate-6 transition-transform"><svg class="w-10 h-10" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M12 4v16m8-8H4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg></div>
 <h3 class="font-bold text-xl text-slate-700">تقارير الأداء الوظيفي</h3>
@@ -3260,14 +3254,21 @@ body{overflow-x:hidden}
 
         function closeConfirmModal() { document.getElementById('confirm-modal').style.display = 'none'; }
 
-        function confirmDeleteReport() {
-            let reports = JSON.parse(localStorage.getItem('reports_archive') || '[]');
-            reports = reports.filter(r => r.id !== pendingDeleteId);
+        async function confirmDeleteReport() {
+            const before = JSON.parse(localStorage.getItem('reports_archive') || '[]');
+            const reports = before.filter(r => r.id !== pendingDeleteId);
             localStorage.setItem('reports_archive', JSON.stringify(reports));
-            closeConfirmModal();
-            showToast("تم حذف التقرير بنجاح 🗑️");
-            if (currentArchiveViewCatId) openArchiveFolder(currentArchiveViewCatId);
-            else renderArchiveFolders();
+            try {
+                await verifyReportArchiveCloud('reports_archive');
+                closeConfirmModal();
+                showToast("تم حذف التقرير سحابيًا والتحقق من الحذف 🗑️");
+                if (currentArchiveViewCatId) openArchiveFolder(currentArchiveViewCatId);
+                else renderArchiveFolders();
+            } catch(e) {
+                localStorage.setItem('reports_archive', JSON.stringify(before));
+                try { await verifyReportArchiveCloud('reports_archive'); } catch(_) {}
+                showToast("تعذر التحقق من الحذف السحابي؛ تم إبقاء التقرير حفاظًا على بيانات المدرسة");
+            }
         }
 
         // الوظائف الأساسية للنظام
@@ -3393,38 +3394,25 @@ body{overflow-x:hidden}
         }
 
         // --- تعديل وظيفة الحفظ السحابي لتشمل التاريخ التفاعلي وتاريخ الإعداد ---
-        function saveReportToArchive() { 
-            const reports = JSON.parse(localStorage.getItem('reports_archive') || '[]'); 
-            const cat = normalizeHealthArchiveCategory(document.getElementById('categorySelect').value); 
-            if (!cat) return showToast("اختر المجال أولاً ⚠️"); 
-            
-            const completion = checkReportCompletionStatus();
-            
-            // التاريخ المختار داخل التقرير
-            const reportSelectedDate = document.getElementById('dateInputHeader').value;
-            // تاريخ يوم الإعداد الفعلي (ثابت للأرشيف)
-            const preparationDateStr = new Date().toLocaleDateString('ar-SA');
-            
-            const data = { 
-                id: currentEditingId || Date.now(), 
-                title: document.getElementById('field_prog_name').innerText || 'تقرير جديد', 
-                category: cat, 
-                reportDate: reportSelectedDate, // التاريخ المتغير المكتوب بالتقرير
-                date: preparationDateStr, // تاريخ يوم الإعداد الفعلي ليظهر في الأرشيف
-                content: document.getElementById('report-content-container').innerHTML,
-                isComplete: completion.isComplete,
-                saveTimestamp: Date.now()
-            }; 
-            
-            if (currentEditingId) { 
-                const idx = reports.findIndex(r => r.id === currentEditingId); 
-                if(idx !== -1) reports[idx] = data; 
-            } else { 
-                reports.push(data); 
-                currentEditingId = data.id; 
-            } 
-            localStorage.setItem('reports_archive', JSON.stringify(reports)); 
-            showToast("تم الحفظ في الأرشيف السحابي ✅"); 
+        function performanceArchiveFolderId(report){ return String((report && (report.archiveFolderId || report.category)) || ''); }
+function performanceArchiveFolderName(catId){
+    const row=(typeof ALL_CATEGORIES!=='undefined'&&Array.isArray(ALL_CATEGORIES))?ALL_CATEGORIES.find(c=>String(c.id)===String(catId)):null;
+    if(row&&row.name)return String(row.name);
+    const sel=document.getElementById('categorySelect');const opt=sel&&sel.options&&sel.selectedIndex>=0?sel.options[sel.selectedIndex]:null;
+    return String((opt&&(opt.textContent||opt.innerText))||catId||'').replace(/^\s*\d+\.\s*/,'').trim();
+}
+
+async function saveReportToArchive() {
+            if(typeof freezeReportDOMForArchive==='function')freezeReportDOMForArchive();
+            const archiveKey='reports_archive',beforeRaw=localStorage.getItem(archiveKey)||'[]',previousEditingId=currentEditingId;
+            let reports=[];try{reports=JSON.parse(beforeRaw);if(!Array.isArray(reports))reports=[]}catch(e){reports=[]}
+            const cat=String(normalizeHealthArchiveCategory(document.getElementById('categorySelect').value)||'');if(!cat)return showToast('اختر المجال أولاً ⚠️');
+            const folderName=performanceArchiveFolderName(cat),completion=typeof checkReportCompletionStatus==='function'?checkReportCompletionStatus():{isComplete:true};
+            const old=previousEditingId?reports.find(r=>String(r.id)===String(previousEditingId)):null;
+            const data={id:previousEditingId||Date.now(),title:document.getElementById('field_prog_name')?.innerText||'تقرير جديد',category:cat,categoryName:folderName,archiveFolderId:cat,archiveFolderName:folderName,archiveRole:'health_advisor',reportDate:document.getElementById('dateInputHeader')?.value||'',date:old?.date||new Date().toLocaleDateString('ar-SA'),content:document.getElementById('report-content-container').innerHTML,isComplete:completion.isComplete,saveTimestamp:Date.now(),updatedAt:new Date().toISOString()};
+            const idx=reports.findIndex(r=>String(r.id)===String(data.id));if(idx>=0)reports[idx]=data;else reports.push(data);
+            currentEditingId=data.id;localStorage.setItem(archiveKey,JSON.stringify(reports));
+            try{if(!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.commit!=='function')throw new Error('محرك التحقق السحابي غير متاح');const cloud=await PlatformPersistenceGuard.commit([archiveKey]);if(!cloud||cloud.ok===false)throw new Error(cloud?.error||'تعذر تأكيد الحفظ السحابي');const saved=JSON.parse(localStorage.getItem(archiveKey)||'[]').find(r=>String(r.id)===String(data.id));if(!saved||performanceArchiveFolderId(saved)!==cat)throw new Error('لم يظهر التقرير داخل مجلد المجال المحدد');showToast('تم الحفظ في أرشيف تقارير الأداء الوظيفي / '+folderName+' ✅');return true}catch(e){localStorage.setItem(archiveKey,beforeRaw);currentEditingId=previousEditingId;showToast('تعذر تأكيد حفظ التقرير داخل مجلد المجال؛ تمت استعادة الأرشيف السابق.');console.error('[performance folder save]',e);return false}
         }
 
         function checkPendingReminders() {
@@ -3460,7 +3448,7 @@ body{overflow-x:hidden}
             const grid = document.createElement('div'); 
             grid.className = "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6"; 
             ALL_CATEGORIES.forEach(cat => { 
-                const catReports = reports.filter(r => r.category === cat.id); 
+                const catReports = reports.filter(r => performanceArchiveFolderId(r) === String(cat.id)); 
                 const target = goals[cat.id] || 5; 
                 const folder = document.createElement('div'); 
                 folder.className = "folder-item flex flex-col items-center text-center group"; 
@@ -3476,7 +3464,7 @@ body{overflow-x:hidden}
             currentArchiveViewCatId = catId; 
             const cat = ALL_CATEGORIES.find(c => c.id === catId); 
             const reports = JSON.parse(localStorage.getItem('reports_archive') || '[]'); 
-            const catReports = reports.filter(r => r.category === catId); 
+            const catReports = reports.filter(r => performanceArchiveFolderId(r) === String(catId)); 
             document.getElementById('archive-view-title').innerText = `مجلد ${cat.number}: ${cat.name}`; 
             document.getElementById('back-to-folders').classList.remove('hidden'); 
             document.getElementById('archive-search-wrapper').classList.add('hidden');
@@ -3492,7 +3480,7 @@ body{overflow-x:hidden}
                 const item = document.createElement('div'); 
                 item.className = "bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex justify-between items-center group hover:border-teal-200 transition-all archive-item-card"; 
                 // يظهر هنا "تاريخ الإعداد" الفعلي في قائمة الأرشيف
-                item.innerHTML = `<div><h4 class="font-bold text-slate-700 text-sm report-title">${report.title}</h4><p class="text-[10px] text-teal-600 font-bold">تاريخ الإعداد: ${report.date} ${report.isComplete ? '✅' : '⏳'}</p></div><div class="flex gap-2">${(report.readOnly || report.archiveType === 'meetingMinutes') ? `<button onclick="previewArchivedReadOnly(${report.id})" class="bg-teal-600 text-white px-4 py-2 rounded-xl text-[10px] font-bold">معاينة</button>` : `<button onclick="editReport(${report.id})" class="bg-teal-600 text-white px-4 py-2 rounded-xl text-[10px] font-bold">فتح</button><button onclick="requestDeleteReport(${report.id})" class="bg-red-50 text-red-500 px-4 py-2 rounded-xl text-[10px] font-bold">حذف</button>`}</div>`; 
+                item.innerHTML = `<div><h4 class="font-bold text-slate-700 text-sm report-title">${report.title}</h4><p class="text-[10px] text-teal-600 font-bold">تاريخ الإعداد: ${report.date} ${report.isComplete ? '✅' : '⏳'}</p></div><div class="flex gap-2">${(report.readOnly || report.archiveType === 'meetingMinutes') ? `<button onclick="previewArchivedReadOnly(${report.id})" class="bg-teal-600 text-white px-4 py-2 rounded-xl text-[10px] font-bold">معاينة</button>` : `<button onclick="editReport(${report.id})" class="bg-teal-600 text-white px-4 py-2 rounded-xl text-[10px] font-bold">تعديل</button><button onclick="requestDeleteReport(${report.id})" class="bg-red-50 text-red-500 px-4 py-2 rounded-xl text-[10px] font-bold">حذف</button>`}</div>`; 
                 list.appendChild(item); 
             }); 
             container.appendChild(list); 
@@ -3516,7 +3504,7 @@ body{overflow-x:hidden}
                     const cat = ALL_CATEGORIES.find(c => c.id === report.category);
                     const item = document.createElement('div');
                     item.className = "bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex justify-between items-center group hover:border-teal-200 transition-all archive-item-card";
-                    item.innerHTML = `<div><h4 class="font-bold text-slate-700 text-sm report-title">${report.title}</h4><p class="text-[10px] text-teal-600 font-bold">الإعداد: ${report.date} | ${cat ? cat.name : ''} ${report.isComplete ? '✅' : '⏳'}</p></div><div class="flex gap-2">${(report.readOnly || report.archiveType === 'meetingMinutes') ? `<button onclick="previewArchivedReadOnly(${report.id})" class="bg-teal-600 text-white px-4 py-2 rounded-xl text-[10px] font-bold">معاينة</button>` : `<button onclick="editReport(${report.id})" class="bg-teal-600 text-white px-4 py-2 rounded-xl text-[10px] font-bold">فتح</button><button onclick="requestDeleteReport(${report.id})" class="bg-red-50 text-red-500 px-4 py-2 rounded-xl text-[10px] font-bold">حذف</button>`}</div>`; 
+                    item.innerHTML = `<div><h4 class="font-bold text-slate-700 text-sm report-title">${report.title}</h4><p class="text-[10px] text-teal-600 font-bold">الإعداد: ${report.date} | ${cat ? cat.name : ''} ${report.isComplete ? '✅' : '⏳'}</p></div><div class="flex gap-2">${(report.readOnly || report.archiveType === 'meetingMinutes') ? `<button onclick="previewArchivedReadOnly(${report.id})" class="bg-teal-600 text-white px-4 py-2 rounded-xl text-[10px] font-bold">معاينة</button>` : `<button onclick="editReport(${report.id})" class="bg-teal-600 text-white px-4 py-2 rounded-xl text-[10px] font-bold">تعديل</button><button onclick="requestDeleteReport(${report.id})" class="bg-red-50 text-red-500 px-4 py-2 rounded-xl text-[10px] font-bold">حذف</button>`}</div>`; 
                     list.appendChild(item);
                 });
                 container.appendChild(list);
@@ -3550,7 +3538,7 @@ body{overflow-x:hidden}
             const goals = JSON.parse(localStorage.getItem('category_goals') || '{}'); 
             container.innerHTML = ""; 
             let statsData = ALL_CATEGORIES.map(cat => {
-                const count = reports.filter(r => r.category === cat.id).length;
+                const count = reports.filter(r => performanceArchiveFolderId(r) === String(cat.id)).length;
                 const target = goals[cat.id] || 5;
                 const percent = Math.min(Math.round((count / target) * 100), 100);
                 return { ...cat, count, target, percent };
@@ -4587,7 +4575,7 @@ body{overflow-x:hidden}
         const __enhancedGoHome = goHome;
         goHome = function() { saveDraftSnapshot(true); __enhancedGoHome(); refreshDashboardMetrics(); };
         const __enhancedSaveReportToArchive = saveReportToArchive;
-        saveReportToArchive = function() { __enhancedSaveReportToArchive(); refreshDashboardMetrics(); saveDraftSnapshot(true); };
+        saveReportToArchive = async function() { await __enhancedSaveReportToArchive(); refreshDashboardMetrics(); saveDraftSnapshot(true); };
         const __enhancedUpdateReportProgress = updateReportProgress;
         updateReportProgress = function() { __enhancedUpdateReportProgress(); };
 
@@ -5211,7 +5199,7 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
   ['saveReportToArchive','saveReport','saveCurrentReport','confirmSaveReport'].forEach(function(n){
     var f = window[n];
     if(typeof f === 'function' && !f.__forceCategoryWrapped){
-      var w = function(){ window.__forceFillReportCategoryData(); return f.apply(this, arguments); };
+      var w = function(){ return f.apply(this, arguments); };
       w.__forceCategoryWrapped = true;
       window[n] = w;
     }
@@ -5402,5 +5390,21 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
 <script src="top-ai-center.js"></script>
 
 <script src="platform-page-navigation.js?v=20260818-nav1"></script>
+
+<script id="verified-report-archive-state-v1">
+(function(){
+  if(window.__VERIFIED_REPORT_ARCHIVE_STATE_V1__)return;window.__VERIFIED_REPORT_ARCHIVE_STATE_V1__=true;
+  window.freezeReportDOMForArchive=function(){
+    const root=document.getElementById('report-content-container');if(!root)return;
+    root.querySelectorAll('select').forEach(sel=>{Array.from(sel.options).forEach(o=>o.removeAttribute('selected'));if(sel.selectedIndex>=0&&sel.options[sel.selectedIndex])sel.options[sel.selectedIndex].setAttribute('selected','selected');sel.setAttribute('data-saved-value',sel.value||'');});
+    root.querySelectorAll('input').forEach(inp=>{if(inp.type==='checkbox'||inp.type==='radio'){if(inp.checked)inp.setAttribute('checked','checked');else inp.removeAttribute('checked');}else if(inp.type!=='file')inp.setAttribute('value',inp.value||'');});
+    root.querySelectorAll('textarea').forEach(ta=>{ta.textContent=ta.value||'';});
+  };
+  window.verifyReportArchiveCloud=async function(key){
+    if(!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.commit!=='function')throw new Error('محرك التحقق السحابي غير متاح');
+    return PlatformPersistenceGuard.commit([key]);
+  };
+})();
+</script>
 </body>
 </html>

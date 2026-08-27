@@ -34,8 +34,8 @@
   ];
   const schoolPatterns=[
     /^school_actual_reality$/,/^school_committees$/,/^school_operational_plan$/,/^school_indicators_data$/,
-    /^self_evaluation_archive_/i,/^school_info$/,/^school_reports$/,/^school_manager_records_archive_v1$/,/^manager_records_.*_archive$/i,/^school_operational_execution_v1$/,/^schoolImpactAssessments$/,
-    /^sh_/i,/^activity_leader_records_archive_/i,/^reports_archive$/,/^category_goals$/,
+    /^self_evaluation_archive_/i,/^school_info$/,/^school_manager_records_archive_v1$/,/^manager_records_.*_archive$/i,/^school_operational_execution_v1$/,/^schoolImpactAssessments$/,
+    /^sh_/i,/^activity_leader_records_archive_/i,/^category_goals$/,
     /^archive_folder_goals$/,/^managerRecordsFooterSettings$/,/^activityLeaderFooterSettings$/,
     /^setting_(region|school|sig|stamp)$/,/^def_[mp]$/,/^persist_(region|school|sig_data|stamp_data)$/,
     /^smart_education_office$/,/^smart_school_teacher_extra_roles_map$/,/^school_academic_year$/,

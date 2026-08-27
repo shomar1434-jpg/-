@@ -70,7 +70,7 @@
 <link rel="stylesheet" href="premium-ui.css">
 <script defer src="premium-ui.js"></script>
 
-<script>window.CLOUD_STATE_CONFIG={moduleKey:'school_health',scope:'user',keys:['sh_clinicVisits','sh_chronicCases','sh_envInspections','sh_healthPrograms','sh_medicalTransfers'],prefixes:['sh_meta_','sh_period_v1:']};</script>
+<script>window.CLOUD_STATE_CONFIG={moduleKey:'school_health',scope:'school',keys:['sh_clinicVisits', 'sh_chronicCases', 'sh_envInspections', 'sh_healthPrograms', 'sh_medicalTransfers'],prefixes:['sh_meta_']};</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-bridge.js"></script>
 <script src="platform-state-engine.js"></script>
@@ -111,13 +111,6 @@
                 <div class="flex flex-col">
                     <span class="text-saudi-gold text-[10px] font-bold">العام الدراسي:</span>
                     <input type="text" id="meta-year" value="" placeholder="العام الدراسي" class="bg-transparent border-b border-white/30 focus:border-saudi-gold focus:outline-none py-0.5 w-24">
-                </div>
-                <div class="flex flex-col">
-                    <span class="text-saudi-gold text-[10px] font-bold">الفصل الدراسي:</span>
-                    <select id="meta-semester" class="bg-saudi-dark/60 border-b border-white/30 focus:border-saudi-gold focus:outline-none py-0.5 w-36 text-white">
-                        <option value="الفصل الدراسي الأول">الفصل الدراسي الأول</option>
-                        <option value="الفصل الدراسي الثاني">الفصل الدراسي الثاني</option>
-                    </select>
                 </div>
             </div>
         </div>
@@ -908,8 +901,8 @@
         let medicalTransfers = [];
 
         // Load data on page init
-        window.onload = async function() {
-            await initSystem();
+        window.onload = function() {
+            initSystem();
             
             // Auto fill current dates in modals
             const today = new Date().toISOString().split('T')[0];
@@ -924,80 +917,57 @@
             document.getElementById('vis-time').value = timeStr;
         }
 
-        function healthNormalizeYear(v){const raw=String(v||'').trim();const m=raw.match(/\d{4}/);return m?m[0]:(raw||'1448')}
-        function healthSemesterKey(v){return String(v||'').includes('الثاني')?'semester_2':'semester_1'}
-        function healthPeriodKey(year,semester){return `sh_period_v1:${healthNormalizeYear(year)}:${healthSemesterKey(semester)}`}
-        function healthSnapshot(){return {clinicVisits,chronicCases,envInspections,healthPrograms,medicalTransfers,meta:{school:document.getElementById('meta-school')?.value||'',counselor:document.getElementById('meta-counselor')?.value||'',year:document.getElementById('meta-year')?.value||'',semester:document.getElementById('meta-semester')?.value||'الفصل الدراسي الأول'},savedAt:new Date().toISOString()}}
-        function healthApplySnapshot(s){s=s||{};clinicVisits=Array.isArray(s.clinicVisits)?s.clinicVisits:[];chronicCases=Array.isArray(s.chronicCases)?s.chronicCases:[];envInspections=Array.isArray(s.envInspections)?s.envInspections:[];healthPrograms=Array.isArray(s.healthPrograms)?s.healthPrograms:[];medicalTransfers=Array.isArray(s.medicalTransfers)?s.medicalTransfers:[];const m=s.meta||{};if(m.school)document.getElementById('meta-school').value=m.school;if(m.counselor)document.getElementById('meta-counselor').value=m.counselor;if(m.year)document.getElementById('meta-year').value=m.year;if(m.semester)document.getElementById('meta-semester').value=m.semester}
-        function healthReadPeriod(year,semester){try{const x=JSON.parse(localStorage.getItem(healthPeriodKey(year,semester))||'null');return x&&typeof x==='object'?x:null}catch(e){return null}}
-        async function switchHealthAcademicPeriod(nextSemester,nextYear){
-            const oldYear=document.getElementById('meta-year').dataset.activeValue||document.getElementById('meta-year').value;
-            const oldSemester=document.getElementById('meta-semester').dataset.activeValue||document.getElementById('meta-semester').value;
-            const oldKey=healthPeriodKey(oldYear,oldSemester);
-            localStorage.setItem(oldKey,JSON.stringify(healthSnapshot()));
-            const targetYear=String(nextYear||oldYear||'1448').trim(),targetSemester=String(nextSemester||oldSemester||'الفصل الدراسي الأول').trim();
-            const targetKey=healthPeriodKey(targetYear,targetSemester),existing=healthReadPeriod(targetYear,targetSemester);
-            if(existing) healthApplySnapshot(existing); else {clinicVisits=[];chronicCases=[];envInspections=[];healthPrograms=[];medicalTransfers=[];document.getElementById('meta-year').value=targetYear;document.getElementById('meta-semester').value=targetSemester;localStorage.setItem(targetKey,JSON.stringify(healthSnapshot()))}
-            document.getElementById('meta-year').dataset.activeValue=targetYear;document.getElementById('meta-semester').dataset.activeValue=targetSemester;
-            localStorage.setItem('sh_meta_year',targetYear);localStorage.setItem('sh_meta_semester',targetSemester);
-            localStorage.setItem('sh_clinicVisits',JSON.stringify(clinicVisits));localStorage.setItem('sh_chronicCases',JSON.stringify(chronicCases));localStorage.setItem('sh_envInspections',JSON.stringify(envInspections));localStorage.setItem('sh_healthPrograms',JSON.stringify(healthPrograms));localStorage.setItem('sh_medicalTransfers',JSON.stringify(medicalTransfers));
-            updateDashboardStats();renderAllTables();
-            if(window.PlatformPersistenceGuard&&typeof PlatformPersistenceGuard.commit==='function'){const r=await PlatformPersistenceGuard.commit([oldKey,targetKey,'sh_clinicVisits','sh_chronicCases','sh_envInspections','sh_healthPrograms','sh_medicalTransfers','sh_meta_year','sh_meta_semester']);if(!r||r.ok===false){showToast('تعذر تأكيد تغيير الفصل/العام سحابيًا','fa-triangle-exclamation');return false}}
-            showToast(`تم فتح ${targetSemester} للعام ${targetYear} دون التأثير على الفترة السابقة`);return true;
-        }
-        async function migrateLegacyHealthSchoolScopeIfNeeded(){
-            try{
-                let hasUserPeriod=false;
-                for(let i=0;i<localStorage.length;i++){if(String(localStorage.key(i)||'').startsWith('sh_period_v1:')){hasUserPeriod=true;break}}
-                if(hasUserPeriod||!window.PlatformStateEngine||typeof PlatformStateEngine.pull!=='function')return false;
-                const legacyKeys=['sh_clinicVisits','sh_chronicCases','sh_envInspections','sh_healthPrograms','sh_medicalTransfers','sh_meta_school','sh_meta_counselor','sh_meta_year','sh_meta_semester'];
-                const result=await PlatformStateEngine.pull('school_health','school',legacyKeys);
-                const rows=result?.items||result?.rows||[];
-                let migrated=false;
-                rows.forEach(r=>{if(r.deleted_at)return;const k=String(r.state_key||r.key||'');const v=r.payload&&Object.prototype.hasOwnProperty.call(r.payload,'value')?String(r.payload.value):null;if(k&&v!==null){localStorage.setItem(k,v);migrated=true}});
-                return migrated;
-            }catch(e){console.warn('[health legacy school migration]',e);return false}
-        }
-        async function initSystem() {
+        function initSystem() {
             try {
-                await migrateLegacyHealthSchoolScopeIfNeeded();
-                ['school','counselor','year','semester'].forEach(field=>{const el=document.getElementById('meta-'+field);if(!el)return;const saved=localStorage.getItem('sh_meta_'+field);if(saved)el.value=saved});
-                if(!document.getElementById('meta-semester').value)document.getElementById('meta-semester').value='الفصل الدراسي الأول';
-                const year=document.getElementById('meta-year').value||localStorage.getItem('school_academic_year')||'1448';
-                const semester=document.getElementById('meta-semester').value||'الفصل الدراسي الأول';
-                const period=healthReadPeriod(year,semester);
-                if(period) healthApplySnapshot(period); else {
-                    clinicVisits=JSON.parse(localStorage.getItem('sh_clinicVisits')||'[]');chronicCases=JSON.parse(localStorage.getItem('sh_chronicCases')||'[]');envInspections=JSON.parse(localStorage.getItem('sh_envInspections')||'[]');healthPrograms=JSON.parse(localStorage.getItem('sh_healthPrograms')||'[]');medicalTransfers=JSON.parse(localStorage.getItem('sh_medicalTransfers')||'[]');
-                    localStorage.setItem(healthPeriodKey(year,semester),JSON.stringify(healthSnapshot()));
+                if (localStorage.getItem('sh_clinicVisits')) {
+                    clinicVisits = JSON.parse(localStorage.getItem('sh_clinicVisits'));
                 }
-                document.getElementById('meta-year').dataset.activeValue=document.getElementById('meta-year').value||year;document.getElementById('meta-semester').dataset.activeValue=document.getElementById('meta-semester').value||semester;
-                ['school','counselor'].forEach(field=>document.getElementById('meta-'+field).addEventListener('input',e=>{localStorage.setItem('sh_meta_'+field,e.target.value);persistState()}));
-                document.getElementById('meta-year').addEventListener('change',e=>switchHealthAcademicPeriod(document.getElementById('meta-semester').dataset.activeValue||document.getElementById('meta-semester').value,e.target.value));
-                document.getElementById('meta-semester').addEventListener('change',e=>switchHealthAcademicPeriod(e.target.value,document.getElementById('meta-year').dataset.activeValue||document.getElementById('meta-year').value));
-                updateDashboardStats();renderAllTables();
-            }catch(e){console.error('خطأ أثناء استعادة البيانات:',e);showToast('حدث خطأ عند تحميل قاعدة البيانات','fa-triangle-exclamation')}
-        }
-        async function persistState(previousSnapshot=null) {
-            const beforeLocal={};['sh_clinicVisits','sh_chronicCases','sh_envInspections','sh_healthPrograms','sh_medicalTransfers'].forEach(k=>beforeLocal[k]=localStorage.getItem(k));
-            const year=document.getElementById('meta-year')?.value||'1448',semester=document.getElementById('meta-semester')?.value||'الفصل الدراسي الأول',periodKey=healthPeriodKey(year,semester),beforePeriod=localStorage.getItem(periodKey);
-            localStorage.setItem('sh_clinicVisits',JSON.stringify(clinicVisits));localStorage.setItem('sh_chronicCases',JSON.stringify(chronicCases));localStorage.setItem('sh_envInspections',JSON.stringify(envInspections));localStorage.setItem('sh_healthPrograms',JSON.stringify(healthPrograms));localStorage.setItem('sh_medicalTransfers',JSON.stringify(medicalTransfers));
-            localStorage.setItem(periodKey,JSON.stringify(healthSnapshot()));
-            updateDashboardStats();renderAllTables();
-            try{
-                if(window.PlatformPersistenceGuard&&typeof PlatformPersistenceGuard.commit==='function'){
-                    const r=await PlatformPersistenceGuard.commit([periodKey,'sh_clinicVisits','sh_chronicCases','sh_envInspections','sh_healthPrograms','sh_medicalTransfers']);
-                    if(!r||r.ok===false)throw new Error(r?.error||'تعذر تأكيد الحفظ السحابي');
+                if (localStorage.getItem('sh_chronicCases')) {
+                    chronicCases = JSON.parse(localStorage.getItem('sh_chronicCases'));
                 }
-                try{window.dispatchEvent(new CustomEvent('platform:record_saved',{detail:{title:'حفظ بيانات السجل الصحي',academicYear:year,semester}}))}catch(e){}
-                return true;
-            }catch(e){
-                if(previousSnapshot) healthApplySnapshot(previousSnapshot);
-                Object.entries(beforeLocal).forEach(([k,v])=>{if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v)});
-                if(beforePeriod===null)localStorage.removeItem(periodKey);else localStorage.setItem(periodKey,beforePeriod);
-                updateDashboardStats();renderAllTables();
-                showToast('تعذر تأكيد حفظ السجل الصحي سحابيًا؛ تمت استعادة البيانات السابقة','fa-triangle-exclamation');
-                return false;
+                if (localStorage.getItem('sh_envInspections')) {
+                    envInspections = JSON.parse(localStorage.getItem('sh_envInspections'));
+                }
+                if (localStorage.getItem('sh_healthPrograms')) {
+                    healthPrograms = JSON.parse(localStorage.getItem('sh_healthPrograms'));
+                }
+                if (localStorage.getItem('sh_medicalTransfers')) {
+                    medicalTransfers = JSON.parse(localStorage.getItem('sh_medicalTransfers'));
+                }
+                
+                // If there is metadata in localStorage, apply it
+                ['school', 'counselor', 'year'].forEach(field => {
+                    const saved = localStorage.getItem('sh_meta_' + field);
+                    if (saved) {
+                        document.getElementById('meta-' + field).value = saved;
+                    }
+                    // Auto-save metadata change
+                    document.getElementById('meta-' + field).addEventListener('input', (e) => {
+                        localStorage.setItem('sh_meta_' + field, e.target.value);
+                    });
+                });
+
+                // Update UI elements
+                updateDashboardStats();
+                renderAllTables();
+            } catch(e) {
+                console.error("خطأ أثناء استعادة البيانات:", e);
+                showToast("حدث خطأ عند تحميل قاعدة البيانات", "fa-triangle-exclamation");
             }
+        }
+
+        // Save entire state
+        function persistState() {
+            localStorage.setItem('sh_clinicVisits', JSON.stringify(clinicVisits));
+            localStorage.setItem('sh_chronicCases', JSON.stringify(chronicCases));
+            localStorage.setItem('sh_envInspections', JSON.stringify(envInspections));
+            localStorage.setItem('sh_healthPrograms', JSON.stringify(healthPrograms));
+            localStorage.setItem('sh_medicalTransfers', JSON.stringify(medicalTransfers));
+            
+            updateDashboardStats();
+            renderAllTables();
+        
+            try { window.dispatchEvent(new CustomEvent('platform:record_saved',{detail:{title:'حفظ بيانات السجل الصحي'}})); } catch(e) {}
         }
 
         function switchTab(tabId) {
@@ -1056,9 +1026,8 @@
 
         
         // Save Visit
-        async function saveNewVisit(e) {
+        function saveNewVisit(e) {
             e.preventDefault();
-            const beforeSnapshot=healthSnapshot();
             const newVisit = {
                 id: 'v_' + Date.now(),
                 date: document.getElementById('vis-date').value,
@@ -1074,17 +1043,15 @@
             };
 
             clinicVisits.unshift(newVisit); // Add new to start
-            const saved=await persistState(beforeSnapshot);
-            if(!saved)return;
+            persistState();
             closeModal('modal-visit');
             e.target.reset();
             showToast("تم حفظ الحالة الصحية بنجاح ⚕️");
         }
 
         // Save Chronic disease
-        async function saveNewChronic(e) {
+        function saveNewChronic(e) {
             e.preventDefault();
-            const beforeSnapshot=healthSnapshot();
             let finalDisease = document.getElementById('chr-disease').value;
             if (finalDisease === 'أخرى') {
                 finalDisease = document.getElementById('chr-disease-custom').value;
@@ -1103,8 +1070,7 @@
             };
 
             chronicCases.unshift(newChronic);
-            const saved=await persistState(beforeSnapshot);
-            if(!saved)return;
+            persistState();
             closeModal('modal-chronic');
             e.target.reset();
             document.getElementById('custom-disease-container').classList.add('hidden');
@@ -1112,9 +1078,8 @@
         }
 
         // Save Inspection
-        async function saveNewEnv(e) {
+        function saveNewEnv(e) {
             e.preventDefault();
-            const beforeSnapshot=healthSnapshot();
             const newEnv = {
                 id: 'e_' + Date.now(),
                 date: document.getElementById('env-date').value,
@@ -1126,17 +1091,15 @@
             };
 
             envInspections.unshift(newEnv);
-            const saved=await persistState(beforeSnapshot);
-            if(!saved)return;
+            persistState();
             closeModal('modal-env');
             e.target.reset();
             showToast("تم توثيق متابعة البيئة الصحية المدرسية 🍏");
         }
 
         // Save Program
-        async function saveNewProgram(e) {
+        function saveNewProgram(e) {
             e.preventDefault();
-            const beforeSnapshot=healthSnapshot();
             const newProg = {
                 id: 'p_' + Date.now(),
                 title: document.getElementById('prog-title').value,
@@ -1148,16 +1111,14 @@
             };
 
             healthPrograms.unshift(newProg);
-            const saved=await persistState(beforeSnapshot);
-            if(!saved)return;
+            persistState();
             closeModal('modal-program');
             e.target.reset();
             showToast("تم تسجيل البرنامج الصحي وحفظه 📢");
         }
 
-        async function saveNewTransfer(e) {
+        function saveNewTransfer(e) {
             e.preventDefault();
-            const beforeSnapshot=healthSnapshot();
             const newTransfer = {
                 id: 't_' + Date.now(),
                 date: document.getElementById('tr-date').value,
@@ -1171,17 +1132,15 @@
                 status: document.getElementById('tr-status').value
             };
             medicalTransfers.unshift(newTransfer);
-            const saved=await persistState(beforeSnapshot);
-            if(!saved)return;
+            persistState();
             closeModal('modal-transfer');
             e.target.reset();
             showToast("تم حفظ التحويل الطبي/الحالة الطارئة 🚑");
         }
 
-        async function deleteRecord(arrayName, id, text = "العنصر") {
+        function deleteRecord(arrayName, id, text = "العنصر") {
             const confirmBox = confirm(`هل أنت متأكد من رغبتك في حذف ${text} نهائياً؟`);
             if (!confirmBox) return;
-            const beforeSnapshot=healthSnapshot();
 
             if (arrayName === 'clinic') {
                 clinicVisits = clinicVisits.filter(item => item.id !== id);
@@ -1195,8 +1154,8 @@
                 medicalTransfers = medicalTransfers.filter(item => item.id !== id);
             }
 
-            const saved=await persistState(beforeSnapshot);
-            if(saved)showToast("تم الحذف والتحقق منه سحابيًا");
+            persistState();
+            showToast("تم الحذف بنجاح");
         }
 
         function updateDashboardStats() {
@@ -1527,10 +1486,9 @@
         }
 
         // Reset System data entirely
-        async function resetSystem() {
+        function resetSystem() {
             const conf = confirm("تنبيه هام! هل تريد بالتأكيد تصفير جميع السجلات والبدء بصفحة جديدة فارغة؟ سيتم حذف كافة بيانات الطلاب بشكل لا يمكن استرجاعه!");
             if (!conf) return;
-            const beforeSnapshot=healthSnapshot();
 
             clinicVisits = [];
             chronicCases = [];
@@ -1538,8 +1496,8 @@
             healthPrograms = [];
             medicalTransfers = [];
             
-            const saved=await persistState(beforeSnapshot);
-            if(saved)showToast("تم تفريغ سجلات الفترة الحالية والتحقق سحابيًا");
+            persistState();
+            showToast("تم تفريغ السجلات وتصفير النظام بالكامل");
         }
 
         // Print active layout nicely
@@ -1547,8 +1505,7 @@
             window.print();
         }
 
-        async function loadDemoData() {
-            const beforeSnapshot=healthSnapshot();
+        function loadDemoData() {
             // Sample visits
             clinicVisits = [
                 {
@@ -1677,8 +1634,8 @@
                 }
             ];
 
-            const saved=await persistState(beforeSnapshot);
-            if(saved)showToast("تم استدعاء وتعبئة البيانات التجريبية والتحقق منها سحابيًا!");
+            persistState();
+            showToast("تم استدعاء وتعبئة البيانات التجريبية بنجاح بنسق متكامل!");
         }
     </script>
 

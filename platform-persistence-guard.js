@@ -95,7 +95,7 @@
 
   async function hydrateScope(scope){
     if(!window.PlatformStateEngine) return false;
-    const wanted=(explicitMode&&!prefixes.length)?[...exact]:undefined;
+    const wanted=explicitMode?[...exact]:undefined;
     const result=(scope==='user'&&targetOwnerUserId&&typeof PlatformStateEngine.pullUser==='function')?await PlatformStateEngine.pullUser(moduleKey,targetOwnerUserId,wanted):await PlatformStateEngine.pull(moduleKey,scope,wanted);
     const rows=result.items||[];
     const cloud=new Map(rows.map(r=>[String(r.state_key),r]));

@@ -4684,10 +4684,7 @@ body{overflow-x:hidden}
     {id:"followup", name:"التوجيهات والمتابعة"}
   ];
   function activityRecordsArchiveRead(){try{return JSON.parse(localStorage.getItem('activity_leader_records_archive_v2')||'[]')}catch(e){return []}}
-  async function activityRecordsArchiveWrite(items){
-    var key='activity_leader_records_archive_v2',before=localStorage.getItem(key)||'[]'; localStorage.setItem(key,JSON.stringify(items||[]));
-    try{if(!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.commit!=='function')throw new Error('محرك التحقق السحابي غير متاح');var c=await PlatformPersistenceGuard.commit([key]);if(!c||c.ok===false)throw new Error(c&&c.error||'تعذر التحقق السحابي');return true}catch(e){localStorage.setItem(key,before);console.error(e);alert('تعذر تأكيد العملية سحابياً؛ تمت استعادة الأرشيف السابق.');return false}
-  }
+  function activityRecordsArchiveWrite(items){localStorage.setItem('activity_leader_records_archive_v2',JSON.stringify(items||[]))}
   window.showActivityLeaderRecordsArchive=showActivityLeaderRecordsArchive;
   function showActivityLeaderRecordsArchive(){
     var items=activityRecordsArchiveRead(), counts={};
@@ -4702,7 +4699,7 @@ body{overflow-x:hidden}
     var rows=activityRecordsArchiveRead().filter(function(x){return x.folderId===folderId});
     panel('أرشيف: '+folder.name,
       '<div class="ss-actions" style="margin-bottom:12px"><button class="ss-action secondary" onclick="showActivityLeaderRecordsArchive()">رجوع للمجلدات</button></div>'+ 
-      (rows.length?rows.map(function(r){return '<div class="ss-card"><b>'+esc(r.displayName||r.title||folder.name)+'</b><div class="ss-muted">'+esc(r.createdAt||'')+'</div><div class="ss-actions"><button class="ss-action blue" onclick="previewActivityArchivedRecord('+Number(r.id)+')">عرض</button><button class="ss-action secondary" onclick="printActivityArchivedRecord('+Number(r.id)+')">طباعة</button><button class="ss-action" onclick="editActivityArchivedRecord('+Number(r.id)+')">تعديل</button><button class="ss-action danger" onclick="deleteActivityArchivedRecord('+Number(r.id)+',\''+folderId+'\')">حذف</button></div></div>';}).join(''):'<div class="ss-empty">لا توجد نسخ محفوظة في هذا المجلد بعد.</div>')
+      (rows.length?rows.map(function(r){return '<div class="ss-card"><b>'+esc(r.displayName||r.title||folder.name)+'</b><div class="ss-muted">'+esc(r.createdAt||'')+'</div><div class="ss-actions"><button class="ss-action blue" onclick="previewActivityArchivedRecord('+Number(r.id)+')">عرض</button><button class="ss-action secondary" onclick="printActivityArchivedRecord('+Number(r.id)+')">طباعة</button><button class="ss-action danger" onclick="deleteActivityArchivedRecord('+Number(r.id)+',\''+folderId+'\')">حذف</button></div></div>';}).join(''):'<div class="ss-empty">لا توجد نسخ محفوظة في هذا المجلد بعد.</div>')
     );
   };
   function activityArchivedDoc(r,autoPrint){
@@ -4718,8 +4715,7 @@ body{overflow-x:hidden}
   }
   window.previewActivityArchivedRecord=function(id){var r=activityRecordsArchiveRead().find(function(x){return Number(x.id)===Number(id)}); if(!r)return; var w=window.open('','_blank'); w.document.open(); w.document.write(activityArchivedDoc(r,false)); w.document.close();};
   window.printActivityArchivedRecord=function(id){var r=activityRecordsArchiveRead().find(function(x){return Number(x.id)===Number(id)}); if(!r)return; var w=window.open('','_blank'); w.document.open(); w.document.write(activityArchivedDoc(r,true)); w.document.close();};
-  window.editActivityArchivedRecord=function(id){var r=activityRecordsArchiveRead().find(function(x){return Number(x.id)===Number(id)});if(!r)return;sessionStorage.setItem('activity_record_edit_payload',JSON.stringify(r));location.href='activity_leader_records.html?record='+encodeURIComponent(r.folderId)+'&return_to=activity_leader.html';};
-  window.deleteActivityArchivedRecord=async function(id,folderId){if(!confirm('هل تريد حذف هذه النسخة؟'))return;var ok=await activityRecordsArchiveWrite(activityRecordsArchiveRead().filter(function(x){return Number(x.id)!==Number(id)}));if(ok)openActivityRecordArchiveFolder(folderId);};
+  window.deleteActivityArchivedRecord=function(id,folderId){if(!confirm('هل تريد حذف هذه النسخة؟'))return; activityRecordsArchiveWrite(activityRecordsArchiveRead().filter(function(x){return Number(x.id)!==Number(id)})); openActivityRecordArchiveFolder(folderId);};
   window.addEventListener('message',function(event){var data=event.data||{}; if(data.type==='ACTIVITY_LEADER_RECORD_SAVED'){ /* الحفظ تم عبر localStorage نفسه */ }});
 
   function showTeacherRecords(){

@@ -5273,7 +5273,7 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
 
   function esc(v){return String(v||'').replace(/[&<>"']/g,function(ch){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];});}
   function read(){try{return JSON.parse(localStorage.getItem(ARCHIVE_KEY)||'[]');}catch(e){return [];}}
-  async function write(items){var before=localStorage.getItem(ARCHIVE_KEY)||'[]';localStorage.setItem(ARCHIVE_KEY,JSON.stringify(items||[]));try{if(!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.commit!=='function')throw new Error('محرك التحقق السحابي غير متاح');var c=await PlatformPersistenceGuard.commit([ARCHIVE_KEY]);if(!c||c.ok===false)throw new Error(c&&c.error||'تعذر التحقق السحابي');return true}catch(e){localStorage.setItem(ARCHIVE_KEY,before);console.error(e);alert('تعذر تأكيد العملية سحابياً؛ تمت استعادة الأرشيف السابق.');return false}}
+  function write(items){localStorage.setItem(ARCHIVE_KEY,JSON.stringify(items||[]));}
   function folderById(id){return FOLDERS.find(function(f){return f.id===id;})||FOLDERS[0]||{id:'other',name:'سجل'};}
   function contentEl(){return document.getElementById('advisor-records-archive-content');}
   function docForRecord(r, autoPrint){
@@ -5329,7 +5329,6 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
           + '<div><b>'+esc(r.displayName||r.studentName||r.baseName||folder.name)+'</b><div style="font-size:10px;color:#64748b;margin-top:5px;">'+esc(r.title||folder.name)+' — '+esc(r.createdAt||'')+'</div></div>'
           + '<div class="ara-actions" style="display:flex;gap:7px;flex-wrap:wrap;">'
           + '<button class="ara-soft" onclick="previewAdvisorArchivedRecord('+Number(r.id)+')">👁️ معاينة</button>'
-          + '<button class="ara-soft" onclick="editAdvisorArchivedRecord('+Number(r.id)+')">✏️ تعديل</button>'
           + '<button class="ara-primary" onclick="openAdvisorSmartSendModal('+Number(r.id)+')">📤 إرسال للأرشيف الذكي</button>'
           + '<button class="ara-danger" onclick="deleteAdvisorArchivedRecord('+Number(r.id)+')">🗑️ حذف</button>'
           + '</div></div>';
@@ -5355,12 +5354,11 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
     w.document.close();
   };
 
-  window.editAdvisorArchivedRecord=function(id){var r=read().find(function(x){return String(x.id)===String(id)});if(!r)return;sessionStorage.setItem('advisor_record_edit_payload',JSON.stringify(r));location.href='student_advisor_records.html?return_to=student_advisor.html';};
-  window.deleteAdvisorArchivedRecord = async function(id){
+  window.deleteAdvisorArchivedRecord = function(id){
     if(!confirm('هل تريد حذف هذا السجل؟')) return;
     var item=read().find(function(x){return String(x.id)===String(id);});
-    var ok=await write(read().filter(function(r){return String(r.id)!==String(id);}));
-    if(ok){if(item) openAdvisorRecordsArchiveFolder(item.folderId); else renderAdvisorRecordsArchiveFolders();}
+    write(read().filter(function(r){return String(r.id)!==String(id);}));
+    if(item) openAdvisorRecordsArchiveFolder(item.folderId); else renderAdvisorRecordsArchiveFolders();
   };
 
   window.openAdvisorSmartSendModal = function(id){
@@ -5405,12 +5403,28 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
     alert('تم إرسال نسخة السجل إلى الأرشيف الذكي.');
   };
 
-  window.saveAdvisorRecordToArchive = async function(payload){
-    payload=payload||{}; var items=read(); var folderId=payload.folderId||payload.formId||FOLDERS[0].id; var studentName=(payload.personName||payload.studentName||'').trim()||'بدون اسم';
-    var editId=Number(sessionStorage.getItem('advisor_record_edit_id')||0), saved;
-    if(editId){var idx=items.findIndex(function(r){return Number(r.id)===editId});if(idx>=0){saved=Object.assign({},items[idx],{folderId:folderId,title:payload.title||folderById(folderId).name,baseName:studentName,studentName:studentName,displayName:items[idx].displayName||studentName,htmlContent:payload.htmlContent||'',summary:payload.summary||'',formValues:payload.formValues||[],updatedAt:new Date().toISOString()});items[idx]=saved;}else editId=0;}
-    if(!editId){var duplicateNo=items.filter(function(r){return r.folderId===folderId&&r.baseName===studentName;}).length+1;saved={id:Date.now(),folderId:folderId,title:payload.title||folderById(folderId).name,baseName:studentName,studentName:studentName,duplicateNo:duplicateNo,displayName:duplicateNo>1?studentName+' ('+duplicateNo+')':studentName,htmlContent:payload.htmlContent||'',summary:payload.summary||'',formValues:payload.formValues||[],pdfMode:true,createdAt:new Date().toLocaleString('ar-SA'),createdAtIso:new Date().toISOString()};items.push(saved);}
-    var ok=await write(items); if(!ok)return false; var verify=read().find(function(r){return Number(r.id)===Number(saved.id)&&r.folderId===folderId});if(!verify){alert('تعذر التحقق من ظهور السجل داخل مجلده.');return false}sessionStorage.removeItem('advisor_record_edit_id');if(document.getElementById('advisor-records-archive-view')&&document.getElementById('advisor-records-archive-view').style.display!=='none')renderAdvisorRecordsArchiveFolders();return true;
+  window.saveAdvisorRecordToArchive = function(payload){
+    payload=payload||{};
+    var items=read();
+    var folderId=payload.folderId||payload.formId||FOLDERS[0].id;
+    var studentName=(payload.personName||payload.studentName||'').trim();
+    if(!studentName) studentName='بدون اسم';
+    var duplicateNo=items.filter(function(r){return r.folderId===folderId && r.baseName===studentName;}).length+1;
+    items.push({
+      id:Date.now(),
+      folderId:folderId,
+      title:payload.title||folderById(folderId).name,
+      baseName:studentName,
+      studentName:studentName,
+      duplicateNo:duplicateNo,
+      displayName: duplicateNo>1 ? studentName+' ('+duplicateNo+')' : studentName,
+      htmlContent:payload.htmlContent||'',
+      summary:payload.summary||'',
+      pdfMode:true,
+      createdAt:new Date().toLocaleString('ar-SA')
+    });
+    write(items);
+    if(document.getElementById('advisor-records-archive-view') && document.getElementById('advisor-records-archive-view').style.display!=='none') renderAdvisorRecordsArchiveFolders();
   };
 
   window.addEventListener('message',function(event){

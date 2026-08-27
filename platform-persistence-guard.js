@@ -34,7 +34,7 @@
   ];
   const schoolPatterns=[
     /^school_actual_reality$/,/^school_committees$/,/^school_operational_plan$/,/^school_indicators_data$/,
-    /^self_evaluation_archive_/i,/^school_info$/,/^school_manager_records_archive_v1$/,/^manager_records_.*_archive$/i,/^school_operational_execution_v1$/,/^schoolImpactAssessments$/,
+    /^self_evaluation_archive_/i,/^school_info$/,/^school_manager_records_archive_v1$/,/^manager_records_.*_archive$/i,/^wakil_records_pdf_archive_v3$/,/^wakil_archive_v5_/i,/^wakil_form_v3_/i,/^school_operational_execution_v1$/,/^schoolImpactAssessments$/,
     /^sh_/i,/^activity_leader_records_archive_/i,/^category_goals$/,
     /^archive_folder_goals$/,/^managerRecordsFooterSettings$/,/^activityLeaderFooterSettings$/,
     /^setting_(region|school|sig|stamp)$/,/^def_[mp]$/,/^persist_(region|school|sig_data|stamp_data)$/,

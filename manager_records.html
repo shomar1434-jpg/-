@@ -709,6 +709,14 @@ td textarea,
 <!-- PREMIUM_UI_2026 -->
 <link rel="stylesheet" href="premium-ui.css">
 <script defer src="premium-ui.js"></script>
+<script>
+window.CLOUD_STATE_CONFIG={
+  moduleKey:'manager',
+  scope:'school',
+  keys:['school_manager_records_archive_v1'],
+  prefixes:['manager_records_']
+};
+</script>
 <script src="platform-state-engine.js"></script>
 <script src="platform-persistence-guard.js"></script>
 <script defer src="school-base-settings-source.js"></script>
@@ -1134,14 +1142,14 @@ async function saveArchive(){
  localStorage.setItem(localKey,JSON.stringify(list));
  localStorage.removeItem(key()+"_draft");
 
- const folderId=current.id;
+ const folderId=String(current.id);
  const existingIndex=platformArchive.findIndex(x=>String(x.sourceLocalKey||'')===localKey && String(x.sourceRecordId||x.id)===String(recordId));
  const oldPlatform=existingIndex>=0?platformArchive[existingIndex]:null;
  const sameFolderCount=platformArchive.filter(x=>x.folderId===folderId).length+(existingIndex>=0?0:1);
  const platformRow={
    id:oldPlatform?.id||recordId,
    sourceRecordId:recordId,sourceLocalKey:localKey,
-   folderId,folderName:current.title,recordId:current.id,title:current.title,
+   folderId,folderName:current.title,recordName:current.title,recordId:String(current.id),title:current.title,
    displayName:oldPlatform?.displayName||(current.title+" - نسخة "+sameFolderCount),
    duplicateNo:oldPlatform?.duplicateNo||sameFolderCount,
    values:data.values,
@@ -1156,6 +1164,11 @@ async function saveArchive(){
    if(window.PlatformPersistenceGuard&&typeof PlatformPersistenceGuard.commit==='function'){
      const r=await PlatformPersistenceGuard.commit([localKey,platformKey]);
      if(!r||r.ok===false)throw new Error(r?.error||'تعذر تأكيد الحفظ السحابي');
+   }
+   const verifyRows=JSON.parse(localStorage.getItem(platformKey)||'[]');
+   const verified=verifyRows.find(x=>String(x.sourceLocalKey||'')===localKey&&String(x.sourceRecordId||x.id)===String(recordId));
+   if(!verified||String(verified.folderId)!==String(current.id)||String(verified.folderName)!==String(current.title)){
+     throw new Error('تعذر التحقق من حفظ السجل داخل مجلد السجل الصحيح');
    }
    managerRecordEditingIndex=null;
    if(window.parent&&window.parent!==window){try{window.parent.postMessage({type:'MANAGER_RECORD_SAVED',payload:platformRow},'*')}catch(e){}}

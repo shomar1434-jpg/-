@@ -792,159 +792,450 @@ input[data-table]{
 @media(max-width:900px){.teams-grid{grid-template-columns:1fr}}
 @media print{.ai-structured-badge,.teams-box,.teams-grid,.teams-drop,.structured-map{display:none!important}}
 
-
-/* ===== V31: أرشيف تنفيذ السجلات ===== */
-.execution-archive-section{margin-top:18px;background:#f8fffb;border:1px solid #c8ded4;border-radius:18px;padding:16px;box-shadow:0 8px 22px rgba(0,108,53,.08)}
-.execution-archive-section h2{margin:0 0 8px;color:#006c35;font-size:22px}
-.execution-archive-note{color:#52635d;font-size:13px;font-weight:700;margin-bottom:14px}
-.execution-folders{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
-.execution-folder{border:1px solid #bcd5ca;background:#fff;border-radius:16px;padding:12px;cursor:pointer;transition:.2s}
-.execution-folder:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(0,108,53,.12)}
-.execution-folder.active{border-color:#006c35;background:#ecfdf5}
-.execution-folder-title{font-weight:900;color:#006c35;margin-bottom:6px}
-.execution-folder-count{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:26px;border-radius:999px;background:#006c35;color:#fff;font-weight:900;font-size:12px}
-.execution-archive-panel{margin-top:14px;border:1px solid #c8ded4;border-radius:18px;background:#fff;overflow:hidden}
-.execution-archive-panel-header{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#e9f7ef;padding:12px;color:#006c35;font-weight:900}
-.execution-archive-table{width:100%;border-collapse:collapse}
-.execution-archive-table th{background:#006c35;color:#fff;padding:9px;font-size:12px}
-.execution-archive-table td{border:1px solid #dbe7e3;padding:8px;text-align:center;font-size:12px;vertical-align:middle}
-.execution-archive-actions button{border:0;border-radius:999px;padding:6px 10px;margin:2px;cursor:pointer;font-weight:800;background:#e9f7ef;color:#006c35}
-.execution-archive-actions button.danger{background:#fee2e2;color:#b91c1c}
-.execution-ai-insights{margin-top:12px;border:1px solid #dbe7e3;border-radius:14px;padding:12px;background:#f8fafc;white-space:pre-wrap;line-height:1.8;color:#334155;font-weight:700}
-@media print{.execution-archive-section,.execution-archive-panel{display:none!important}}
-
-
-/* ===== V34: إرسال السجل إلى مجلد أداء الواجبات الوظيفية ===== */
-.send-duty-btn{
-  background:#0f766e!important;
-  color:#fff!important;
-}
-.send-duty-btn.sent{
-  background:#64748b!important;
-  color:#fff!important;
-}
-.duty-send-note{
-  margin-top:8px;
-  padding:8px 10px;
-  border-radius:12px;
-  background:#ecfdf5;
-  border:1px solid #99f6e4;
-  color:#0f766e;
-  font-size:12px;
-  font-weight:800;
-  text-align:center;
-}
-
 </style>
-<script src="../../ai-schemas/wakil-schemas.js">
-/* ===== V31: Execution Archive Engine ===== */
-function archiveAllKey(){return "wakil_execution_archive_v31"}
-function readExecutionArchive(){try{return JSON.parse(localStorage.getItem(archiveAllKey())||"{}")}catch(e){return {}}}
-function writeExecutionArchive(obj){localStorage.setItem(archiveAllKey(),JSON.stringify(obj||{}))}
-function safeArchiveName(name){return String(name||"سجل بدون اسم").replace(/[\\/:*?"<>|#%{}[\]^~`]/g," ").replace(/\s+/g," ").trim().slice(0,80)||"سجل بدون اسم"}
-function getRecordPersonName(data){return safeArchiveName(data["اسم الطالب"]||data["اسم المعلم"]||data["اسم الموظف"]||data["اسم الطالب / الموظف"]||data["اسم المستفيد"]||data["اسم المحول"]||data["المعلم الغائب"]||data["المعلم المنفذ"]||data["عنوان الاجتماع"]||data["الاسم"]||"")}
-function getExecutionFolderTitle(formId){const f=(typeof FORMS!=="undefined"?FORMS.find(x=>x.id===formId):null);return f?f.title:((current&&current.title)||formId)}
-function nextArchiveDisplayName(records,baseName){const same=records.filter(r=>r.baseName===baseName).length;return same?`${baseName} (${same+1})`:baseName}
-function saveExecutionArchiveSnapshot(){const data=collect();const formId=current.id;const obj=readExecutionArchive();if(!obj[formId])obj[formId]={title:current.title,items:[]};const baseName=getRecordPersonName(data);const displayName=nextArchiveDisplayName(obj[formId].items||[],baseName);const item={id:String(Date.now()),formId,folderTitle:current.title,baseName,displayName,savedAt:new Date().toLocaleString("ar-SA"),date:data["التاريخ"]||data["تاريخ الزيارة"]||data["تاريخ التحويل"]||"",identity:data["السجل المدني"]||data["رقم الهوية"]||"",summary:(data["الإجراءات والتوصيات النهائية"]||data["التوصيات"]||data["ملاحظات"]||data["سبب التحويل"]||"").slice(0,140),data};obj[formId].items.unshift(item);writeExecutionArchive(obj);renderExecutionArchive();return item}
-function patchSaveCurrentForExecutionArchive(){if(typeof saveCurrent==="function"&&!saveCurrent.__executionArchivePatched){const original=saveCurrent;saveCurrent=function(){const r=original.apply(this,arguments);try{saveExecutionArchiveSnapshot()}catch(e){console.warn("archive error",e)}return r};saveCurrent.__executionArchivePatched=true}}
-function ensureExecutionArchiveSection(){const main=document.querySelector(".main")||document.body;if(document.getElementById("executionArchiveSection"))return;const section=document.createElement("section");section.id="executionArchiveSection";section.className="execution-archive-section no-print";section.innerHTML=`<h2>أرشيف تنفيذ السجلات</h2><div class="execution-archive-note">يتم إنشاء مجلد مستقل لكل نموذج من سجلات الوكيل، وتحفظ السجلات المنفذة باسم الطالب أو المعلم. عند تكرار الاسم يضاف رقم تلقائي للتمييز.</div><div class="execution-folders" id="executionFolders"></div><div class="execution-archive-panel" id="executionArchivePanel" style="display:none"></div><div class="execution-ai-insights" id="executionAIInsights" style="display:none"></div>`;main.appendChild(section);renderExecutionArchive()}
-function renderExecutionArchive(selectedId){const folders=document.getElementById("executionFolders");if(!folders)return;const obj=readExecutionArchive();const forms=(typeof FORMS!=="undefined"?FORMS:[]);folders.innerHTML=forms.map(f=>{const count=(obj[f.id]&&obj[f.id].items?obj[f.id].items.length:0);return `<div class="execution-folder ${selectedId===f.id?'active':''}" onclick="openExecutionFolder('${f.id}')"><div class="execution-folder-title">📁 ${f.title}</div><span class="execution-folder-count">${count}</span><span style="font-size:12px;color:#52635d;margin-inline-start:6px">سجل منفذ</span></div>`}).join("");if(selectedId)openExecutionFolder(selectedId,true)}
-function openExecutionFolder(formId,skipFolders){if(!skipFolders)renderExecutionArchive(formId);const panel=document.getElementById("executionArchivePanel");if(!panel)return;const obj=readExecutionArchive();const folder=obj[formId]||{title:getExecutionFolderTitle(formId),items:[]};panel.style.display="block";panel.innerHTML=`<div class="execution-archive-panel-header"><span>📁 ${folder.title}</span><span>${folder.items.length} سجل منفذ</span></div><table class="execution-archive-table"><thead><tr><th>م</th><th>اسم الحفظ</th><th>التاريخ</th><th>السجل المدني/الهوية</th><th>ملخص</th><th>إجراءات</th></tr></thead><tbody>${folder.items.length?folder.items.map((it,i)=>`<tr><td>${i+1}</td><td>${it.displayName}</td><td>${it.date||it.savedAt}</td><td>${it.identity||"—"}</td><td>${it.summary||"—"}</td><td class="execution-archive-actions"><button onclick="restoreExecutionArchive('${formId}','${it.id}')">استرجاع</button><button onclick="analyzeExecutionArchiveItem('${formId}','${it.id}')">تحليل</button><button class="send-duty-btn" onclick="sendExecutionRecordToDutyPerformance('${formId}','${it.id}')">إرسال لأداء الواجبات</button><button class="danger" onclick="deleteExecutionArchiveItem('${formId}','${it.id}')">حذف</button></td></tr>`).join(""):`<tr><td colspan="6">لا توجد سجلات محفوظة في هذا المجلد بعد.</td></tr>`}</tbody></table><div class="execution-archive-actions" style="padding:10px;text-align:center"><button onclick="analyzeExecutionFolder('${formId}')">تحليل المجلد بالذكاء</button><button onclick="exportExecutionFolder('${formId}')">تصدير JSON</button></div>`}
-function restoreExecutionArchive(formId,itemId){const obj=readExecutionArchive();const item=obj[formId]?.items?.find(x=>x.id===itemId);if(!item)return;selectForm(formId);setTimeout(()=>{qsa('[data-field], [data-table]',qs('#formPage')).forEach(el=>{const k=el.dataset.field||el.dataset.table;if(item.data[k]!==undefined)el.value=item.data[k]});if(typeof autoGrowAll==="function")autoGrowAll(qs('#formPage'));alert("تم استرجاع السجل: "+item.displayName)},100)}
-function deleteExecutionArchiveItem(formId,itemId){if(!confirm("حذف هذا السجل من أرشيف التنفيذ؟"))return;const obj=readExecutionArchive();if(obj[formId]){obj[formId].items=obj[formId].items.filter(x=>x.id!==itemId);writeExecutionArchive(obj);renderExecutionArchive(formId)}}
-function exportExecutionFolder(formId){const obj=readExecutionArchive();const folder=obj[formId]||{title:getExecutionFolderTitle(formId),items:[]};const blob=new Blob([JSON.stringify(folder,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`${folder.title}-archive.json`;a.click();URL.revokeObjectURL(a.href)}
-async function analyzeExecutionArchiveItem(formId,itemId){const obj=readExecutionArchive();const item=obj[formId]?.items?.find(x=>x.id===itemId);if(!item)return;await runExecutionAIAnalysis(`حلل هذا السجل المنفذ وقدم تنبيهات ومقترحات إجراء وتوصيات:\n${JSON.stringify(item.data,null,2)}`)}
-async function analyzeExecutionFolder(formId){const obj=readExecutionArchive();const folder=obj[formId]||{title:getExecutionFolderTitle(formId),items:[]};const sample=folder.items.slice(0,20).map(x=>({name:x.displayName,date:x.date,summary:x.summary,data:x.data}));await runExecutionAIAnalysis(`حلل أرشيف هذا المجلد: ${folder.title}\nعدد السجلات: ${folder.items.length}\nالبيانات:\n${JSON.stringify(sample,null,2)}\nالمطلوب:\n- مؤشرات متكررة\n- تنبيهات إدارية\n- مقترحات إجراء\n- توصيات تحسين\n- أولويات متابعة`)}
-async function runExecutionAIAnalysis(prompt){const box=document.getElementById("executionAIInsights");if(!box)return;box.style.display="block";box.textContent="جاري التحليل...";try{const res=await fetch(ASK_AI_URL,{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_ANON_KEY},body:JSON.stringify({message:prompt})});const data=await res.json();box.textContent=data.response||data.result||data.answer||"لم يتم الحصول على نتيجة."}catch(e){box.textContent="تعذر تنفيذ التحليل: "+e.message}}
-document.addEventListener("DOMContentLoaded",()=>{setTimeout(()=>{patchSaveCurrentForExecutionArchive();ensureExecutionArchiveSection()},300)});
-setTimeout(()=>{patchSaveCurrentForExecutionArchive();ensureExecutionArchiveSection()},1000);
+<script>
+/* inlined wakil-schemas.js */
+/* AI Schema Engine - سجلات الوكيل
+   كل سجل له شخصية ذكية وتحليل خاص وتوصيات وتعبئة مهيكلة.
+*/
+window.AI_SCHEMA_ENGINE = {
+  version: "1.0.0",
+  roleBase: "أنت مساعد إداري تربوي داخل منصة الإدارة المدرسية الذكية في المملكة العربية السعودية. التزم بصياغة رسمية مختصرة ومناسبة للبيئة المدرسية.",
+  schemas: {
+    "student-referral": {
+      title: "تحويل طالب للوكيل",
+      persona: "وكيل شؤون الطلاب وخبير إرشاد وانضباط مدرسي",
+      analysisFocus: ["تحليل سبب الإحالة", "تقدير مستوى الحالة", "اقتراح إجراء تربوي", "خطة متابعة مع المرشد وولي الأمر"],
+      fillPriority: ["وصف الحالة", "الإجراء المتخذ", "التوصيات", "تاريخ المتابعة", "الإجراءات والتوصيات النهائية"],
+      tone: "حازم تربوي غير عقابي",
+      outputRules: "اكتب إجراءات عملية قابلة للتنفيذ، ولا تستخدم عبارات عامة."
+    },
+    "repeated-absence-referral": {
+      title: "تحويل طالب متكرر الغياب",
+      persona: "وكيل شؤون الطلاب مختص في الانضباط والغياب",
+      analysisFocus: ["أسباب الغياب", "نمط التكرار", "التواصل الأسري", "خطة علاج الغياب"],
+      fillPriority: ["أسباب الغياب حسب الإفادة", "الإجراءات المتخذة", "توصيات الوكيل", "موعد المتابعة", "الإجراءات والتوصيات النهائية"],
+      tone: "وقائي داعم",
+      outputRules: "اقترح تدرجًا في الإجراء يبدأ بالتواصل والدعم ثم المتابعة النظامية."
+    },
+    "daily-duty-report": {
+      title: "تقرير المناوبة اليومي",
+      persona: "مشرف انضباط وسلامة مدرسية",
+      analysisFocus: ["بداية اليوم", "الفسحة", "الانصراف", "السلامة", "الحالات اليومية"],
+      fillPriority: ["ملاحظات بداية اليوم", "ملاحظات الفسحة", "ملاحظات الانصراف", "الحالات المرصودة", "الإجراءات الفورية", "التوصيات", "الإجراءات والتوصيات النهائية"],
+      tone: "إداري مباشر",
+      outputRules: "اكتب ملاحظات يومية قابلة للرصد، مع إجراء فوري وتوصية متابعة."
+    },
+    "late-leave-warning": {
+      title: "تنبيه عن تأخر أو انصراف",
+      persona: "وكيل انضباط مدرسي",
+      analysisFocus: ["نوع الحالة", "درجة التكرار", "الإشعار المناسب", "الإجراء النظامي"],
+      fillPriority: ["عدد مرات التكرار", "المبررات المقدمة", "الإشعار الموجه", "الإجراء النظامي", "توصيات الوكيل"],
+      tone: "رسمي واضح",
+      outputRules: "صغ التنبيه بدون مبالغة، مع إجراء واضح ومتدرج."
+    },
+    "class-visits-plan": {
+      title: "خطة الزيارات الصفية",
+      persona: "مشرف تربوي متخصص في تحسين التدريس",
+      analysisFocus: ["جودة التدريس", "إدارة الصف", "التفاعل الصفي", "استراتيجيات التعلم", "التقويم", "نواتج التعلم"],
+      fillPriority: ["ملحوظات الزيارة", "جوانب القوة", "فرص التحسين", "التوصيات", "الإجراءات والتوصيات النهائية"],
+      tone: "تطويري مهني",
+      outputRules: "وازن بين جوانب القوة وفرص التحسين، واجعل التوصيات قابلة للقياس والمتابعة."
+    },
+    "student-permission": {
+      title: "سجل استئذان الطلاب",
+      persona: "وكيل شؤون طلاب مسؤول عن الانضباط والسلامة",
+      analysisFocus: ["سبب الاستئذان", "المستلم", "صلة المستلم", "حالة العودة", "مخاطر التكرار"],
+      fillPriority: ["سبب الاستئذان", "حالة العودة", "ملاحظات", "الإجراءات والتوصيات النهائية"],
+      tone: "مختصر نظامي",
+      outputRules: "اكتب صياغة قصيرة مناسبة للسجل، مع تنبيه عند وجود تكرار أو خروج مبكر."
+    },
+    "staff-permission": {
+      title: "سجل استئذان الموظفين",
+      persona: "وكيل مدرسة مسؤول عن تنظيم العمل اليومي",
+      analysisFocus: ["سبب الاستئذان", "مدة الاستئذان", "أثره على العمل", "البديل"],
+      fillPriority: ["سبب الاستئذان", "مدة الاستئذان", "البديل إن وجد", "ملاحظات", "الإجراءات والتوصيات النهائية"],
+      tone: "إداري مهني",
+      outputRules: "اربط الاستئذان باستمرارية العمل ووجود بديل إن لزم."
+    },
+    "waiting-register": {
+      title: "سجل الانتظار",
+      persona: "منسق جداول وحصص انتظار",
+      analysisFocus: ["الحصة", "المعلم الغائب", "المعلم المنفذ", "موضوع الحصة", "آلية التنفيذ"],
+      fillPriority: ["موضوع الحصة", "آلية التنفيذ", "ملاحظات", "الإجراءات والتوصيات النهائية"],
+      tone: "تنظيمي مباشر",
+      outputRules: "اقترح آلية تنفيذ حصة انتظار مفيدة وليست مجرد إشغال وقت."
+    },
+    "daily-supervision": {
+      title: "سجل المناوبة والإشراف اليومي",
+      persona: "مشرف مناوبة وسلامة مدرسية",
+      analysisFocus: ["نقطة الإشراف", "زمن الإشراف", "الحالات المرصودة", "الإجراء المتخذ", "التوصيات"],
+      fillPriority: ["الحالات المرصودة", "الإجراء المتخذ", "التوصيات", "الإجراءات والتوصيات النهائية"],
+      tone: "رصد وتحسين",
+      outputRules: "اكتب رصدًا واضحًا للحالة وإجراءً مباشرًا وتوصية وقائية."
+    },
+    "deduction-late-leave": {
+      title: "قرار حسم تأخر وخروج",
+      persona: "مسؤول إداري مطلع على الانضباط الوظيفي",
+      analysisFocus: ["نوع الحالة", "المدة", "المستند النظامي", "نص القرار"],
+      fillPriority: ["نوع الحالة", "مدة الحسم", "المستند النظامي", "نص القرار", "الملاحظات"],
+      tone: "رسمي نظامي",
+      outputRules: "اكتب بصياغة إدارية محايدة، ولا تذكر مواد نظامية محددة ما لم تكن موجودة في المدخلات."
+    },
+    "deduction-absence": {
+      title: "قرار حسم غياب",
+      persona: "مسؤول إداري مختص بمتابعة الغياب",
+      analysisFocus: ["تاريخ الغياب", "عدد الأيام", "نوع الغياب", "المستند النظامي", "نص القرار"],
+      fillPriority: ["عدد أيام الغياب", "نوع الغياب", "مدة الحسم", "المستند النظامي", "نص القرار", "الملاحظات"],
+      tone: "رسمي نظامي",
+      outputRules: "اكتب قرارًا مختصرًا قابلًا للمراجعة والاعتماد."
+    },
+    "late-students-list": {
+      title: "كشف بأسماء الطلاب المتأخرين",
+      persona: "محلل انضباط طلابي",
+      analysisFocus: ["عدد الطلاب المتأخرين", "أسباب التأخر", "النمط المتكرر", "خطة المتابعة"],
+      fillPriority: ["أبرز الأسباب", "الإجراء المتخذ", "توصيات الوكيل", "خطة المتابعة", "الإجراءات والتوصيات النهائية"],
+      tone: "تحليلي علاجي",
+      outputRules: "اقترح خطة متابعة أسبوعية وتواصل أسري وتحفيز للانتظام."
+    },
+    "absence-inquiry": {
+      title: "مساءلة غياب",
+      persona: "وكيل إداري مسؤول عن مساءلة الغياب",
+      analysisFocus: ["سبب الغياب", "إفادة الموظف", "المرفقات", "رأي الوكيل", "قرار المدير"],
+      fillPriority: ["سبب الغياب حسب الإفادة", "المرفقات", "رأي الوكيل", "قرار المدير", "ملاحظات"],
+      tone: "رسمي متوازن",
+      outputRules: "فرّق بين الرأي الإداري والقرار النهائي."
+    },
+    "default": {
+      title: "سجل وكيل مدرسي",
+      persona: "وكيل مدرسة خبير في السجلات والتقارير",
+      analysisFocus: ["تحليل البيانات", "الإجراءات", "التوصيات", "المتابعة"],
+      fillPriority: ["الإجراءات والتوصيات النهائية", "الإجراء المتخذ", "التوصيات", "ملاحظات"],
+      tone: "رسمي مختصر",
+      outputRules: "املأ الحقول المناسبة فقط بناءً على البيانات المتاحة."
+    }
+  },
+  getSchema(formId){
+    return this.schemas[formId] || this.schemas.default;
+  },
+  buildPrompt({formId, formTitle, data, fields, extraText=""}){
+    const s = this.getSchema(formId);
+    return `${this.roleBase}
 
+أنت الآن تعمل وفق AI Schema Engine.
+اسم السجل: ${formTitle || s.title}
+الشخصية الذكية: ${s.persona}
+محاور التحليل الخاصة بهذا السجل:
+${s.analysisFocus.map(x=>"- "+x).join("\n")}
 
-/* ===== V34: Send saved record to Duty Performance folder ===== */
-function dutyArchiveKey(){
-  return "wakil_duty_performance_records_v34";
-}
-function readDutyPerformanceArchive(){
-  try{return JSON.parse(localStorage.getItem(dutyArchiveKey())||"[]")}catch(e){return []}
-}
-function writeDutyPerformanceArchive(arr){
-  localStorage.setItem(dutyArchiveKey(), JSON.stringify(arr||[]));
-  window.dispatchEvent(new Event("wakilDutyPerformanceArchiveUpdated"));
-}
-function isRecordSentToDuty(originalId){
-  return readDutyPerformanceArchive().some(x=>x.originalArchiveId===originalId);
-}
-function sendExecutionRecordToDutyPerformance(formId,itemId){
-  const obj=readExecutionArchive();
-  const item=obj[formId]?.items?.find(x=>x.id===itemId);
-  if(!item){
-    alert("لم يتم العثور على السجل المحفوظ.");
-    return;
+نبرة الكتابة: ${s.tone}
+قواعد الإخراج: ${s.outputRules}
+
+البيانات الحالية داخل النموذج:
+${JSON.stringify(data || {}, null, 2)}
+
+الحقول المتاحة داخل النموذج:
+${JSON.stringify(fields || [], null, 2)}
+
+الحقول ذات الأولوية للتعبئة:
+${JSON.stringify(s.fillPriority || [], null, 2)}
+
+مدخلات إضافية:
+${extraText || "لا يوجد"}
+
+المطلوب:
+أعد JSON فقط بدون Markdown وبدون شرح.
+يجب أن تكون المفاتيح من أسماء الحقول المتاحة داخل النموذج فقط.
+املأ الحقول المناسبة بصياغة عربية رسمية ومخصصة لهذا السجل.
+إذا لم توجد بيانات كافية فاقترح تعبئة مهنية مناسبة بناءً على نوع السجل.
+لا تضف مفاتيح غير موجودة في الحقول المتاحة.`;
   }
-
-  const arr=readDutyPerformanceArchive();
-  const exists=arr.some(x=>x.originalArchiveId===itemId);
-  if(exists){
-    alert("هذا السجل موجود مسبقًا في مجلد أداء الواجبات الوظيفية.");
-    return;
-  }
-
-  const dutyItem={
-    id:"duty_"+Date.now()+"_"+Math.random().toString(36).slice(2,7),
-    originalArchiveId:itemId,
-    source:"أرشيف تنفيذ السجلات",
-    category:"أداء الواجبات الوظيفية",
-    folderName:"أداء الواجبات الوظيفية",
-    formId:formId,
-    formTitle:item.folderTitle || getExecutionFolderTitle(formId),
-    displayName:item.displayName,
-    baseName:item.baseName,
-    date:item.date || item.savedAt || "",
-    identity:item.identity || "",
-    summary:item.summary || "",
-    data:item.data || {},
-    sentAt:new Date().toLocaleString("ar-SA"),
-    status:"نموذج تنفيذ"
-  };
-
-  arr.unshift(dutyItem);
-  writeDutyPerformanceArchive(arr);
-
-  alert("تم إرسال السجل إلى مجلد أداء الواجبات الوظيفية في الأرشيف الرقمي.");
-  openExecutionFolder(formId);
-}
-function exportDutyPerformanceArchive(){
-  const arr=readDutyPerformanceArchive();
-  const blob=new Blob([JSON.stringify({folder:"أداء الواجبات الوظيفية",items:arr},null,2)],{type:"application/json;charset=utf-8"});
-  const a=document.createElement("a");
-  a.href=URL.createObjectURL(blob);
-  a.download="أداء_الواجبات_الوظيفية_نماذج_تنفيذ.json";
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
-function renderDutyPerformanceShortcut(){
-  const sec=document.getElementById("executionArchiveSection");
-  if(!sec || document.getElementById("dutyPerformanceShortcut")) return;
-  const div=document.createElement("div");
-  div.id="dutyPerformanceShortcut";
-  div.className="duty-send-note";
-  div.innerHTML='مجلد أداء الواجبات الوظيفية يستقبل السجلات المختارة كنماذج تنفيذ. <button class="btn gray" style="padding:6px 12px;margin-inline-start:8px" onclick="exportDutyPerformanceArchive()">تصدير مجلد أداء الواجبات</button>';
-  sec.appendChild(div);
-}
-document.addEventListener("DOMContentLoaded",()=>setTimeout(renderDutyPerformanceShortcut,1200));
-setTimeout(renderDutyPerformanceShortcut,1800);
+};
 
 </script>
-</head>
-<body><div class="app"><aside class="sidebar no-print"><h1>سجلات الوكيل التفاعلية</h1><p>نماذج رسمية قابلة للتعبئة، مع تاريخ تلقائي وشعار وزارة التعليم وتوقيع وختم رقمي ينعكسان على جميع السجلات.</p><button class="toolbtn" onclick="openSettings()">⚙️ إعدادات الوكيل والتوقيع والختم</button><button class="toolbtn" onclick="smartStructuredAI()">🧠 Smart Structured AI</button><button class="toolbtn" onclick="showCurrentAISchemaInfo()">👤 شخصية السجل الذكية</button><div class="nav" id="nav"></div></aside><main class="main"><div class="toolbar no-print"><div><strong id="currentTitle">سجلات الوكيل</strong><div class="status">كل الخانات قابلة للتعبئة، والتاريخ يتحدث تلقائيًا لليوم الحالي.</div></div><div class="group"><button class="btn" onclick="saveCurrent()">حفظ النموذج</button><button class="btn blue" onclick="aiComplete()">استكمال بالذكاء</button><button class="btn" onclick="smartStructuredAI()">تعبئة مهيكلة ذكية</button><button class="btn gray" onclick="window.print()">طباعة / حفظ PDF</button><button class="btn gold" onclick="clearCurrent()">تفريغ النموذج</button></div></div><section class="page" id="formPage"></section></main></div>
-<div class="ai-panel no-print" id="aiPanel"><h3>نتيجة الذكاء الاصطناعي</h3><pre id="aiResult">...</pre><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn" onclick="applyAIToCurrentForm()">تضمين النتيجة في النموذج</button><button class="btn gray" onclick="document.getElementById('aiPanel').style.display='none'">إغلاق</button></div></div>
 
-<div class="modal no-print" id="settingsModal"><div class="box"><h2>إعدادات الوكيل المخصصة</h2><div class="settings-grid"><div><label>إدارة التعليم</label><input id="setEdu" placeholder="إدارة التعليم"></div><div><label>مكتب التعليم</label><input id="setOffice" placeholder="مكتب التعليم"></div><div><label>اسم المدرسة</label><input id="setSchool" placeholder="اسم المدرسة"></div><div><label>اسم الوكيل</label><input id="setWakil" placeholder="اسم الوكيل"></div><div><label>اسم المدير</label><input id="setManager" placeholder="اسم المدير"></div><div><label>العام الدراسي</label><input id="setYear" placeholder="1447 هـ"></div><div><label>التوقيع الرقمي للوكيل</label><input type="file" accept="image/png,image/jpeg" onchange="loadImage(event,'setSignaturePreview','signature')"><div class="preview"><img id="setSignaturePreview"></div></div><div><label>الختم الرقمي للمدرسة</label><input type="file" accept="image/png,image/jpeg" onchange="loadImage(event,'setStampPreview','stamp')"><div class="preview"><img id="setStampPreview"></div></div><div><label>توقيع مدير المدرسة</label><input type="file" accept="image/png,image/jpeg" onchange="loadImage(event,'setManagerSignaturePreview','managerSignature')"><div class="preview"><img id="setManagerSignaturePreview"></div></div></div><div style="display:flex;gap:8px;margin-top:12px"><button class="btn" onclick="saveSettings()">حفظ الإعدادات</button><button class="btn gray" onclick="closeSettings()">إغلاق</button></div></div></div>
+
+
+
+
+
+<style id="GLOBAL_VERTICAL_FLOATING_ICONS_FIX">
+@media screen {
+  #ssFinalBar,
+  .ss-final-bar,
+  #smartSchoolFloatingBar,
+  .smart-school-floating-bar,
+  #top-floating-icons,
+  .top-floating-icons,
+  .floating-icons,
+  .global-floating-icons,
+  .top-actions-floating,
+  .quick-actions-floating {
+    position: fixed !important;
+    left: 35px !important;
+    right: auto !important;
+    top: auto !important;
+    bottom: 114px !important;
+    width: 38px !important;
+    max-height: none !important;
+    overflow: visible !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    gap: 6px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    transform: none !important;
+    z-index: 2147482400 !important;
+  }
+
+  #ssFinalBar > *,
+  .ss-final-bar > *,
+  #smartSchoolFloatingBar > *,
+  .smart-school-floating-bar > *,
+  #top-floating-icons > *,
+  .top-floating-icons > *,
+  .floating-icons > *,
+  .global-floating-icons > *,
+  .top-actions-floating > *,
+  .quick-actions-floating > * {
+    position: relative !important;
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    min-height: 36px !important;
+    max-width: 36px !important;
+    max-height: 36px !important;
+    flex: 0 0 36px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 50% !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    overflow: visible !important;
+    box-sizing: border-box !important;
+    font-size: 17px !important;
+    line-height: 1 !important;
+    text-indent: 0 !important;
+  }
+
+  #ssFinalBar > * svg,
+  .ss-final-bar > * svg,
+  #smartSchoolFloatingBar > * svg,
+  .smart-school-floating-bar > * svg,
+  #top-floating-icons > * svg,
+  .top-floating-icons > * svg,
+  .floating-icons > * svg,
+  .global-floating-icons > * svg,
+  .top-actions-floating > * svg,
+  .quick-actions-floating > * svg {
+    width: 17px !important;
+    height: 17px !important;
+    display: block !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+  }
+
+  /* التسمية الوحيدة: تعتمد على التسمية الأصلية للزر لا على تخمينات أو ترتيب الأيقونات */
+  #ssFinalBar > *::after,
+  .ss-final-bar > *::after,
+  #smartSchoolFloatingBar > *::after,
+  .smart-school-floating-bar > *::after,
+  #top-floating-icons > *::after,
+  .top-floating-icons > *::after,
+  .floating-icons > *::after,
+  .global-floating-icons > *::after,
+  .top-actions-floating > *::after,
+  .quick-actions-floating > *::after {
+    content: attr(data-floating-label);
+    position: absolute !important;
+    left: 46px !important;
+    top: 50% !important;
+    transform: translateY(-50%) translateX(-6px) !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    white-space: nowrap !important;
+    background: rgba(15, 23, 42, .96) !important;
+    color: #fff !important;
+    font-family: Cairo, Tajawal, Arial, sans-serif !important;
+    font-size: 11px !important;
+    font-weight: 900 !important;
+    padding: 8px 10px !important;
+    border-radius: 12px !important;
+    box-shadow: 0 12px 26px rgba(15,23,42,.25) !important;
+    z-index: 2147483600 !important;
+    transition: opacity .16s ease, transform .16s ease !important;
+  }
+
+  #ssFinalBar > *:hover::after,
+  .ss-final-bar > *:hover::after,
+  #smartSchoolFloatingBar > *:hover::after,
+  .smart-school-floating-bar > *:hover::after,
+  #top-floating-icons > *:hover::after,
+  .top-floating-icons > *:hover::after,
+  .floating-icons > *:hover::after,
+  .global-floating-icons > *:hover::after,
+  .top-actions-floating > *:hover::after,
+  .quick-actions-floating > *:hover::after {
+    opacity: 1 !important;
+    transform: translateY(-50%) translateX(0) !important;
+  }
+
+  #studentAdvisorAiCenterBtn,
+  #topAiCenterIcon,
+  #aiCenterBtn,
+  .ai-center-floating,
+  .ai-center-trigger {
+    position: fixed !important;
+    left: 15px !important;
+    bottom: 14px !important;
+    right: auto !important;
+    top: auto !important;
+    z-index: 2147482500 !important;
+    transform: none !important;
+  }
+}
+@media print {
+  #ssFinalBar,
+  .ss-final-bar,
+  #smartSchoolFloatingBar,
+  .smart-school-floating-bar,
+  #top-floating-icons,
+  .top-floating-icons,
+  .floating-icons,
+  .global-floating-icons,
+  .top-actions-floating,
+  .quick-actions-floating,
+  #studentAdvisorAiCenterBtn,
+  #topAiCenterIcon,
+  #aiCenterBtn,
+  .ai-center-floating,
+  .ai-center-trigger { display:none!important; }
+}
+</style>
+<script id="GLOBAL_VERTICAL_FLOATING_ICONS_LABELS_FIX">
+(function(){
+  if(window.__GLOBAL_VERTICAL_FLOATING_ICONS_SINGLE_LABEL__) return;
+  window.__GLOBAL_VERTICAL_FLOATING_ICONS_SINGLE_LABEL__ = true;
+
+  function clean(v){
+    return String(v || '')
+      .replace(/[\u{1F300}-\u{1FAFF}\u2600-\u27BF]/gu, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function labelFromElement(el){
+    var saved = clean(el.dataset.originalTitle || el.dataset.originalAriaLabel || el.dataset.floatingOriginalLabel || '');
+    if(saved) return saved;
+
+    var title = clean(el.getAttribute('title') || '');
+    if(title) return title;
+
+    var aria = clean(el.getAttribute('aria-label') || '');
+    if(aria && aria !== 'أداة') return aria;
+
+    var childTitle = '';
+    var titled = el.querySelector && el.querySelector('[title]');
+    if(titled) childTitle = clean(titled.getAttribute('title') || '');
+    if(childTitle) return childTitle;
+
+    var text = clean(el.innerText || el.textContent || '');
+    if(text && text.length > 1) return text;
+
+    return '';
+  }
+
+  function removeNativeTooltip(node){
+    if(!node || !node.hasAttribute) return;
+    if(node.hasAttribute('title')){
+      if(!node.dataset.originalTitle) node.dataset.originalTitle = node.getAttribute('title') || '';
+      node.removeAttribute('title');
+    }
+  }
+
+  function apply(){
+    var bars = document.querySelectorAll('#ssFinalBar,.ss-final-bar,#smartSchoolFloatingBar,.smart-school-floating-bar,#top-floating-icons,.top-floating-icons,.floating-icons,.global-floating-icons,.top-actions-floating,.quick-actions-floating');
+    bars.forEach(function(bar){
+      Array.from(bar.children || []).forEach(function(el){
+        if(el.hasAttribute('aria-label') && !el.dataset.originalAriaLabel){
+          el.dataset.originalAriaLabel = el.getAttribute('aria-label') || '';
+        }
+
+        var label = labelFromElement(el);
+
+        // لا نستخدم أي تخمين أو ترتيب رقمي حتى لا تظهر مسميات خاطئة.
+        if(!label) label = 'أداة';
+
+        el.dataset.floatingOriginalLabel = label;
+        el.dataset.floatingLabel = label;
+        el.removeAttribute('data-tooltip');
+        el.setAttribute('aria-label', label);
+
+        removeNativeTooltip(el);
+        if(el.querySelectorAll){
+          el.querySelectorAll('[title]').forEach(removeNativeTooltip);
+        }
+
+        el.onmouseenter = function(){
+          removeNativeTooltip(el);
+          if(el.querySelectorAll) el.querySelectorAll('[title]').forEach(removeNativeTooltip);
+        };
+      });
+    });
+  }
+
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply);
+  else apply();
+
+  setTimeout(apply, 120);
+  setTimeout(apply, 500);
+  setTimeout(apply, 1200);
+  setTimeout(apply, 2500);
+  setInterval(apply, 3000);
+})();
+</script>
+
+
+<style id="wakil-records-manual-dock-overlap-fix">
+/* إصلاح تداخل أزرار التحكم العلوية/الجانبية/السفلية مع قائمة سجلات الوكيل */
+#manualDockControlPanel,
+#manualDockTip{
+  display:none!important;
+  visibility:hidden!important;
+  pointer-events:none!important;
+}
+@media screen{
+  body{
+    padding-bottom:0!important;
+  }
+}
+</style>
+
+
+<!-- PREMIUM_UI_2026 -->
+<link rel="stylesheet" href="../../premium-ui.css">
+<script defer src="../../premium-ui.js"></script>
+<script src="../../platform-state-engine.js"></script>
+<script src="../../platform-persistence-guard.js"></script>
+<script defer src="../../school-base-settings-source.js"></script>
+<link rel="stylesheet" href="../../responsive-layout.css?v=20260818-responsive-1">
+</head>
+<body><div class="app"><aside class="sidebar no-print"><h1>سجلات الوكيل التفاعلية</h1><p>نماذج رسمية قابلة للتعبئة، مع تاريخ تلقائي وشعار وزارة التعليم وتوقيع وختم رقمي ينعكسان على جميع السجلات.</p><button class="toolbtn" onclick="openSettings()">⚙️ إعدادات الوكيل والتوقيع والختم</button><button class="toolbtn" onclick="showCurrentAISchemaInfo()">👤 شخصية السجل الذكية</button><div class="nav" id="nav"></div></aside><main class="main"><div class="toolbar no-print"><div><strong id="currentTitle">سجلات الوكيل</strong><div class="status">كل الخانات قابلة للتعبئة، والتاريخ يتحدث تلقائيًا لليوم الحالي.</div></div><div class="group"><button class="btn" onclick="saveCurrent()">حفظ النموذج</button><button class="btn gray" onclick="window.print()">طباعة / حفظ PDF</button><button class="btn gold" onclick="clearCurrent()">تفريغ النموذج</button></div></div><section class="page" id="formPage"></section></main></div>
+<div class="ai-panel no-print" id="aiPanel"><h3>شخصية السجل الذكية</h3><pre id="aiResult">...</pre><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn" onclick="applyAIToCurrentForm()">تضمين النتيجة في النموذج</button><button class="btn gray" onclick="document.getElementById('aiPanel').style.display='none'">إغلاق</button></div></div>
+
+<div class="modal no-print" id="settingsModal"><div class="box"><h2>إعدادات الوكيل المخصصة</h2><div class="settings-grid"><div><label>إدارة التعليم</label><input id="setEdu" placeholder="إدارة التعليم"></div><div><label>مكتب التعليم</label><input id="setOffice" placeholder="مكتب التعليم"></div><div><label>اسم المدرسة</label><input id="setSchool" placeholder="اسم المدرسة"></div><div><label>اسم الوكيل</label><input id="setWakil" placeholder="اسم الوكيل"></div><div><label>اسم المدير</label><input id="setManager" placeholder="اسم المدير"></div><div><label>العام الدراسي</label><input id="setYear" placeholder="1447 هـ"></div><div><label>التوقيع الرقمي للوكيل</label><input type="file" accept="image/png,image/jpeg" onchange="loadImage(event,'setSignaturePreview','signature')"><div class="preview"><img id="setSignaturePreview"></div></div><div><label>الختم الرقمي للمدرسة</label><input type="file" accept="image/png,image/jpeg" onchange="loadImage(event,'setStampPreview','stamp')"><div class="preview"><img id="setStampPreview"></div></div><div><label>توقيع مدير/ة المدرسة</label><input type="file" accept="image/png,image/jpeg" onchange="loadImage(event,'setManagerSignaturePreview','managerSignature')"><div class="preview"><img id="setManagerSignaturePreview"></div></div></div><div style="display:flex;gap:8px;margin-top:12px"><button class="btn" onclick="saveSettings()">حفظ الإعدادات</button><button class="btn gray" onclick="closeSettings()">إغلاق</button></div></div></div>
 <script>
-const FORMS = [{"id": "student-referral", "title": "تحويل طالب للوكيل", "sections": [["بيانات الطالب", ["اسم الطالب", "السجل المدني", "الصف", "الفصل", "المرشد الطلابي", "تاريخ التحويل"]], ["بيانات التحويل", ["اسم المحول", "صفته", "سبب التحويل", "وصف الحالة"]], ["إجراء الوكيل", ["الإجراء المتخذ", "التوصيات", "تاريخ المتابعة"]]], "kind": "student"}, {"id": "repeated-absence-referral", "title": "تحويل طالب متكرر الغياب", "sections": [["بيانات الطالب", ["اسم الطالب", "السجل المدني", "الصف", "الفصل", "ولي الأمر", "رقم التواصل", "تاريخ التحويل"]], ["حصر الغياب", ["عدد أيام الغياب", "آخر يوم حضور", "الأيام المتكررة", "أسباب الغياب حسب الإفادة"]], ["إجراء الوكيل", ["الإجراءات المتخذة", "توصيات الوكيل", "موعد المتابعة"]]], "kind": "student"}, {"id": "daily-duty-report", "title": "تقرير المناوبة اليومي", "sections": [["بيانات اليوم", ["اليوم", "التاريخ", "الفترة", "المناوب الأول", "المناوب الثاني", "المناوب الثالث", "مشرف الانصراف"]], ["ملاحظات المناوبة", ["الحضور العام", "ملاحظات بداية اليوم", "ملاحظات الفسحة", "ملاحظات الانصراف"]], ["الحالات والتوصيات", ["الحالات المرصودة", "الإجراءات الفورية", "التوصيات"]]], "kind": "table"}, {"id": "late-leave-warning", "title": "تنبيه عن تأخر أو انصراف", "sections": [["بيانات المستفيد", ["اسم الطالب / الموظف", "الصف / العمل", "التاريخ", "نوع الحالة", "وقت الحضور أو الانصراف"]], ["تفاصيل الحالة", ["عدد مرات التكرار", "المبررات المقدمة", "الإشعار الموجه"]], ["الإجراء", ["الإجراء النظامي", "توصيات الوكيل"]]], "kind": "notice"}, {"id": "class-visits-plan", "title": "خطة الزيارات الصفية", "sections": [["بيانات الخطة", ["الفصل الدراسي", "الفترة", "الأسبوع", "الهدف العام من الزيارات"]], ["بيانات الزيارة", ["اسم المعلم", "المادة", "الفصل", "تاريخ الزيارة", "الحصة"]], ["متابعة التنفيذ", ["ملحوظات الزيارة", "جوانب القوة", "فرص التحسين", "التوصيات"]]], "kind": "visits"}, {"id": "student-permission", "title": "سجل استئذان الطلاب", "sections": [["بيانات الطالب", ["اسم الطالب", "الصف", "الفصل", "التاريخ", "وقت الخروج", "المستلم", "صلة المستلم"]], ["بيانات الاستئذان", ["سبب الاستئذان", "رقم التواصل", "حالة العودة"]], ["اعتماد وملاحظات", ["موافقة الوكيل", "ملاحظات"]]], "kind": "permission"}, {"id": "staff-permission", "title": "سجل استئذان الموظفين", "sections": [["بيانات الموظف", ["اسم الموظف", "المسمى / التخصص", "التاريخ", "وقت الخروج", "وقت العودة"]], ["بيانات الاستئذان", ["سبب الاستئذان", "مدة الاستئذان", "البديل إن وجد"]], ["اعتماد وملاحظات", ["موافقة المسؤول", "ملاحظات"]]], "kind": "permission"}, {"id": "waiting-register", "title": "سجل الانتظار", "sections": [["بيانات الحصة", ["اليوم", "التاريخ", "الحصة", "الفصل"]], ["بيانات المعلم", ["المعلم الغائب", "المعلم المنفذ", "المادة"]], ["تنفيذ الانتظار", ["موضوع الحصة", "آلية التنفيذ", "ملاحظات"]]], "kind": "waiting"}, {"id": "daily-supervision", "title": "سجل المناوبة والإشراف اليومي", "sections": [["بيانات الإشراف", ["اليوم", "التاريخ", "الفترة", "نقطة الإشراف"]], ["المكلفون بالإشراف", ["المناوبون", "الموقع", "زمن الإشراف"]], ["الحالات والإجراء", ["الحالات المرصودة", "الإجراء المتخذ", "التوصيات"]]], "kind": "supervision"}, {"id": "deduction-late-leave", "title": "قرار حسم تأخر وخروج", "sections": [["بيانات الموظف", ["اسم الموظف", "المسمى الوظيفي", "رقم الهوية", "التاريخ"]], ["بيانات المخالفة", ["نوع الحالة", "وقت التأخر / الخروج", "مدة الحسم", "المستند النظامي"]], ["الإجراء النظامي", ["نص القرار", "الملاحظات"]]], "kind": "decision"}, {"id": "deduction-absence", "title": "قرار حسم غياب", "sections": [["بيانات الموظف", ["اسم الموظف", "المسمى الوظيفي", "رقم الهوية", "تاريخ الغياب"]], ["بيانات الغياب", ["عدد أيام الغياب", "نوع الغياب", "مدة الحسم", "المستند النظامي"]], ["الإجراء النظامي", ["نص القرار", "الملاحظات"]]], "kind": "decision"}, {"id": "late-students-list", "title": "كشف بأسماء الطلاب المتأخرين", "sections": [["بيانات الكشف", ["اليوم", "التاريخ", "الأسبوع", "الفصل الدراسي"]], ["متابعة التأخر", ["عدد الطلاب المتأخرين", "أبرز الأسباب", "الإجراء المتخذ"]], ["التوصيات", ["توصيات الوكيل", "خطة المتابعة"]]], "kind": "late-list"}, {"id": "absence-inquiry", "title": "مساءلة غياب", "sections": [["بيانات الموظف", ["اسم الموظف", "المسمى الوظيفي", "تاريخ الغياب", "مدة الغياب"]], ["إفادة الموظف", ["سبب الغياب حسب الإفادة", "المرفقات", "تاريخ الإفادة"]], ["رأي الإدارة", ["رأي الوكيل", "قرار المدير", "ملاحظات"]]], "kind": "inquiry"}];
+const FORMS = [{"id": "student-referral", "title": "تحويل طالب للوكيل", "sections": [["بيانات الطالب", ["اسم الطالب", "السجل المدني", "الصف", "الفصل", "المرشد الطلابي", "تاريخ التحويل"]], ["بيانات التحويل", ["اسم المحول", "صفته", "سبب التحويل", "وصف الحالة"]], ["إجراء الوكيل", ["الإجراء المتخذ", "التوصيات", "تاريخ المتابعة"]]], "kind": "student"}, {"id": "repeated-absence-referral", "title": "تحويل طالب متكرر الغياب", "sections": [["بيانات الطالب", ["اسم الطالب", "السجل المدني", "الصف", "الفصل", "ولي الأمر", "رقم التواصل", "تاريخ التحويل"]], ["حصر الغياب", ["عدد أيام الغياب", "آخر يوم حضور", "الأيام المتكررة", "أسباب الغياب حسب الإفادة"]], ["إجراء الوكيل", ["الإجراءات المتخذة", "توصيات الوكيل", "موعد المتابعة"]]], "kind": "student"}, {"id": "daily-duty-report", "title": "تقرير المناوبة اليومي", "sections": [["بيانات اليوم", ["اليوم", "التاريخ", "الفترة", "المناوب الأول", "المناوب الثاني", "المناوب الثالث", "مشرف الانصراف"]], ["ملاحظات المناوبة", ["الحضور العام", "ملاحظات بداية اليوم", "ملاحظات الفسحة", "ملاحظات الانصراف"]], ["الحالات والتوصيات", ["الحالات المرصودة", "الإجراءات الفورية", "التوصيات"]]], "kind": "table"}, {"id": "late-leave-warning", "title": "تنبيه عن تأخر أو انصراف", "sections": [["بيانات المستفيد", ["اسم الطالب / الموظف", "الصف / العمل", "التاريخ", "نوع الحالة", "وقت الحضور أو الانصراف"]], ["تفاصيل الحالة", ["عدد مرات التكرار", "المبررات المقدمة", "الإشعار الموجه"]], ["الإجراء", ["الإجراء النظامي", "توصيات الوكيل"]]], "kind": "notice"}, {"id": "class-visits-plan", "title": "خطة الزيارات الصفية", "sections": [["بيانات الخطة", ["الفصل الدراسي", "الفترة", "الأسبوع", "الهدف العام من الزيارات"]], ["بيانات الزيارة", ["اسم المعلم/ة", "المادة", "الفصل", "تاريخ الزيارة", "الحصة"]], ["متابعة التنفيذ", ["ملحوظات الزيارة", "جوانب القوة", "فرص التحسين", "التوصيات"]]], "kind": "visits"}, {"id": "student-permission", "title": "سجل استئذان الطلاب", "sections": [["بيانات الطالب", ["اسم الطالب", "الصف", "الفصل", "التاريخ", "وقت الخروج", "المستلم", "صلة المستلم"]], ["بيانات الاستئذان", ["سبب الاستئذان", "رقم التواصل", "حالة العودة"]], ["اعتماد وملاحظات", ["موافقة الوكيل", "ملاحظات"]]], "kind": "permission"}, {"id": "staff-permission", "title": "سجل استئذان الموظفين", "sections": [["بيانات الموظف", ["اسم الموظف", "المسمى / التخصص", "التاريخ", "وقت الخروج", "وقت العودة"]], ["بيانات الاستئذان", ["سبب الاستئذان", "مدة الاستئذان", "البديل إن وجد"]], ["اعتماد وملاحظات", ["موافقة المسؤول", "ملاحظات"]]], "kind": "permission"}, {"id": "waiting-register", "title": "سجل الانتظار", "sections": [["بيانات الحصة", ["اليوم", "التاريخ", "الحصة", "الفصل"]], ["بيانات المعلم", ["المعلم الغائب", "المعلم المنفذ", "المادة"]], ["تنفيذ الانتظار", ["موضوع الحصة", "آلية التنفيذ", "ملاحظات"]]], "kind": "waiting"}, {"id": "daily-supervision", "title": "سجل المناوبة والإشراف اليومي", "sections": [["بيانات الإشراف", ["اليوم", "التاريخ", "الفترة", "نقطة الإشراف"]], ["المكلفون بالإشراف", ["المناوبون", "الموقع", "زمن الإشراف"]], ["الحالات والإجراء", ["الحالات المرصودة", "الإجراء المتخذ", "التوصيات"]]], "kind": "supervision"}, {"id": "deduction-late-leave", "title": "قرار حسم تأخر وخروج", "sections": [["بيانات الموظف", ["اسم الموظف", "المسمى الوظيفي", "رقم الهوية", "التاريخ"]], ["بيانات المخالفة", ["نوع الحالة", "وقت التأخر / الخروج", "مدة الحسم", "المستند النظامي"]], ["الإجراء النظامي", ["نص القرار", "الملاحظات"]]], "kind": "decision"}, {"id": "deduction-absence", "title": "قرار حسم غياب", "sections": [["بيانات الموظف", ["اسم الموظف", "المسمى الوظيفي", "رقم الهوية", "تاريخ الغياب"]], ["بيانات الغياب", ["عدد أيام الغياب", "نوع الغياب", "مدة الحسم", "المستند النظامي"]], ["الإجراء النظامي", ["نص القرار", "الملاحظات"]]], "kind": "decision"}, {"id": "late-students-list", "title": "كشف بأسماء الطلاب المتأخرين", "sections": [["بيانات الكشف", ["اليوم", "التاريخ", "الأسبوع", "الفصل الدراسي"]], ["متابعة التأخر", ["عدد الطلاب المتأخرين", "أبرز الأسباب", "الإجراء المتخذ"]], ["التوصيات", ["توصيات الوكيل", "خطة المتابعة"]]], "kind": "late-list"}, {"id": "absence-inquiry", "title": "مساءلة غياب", "sections": [["بيانات الموظف", ["اسم الموظف", "المسمى الوظيفي", "تاريخ الغياب", "مدة الغياب"]], ["إفادة الموظف", ["سبب الغياب حسب الإفادة", "المرفقات", "تاريخ الإفادة"]], ["رأي الإدارة", ["رأي الوكيل", "قرار المدير", "ملاحظات"]]], "kind": "inquiry"}];
 const LOGO_URL='https://salogos.b-cdn.net/logos/svg/1774895141785-5zgexuf8.svg';
-const ASK_AI_URL='https://mfzsgaqxvxusayoribfo.supabase.co/functions/v1/ASK-AI';
-const SUPABASE_ANON_KEY='sb_publishable_wrqnWejHyIhaYnMusFfDQQ_6NBvAK9N';
+const ASK_AI_URL='https://cijhgvbtrvmmlcssgxht.supabase.co/functions/v1/ASK-AI';
+const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
 let current=FORMS[0];
 function qs(x,root=document){return root.querySelector(x)} function qsa(x,root=document){return Array.from(root.querySelectorAll(x))}
 function today(){return new Date().toISOString().slice(0,10)}
@@ -1011,7 +1302,7 @@ function fieldHtml(name){
   else input=`<input type="text" data-field="${name}">`;
   return `<div class="field${wide}"><div class="label">${name}</div><div>${input}</div></div>`
 }
-function tableRows(kind,count=5){let heads=['م','الاسم','الصف / العمل','التاريخ','الإجراء / الملاحظات']; if(kind==='visits')heads=['م','اسم المعلم','المادة','الفصل','تاريخ الزيارة','الحصة','ملاحظات']; if(kind==='waiting')heads=['م','الحصة','الفصل','المعلم الغائب','المعلم المنفذ','المادة','ملاحظات'];let h=heads.map(x=>`<th>${x}</th>`).join('');let rows='';for(let i=1;i<=count;i++){rows+='<tr>'+heads.map((x,j)=>j===0?`<td>${i}</td>`:`<td><textarea class="table-textarea auto-grow" data-table="${kind}-${i}-${j}"></textarea></td>`).join('')+'</tr>'}return `<div class="section dynamic-table-section"><h3>جدول تفصيلي قابل للتعبئة</h3><table class="form-table"><thead><tr>${h}</tr></thead><tbody>${rows}</tbody></table></div>`}
+function tableRows(kind,count=5){let heads=['م','الاسم','الصف / العمل','التاريخ','الإجراء / الملاحظات']; if(kind==='visits')heads=['م','اسم المعلم/ة','المادة','الفصل','تاريخ الزيارة','الحصة','ملاحظات']; if(kind==='waiting')heads=['م','الحصة','الفصل','المعلم الغائب','المعلم المنفذ','المادة','ملاحظات'];let h=heads.map(x=>`<th>${x}</th>`).join('');let rows='';for(let i=1;i<=count;i++){rows+='<tr>'+heads.map((x,j)=>j===0?`<td>${i}</td>`:`<td><textarea class="table-textarea auto-grow" data-table="${kind}-${i}-${j}"></textarea></td>`).join('')+'</tr>'}return `<div class="section dynamic-table-section"><h3>جدول تفصيلي قابل للتعبئة</h3><table class="form-table"><thead><tr>${h}</tr></thead><tbody>${rows}</tbody></table></div>`}
 function settingInput(key,value,label,extra=''){
   return `<div class="head-row"><span class="head-label">${label}</span><input class="header-input ${extra}" data-setting="${key}" value="${value||''}"></div>`
 }
@@ -1068,7 +1359,7 @@ function approvalBlock(s){
   return `<div class="approval-row no-page-break">
     <div class="approval-box"><strong>إعداد الوكيل</strong>${approvalNameInput('wakil','اكتب اسم الوكيل')}<div style="font-size:12px;font-weight:800">التوقيع:</div>${mediaBox('signature','توقيع الوكيل')}</div>
     <div class="approval-box"><strong>ختم المدرسة</strong>${mediaBox('stamp','ختم المدرسة','stamp')}</div>
-    <div class="approval-box"><strong>اعتماد مدير المدرسة</strong>${approvalNameInput('manager','اكتب اسم المدير')}<div style="font-size:12px;font-weight:800">التوقيع:</div>${mediaBox('managerSignature','توقيع المدير')}</div>
+    <div class="approval-box"><strong>اعتماد مدير/ة المدرسة</strong>${approvalNameInput('manager','اكتب اسم المدير')}<div style="font-size:12px;font-weight:800">التوقيع:</div>${mediaBox('managerSignature','توقيع المدير')}</div>
   </div>`
 }
 function renderForm(){
@@ -1105,20 +1396,76 @@ function setDefaults(){
 }
 function loadCurrent(){let d={};try{d=JSON.parse(localStorage.getItem(formKey())||'{}')}catch(e){} qsa('[data-field], [data-table]',qs('#formPage')).forEach(el=>{const k=el.dataset.field||el.dataset.table;if(d[k]!==undefined)el.value=d[k]});setDefaults();renderArchiveRows();autoGrowAll(qs('#formPage'))}
 
-function studentAffairsSchoolId(){try{const q=new URLSearchParams(location.search);return q.get('school_id')||q.get('schoolId')||localStorage.getItem('smart_school_current_school_id')||(JSON.parse(localStorage.getItem('smartSchool.currentSchool')||'{}').id)||'default'}catch(e){return'default'}}
-function publishStudentAffairsSync(formId,data){
-  const map={
-    'repeated-absence-referral':{category:'attendance',type:'غياب'},
-    'late-leave-warning':{category:'attendance',type:(data['نوع الحالة']||'تأخر صباحي')},
-    'late-students-list':{category:'attendance',type:'تأخر صباحي'},
-    'student-referral':{category:'behavior',type:'إحالة طالب'}
-  };
-  const meta=map[formId];if(!meta)return; const schoolId=studentAffairsSchoolId(); const key='student_affairs_sync_events_v1_'+schoolId;
-  let arr=[];try{arr=JSON.parse(localStorage.getItem(key)||'[]')}catch(e){}
-  const ev={id:'WR-'+formId+'-'+Date.now()+'-'+Math.random().toString(36).slice(2,6),school_id:schoolId,source:'wakil-records',source_form:formId,source_title:(FORMS.find(f=>f.id===formId)||{}).title||'',category:meta.category,type:meta.type,student_name:data['اسم الطالب']||data['اسم الطالب / الموظف']||'',national_id:data['السجل المدني']||data['رقم السجل المدني']||'',grade:data['الصف']||data['الصف / العمل']||'',classroom:data['الفصل']||'',guardian:data['ولي الأمر']||'',phone:data['رقم التواصل']||'',date:data['تاريخ التحويل']||data['التاريخ']||'',note:data['وصف الحالة']||data['أسباب الغياب حسب الإفادة']||data['الإجراء المتخذ']||data['ملاحظات']||'',createdAt:new Date().toISOString()};
-  arr.unshift(ev);localStorage.setItem(key,JSON.stringify(arr.slice(0,1000)));window.dispatchEvent(new CustomEvent('studentAffairsSync',{detail:ev}));
+function guessWakilPersonNameForRecordsArchive(data){
+  const keys=['اسم الطالب','اسم الموظف','اسم الطالب / الموظف','اسم المعلم/ة','المعلم الغائب','المعلم المنفذ','اسم المحول','المستلم'];
+  for(const k of keys){ if(data[k]) return data[k]; }
+  return '';
 }
-function saveCurrent(){const data=collect();data['آخر حفظ']=new Date().toLocaleString('ar-SA');localStorage.setItem(formKey(),JSON.stringify(data));addArchiveSnapshot(data);publishStudentAffairsSync(current.id,data);renderArchiveRows();alert('تم حفظ النموذج محليًا وإضافته إلى الأرشيف عند توفر السجل المدني/الهوية.')}
+function getCurrentFormHTMLForRecordsArchive(){
+  const page=document.getElementById('formPage');
+  return page ? page.innerHTML : '';
+}
+
+
+function getCurrentRecordPrintableDocumentForArchive(){
+  const styles = Array.from(document.querySelectorAll('style')).map(s=>s.outerHTML).join('\n');
+  const page = document.getElementById('formPage');
+  const title = (current && current.title) ? current.title : 'سجل الوكيل';
+  const content = page ? page.outerHTML : '';
+  return '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>'+title+'</title>'
+    + styles
+    + '<style>'
+    + '@page{size:A4 portrait;margin:0!important;}'
+    + 'html,body{margin:0!important;padding:0!important;background:#fff!important;overflow:visible!important;}'
+    + '.app{display:block!important;min-height:auto!important;}'
+    + '.sidebar,.toolbar,.no-print,.ai-panel,.modal,#topAiCenterIcon,#topAiCenterModal{display:none!important;}'
+    + '.main{display:block!important;padding:0!important;margin:0!important;background:#fff!important;}'
+    + '.page{width:210mm!important;min-height:297mm!important;margin:0 auto!important;box-shadow:none!important;border:0!important;page-break-after:auto!important;break-after:auto!important;}'
+    + '.page:not(:first-of-type){display:none!important;}'
+    + 'input,select,textarea{color:#11221d!important;-webkit-text-fill-color:#11221d!important;}'
+    + '@media print{.page{margin:0!important;page-break-after:auto!important;break-after:auto!important;} body{width:210mm!important;}}'
+    + '</style></head><body><main class="main">'+content+'</main></body></html>';
+}
+
+
+function saveCurrentLocalOnly(){
+  const data = collect();
+  data['آخر حفظ'] = new Date().toLocaleString('ar-SA');
+  localStorage.setItem(formKey(), JSON.stringify(data));
+  return data;
+}
+
+function saveCurrent(){
+  const data = collect();
+  data['آخر حفظ'] = new Date().toLocaleString('ar-SA');
+  localStorage.setItem(formKey(), JSON.stringify(data));
+
+  try{
+    if(window.parent && window.parent !== window){
+      const personName = guessWakilPersonNameForRecordsArchive(data) || 'بدون اسم';
+      window.parent.postMessage({
+        type: 'WAKIL_RECORD_SAVED',
+        payload: {
+          formId: current.id,
+          folderId: current.id,
+          title: current.title,
+          personName: personName,
+          personType: current.kind && String(current.kind).includes('staff')
+            ? 'employee'
+            : (String(current.title || '').includes('موظ') || String(current.title || '').includes('معلم') ? 'employee' : 'student'),
+          summary: Object.entries(data).map(([k,v]) => k + ': ' + v).join('\\n'),
+          htmlContent: getCurrentFormHTMLForRecordsArchive(),
+          printableHTML: getCurrentRecordPrintableDocumentForArchive()
+        }
+      }, '*');
+    }
+  }catch(e){
+    console.error(e);
+  }
+
+  alert('تم حفظ النموذج وإرسال نسخة إلى أرشيف السجلات.');
+}
+
 function clearCurrent(){if(confirm('هل تريد تفريغ هذا النموذج؟')){localStorage.removeItem(formKey());renderForm();loadCurrent()}}
 
 function updateSettingFromInput(el){let st=settings();st[el.dataset.setting]=el.value||'';localStorage.setItem('wakil_settings',JSON.stringify(st));}
@@ -1204,11 +1551,11 @@ function applyAIToCurrentForm(){
   let count=0;
   if(lastAIMap) count=applyAIObject(lastAIMap,overwrite);
   if(!count) count=fallbackApplyAIText(lastAIAnswer || qs('#aiResult').textContent,overwrite);
-  saveCurrent();
-  alert(count ? 'تم تضمين نتيجة الذكاء داخل النموذج وحفظها.' : 'لم يتم العثور على خانات مناسبة للتضمين. يمكنك نسخ النتيجة يدويًا.');
+  saveCurrentLocalOnly();
+  alert(count ? 'تم تضمين نتيجة الذكاء داخل النموذج دون إرسال نسخة للأرشيف.' : 'لم يتم العثور على خانات مناسبة للتضمين. يمكنك نسخ النتيجة يدويًا.');
 }
 async function aiComplete(){
-  saveCurrent();
+  saveCurrentLocalOnly();
   const panel=qs('#aiPanel'),pre=qs('#aiResult');
   panel.style.display='block';
   pre.textContent='جاري توليد مقترحات التعبئة...';
@@ -1344,7 +1691,7 @@ function buildStructuredPrompt(extraText=''){
   }
 
   const schema=getCurrentAISchema();
-  return `أنت Smart Structured AI داخل منصة القيادة المدرسية.
+  return `أنت Smart Structured AI داخل منصة الإدارة المدرسية.
 نوع السجل: ${current.title}
 الشخصية الذكية: ${schema.persona || schema.role || "وكيل مدرسة"}
 إرشادات السجل: ${schema.guidance || schema.outputRules || ""}
@@ -1368,25 +1715,11 @@ ${extraText || "لا يوجد"}
 }
 
 function showCurrentAISchemaInfo(){
-  const s=getCurrentAISchema();
-  const panel=qs('#aiPanel'),pre=qs('#aiResult');
-  if(panel && pre){
-    panel.style.display='block';
-    pre.textContent =
-`AI Schema Engine
-السجل: ${current.title}
-الشخصية الذكية: ${s.persona || s.role || "غير محدد"}
-نبرة الكتابة: ${s.tone || "رسمية"}
-محاور التحليل:
-${(s.analysisFocus || []).map(x=>"- "+x).join("\n")}
-
-الحقول ذات الأولوية:
-${(s.fillPriority || s.required || []).map(x=>"- "+x).join("\n")}`;
-  }
+  return requestStructuredAI('', 'جاري تشغيل شخصية السجل الذكية وتعبئة الحقول المناسبة...');
 }
 
 async function requestStructuredAI(extraText='', modeLabel='جاري توليد تعبئة مهيكلة...'){
-  saveCurrent();
+  saveCurrentLocalOnly();
   const panel=qs('#aiPanel'),pre=qs('#aiResult');
   panel.style.display='block';
   pre.textContent=modeLabel;
@@ -1401,8 +1734,8 @@ async function requestStructuredAI(extraText='', modeLabel='جاري توليد 
     if(lastAIMap){
       pre.textContent=Object.entries(lastAIMap).map(([k,v])=>`${k}:\n${v}`).join('\n\n');
       const count=applyAIObject(lastAIMap,false);
-      saveCurrent();
-      pre.textContent += `\n\nتم تضمين ${count} حقل/حقول تلقائيًا داخل النموذج.`;
+      saveCurrentLocalOnly();
+      pre.textContent += `\n\nتم تضمين ${count} حقل/حقول تلقائيًا داخل النموذج دون إرسال نسخة للأرشيف.`;
       autoGrowAll(qs('#formPage'));
     }else{
       pre.textContent=ans;
@@ -1499,4 +1832,53 @@ aiComplete = async function(){
 };
 
 renderNav();renderForm();loadCurrent();bindAutoGrow(qs('#formPage'));autoGrowAll(qs('#formPage'));
-</script></body></html>
+</script>
+<script id="V39_GITHUB_PAGES_WAKIL_FIX">
+(function(){
+  function fixWakilPaths(){
+    const correctPath = "./records/wakil/wakil-records.html";
+
+    document.querySelectorAll("iframe").forEach(frame=>{
+      const src = frame.getAttribute("src") || "";
+      if(src.includes("wakil-records.html") && src !== correctPath){
+        frame.setAttribute("src", correctPath);
+      }
+    });
+
+    document.querySelectorAll("[onclick]").forEach(el=>{
+      const val = el.getAttribute("onclick") || "";
+      if(val.includes("wakil-records.html")){
+        el.setAttribute(
+          "onclick",
+          val.replace(/['"`][^'"`]*wakil-records\.html['"`]/g, "'" + correctPath + "'")
+        );
+      }
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", fixWakilPaths);
+  window.addEventListener("load", fixWakilPaths);
+
+  setTimeout(fixWakilPaths, 300);
+  setTimeout(fixWakilPaths, 1000);
+  setTimeout(fixWakilPaths, 2500);
+})();
+</script>
+
+<script src="../../active_school_scope.js" defer></script>
+
+
+
+<!-- Unified Comprehensive Cloud Storage -->
+<script src="../../platform-cloud-session.js"></script>
+<script src="../../cloud-file-engine.js"></script>
+<script src="../../cloud-file-bootstrap.js"></script>
+<script src="../../cloud-upload-hub.js"></script>
+<script src="../../cloud-file-auto-sync.js"></script>
+  <script src="../../evidence-library-source.js"></script>
+
+<script src="../../school-information-source.js"></script>
+
+<script defer src="../../unified_workspace.js"></script>
+<script src="platform-page-navigation.js?v=20260818-nav1"></script>
+</body></html>

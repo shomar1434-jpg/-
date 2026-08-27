@@ -33,6 +33,19 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
         let currentUser = null;
         let isManagerVerifiedInSession = false;
 
+        const saveUnifiedUserStores = (users) => {
+            try {
+                const safeUsers = Array.isArray(users) ? users : [];
+                localStorage.setItem('offline_users_backup', JSON.stringify(safeUsers));
+                localStorage.setItem('smartSchoolUnifiedOpsV2_users', JSON.stringify(safeUsers));
+                localStorage.setItem('smart_school_users', JSON.stringify(safeUsers));
+                window.dispatchEvent(new Event('ssDataChanged'));
+            } catch (e) {
+                console.warn('تعذر حفظ مخازن المستخدمين الموحدة', e);
+            }
+        };
+
+
         const showToast = (msg) => {
             const container = document.getElementById('toast-container');
             const t = document.createElement('div');
@@ -42,16 +55,18 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
             setTimeout(() => t.remove(), 3000);
         };
 
-        const isManagerAccount = (name, email) => {
-            const n = (name || "").toLowerCase().trim();
-            const e = (email || "").toLowerCase().trim();
-            // التعرف على الحساب كمدير بناءً على الكلمات المفتاحية أو البريد المرتبط (a123456)
-            const isMatch = n === 'admin' || e === 'admin' || e.includes('a123456') || n === 'مدير' || localStorage.getItem('is_admin_session') === 'true';
-            if (isMatch) {
-                localStorage.setItem('is_admin_session', 'true');
-                localStorage.setItem('admin_verified', 'true');
-            }
-            return isMatch;
+        // SECURITY: لا توجد أي صلاحية مدير نظام مبنية على الاسم/البريد/localStorage.
+        const isManagerAccount = () => false;
+
+        const secureSystemAdminLogin = async (email, password) => {
+            if (!window.SmartSchoolSupabase) throw new Error('Supabase غير جاهز');
+            const sb = window.SmartSchoolSupabase.getClient();
+            const login = await sb.auth.signInWithPassword({ email: String(email||'').trim().toLowerCase(), password: String(password||'') });
+            if (login.error || !login.data?.session) throw new Error('بيانات الدخول غير صحيحة');
+            const session = login.data.session;
+            const invoked = await sb.functions.invoke('system-admin', { body:{action:'verify'} });
+            if(invoked.error || !invoked.data?.ok){ await sb.auth.signOut(); throw new Error(invoked.data?.error || invoked.error?.message || 'ليس لديك صلاحية مدير النظام'); }
+            return { session, user: login.data.user };
         };
 
         const openRegistrationModal = () => { closeModal('registration-modal'); document.getElementById('registration-modal').style.display = 'flex'; };
@@ -64,41 +79,15 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
         };
 
         const submitSchoolRequest = async () => {
-            const schoolName = document.getElementById('school-req-school-name').value.trim();
-            const managerName = document.getElementById('school-req-manager-name').value.trim();
-            const email = document.getElementById('school-req-email').value.trim();
-            const password = document.getElementById('school-req-password').value.trim();
-            if (!schoolName || !managerName || !email || !password) { showToast('يرجى تعبئة اسم المدرسة واسم المدير والبريد والرقم السري'); return; }
-            try {
-                if (!window.SmartSchoolSupabase || !window.SmartSchoolSupabase.createSchoolWithManager) throw new Error('جسر Supabase غير جاهز');
-                const result = await window.SmartSchoolSupabase.createSchoolWithManager({ schoolName, managerName, email, password, status: 'active' });
-                const school = result.school;
-                const manager = result.manager;
-                const localUsers = collectLocalUsersForWorkspace();
-                if (!localUsers.some(u => String(u.email||'').toLowerCase() === String(email).toLowerCase())) {
-                    localUsers.push({ ...manager, role:'leadership', isActive:true, status:'active', schoolName:school.schoolName, schoolId:school.id, accountType:'school_manager', isPrimaryManager:true });
-                   
-                    allUsers = localUsers;
-                }
-                const localSchools = JSON.parse(localStorage.getItem('smart_school_schools') || '[]').filter(s => String(s.id||s.schoolId) !== String(school.id));
-                localSchools.push({ id:school.id, schoolId:school.id, schoolName:school.schoolName, managerName:school.managerName, managerEmail:school.managerEmail, status:school.status, registrationLink:school.registrationLink, loginLink:school.loginLink, createdAt:school.createdAt });
-                localStorage.setItem('smart_school_schools', JSON.stringify(localSchools));
-                closeModal('school-request-modal');
-                showToast('تم إنشاء المدرسة وحفظها في Supabase بنجاح');
-                if (document.getElementById('school-management-modal') && document.getElementById('school-management-modal').style.display === 'flex') renderSchoolManagement();
-            } catch (err) {
-                console.error('Supabase school create failed:', err);
-                showToast('فشل حفظ المدرسة في Supabase: ' + (err.message || err));
-            }
+            showToast('إنشاء المدارس متاح فقط من لوحة مدير النظام بعد تسجيل دخول موثق.');
+            closeModal('school-request-modal');
         };
 
         const submitRegistrationRequest = async () => {
             const name = document.getElementById('reg-name').value.trim();
-            const email = document.getElementById('reg-email').value.trim();
+            const email = normalizeEmail(document.getElementById('reg-email').value);
             const password = document.getElementById('reg-password').value.trim();
-            const rawRegistrationRole = document.getElementById('reg-role').value;
-            const role = rawRegistrationRole === 'agency_student_affairs' ? 'agency' : rawRegistrationRole;
-            const agentSpecialization = rawRegistrationRole === 'agency_student_affairs' ? 'student_affairs' : '';
+            const role = document.getElementById('reg-role').value;
             const phone = document.getElementById('reg-phone').value.trim();
             const nationalId = document.getElementById('reg-national-id').value.trim();
             const schoolName = document.getElementById('reg-school-name').value.trim() || (window.pendingRegistrationInvite?.schoolName || '');
@@ -106,18 +95,19 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
             const urlParams = new URLSearchParams(window.location.search);
             const inviteAdminId = urlParams.get('admin') || window.pendingRegistrationInvite?.admin || '';
             const inviteToken = urlParams.get('token') || window.pendingRegistrationInvite?.token || '';
-            if (!name || !email || !password || !role) { showToast("يرجى تعبئة الاسم وبريد منصة مدرستي والرقم السري والدور"); return; }
+            if (!name || !email || !password || !role) { showToast("يرجى تعبئة الاسم والبريد الرسمي لحساب Microsoft Teams والرقم السري والدور"); return; }
+            if (!isValidMicrosoftEmail(email)) { showToast("يرجى إدخال بريد Microsoft صحيح"); return; }
             if (!inviteAdminId || !inviteToken) { showToast("رابط التسجيل غير صالح أو غير مرتبط بحساب مدير"); return; }
             const requestId = 'reg_' + Date.now() + '_' + Math.random().toString(36).slice(2);
             const userData = {
                 id: requestId,
                 name,
                 email,
+                microsoftEmail: email,
                 password,
                 loginPassword: password,
                 passwordMasked: '••••••',
                 role,
-                agentSpecialization,
                 phone,
                 nationalId,
                 schoolName,
@@ -152,42 +142,29 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
         };
 
         const handleAdminDirectEntry = async () => {
-            const n = document.getElementById('user-display-name').value.trim();
-            const e = document.getElementById('user-madrasati-email').value.trim();
-            
-            if (isManagerAccount(n, e)) {
+            const e = normalizeEmail(document.getElementById('system-admin-email')?.value || '');
+            const password = String(document.getElementById('system-admin-password')?.value || '');
+            if(!e || !password){ showToast('أدخل بريد مدير النظام وكلمة المرور'); return; }
+            try{
+                const verified = await secureSystemAdminLogin(e,password);
                 isManagerVerifiedInSession = true;
-                localStorage.setItem('is_admin_session', 'true');
+                sessionStorage.setItem('system_admin_verified','true');
+                localStorage.removeItem('is_admin_session'); localStorage.removeItem('admin_verified');
                 document.getElementById('waiting-screen').classList.add('hidden');
-
-                const tempAdminData = { id: 'root', name: n || 'مدير النظام', email: e || 'admin', role: 'leadership', isActive: true };
-                startApp(tempAdminData);
-
-                try {
-                    const user = await window.ensureAuth();
-                    if (user) {
-                        // حفظ بيانات المدير في المجموعة العامة ليظهر في القائمة
-                        await window.fs.setDoc(window.fs.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'users', user.uid), { ...tempAdminData, id: user.uid }, {merge:true});
-                        currentUser.id = user.uid;
-                        localStorage.setItem('cached_manager_uid', user.uid);
-                    }
-                } catch(err) { console.warn("Background Auth Delayed"); }
-            } else {
-                if (!n || !e) showToast("يرجى إدخال البيانات");
-                else checkUserStatus();
-            }
+                startApp({id:verified.user.id,name:'مدير/ة النظام',email:e,microsoftEmail:e,role:'leadership',isActive:true,isRootAdmin:true});
+            }catch(err){ isManagerVerifiedInSession=false; sessionStorage.removeItem('system_admin_verified'); showToast(err.message||'تم رفض الدخول'); }
         };
 
         const handleRoleSelection = async (role) => {
             const n = document.getElementById('user-display-name').value.trim();
-            const e = document.getElementById('user-madrasati-email').value.trim();
+            const e = normalizeEmail(document.getElementById('user-madrasati-email').value);
             if (!n || !e) { showToast("يرجى إدخال البيانات"); return; }
             try {
                 const user = await window.ensureAuth();
                 const isManager = isManagerAccount(n, e);
                 if (isManager) {
                     isManagerVerifiedInSession = true;
-                    const userData = { id: user.uid, name: n, email: e, role: 'leadership', isActive: true, isRootAdmin: true };
+                    const userData = { id: user.uid, name: n, email: e, microsoftEmail: e, role: 'leadership', isActive: true, isRootAdmin: true };
                     await window.fs.setDoc(window.fs.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'users', user.uid), userData, { merge: true });
                     startApp(userData);
                     return;
@@ -200,12 +177,13 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
         const checkUserStatus = async () => {
             try {
                 const n = document.getElementById('user-display-name').value.trim();
-                const e = document.getElementById('user-madrasati-email').value.trim();
-                const isRoot = isManagerVerifiedInSession || isManagerAccount(n, e) || localStorage.getItem('is_admin_session') === 'true';
+                const e = normalizeEmail(document.getElementById('user-madrasati-email').value);
+                const isRoot = sessionStorage.getItem('system_admin_verified') === 'true' || sessionStorage.getItem('system_admin_context') === '1';
                 
                 if (isRoot) {
+                    isManagerVerifiedInSession = true;
                     document.getElementById('waiting-screen').classList.add('hidden');
-                    startApp({ id: 'root', name: n || 'المدير', email: e || 'admin', role: 'leadership', isActive: true });
+                    startApp({ id: 'root', name: 'مدير/ة النظام', email: e || '', role: 'leadership', isActive: true, isRootAdmin: true });
                     return;
                 }
 
@@ -224,14 +202,37 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
             } catch(e) {}
         };
 
+        const clearIndependentSchoolContextForSystemAdmin = () => {
+            const localKeys = [
+                'current_school_id','current_school_name','active_school_id','active_school_name',
+                'school_id','school_name','smart_school_id','smart_school_name','persist_school',
+                'smart_school_current_session','independent_school_mode','smartSchool.currentSchool',
+                'smart_school_active_school','smart_school_active_school_id','smart_school_active_school_name'
+            ];
+            const sessionKeys = [
+                'smart_school_current_session','independent_school_mode','smartSchool:activeSchool',
+                'active_school_id','active_school_name','current_school_id','current_school_name'
+            ];
+            try { localKeys.forEach(k => localStorage.removeItem(k)); } catch(e) {}
+            try { sessionKeys.forEach(k => sessionStorage.removeItem(k)); } catch(e) {}
+            try {
+                sessionStorage.setItem('system_admin_context','1');
+                sessionStorage.setItem('system_admin_verified','true');
+            } catch(e) {}
+        };
+
         const startApp = (u) => {
             currentUser = u;
+            if (u && (u.isRootAdmin === true || (u.role === 'leadership' && sessionStorage.getItem('system_admin_verified') === 'true'))) {
+                u.isRootAdmin = true;
+                clearIndependentSchoolContextForSystemAdmin();
+            }
             document.getElementById('waiting-screen').classList.add('hidden');
             document.getElementById('role-selector-screen').classList.add('login-hidden'); document.getElementById('role-selector-screen').style.display = 'none';
             document.getElementById('main-ui').classList.remove('opacity-0', 'pointer-events-none');
             document.getElementById('main-ui').style.opacity = '1';
             document.getElementById('main-ui').style.display = 'flex';
-            document.getElementById('active-role-badge').innerText = u.role === 'leadership' ? 'مدير النظام' : 'منسوب/ة المدرسة';
+            document.getElementById('active-role-badge').innerText = u.role === 'leadership' ? 'مدير/ة النظام' : 'منسوب/ة المدرسة';
             renderGrid(u.role);
             syncCloudData();
             syncNotifications();
@@ -269,46 +270,74 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
         };
 
         const renderGrid = (role) => {
-            const grid = document.getElementById('apps-grid');
-            if (!grid) return;
-            grid.innerHTML = '';
-            const apps = role === 'leadership' ? ['leadership', 'agency', 'performance'] : [role];
-            apps.forEach(appId => {
-                const titles = { 'leadership': '🏛️ قسم مدير النظام', 'agency': '📑 قسم الوكيل/ة', 'performance': '👨‍🏫 قسم المعلم/ة' };
-                const card = document.createElement('div');
-                card.className = "app-card p-8 text-center cursor-pointer shadow-lg hover:shadow-2xl transition-all hover:scale-105";
-                card.innerHTML = `<h2 class="font-bold text-xl text-slate-800">${titles[appId]}</h2><p class="text-[10px] text-teal-600 mt-2 font-bold">نظام نشط ومؤمن ✅</p><button class="mt-6 bg-teal-700 text-white px-6 py-2 rounded-xl w-full font-bold shadow-md">دخول</button>`;
-                card.onclick = () => launchApp(appId);
-                grid.appendChild(card);
-            });
-            if (role === 'leadership') {
-                const schoolCard = document.createElement('div');
-                schoolCard.className = "app-card p-8 text-center cursor-pointer shadow-lg hover:shadow-2xl transition-all hover:scale-105";
-                schoolCard.innerHTML = `<h2 class="font-bold text-xl text-slate-800">🏫 إدارة المدارس</h2><p class="text-[10px] text-teal-600 mt-2 font-bold">إنشاء المدارس وربط المديرين والروابط المستقلة</p><button class="mt-6 bg-teal-700 text-white px-6 py-2 rounded-xl w-full font-bold shadow-md">فتح الإدارة</button>`;
-                schoolCard.onclick = () => showSchoolManagementPanel();
-                grid.appendChild(schoolCard);
-            }
-        };
+    const grid = document.getElementById('apps-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    const isSystemAdmin = !!(
+        currentUser?.isRootAdmin ||
+        currentUser?.role === 'owner' ||
+        sessionStorage.getItem('system_admin_context') === '1' ||
+        sessionStorage.getItem('system_admin_verified') === 'true'
+    );
+    const apps = role === 'leadership'
+        ? ['leadership','agency','performance','health_advisor','kindergarten_teacher','student_advisor','activity_leader','administrative_employee']
+        : [role];
+    if (role === 'leadership' && isSystemAdmin) apps.push('school_management');
+    const meta = {
+        leadership:{title:'قسم مدير/ة النظام',icon:'🏛️',tone:'blue'},
+        agency:{title:'قسم الوكيل/ة',icon:'👥',tone:'purple'},
+        performance:{title:'قسم المعلم/المعلمة',icon:'👨‍🏫',tone:'green'},
+        administrative_employee:{title:'قسم الموظف/ة الإداري/ة',icon:'💼',tone:'teal'},
+        activity_leader:{title:'قسم رائد/ة النشاط',icon:'🏃',tone:'orange'},
+        student_advisor:{title:'قسم الموجه/الموجهة الطلابية',icon:'🧭',tone:'violet'},
+        health_advisor:{title:'قسم الموجه الصحي',icon:'🩺',tone:'teal'},
+        kindergarten_teacher:{title:'قسم معلمة رياض الأطفال',icon:'🧸',tone:'orange'},
+        school_management:{title:'إدارة المدارس',icon:'🏫',tone:'green',desc:'إدارة المدارس المستقلة والحسابات'}
+    };
+    apps.forEach(appId=>{
+        const item=meta[appId]||{title:appId,icon:'📌',tone:'teal'};
+        const card=document.createElement('div');
+        card.className='app-card text-center cursor-pointer shadow-lg transition-all'+(appId==='school_management'?' school-management-card':'');
+        card.innerHTML=`<div><div class="role-icon role-${item.tone}">${item.icon}</div><h2 class="font-bold text-xl text-slate-800">${item.title}</h2><p class="text-[10px] text-teal-600 mt-2 font-bold">${item.desc||'نظام نشط ومؤمن ✅'}</p><button class="mt-6 bg-teal-700 text-white px-6 py-2 rounded-xl w-full font-bold shadow-md">${appId==='school_management'?'إدارة':'دخول'}</button></div>`;
+        card.onclick=()=>launchApp(appId);
+        grid.appendChild(card);
+    });
+};
+const launchApp = (appId) => {
+    if (appId === 'school_management') {
+        if (typeof showSchoolManagementPanel === 'function') showSchoolManagementPanel();
+        else showToast('تعذر فتح إدارة المدارس الآن');
+        return;
+    }
 
-        const launchApp = (appId) => {
-            const files = { 'leadership': 'manager.html', 'agency': 'agent.html', 'performance': 'teacher.html' };
+            const files = { 'leadership': 'manager.html', 'agency': 'agent.html', 'performance': 'teacher.html', 'health_advisor': 'health_advisor.html', 'kindergarten_teacher': 'kindergarten_teacher.html', 'student_advisor': 'student_advisor.html', 'activity_leader': 'activity_leader.html', 'administrative_employee': 'administrative_employee_portal.html' };
             const target = files[appId];
             if (!target) return showToast('لم يتم العثور على ملف القسم');
+            const isSystemAdmin = !!(currentUser?.isRootAdmin || sessionStorage.getItem('system_admin_context') === '1' || sessionStorage.getItem('system_admin_verified') === 'true');
             try {
-                localStorage.setItem('currentRole', currentUser?.role || appId);
+                const tabRole=(isSystemAdmin && appId==='administrative_employee')?'system_admin':(currentUser?.role || appId);
+                sessionStorage.setItem('smart_school_tab_role_v1',tabRole);
+                if(isSystemAdmin && appId==='administrative_employee'){
+                    sessionStorage.setItem('system_admin_context','1');
+                    sessionStorage.setItem('system_admin_verified','true');
+                }else{
+                    localStorage.setItem('currentRole', currentUser?.role || appId);
+                }
                 localStorage.setItem('currentUserName', currentUser?.name || '');
                 localStorage.setItem('currentUserEmail', currentUser?.email || '');
                 localStorage.setItem('smart_school_active_role', appId);
-                localStorage.setItem('currentAgentSpecialization', currentUser?.agentSpecialization || '');
-                if(currentUser?.schoolId) localStorage.setItem('smart_school_current_school_id', currentUser.schoolId);
             } catch(e) {}
-            let suffix = `?role=${encodeURIComponent(currentUser?.role || appId)}&uid=${encodeURIComponent(currentUser?.id || '')}&specialization=${encodeURIComponent(currentUser?.agentSpecialization || '')}&school_id=${encodeURIComponent(currentUser?.schoolId || '')}`;
-            if ((currentUser?.role || '') === 'leadership') suffix += `&admin=true&bypass=true`;
+            if(isSystemAdmin && appId==='administrative_employee'){
+                window.location.href = target + '?mode=system_admin&systemAdmin=1&returnHome=' + encodeURIComponent('index.html?systemAdminReturn=1');
+                return;
+            }
+            let suffix = `?role=${encodeURIComponent(currentUser?.role || appId)}&uid=${encodeURIComponent(currentUser?.id || '')}`;
+            if (isSystemAdmin) suffix += '&systemAdmin=1&returnHome=' + encodeURIComponent('index.html?systemAdminReturn=1');
             window.location.href = target + suffix;
         };
 
         const roleLabel = (role) => {
-            const labels = { leadership: 'قسم مدير النظام', agency: 'قسم الوكيل/ة', performance: 'قسم المعلم/ة' };
+            const labels = { leadership: 'قسم مدير/ة النظام', agency: 'قسم الوكيل/الوكيلة/ة', performance: 'قسم المعلم/المعلمة', health_advisor: 'قسم الموجه الصحي', kindergarten_teacher: 'قسم معلمة رياض الأطفال', student_advisor: 'قسم الموجه/الموجهة الطلابية', activity_leader: 'قسم رائد/ة النشاط', administrative_employee: 'قسم الموظف/ة الإداري/ة' };
             return labels[role] || role || 'غير محدد';
         };
 
@@ -451,10 +480,11 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
         const normalizeImportedRole = (value) => {
             const v = String(value || '').trim().toLowerCase();
             if (!v) return 'performance';
-            if (['leadership', 'manager', 'admin', 'مدير', 'مديرة', 'قائد', 'قائدة', 'المدير', 'المديرة'].includes(v)) return 'leadership';
-            if (/شؤون\s*الطلاب|student\s*affairs/i.test(v)) return 'agency';
+            if (['leadership', 'manager', 'admin', 'مدير', 'مديرة', 'مدير', 'مديرة', 'المدير', 'المديرة'].includes(v)) return 'leadership';
             if (['agency', 'agent', 'vice', 'وكيل', 'وكيلة', 'الوكيل', 'الوكيلة'].includes(v)) return 'agency';
             if (['performance', 'teacher', 'معلم', 'معلمة', 'المعلم', 'المعلمة'].includes(v)) return 'performance';
+            if (['student_advisor','advisor','counselor','موجه','موجهة','الموجه','الموجهة','موجه/موجهة طلابية','موجهة طلابية'].includes(v)) return 'student_advisor';
+            if (['activity_leader','activity','leader','رائد','رائدة','رائد النشاط','رائدة النشاط'].includes(v)) return 'activity_leader';
             return 'performance';
         };
 
@@ -512,7 +542,6 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
                 if (seenEmails.has(normalizedEmail)) { valid = false; notes.push('البريد مكرر داخل الملف'); }
                 if (normalizedEmail) seenEmails.add(normalizedEmail);
                 const role = normalizeImportedRole(rawRole);
-                const agentSpecialization = /شؤون\s*الطلاب|student\s*affairs/i.test(String(rawRole||'')) ? 'student_affairs' : '';
                 const userData = {
                     id: 'excel-' + Date.now() + '-' + index + '-' + Math.random().toString(36).slice(2, 8),
                     name,
@@ -521,7 +550,6 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
                     loginPassword: password,
                     passwordMasked: password ? '••••••' : '',
                     role,
-                    agentSpecialization,
                     phone,
                     nationalId,
                     isActive: false,
@@ -579,8 +607,8 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
         };
 
         const canMonitorRole = (targetRole) => {
-            if (['leadership','manager'].includes(currentUser?.role)) return ['agency', 'performance', 'agent', 'teacher'].includes(targetRole);
-            if (['agency','agent'].includes(currentUser?.role)) return ['performance','teacher'].includes(targetRole);
+            if (['leadership','manager'].includes(currentUser?.role)) return ['agency', 'performance', 'student_advisor', 'activity_leader', 'agent', 'teacher', 'advisor', 'activity'].includes(targetRole);
+            if (['agency','agent'].includes(currentUser?.role)) return ['performance','teacher','activity_leader','activity'].includes(targetRole);
             return false;
         };
 
@@ -589,12 +617,16 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
             if (currentUser?.role === 'agency' && role !== 'performance') {
                 return showToast('صلاحية الوكيل/ة تشمل متابعة المعلمين/المعلمات فقط');
             }
-            const titleMap = { leadership: '🏛️ قائمة قسم مدير النظام', agency: '📑 قائمة قسم الوكيل/ة', performance: '👨‍🏫 قائمة قسم المعلم/ة' };
+            const titleMap = { leadership: '🏛️ قائمة قسم مدير/ة النظام', agency: '📑 قائمة قسم الوكيل/الوكيلة/ة', performance: '👨‍🏫 قائمة قسم المعلم/المعلمة/ة', student_advisor: '🧭 قائمة قسم الموجه/الموجهة الطلابية', activity_leader: '🏃 قائمة قسم رائد/ة النشاط' };
             document.getElementById('role-list-title').innerText = titleMap[role] || 'القائمة';
             const container = document.getElementById('role-list-container');
             container.innerHTML = '';
             const filtered = getVisibleUsersForCurrentManager().filter(u => u.role === role && u.isActive === true && u.isDeleted !== true).sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''), 'ar'));
-            if (filtered.length === 0) container.innerHTML = '<p class="text-center text-slate-400 text-xs py-10 col-span-2">لا يوجد مستخدمون مسجلون في هذا القسم</p>';
+            if (filtered.length === 0) {
+                const emptyMsg = role === 'activity_leader' ? 'لا يوجد رائد/ة نشاط مضاف/ة في هذه المدرسة' : 'لا يوجد مستخدمون مسجلون في هذا القسم';
+                container.innerHTML = '<p class="text-center text-slate-400 text-xs py-10 col-span-2">' + emptyMsg + '</p>';
+                if (role === 'activity_leader') showToast('لا يوجد رائد/ة نشاط مضاف/ة');
+            }
             filtered.forEach(u => {
                 const card = document.createElement('div');
                 const activeClasses = u.isActive ? 'border-teal-600' : 'border-yellow-500 opacity-75';
@@ -675,12 +707,12 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
                 document.getElementById('monitored-user-name').innerText = target.name || name || 'مستخدم';
                 document.getElementById('backBtn').classList.add('visible');
                 const targetRole = target.role || role;
-                const files = { 'agency': 'agent.html', 'agent': 'agent.html', 'performance': 'teacher.html', 'teacher': 'teacher.html' };
+                const files = { 'agency': 'agent.html', 'agent': 'agent.html', 'performance': 'teacher.html', 'teacher': 'teacher.html', 'student_advisor': 'student_advisor.html', 'advisor': 'student_advisor.html', 'activity_leader': 'activity_leader.html', 'activity': 'activity_leader.html', 'activity-leader': 'activity_leader.html', 'leader': 'activity_leader.html' };
                 const iframe = v.querySelector('iframe');
                 const file = files[targetRole] || (String(targetRole).includes('agent') ? 'agent.html' : 'teacher.html');
                 const followEmail = normalizeAccountEmail(target.email || target.schoolEmail);
                 sessionStorage.setItem('smartSchoolUnifiedOpsV2_last_follow_target', JSON.stringify({id:target.id || uid,name:target.name || name,role:targetRole,email:followEmail,workspaceReady:true}));
-                iframe.src = file + `?follow=1&readonly=1&mode=supervisor_readonly&targetUser=${encodeURIComponent(target.id || uid)}&followUserId=${encodeURIComponent(target.id || uid)}&userId=${encodeURIComponent(target.id || uid)}&uid=${encodeURIComponent(target.id || uid)}&followEmail=${encodeURIComponent(followEmail)}&targetEmail=${encodeURIComponent(followEmail)}&targetRole=${encodeURIComponent(targetRole)}&viewer=${encodeURIComponent(currentUser.role)}&viewerRole=${encodeURIComponent(currentUser.role)}&blockNewReport=true&archiveReadOnly=true&workspaceReady=true`;
+                iframe.src = file + `?follow=1&readonly=1&mode=supervisor_readonly&targetUser=${encodeURIComponent(target.id || uid)}&followUserId=${encodeURIComponent(target.id || uid)}&userId=${encodeURIComponent(target.id || uid)}&uid=${encodeURIComponent(target.id || uid)}&followEmail=${encodeURIComponent(followEmail)}&targetEmail=${encodeURIComponent(followEmail)}&targetRole=${encodeURIComponent(targetRole)}&viewer=${encodeURIComponent(currentUser.role)}&viewerRole=${encodeURIComponent(currentUser.role)}&returnRole=${encodeURIComponent(currentUser.role)}&schoolId=${encodeURIComponent(currentUser.schoolId || '')}&schoolMode=independent&independent=true&loginMode=direct&direct=1&blockNewReport=true&archiveReadOnly=true&workspaceReady=true`;
                 applyMonitoringRestrictions(iframe);
             }
             closeModal('role-list-modal');
@@ -688,7 +720,7 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
 
         const getAllowedNotificationRecipients = () => {
             const role = currentUser?.role || 'performance';
-            const allowedRoles = role === 'leadership' ? ['agency', 'performance'] : (role === 'agency' ? ['performance'] : []);
+            const allowedRoles = role === 'leadership' ? ['agency', 'performance', 'student_advisor', 'activity_leader'] : (role === 'agency' ? ['performance','activity_leader'] : []);
             return getVisibleUsersForCurrentManager()
                 .filter(u => u && u.isActive && allowedRoles.includes(u.role) && u.id !== currentUser?.id)
                 .sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''), 'ar'));
@@ -717,7 +749,7 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
                 label.innerHTML = `<input type="checkbox" class="notif-recipient" value="${safeJs(u.id)}" data-role="${safeJs(u.role)}" data-name="${safeJs(u.name)}"><span><b>${u.name || 'بدون اسم'}</b><br><small class="text-slate-500">${roleLabel(u.role)}</small></span>`;
                 list.appendChild(label);
             });
-            if (hint) hint.innerText = currentUser?.role === 'agency' ? 'يمكن للوكيل/ة الإرسال إلى قسم المعلم/ة فقط.' : 'يمكن للمدير/ة الإرسال إلى قسم الوكيل/ة وقسم المعلم/ة.';
+            if (hint) hint.innerText = currentUser?.role === 'agency' ? 'يمكن للوكيل/ة الإرسال إلى قسم المعلم/المعلمة/ة فقط.' : 'يمكن للمدير/ة الإرسال إلى قسم الوكيل/الوكيلة/ة وقسم المعلم/المعلمة/ة.';
         };
 
         const toggleNotifRecipients = (checked) => {
@@ -802,19 +834,13 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
             document.getElementById('alerts-popup-modal').style.display = 'flex';
         };
 
-        const openEditModal = (uid, n, e, r, active = true) => { 
+        const openEditModal = (uid, n, e, r, active = true, microsoftUserId = '') => { 
             document.getElementById('edit-uid').value = uid; 
             document.getElementById('edit-name').value = n; 
-            document.getElementById('edit-email').value = e; 
-            document.getElementById('edit-role').value = r || 'performance';
-            const specSelect = document.getElementById('edit-agent-specialization');
-            const existingUser = (allUsers || []).find(u => String(u.id) === String(uid));
-            if (specSelect) {
-                specSelect.value = existingUser?.agentSpecialization || '';
-                specSelect.classList.toggle('hidden', (r || 'performance') !== 'agency');
-            }
-            const roleSelect = document.getElementById('edit-role');
-            if (roleSelect) roleSelect.onchange = () => { if (specSelect) specSelect.classList.toggle('hidden', roleSelect.value !== 'agency'); };
+            document.getElementById('edit-email').value = e;
+            const msIdInput = document.getElementById('edit-microsoft-user-id');
+            if (msIdInput) msIdInput.value = microsoftUserId || getMicrosoftUserId((Array.isArray(allUsers) ? allUsers : []).find(u => String(u.id) === String(uid)) || {}); 
+            document.getElementById('edit-role').value = r || 'performance'; 
             const activeSelect = document.getElementById('edit-active');
             if (activeSelect) activeSelect.value = active ? 'true' : 'false';
             document.getElementById('edit-modal-title').innerText = uid && String(uid).startsWith('user-') ? 'إضافة مستخدم جديد' : 'تعديل المستخدم والصلاحيات';
@@ -825,25 +851,30 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
         const saveUserEdit = async () => {
             const uid = document.getElementById('edit-uid').value;
             const name = document.getElementById('edit-name').value.trim();
-            const email = document.getElementById('edit-email').value.trim();
+            const email = normalizeEmail(document.getElementById('edit-email').value);
+            const microsoftUserId = normalizeMicrosoftUserId(document.getElementById('edit-microsoft-user-id')?.value);
             const role = document.getElementById('edit-role').value;
-            const agentSpecialization = role === 'agency' ? (document.getElementById('edit-agent-specialization')?.value || '') : '';
             const selectedActive = document.getElementById('edit-active') ? document.getElementById('edit-active').value === 'true' : true;
             
-            if (!name || !email) { showToast("يرجى ملء البيانات"); return; }
+            if (!name || !email) { showToast("يرجى ملء الاسم والبريد الرسمي لحساب Microsoft Teams"); return; }
+            if (!isValidMicrosoftEmail(email)) { showToast("يرجى إدخال بريد Microsoft صحيح"); return; }
+            const duplicateMicrosoftEmail = (Array.isArray(allUsers) ? allUsers : []).some(u => String(u.id) !== String(uid) && getMicrosoftEmail(u) === email && (!currentMeetingSchoolId() || !u.schoolId && !u.school_id || String(u.schoolId || u.school_id) === currentMeetingSchoolId()));
+            if (duplicateMicrosoftEmail) { showToast("هذا البريد مرتبط بمستخدم آخر داخل المدرسة"); return; }
+            const duplicateMicrosoftUserId = microsoftUserId && (Array.isArray(allUsers) ? allUsers : []).some(u => String(u.id) !== String(uid) && getMicrosoftUserId(u) === microsoftUserId && (!currentMeetingSchoolId() || (!u.schoolId && !u.school_id) || String(u.schoolId || u.school_id) === currentMeetingSchoolId()));
+            if (duplicateMicrosoftUserId) { showToast("معرف Microsoft Object ID مرتبط بمستخدم آخر داخل المدرسة"); return; }
             
             // في حال كان المستخدم الحالي هو admin وقام بتعديل نفسه، نضمن بقاءه مديراً
             const isEditingSelfAdmin = (uid === 'root' || uid === window.auth.currentUser?.uid) && isManagerVerifiedInSession;
             const finalRole = isEditingSelfAdmin ? 'leadership' : role;
             
-            const previousUser = (allUsers || []).find(u => String(u.id) === String(uid)) || {};
             const userData = { 
-                ...previousUser,
                 id: uid, 
                 name, 
-                email, 
-                role: finalRole,
-                agentSpecialization: finalRole === 'agency' ? agentSpecialization : '',
+                email,
+                microsoftEmail: email,
+                microsoftUserId,
+                microsoft_user_id: microsoftUserId || null,
+                role: finalRole, 
                 isActive: isEditingSelfAdmin ? true : selectedActive,
                 adminOwnerId: isEditingSelfAdmin ? getManagerOwnerId() : (allUsers.find(u => u.id === uid)?.adminOwnerId || getManagerOwnerId()),
                 createdByAdminId: getManagerOwnerId(),
@@ -874,7 +905,9 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
                 if(isEditingSelfAdmin) {
                     currentUser.name = name;
                     currentUser.email = email;
-                    document.getElementById('active-role-badge').innerText = 'مدير النظام';
+                    currentUser.microsoftEmail = email;
+                    currentUser.microsoftUserId = microsoftUserId;
+                    document.getElementById('active-role-badge').innerText = 'مدير/ة النظام';
                 }
             } catch(e) {
                 showToast("تم الحفظ محلياً بنجاح ⚠️ (السحابة قيد المزامنة)");
@@ -913,6 +946,19 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
         let currentMeetingForPrint = null;
 
         const meetingsStorageKey = () => 'school_meetings_archive_' + (getManagerOwnerId ? getManagerOwnerId() : 'default');
+        const meetingsCloudSyncKey = () => meetingsStorageKey() + '_cloud_sync';
+
+        const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+        const isValidMicrosoftEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(value));
+        const getMicrosoftEmail = (user) => normalizeEmail(user?.microsoftEmail || user?.microsoft_email || user?.email);
+        const normalizeMicrosoftUserId = (value) => String(value || '').trim().toLowerCase();
+        const getMicrosoftUserId = (user) => normalizeMicrosoftUserId(user?.microsoftUserId || user?.microsoft_user_id || user?.azureObjectId || user?.azure_object_id || user?.aadObjectId || user?.aad_object_id);
+        const currentMeetingSchoolId = () => String(
+            currentUser?.schoolId || currentUser?.school_id ||
+            localStorage.getItem('current_school_id') || localStorage.getItem('school_id') ||
+            localStorage.getItem('smart_school_id') || ''
+        ).trim();
+        const meetingSupabase = () => window.SmartSchoolSupabase?.getClient?.() || null;
 
         const getStoredMeetings = () => {
             try { return JSON.parse(localStorage.getItem(meetingsStorageKey()) || '[]'); }
@@ -920,6 +966,142 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
         };
 
         const setStoredMeetings = (items) => localStorage.setItem(meetingsStorageKey(), JSON.stringify(items || []));
+
+        const mapCloudMeeting = (row) => ({
+            id: row.id,
+            cloudId: row.id,
+            schoolId: row.school_id || '',
+            title: row.title || 'اجتماع',
+            teamsUrl: row.meeting_link || row.teams_url || row.teamsUrl || '',
+            type: row.meeting_type || row.type || '',
+            date: row.meeting_date || row.date || '',
+            time: row.meeting_time || row.time || '',
+            agenda: row.agenda || '',
+            minutes: row.minutes || '',
+            recommendations: row.recommendations || row.decisions || '',
+            tasks: row.tasks || '',
+            status: row.status || 'draft',
+            attendance: Array.isArray(row.attendance) ? row.attendance : [],
+            participants: Array.isArray(row.participants) ? row.participants : [],
+            attachments: Array.isArray(row.attachments) ? row.attachments : [],
+            chat: Array.isArray(row.chat_notes) ? row.chat_notes : [],
+            createdBy: row.created_by_name || row.created_by || '',
+            createdByEmail: row.created_by_email || '',
+            approvedBy: row.approved_by || null,
+            approvedAt: row.approved_at ? new Date(row.approved_at).getTime() : null,
+            createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
+            updatedAt: row.updated_at ? new Date(row.updated_at).getTime() : null,
+            syncStatus: 'synced',
+            cloudOnly: true
+        });
+
+        const syncMeetingsFromCloud = async () => {
+            const sb = meetingSupabase();
+            const schoolId = currentMeetingSchoolId();
+            if (!sb || !schoolId) return getStoredMeetings();
+            try {
+                const { data, error } = await sb.from('meetings').select('*').eq('school_id', schoolId).order('created_at', { ascending: false });
+                if (error) throw error;
+                const local = getStoredMeetings();
+                const byCloudId = new Map(local.filter(x => x.cloudId).map(x => [String(x.cloudId), x]));
+                const cloud = (data || []).map(row => {
+                    const cached = byCloudId.get(String(row.id)) || {};
+                    return { ...cached, ...mapCloudMeeting(row), syncStatus: 'synced' };
+                });
+                const localOnly = local.filter(x => !x.cloudId || !cloud.some(c => String(c.cloudId) === String(x.cloudId)));
+                const merged = [...cloud, ...localOnly].sort((a,b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+                setStoredMeetings(merged);
+                localStorage.setItem(meetingsCloudSyncKey(), new Date().toISOString());
+                return merged;
+            } catch (error) {
+                console.warn('تعذر مزامنة الاجتماعات من Supabase', error);
+                return getStoredMeetings();
+            }
+        };
+
+        const insertMeetingInCloud = async (record) => {
+            const sb = meetingSupabase();
+            const schoolId = currentMeetingSchoolId();
+            if (!sb || !schoolId) throw new Error('تعذر تحديد المدرسة أو الاتصال بـ Supabase');
+            const corePayload = {
+                school_id: schoolId,
+                title: record.title,
+                meeting_link: record.teamsUrl || null
+            };
+            const fullPayload = {
+                ...corePayload,
+                meeting_type: record.type || null,
+                meeting_date: record.date || null,
+                meeting_time: record.time || null,
+                agenda: record.agenda || null,
+                recommendations: record.recommendations || null,
+                tasks: record.tasks || null,
+                participants: record.participants || [],
+                attachments: record.attachments || [],
+                chat_notes: record.chat || [],
+                attendance: record.attendance || [],
+                minutes: record.minutes || null,
+                status: record.status || 'draft',
+                created_by: currentUser?.id || null,
+                created_by_name: record.createdBy || null,
+                created_by_email: record.createdByEmail || null
+            };
+            let result = await sb.from('meetings').insert(fullPayload).select('*').single();
+            // توافق رجعي مع بنية الجدول الحالية قبل تشغيل ملف ترقية Supabase المرفق.
+            if (result.error && /column|schema cache|could not find/i.test(String(result.error.message || result.error))) {
+                result = await sb.from('meetings').insert(corePayload).select('*').single();
+            }
+            if (result.error) throw result.error;
+            return result.data;
+        };
+
+        const updateMeetingInCloud = async (record, changes = {}) => {
+            const sb = meetingSupabase();
+            const schoolId = currentMeetingSchoolId();
+            const cloudId = record?.cloudId || record?.id;
+            if (!sb || !schoolId || !cloudId || String(cloudId).startsWith('meet-')) {
+                throw new Error('لا يوجد معرف سحابي صالح للاجتماع');
+            }
+            const payload = {
+                title: changes.title ?? record.title,
+                meeting_link: changes.teamsUrl ?? record.teamsUrl ?? null,
+                meeting_type: changes.type ?? record.type ?? null,
+                meeting_date: changes.date ?? record.date ?? null,
+                meeting_time: changes.time ?? record.time ?? null,
+                agenda: changes.agenda ?? record.agenda ?? null,
+                minutes: changes.minutes ?? record.minutes ?? null,
+                recommendations: changes.recommendations ?? record.recommendations ?? null,
+                tasks: changes.tasks ?? record.tasks ?? null,
+                attendance: changes.attendance ?? record.attendance ?? [],
+                participants: changes.participants ?? record.participants ?? [],
+                attachments: changes.attachments ?? record.attachments ?? [],
+                chat_notes: changes.chat ?? record.chat ?? [],
+                status: changes.status ?? record.status ?? 'draft',
+                approved_by: changes.approvedBy ?? record.approvedBy ?? null,
+                approved_at: changes.approvedAt ? new Date(changes.approvedAt).toISOString() : (record.approvedAt ? new Date(record.approvedAt).toISOString() : null),
+                updated_at: new Date().toISOString()
+            };
+            const { data, error } = await sb.from('meetings').update(payload).eq('id', cloudId).eq('school_id', schoolId).select('*').single();
+            if (error) throw error;
+            return data;
+        };
+
+        const retryPendingMeetingSync = async () => {
+            const all = getStoredMeetings();
+            const pending = all.filter(m => !m.cloudId && ['pending','local_only'].includes(m.syncStatus));
+            if (!pending.length) return;
+            for (const record of pending) {
+                try {
+                    const row = await insertMeetingInCloud(record);
+                    Object.assign(record, mapCloudMeeting(row), { syncStatus: 'synced', syncedAt: Date.now() });
+                    delete record.syncError;
+                } catch (error) {
+                    record.syncStatus = 'local_only';
+                    record.syncError = error?.message || String(error);
+                }
+            }
+            setStoredMeetings(all);
+        };
 
         const showMeetingsRoom = () => {
             if (!currentUser) return showToast('يرجى تسجيل الدخول أولاً');
@@ -931,6 +1113,7 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
             }
             renderMeetingParticipants();
             renderMeetingsArchive();
+            retryPendingMeetingSync().finally(() => syncMeetingsFromCloud().then(renderMeetingsArchive));
         };
 
         const resetMeetingForm = () => {
@@ -942,10 +1125,16 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
         };
 
         const meetingVisibleUsers = () => {
-            const users = Array.isArray(allUsers) ? allUsers : [];
-            if (currentUser?.role === 'leadership') return users.filter(u => u.isActive !== false);
-            if (currentUser?.role === 'agency') return users.filter(u => u.role === 'performance' && u.isActive !== false);
-            return users.filter(u => u.id === currentUser.id || u.email === currentUser.email);
+            const schoolId = currentMeetingSchoolId();
+            const users = (Array.isArray(allUsers) ? allUsers : []).filter(u => {
+                const userSchoolId = String(u.schoolId || u.school_id || schoolId || '').trim();
+                const active = u.isActive !== false && u.active !== false && u.status !== 'deleted' && u.status !== 'disabled';
+                return active && (!schoolId || !userSchoolId || userSchoolId === schoolId);
+            });
+            // المدير والوكيل يختاران جميع الحسابات المفعلة التابعة لنفس المدرسة.
+            if (['leadership','agency'].includes(currentUser?.role)) return users;
+            const me = getMicrosoftEmail(currentUser);
+            return users.filter(u => String(u.id) === String(currentUser?.id) || (me && getMicrosoftEmail(u) === me));
         };
 
         const renderMeetingParticipants = () => {
@@ -958,9 +1147,9 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
             }
             box.innerHTML = users.map(u => `
                 <label class="flex items-center gap-2 p-2 rounded-xl border bg-slate-50 cursor-pointer hover:bg-teal-50">
-                    <input type="checkbox" class="meeting-participant" value="${safeJs(u.id)}" data-name="${safeJs(u.name)}" data-role="${safeJs(u.role)}">
+                    <input type="checkbox" class="meeting-participant" value="${safeJs(u.id)}" data-name="${safeJs(u.name)}" data-role="${safeJs(u.role)}" data-email="${safeJs(getMicrosoftEmail(u))}" data-microsoft-user-id="${safeJs(getMicrosoftUserId(u))}">
                     <span class="font-bold text-xs text-slate-700">${u.name || 'مستخدم'}</span>
-                    <span class="text-[10px] text-slate-400 mr-auto">${roleLabel(u.role)}</span>
+                    <span class="text-[10px] text-slate-400 mr-auto" dir="ltr">${getMicrosoftEmail(u) || roleLabel(u.role)}</span>
                 </label>
             `).join('');
         };
@@ -1022,17 +1211,35 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
                 tasks: document.getElementById('meeting-tasks').value.trim(),
                 chat: meetingChatLines,
                 attachments,
-                participants: selected.map(cb => ({ id: cb.value, name: cb.dataset.name, role: cb.dataset.role })),
+                participants: selected.map(cb => ({ id: cb.value, name: cb.dataset.name, role: cb.dataset.role, email: normalizeEmail(cb.dataset.email), microsoftEmail: normalizeEmail(cb.dataset.email), microsoftUserId: normalizeMicrosoftUserId(cb.dataset.microsoftUserId), microsoft_user_id: normalizeMicrosoftUserId(cb.dataset.microsoftUserId) || null })),
+                schoolId: currentMeetingSchoolId(),
                 createdBy: currentUser?.name || 'غير محدد',
+                createdByEmail: getMicrosoftEmail(currentUser),
                 createdByRole: currentUser?.role || '',
-                createdAt: Date.now()
+                createdAt: Date.now(),
+                syncStatus: 'pending'
             };
-            const items = getStoredMeetings();
-            items.unshift(record);
-            setStoredMeetings(items);
             currentMeetingForPrint = record;
-            renderMeetingsArchive();
-            showToast('تم حفظ محضر الاجتماع في الأرشيف ✅');
+            showToast('جارٍ حفظ الاجتماع في Supabase...');
+            try {
+                const cloudRow = await insertMeetingInCloud(record);
+                Object.assign(record, mapCloudMeeting(cloudRow), { syncStatus: 'synced', syncedAt: Date.now() });
+                const updated = getStoredMeetings().filter(x => String(x.cloudId || x.id) !== String(record.cloudId || record.id));
+                updated.unshift(record);
+                setStoredMeetings(updated); // ذاكرة مؤقتة للعرض والعمل عند انقطاع الاتصال فقط.
+                currentMeetingForPrint = record;
+                renderMeetingsArchive();
+                showToast('تم حفظ الاجتماع في Supabase بنجاح ✅');
+            } catch (cloudError) {
+                record.syncStatus = 'local_only';
+                record.syncError = cloudError?.message || String(cloudError);
+                const fallback = getStoredMeetings().filter(x => String(x.id) !== String(record.id));
+                fallback.unshift(record);
+                setStoredMeetings(fallback);
+                renderMeetingsArchive();
+                console.warn('تم الاحتفاظ بنسخة احتياطية محلية لتعذر المزامنة السحابية', cloudError);
+                showToast('تعذر الحفظ السحابي؛ حُفظت نسخة احتياطية محلية وستتم إعادة المحاولة تلقائيًا ⚠️');
+            }
 
             try {
                 if (window.db && window.fs && currentUser?.role !== 'performance') {
@@ -1293,11 +1500,24 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
             printCurrentMeeting();
         };
 
-        const deleteMeetingById = (id) => {
-            if (!confirm('هل تريد حذف محضر الاجتماع من الأرشيف المحلي؟')) return;
-            setStoredMeetings(getStoredMeetings().filter(x => x.id !== id));
+        const deleteMeetingById = async (id) => {
+            if (!confirm('هل تريد حذف محضر الاجتماع؟')) return;
+            const meeting = getStoredMeetings().find(x => String(x.id) === String(id) || String(x.cloudId) === String(id));
+            const cloudId = meeting?.cloudId || meeting?.id;
+            if (cloudId && !String(cloudId).startsWith('meet-')) {
+                try {
+                    const sb = meetingSupabase();
+                    const schoolId = currentMeetingSchoolId();
+                    const { error } = await sb.from('meetings').delete().eq('id', cloudId).eq('school_id', schoolId);
+                    if (error) throw error;
+                } catch (error) {
+                    console.warn('تعذر حذف الاجتماع من Supabase', error);
+                    return showToast('تعذر حذف الاجتماع من السحابة؛ لم يتم حذف النسخة المحلية');
+                }
+            }
+            setStoredMeetings(getStoredMeetings().filter(x => String(x.id) !== String(id) && String(x.cloudId) !== String(id)));
             renderMeetingsArchive();
-            showToast('تم حذف الاجتماع');
+            showToast('تم حذف الاجتماع من Supabase والأرشيف المؤقت');
         };
 
 
@@ -1315,8 +1535,18 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
                 tasks: document.getElementById('meeting-tasks')?.value?.trim() || '',
                 chat: meetingChatLines || [],
                 attachments: [],
-                participants: selected.map(cb => ({ id: cb.value, name: cb.dataset.name, role: cb.dataset.role })),
+                participants: selected.map(cb => ({
+                    id: cb.value,
+                    name: cb.dataset.name,
+                    role: cb.dataset.role,
+                    email: normalizeEmail(cb.dataset.email),
+                    microsoftEmail: normalizeEmail(cb.dataset.email),
+                    microsoftUserId: normalizeMicrosoftUserId(cb.dataset.microsoftUserId),
+                    microsoft_user_id: normalizeMicrosoftUserId(cb.dataset.microsoftUserId) || null
+                })),
+                schoolId: currentMeetingSchoolId(),
                 createdBy: currentUser?.name || 'غير محدد',
+                createdByEmail: getMicrosoftEmail(currentUser),
                 createdByRole: currentUser?.role || '',
                 createdAt: Date.now()
             };
@@ -1451,7 +1681,7 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
             <div class="box"><div class="label">التوصيات والقرارات</div>${m.recommendations || ''}</div>
             <div class="box"><div class="label">المهام الناتجة</div>${m.tasks || ''}</div>
             <div class="box"><div class="label">ملاحظات ودردشة الاجتماع</div>${(m.chat || []).map(c => (c.by || '') + ': ' + (c.text || '')).join('<br>')}</div>
-            <br><br><div class="meta"><div>توقيع قائد/ة المدرسة: ....................</div><div>توقيع معد المحضر: ....................</div></div>
+            <br><br><div class="meta"><div>توقيع مدير/مديرة المدرسة: ....................</div><div>توقيع معد المحضر: ....................</div></div>
             <button onclick="window.print()" style="padding:10px 25px;border:0;border-radius:12px;background:#1e7b78;color:white;font-weight:bold">طباعة</button>
 
 
@@ -1460,6 +1690,66 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
             w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 500);
         };
 
+
+        // جسر قاعة الاجتماعات لطبقة الاعتماد: Supabase هو المصدر الأساسي، والتخزين المحلي ذاكرة مؤقتة فقط.
+        window.getStoredMeetings = getStoredMeetings;
+        window.setStoredMeetings = setStoredMeetings;
+        window.syncMeetingsFromCloud = syncMeetingsFromCloud;
+        window.insertMeetingInCloud = insertMeetingInCloud;
+        window.updateMeetingInCloud = updateMeetingInCloud;
+        window.getCurrentMeetingDraft = getCurrentMeetingDraft;
+        window.renderMeetingsArchive = renderMeetingsArchive;
+        window.renderMeetingPortfolio = renderMeetingPortfolio;
+        window.getMeetingCurrentUserId = () => currentUser?.id || null;
+        window.getMeetingCurrentUserEmail = () => getMicrosoftEmail(currentUser);
+
+
+        const systemAdminGateway = async (action, payload = {}) => {
+            const sb = window.SmartSchoolSupabase?.getClient?.();
+            if (!sb) throw new Error('Supabase غير جاهز');
+            const sessionRes = await sb.auth.getSession();
+            const session = sessionRes?.data?.session;
+            if (!session?.access_token) throw new Error('جلسة مدير النظام غير متاحة. أعد تسجيل الدخول.');
+            const invoked = await sb.functions.invoke('system-admin', {
+                body: Object.assign({ action }, payload || {})
+            });
+            if (invoked.error) {
+                let msg = invoked.data?.error || invoked.data?.details || '';
+                // FunctionsHttpError قد يخفي body داخل context؛ نحاول قراءته لعرض السبب الحقيقي بدل non-2xx فقط.
+                if (!msg && invoked.error?.context && typeof invoked.error.context.json === 'function') {
+                    try { const body = await invoked.error.context.json(); msg = body?.details || body?.error || ''; } catch (_) {}
+                }
+                if (!msg) msg = invoked.error?.message || 'رفض الخادم العملية';
+                throw new Error(msg);
+            }
+            if (!invoked.data?.ok) {
+                throw new Error(invoked.data?.error || invoked.data?.details || 'لم يؤكد الخادم العملية');
+            }
+            return invoked.data;
+        };
+
+        const normalizeAdminSchool = (row) => {
+            row = row || {};
+            const id = row.id || row.schoolId || row.school_id || '';
+            const code = row.school_code || row.schoolCode || id;
+            const name = row.school_name || row.schoolName || row.name || '';
+            const managerName = row.manager_name || row.managerName || row.principal_name || '';
+            const managerEmail = row.manager_email || row.managerEmail || row.email || '';
+            const managerDisplayEmail = row.school_email || row.manager_email_label || row.managerDisplayEmail || managerEmail;
+            const reg = row.registration_code || row.registrationCode || '';
+            const status = row.status || 'active';
+            const basePath = location.href.split('/').slice(0,-1).join('/');
+            const registrationLink = row.registration_link || row.registrationLink ||
+                `${basePath}/register.html?schoolId=${encodeURIComponent(id)}&school=${encodeURIComponent(code)}&reg=${encodeURIComponent(reg)}&token=${encodeURIComponent(reg)}&source=supabase_school_registration`;
+            const loginLink = row.login_link || row.loginLink ||
+                `${basePath}/school-login.html?schoolId=${encodeURIComponent(id)}&school=${encodeURIComponent(code)}&source=supabase_school_login`;
+            return {
+                id, schoolId:id, schoolCode:code, schoolName:name,
+                managerName, managerEmail, managerDisplayEmail, status,
+                registrationCode:reg, registrationLink, loginLink,
+                createdAt: row.created_at || row.createdAt || ''
+            };
+        };
 
         const showSchoolManagementPanel = async () => {
             const modal = document.getElementById('school-management-modal');
@@ -1481,44 +1771,44 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
         const createSupabaseSchoolFromPanel = async () => {
             const schoolName = (document.getElementById('sm-school-name')?.value || '').trim();
             const managerName = (document.getElementById('sm-manager-name')?.value || '').trim();
-            const email = (document.getElementById('sm-manager-email')?.value || '').trim();
+            const email = (document.getElementById('sm-manager-email')?.value || '').trim().toLowerCase();
             const password = (document.getElementById('sm-manager-password')?.value || '').trim();
             const statusBox = document.getElementById('sm-status');
-            if (!schoolName || !managerName || !email || !password) { showToast('يرجى تعبئة جميع بيانات المدرسة والمدير'); return; }
+            if (!schoolName || !managerName || !email || password.length < 8) {
+                if (statusBox) statusBox.textContent = 'يرجى تعبئة جميع البيانات، وكلمة المرور 8 أحرف على الأقل.';
+                return;
+            }
             try {
-                if (statusBox) statusBox.textContent = 'جاري الحفظ في Supabase...';
-                if (!window.SmartSchoolSupabase || !window.SmartSchoolSupabase.createSchoolWithManager) throw new Error('جسر Supabase غير جاهز');
-                const result = await window.SmartSchoolSupabase.createSchoolWithManager({ schoolName, managerName, email, password, status:'active' });
-                const school = result.school;
-                const manager = result.manager;
-                const localUsers = collectLocalUsersForWorkspace();
-                if (!localUsers.some(u => String(u.email||'').toLowerCase() === String(email).toLowerCase())) {
-                    localUsers.push({ ...manager, role:'leadership', isActive:true, status:'active', schoolName:school.schoolName, schoolId:school.id, accountType:'school_manager', isPrimaryManager:true });
-                    saveUnifiedUserStores(localUsers);
-                    allUsers = localUsers;
-                }
-                const localSchools = JSON.parse(localStorage.getItem('smart_school_schools') || '[]').filter(s => String(s.id||s.schoolId) !== String(school.id));
-                localSchools.push({ id:school.id, schoolId:school.id, schoolName:school.schoolName, managerName:school.managerName, managerEmail:school.managerEmail, status:school.status, registrationLink:school.registrationLink, loginLink:school.loginLink, createdAt:school.createdAt });
+                if (statusBox) statusBox.textContent = 'جاري إنشاء المدرسة وحساب المدير في Supabase...';
+                const result = await systemAdminGateway('create_school', { schoolName, managerName, email, password });
+                const school = normalizeAdminSchool(result.school || {});
+                const localSchools = JSON.parse(localStorage.getItem('smart_school_schools') || '[]')
+                    .filter(x => String(x.id || x.schoolId) !== String(school.id));
+                localSchools.unshift(school);
                 localStorage.setItem('smart_school_schools', JSON.stringify(localSchools));
-                ['sm-school-name','sm-manager-name','sm-manager-email','sm-manager-password'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
-                if (statusBox) statusBox.textContent = 'تم الحفظ بنجاح في Supabase.';
-                showToast('تم إنشاء المدرسة وحفظها في Supabase');
+                ['sm-school-name','sm-manager-name','sm-manager-email','sm-manager-password'].forEach(id => {
+                    const el=document.getElementById(id); if(el) el.value='';
+                });
+                if (statusBox) statusBox.textContent = 'تم إنشاء المدرسة وحساب المدير بنجاح.';
+                showToast('تم إنشاء المدرسة المستقلة في Supabase');
                 await renderSchoolManagement();
             } catch (err) {
                 console.error('Create school failed:', err);
-                if (statusBox) statusBox.textContent = 'فشل الحفظ: ' + (err.message || err);
-                showToast('فشل حفظ المدرسة في Supabase: ' + (err.message || err));
+                if (statusBox) statusBox.textContent = 'فشل إنشاء المدرسة: ' + (err.message || err);
+                showToast('تعذر إنشاء المدرسة: ' + (err.message || err));
             }
         };
 
         const renderSchoolManagement = async () => {
             const tbody = document.getElementById('schools-table-body');
+            const statusBox = document.getElementById('sm-status');
             if (!tbody) return;
-            tbody.innerHTML = '<tr><td colspan="4" class="p-6 text-center text-slate-400 text-xs">جاري تحميل المدارس من Supabase...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="4" class="p-6 text-center text-slate-400 text-xs">جارٍ تحميل المدارس من بوابة مدير النظام...</td></tr>';
             try {
-                if (!window.SmartSchoolSupabase || !window.SmartSchoolSupabase.listSchools) throw new Error('جسر Supabase غير جاهز');
-                const schools = await window.SmartSchoolSupabase.listSchools();
-                localStorage.setItem('smart_school_schools', JSON.stringify(schools.map(s => ({ id:s.id, schoolId:s.id, schoolName:s.schoolName, managerName:s.managerName, managerEmail:s.managerEmail, status:s.status, registrationLink:s.registrationLink, loginLink:s.loginLink, createdAt:s.createdAt }))));
+                const result = await systemAdminGateway('list_schools');
+                const schools = (result.schools || []).map(normalizeAdminSchool);
+                localStorage.setItem('smart_school_schools', JSON.stringify(schools));
+                if (statusBox) statusBox.textContent = 'تم تحميل ' + schools.length + ' مدرسة من Supabase.';
                 if (!schools.length) {
                     tbody.innerHTML = '<tr><td colspan="4" class="p-6 text-center text-slate-400 text-xs">لا توجد مدارس في Supabase حتى الآن. أنشئ مدرسة من النموذج أعلاه.</td></tr>';
                     return;
@@ -1526,21 +1816,25 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
                 tbody.innerHTML = schools.map(s => {
                     const reg = s.registrationLink || '';
                     const login = s.loginLink || '';
-                    const statusLabel = s.status === 'active' ? '<span class="text-green-700 font-bold">مفعلة</span>' : '<span class="text-amber-700 font-bold">'+(s.status||'pending')+'</span>';
+                    const statusLabel = s.status === 'active'
+                        ? '<span class="text-green-700 font-bold">مفعلة</span>'
+                        : '<span class="text-amber-700 font-bold">'+(s.status||'pending')+'</span>';
                     return `<tr class="hover:bg-slate-50">
                         <td class="p-3 border-b font-bold text-xs text-slate-700">${s.schoolName || 'بدون اسم'}<div class="text-[10px] text-slate-400 font-normal mt-1">${s.schoolCode || s.id}</div></td>
-                        <td class="p-3 border-b text-xs text-slate-600">${s.managerName || ''}<div class="text-[10px] text-slate-400 mt-1">${s.managerEmail || ''}</div></td>
+                        <td class="p-3 border-b text-xs text-slate-600">${s.managerName || ''}<div class="text-[10px] text-slate-400 mt-1" dir="ltr">${s.managerDisplayEmail || s.managerEmail || ''}</div></td>
                         <td class="p-3 border-b text-center text-xs">${statusLabel}</td>
                         <td class="p-3 border-b text-center"><div class="flex justify-center gap-2 flex-wrap">
                             <button onclick="copyTextValue('${safeJs(reg)}','تم نسخ رابط التسجيل')" class="bg-blue-600 text-white px-3 py-1 rounded-lg text-[10px] font-bold">رابط التسجيل</button>
                             <button onclick="copyTextValue('${safeJs(login)}','تم نسخ رابط الدخول')" class="bg-teal-700 text-white px-3 py-1 rounded-lg text-[10px] font-bold">رابط الدخول</button>
                             <button onclick="toggleSchoolSupabaseStatus('${safeJs(s.id)}','${s.status === 'active' ? 'disabled' : 'active'}')" class="bg-amber-600 text-white px-3 py-1 rounded-lg text-[10px] font-bold">${s.status === 'active' ? 'تعطيل' : 'تفعيل'}</button>
+                            <button onclick='openSchoolLabelsEdit(${JSON.stringify(s).replace(/'/g,"&#39;")})' class="bg-slate-700 text-white px-3 py-1 rounded-lg text-[10px] font-bold">تعديل البيانات</button>
                             <button onclick="deleteSupabaseSchool('${safeJs(s.id)}')" class="bg-red-600 text-white px-3 py-1 rounded-lg text-[10px] font-bold">حذف</button>
                         </div></td>
                     </tr>`;
                 }).join('');
             } catch (err) {
                 console.error('Load schools failed:', err);
+                if (statusBox) statusBox.textContent = 'تعذر تحميل المدارس: ' + (err.message || err);
                 tbody.innerHTML = '<tr><td colspan="4" class="p-6 text-center text-red-500 text-xs">تعذر تحميل المدارس من Supabase: '+(err.message || err)+'</td></tr>';
             }
         };
@@ -1553,29 +1847,42 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
 
         const toggleSchoolSupabaseStatus = async (schoolId, status) => {
             try {
-                await window.SmartSchoolSupabase.updateSchoolStatus(schoolId, status);
+                await systemAdminGateway('set_school_status', { schoolId, status });
                 showToast(status === 'active' ? 'تم تفعيل المدرسة' : 'تم تعطيل المدرسة');
                 await renderSchoolManagement();
-            } catch (err) { showToast('تعذر تحديث حالة المدرسة: ' + (err.message || err)); }
+            } catch (err) {
+                showToast('تعذر تحديث حالة المدرسة: ' + (err.message || err));
+            }
         };
-
         const deleteSupabaseSchool = async (schoolId) => {
-            if (!confirm('سيتم حذف المدرسة من Supabase مع المستخدمين المرتبطين بها إذا كانت العلاقات مفعلة. هل تريد المتابعة؟')) return;
+            const id = String(schoolId || '').trim();
+            if (!id) return showToast('تعذر تحديد المدرسة');
+            if (!confirm('سيتم حذف المدرسة نهائيًا من Supabase وحساباتها وملفاتها السحابية المرتبطة. هل تريد المتابعة؟')) return;
             try {
-                await window.SmartSchoolSupabase.deleteSchool(schoolId);
-                showToast('تم حذف المدرسة');
+                showToast('جاري حذف المدرسة من Supabase...');
+                await systemAdminGateway('delete_school', { schoolId:id, confirmText:'DELETE' });
+                showToast('تم حذف المدرسة من Supabase');
                 await renderSchoolManagement();
-            } catch (err) { showToast('تعذر حذف المدرسة: ' + (err.message || err)); }
+            } catch (err) {
+                showToast('تعذر حذف المدرسة: ' + (err.message || err));
+                try { await renderSchoolManagement(); } catch(_) {}
+            }
         };
 
-        try { window.showSchoolManagementPanel = showSchoolManagementPanel; window.renderSchoolManagement = renderSchoolManagement; window.createSupabaseSchoolFromPanel = createSupabaseSchoolFromPanel; window.fillSchoolPanelFromRequest = fillSchoolPanelFromRequest; window.copyTextValue = copyTextValue; window.toggleSchoolSupabaseStatus = toggleSchoolSupabaseStatus; window.deleteSupabaseSchool = deleteSupabaseSchool; } catch(e) {}
+        try { window.systemAdminGateway = systemAdminGateway; window.showSchoolManagementPanel = showSchoolManagementPanel; window.renderSchoolManagement = renderSchoolManagement; window.createSupabaseSchoolFromPanel = createSupabaseSchoolFromPanel; window.fillSchoolPanelFromRequest = fillSchoolPanelFromRequest; window.copyTextValue = copyTextValue; window.toggleSchoolSupabaseStatus = toggleSchoolSupabaseStatus; window.deleteSupabaseSchool = deleteSupabaseSchool; } catch(e) {}
 
-        const logout = () => { localStorage.clear(); location.reload(); };
+        const logout = () => { try{ localStorage.clear(); sessionStorage.clear(); }catch(e){} location.reload(); };
         const closeModal = (id) => document.getElementById(id).style.display = 'none';
         const closeApp = () => { document.getElementById('main-ui').style.display = 'flex'; document.querySelectorAll('.app-iframe-container').forEach(v => v.classList.remove('active')); document.getElementById('backBtn').classList.remove('visible'); };
         
         window.onload = () => { 
             const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('systemAdminReturn') === '1' && (sessionStorage.getItem('system_admin_verified') === 'true' || sessionStorage.getItem('system_admin_context') === '1')) {
+                isManagerVerifiedInSession = true;
+                clearIndependentSchoolContextForSystemAdmin();
+                startApp({ id:'root', name:'مدير/ة النظام', email:'', role:'leadership', isActive:true, isRootAdmin:true });
+                return;
+            }
             if (urlParams.get('mode') === 'register') {
                 const currentPath = window.location.href.split('?')[0];
                 const registerPath = currentPath.substring(0, currentPath.lastIndexOf('/') + 1) + 'register.html';
@@ -1819,6 +2126,29 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
   }
   function printCss(){ return '@page{size:A4;margin:0}*{box-sizing:border-box}body{font-family:Cairo,Arial,sans-serif;margin:0;color:#0f172a;background:#f8fafc}.page{width:210mm;min-height:297mm;background:white;margin:0 auto;padding:14mm 12mm;position:relative;page-break-after:always}.topbar{position:absolute;top:0;left:0;right:0;height:8px;background:#08783f}header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid #e5e7eb;padding-bottom:12px}.hblock{line-height:1.8;color:#065f46;font-size:15px;display:flex;flex-direction:column}.logo{text-align:center;color:#059669;font-weight:800}.logo small{font-size:10px;color:#64748b}.meta{font-size:12px;line-height:2;background:#ecfdf5;border-radius:12px;padding:8px 16px;min-width:140px}h1{text-align:center;color:#047857;font-size:28px;margin:16px 0 10px}h2{color:#047857;font-size:15px;margin:13px 0 7px}.basmala{text-align:center;font-size:13px;color:#475569}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}.field,.notice,.teams{background:#f0fdf4;border:1px solid #d1fae5;border-radius:13px;padding:9px;font-size:13px}.notice{line-height:2}.teams{direction:ltr;text-align:left;word-break:break-all;font-size:11px}ol{margin:0;padding:0 24px;background:#fbfffd;border:1px dashed #bbf7d0;border-radius:12px;min-height:32px}li{padding:4px 0;font-size:13px;line-height:1.7}footer{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end;margin-top:18px;border-top:1px solid #e5e7eb;padding-top:12px;font-size:12px}.sig{max-width:120px;max-height:55px;object-fit:contain}.sigLine{width:120px;height:40px;border-bottom:1px solid #334155}.seal{width:90px;height:90px;object-fit:contain}.sealBox{width:90px;height:90px;border:2px dashed #94a3b8;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#64748b;font-weight:800;font-size:11px}.qr{text-align:center;font-size:10px}.qr svg{border:1px solid #d1fae5}.code{direction:ltr;font-weight:800;color:#047857}.footnote{position:absolute;bottom:9mm;left:12mm;right:12mm;border-top:1px solid #edf2f7;padding-top:6px;color:#047857;font-weight:700;font-size:11px}.note{margin-top:14px;background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:12px;text-align:center;color:#92400e;font-size:13px}table{width:100%;border-collapse:collapse;margin-top:14px}th{background:#08783f;color:white;padding:8px;font-size:13px}td{border:1px solid #e5e7eb;height:24px;padding:4px;font-size:12px}td:first-child{width:35px;text-align:center}@media print{body{background:white}.page{margin:0;box-shadow:none}}'; }
   function dayName(dateStr){ try{ var d=dateStr?new Date(dateStr):new Date(); return ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'][d.getDay()]||'';}catch(e){return '';} }
+  async function persistApprovedMeetingToCloud(m){
+    if(typeof window.updateMeetingInCloud!=='function') return m;
+    var cloudId=m.cloudId||m.id;
+    if(!cloudId || String(cloudId).indexOf('meet-')===0) {
+      if(typeof window.insertMeetingInCloud==='function') {
+        var created=await window.insertMeetingInCloud(m);
+        m.cloudId=created.id; m.id=created.id;
+      }
+    }
+    var row=await window.updateMeetingInCloud(m, {
+      status:'approved',
+      approvedBy:(typeof window.getMeetingCurrentUserId==='function'?window.getMeetingCurrentUserId():null),
+      approvedAt:m.approvedAt||Date.now(),
+      minutes:m.minutes||m.recommendations||''
+    });
+    m.cloudId=row.id; m.id=row.id; m.status='approved'; m.syncStatus='synced';
+    if(typeof window.getStoredMeetings==='function' && typeof window.setStoredMeetings==='function') {
+      var list=window.getStoredMeetings().filter(function(x){return String(x.cloudId||x.id)!==String(m.id);});
+      list.unshift(m); window.setStoredMeetings(list);
+    }
+    return m;
+  }
+
   function printApprovedMeeting(m){ var w=window.open('','_blank'); if(!w){toast('يرجى السماح بالنوافذ المنبثقة للطباعة'); return;} w.document.open(); w.document.write(officialMinutesHtml(m)); w.document.close(); w.focus(); setTimeout(function(){ try{w.print();}catch(e){} },500); }
 
   var originalPrint = window.printCurrentMeeting;
@@ -1828,12 +2158,19 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
   window.openMeetingApprovalReview=function(){ createApprovalModal(); loadSettingsToModal(); var m=q('meeting-approval-modal'); if(m) m.style.display='flex'; };
   window.closeMeetingApprovalModal=function(){ var m=q('meeting-approval-modal'); if(m)m.style.display='none'; };
   window.saveMeetingApprovalAsDefault=async function(){ var s=await collectSettingsFromModal(); saveSettings(s); toast('تم حفظ إعدادات محاضر الاجتماعات كإعداد افتراضي ✅'); updateApprovalPreview(); };
-  window.applyMeetingApprovalAndPrint=async function(){ var s=await collectSettingsFromModal(); var m=approvedMeetingFromDraft(s); if(s.archive) ensureMeetingArchived(m); window.currentMeetingForPrint=m; printApprovedMeeting(m); toast('تم اعتماد المحضر وتجهيزه للطباعة ✅'); };
+  window.applyMeetingApprovalAndPrint=async function(){
+    var s=await collectSettingsFromModal(); var m=approvedMeetingFromDraft(s);
+    try { m=await persistApprovedMeetingToCloud(m); }
+    catch(e){ console.warn(e); toast('تعذر اعتماد المحضر سحابيًا؛ لم يتم اعتباره معتمدًا'); return; }
+    if(s.archive) ensureMeetingArchived(m); window.currentMeetingForPrint=m; printApprovedMeeting(m); toast('تم اعتماد المحضر سحابيًا وتجهيزه للطباعة ✅');
+  };
   window.applyMeetingApprovalAndSend=async function(){
     var s=await collectSettingsFromModal(); if(!s.send){ toast('خيار الإرسال غير مفعّل في المراجعة النهائية'); return; }
     var m=approvedMeetingFromDraft(s);
     if(!m.title || m.title==='محضر اجتماع') return toast('اكتب عنوان الاجتماع قبل الاعتماد');
     if(!m.participants || !m.participants.length) return toast('اختر المشاركين قبل الإرسال');
+    try { m=await persistApprovedMeetingToCloud(m); }
+    catch(e){ console.warn(e); toast('تعذر اعتماد المحضر سحابيًا؛ لم يتم الإرسال'); return; }
     if(s.archive) ensureMeetingArchived(m); window.currentMeetingForPrint=m;
     if(typeof originalSendRecord==='function') await originalSendRecord(m); else if(typeof originalSendCurrent==='function') await originalSendCurrent();
     toast('تم اعتماد محضر الاجتماع وإرساله للمشاركين ✅');
@@ -2095,7 +2432,7 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
   const getVal = (id) => ($(id)?.value || '').trim();
   const toast = (msg) => { if (typeof window.showToast === 'function') window.showToast(msg); else alert(msg); };
   const status = (msg, good=false) => { const el = $('meeting-ai-status'); if (el) { el.textContent = msg; el.className = 'text-[11px] font-bold leading-6 ' + (good ? 'text-emerald-800' : 'text-slate-600'); } };
-  const roleLabelLocal = (role) => ({leadership:'مدير النظام', agency:'وكيل المدرسة', performance:'معلم/ـة'}[role] || role || 'مشارك');
+  const roleLabelLocal = (role) => ({leadership:'مدير/ة النظام', agency:'وكيل المدرسة', performance:'معلم/ـة'}[role] || role || 'مشارك');
 
   async function readTeamsFile(){
     const f = $('teams-attendance-file')?.files?.[0];
@@ -2108,9 +2445,12 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
     return [...document.querySelectorAll('.meeting-participant')].map(cb => ({
       id: cb.value,
       name: cb.dataset.name || '',
+      email: String(cb.dataset.email || '').trim().toLowerCase(),
+      microsoftEmail: String(cb.dataset.email || '').trim().toLowerCase(),
+      microsoftUserId: String(cb.dataset.microsoftUserId || '').trim().toLowerCase(),
       role: cb.dataset.role || '',
       checked: !!cb.checked
-    })).filter(p => p.name);
+    })).filter(p => p.name || p.email);
   }
 
   function normalizeArabicName(s){
@@ -2119,8 +2459,65 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
       .replace(/[ًٌٍَُِّْـ]/g,'').replace(/\s+/g,' ').trim().toLowerCase();
   }
 
+  function normalizeParticipantEmail(value){
+    return String(value || '').trim().toLowerCase();
+  }
+
+  function extractEmails(value){
+    const text = Array.isArray(value) ? value.join(' ') : String(value || '');
+    return [...new Set((text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) || []).map(normalizeParticipantEmail))];
+  }
+
+  function extractMicrosoftUserIds(value){
+    const text = Array.isArray(value) ? value.join(' ') : String(value || '');
+    const ids = [];
+    const guidPattern = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi;
+    (text.match(guidPattern) || []).forEach(v => ids.push(String(v).toLowerCase()));
+    return [...new Set(ids)];
+  }
+
+  function applyAttendanceByMicrosoftIdentity(attendees, sourceText){
+    const objectIds = new Set();
+    const emails = new Set();
+    (attendees || []).forEach(item => {
+      if (typeof item === 'string') {
+        extractMicrosoftUserIds(item).forEach(v => objectIds.add(v));
+        extractEmails(item).forEach(v => emails.add(v));
+      } else if (item && typeof item === 'object') {
+        const idValue = item.microsoftUserId || item.microsoft_user_id || item.userId || item.user_id || item.aadObjectId || item.objectId || item.id || '';
+        extractMicrosoftUserIds(idValue).forEach(v => objectIds.add(v));
+        extractEmails(item.email || item.userPrincipalName || item.mail || '').forEach(v => emails.add(v));
+      }
+    });
+    extractMicrosoftUserIds(sourceText).forEach(v => objectIds.add(v));
+    extractEmails(sourceText).forEach(v => emails.add(v));
+    let objectIdMatches = 0, emailMatches = 0;
+    document.querySelectorAll('.meeting-participant').forEach(cb => {
+      const objectId = String(cb.dataset.microsoftUserId || '').trim().toLowerCase();
+      const email = normalizeParticipantEmail(cb.dataset.email);
+      if (objectId && objectIds.has(objectId)) { cb.checked = true; objectIdMatches++; return; }
+      if (email && emails.has(email)) { cb.checked = true; emailMatches++; }
+    });
+    return { count: objectIdMatches + emailMatches, objectIdMatches, emailMatches, objectIds: [...objectIds], emails: [...emails] };
+  }
+
+  function applyAttendanceByEmail(attendees, sourceText){
+    const emails = new Set();
+    (attendees || []).forEach(item => {
+      if (typeof item === 'string') extractEmails(item).forEach(e => emails.add(e));
+      else if (item && typeof item === 'object') extractEmails(item.email || item.userPrincipalName || item.mail || '').forEach(e => emails.add(e));
+    });
+    extractEmails(sourceText).forEach(e => emails.add(e));
+    let count = 0;
+    document.querySelectorAll('.meeting-participant').forEach(cb => {
+      const email = normalizeParticipantEmail(cb.dataset.email);
+      if (email && emails.has(email)) { cb.checked = true; count++; }
+    });
+    return { count, emails: [...emails] };
+  }
+
   function applyAttendanceNames(names){
-    const wanted = (names || []).map(normalizeArabicName).filter(Boolean);
+    const wanted = (names || []).map(v => normalizeArabicName(typeof v === 'object' ? v.name : v)).filter(Boolean);
     if (!wanted.length) return 0;
     let count = 0;
     document.querySelectorAll('.meeting-participant').forEach(cb => {
@@ -2174,14 +2571,14 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
       recommendations: getVal('meeting-recommendations'),
       tasks: getVal('meeting-tasks')
     };
-    const participantsList = platformParticipants.map(p => `${p.name} - ${roleLabelLocal(p.role)}${p.checked ? ' - محدد مسبقًا' : ''}`).join('\n');
+    const participantsList = platformParticipants.map(p => `${p.name || 'مستخدم'} | Microsoft ID: ${p.microsoftUserId || 'غير مسجل'} | البريد: ${p.email || 'غير مسجل'} | الدور: ${roleLabelLocal(p.role)}${p.checked ? ' | محدد مسبقًا' : ''}`).join('\n');
     return {
       mode,
       current,
       platformParticipants,
       selectedParticipants,
       teamsText,
-      prompt: `أنت مساعد محاضر اجتماعات داخل منصة القيادة المدرسية الذكية.\nالمطلوب: تحليل نص/ملف اجتماع Microsoft Teams واستخراج الحضور الفعلي وتعبئة محضر رسمي جاهز لاعتماد المدير.\n\nأعد الناتج JSON فقط دون شرح خارج JSON وبالمفاتيح التالية:\n{\n  "title": "عنوان مناسب للاجتماع",\n  "type": "نوع الاجتماع",\n  "attendees": ["أسماء الحاضرين الفعليين فقط"],\n  "absentees": ["أسماء غير حاضرين إن أمكن"],\n  "agenda": "محاور الاجتماع كنقاط واضحة",\n  "recommendations": "التوصيات والقرارات كنقاط واضحة",\n  "tasks": "المهام الناتجة: المهمة - المسؤول - تاريخ المتابعة إن وجد",\n  "approvalNote": "صيغة مختصرة للمدير للاعتماد النهائي"\n}\n\nبيانات النموذج الحالية:\n${JSON.stringify(current, null, 2)}\n\nقائمة مستخدمي المنصة المتاحين للمطابقة:\n${participantsList || 'لا توجد قائمة مستخدمين ظاهرة'}\n\nنص/ملف Teams:\n${teamsText || 'لا يوجد نص Teams، اعتمد على بيانات النموذج الحالية إن وجدت.'}`
+      prompt: `أنت مساعد محاضر اجتماعات داخل منصة الإدارة المدرسية الذكية.\nالمطلوب: تحليل نص/ملف اجتماع Microsoft Teams واستخراج الحضور الفعلي وتعبئة محضر رسمي جاهز لاعتماد المدير.\n\nأعد الناتج JSON فقط دون شرح خارج JSON وبالمفاتيح التالية:\n{\n  "title": "عنوان مناسب للاجتماع",\n  "type": "نوع الاجتماع",\n  "attendees": [{"name":"اسم الحاضر","microsoftUserId":"Microsoft Object ID إن ورد في الملف","email":"البريد الرسمي لحساب Microsoft Teams كما ورد في الملف"}],\n  "absentees": ["أسماء غير حاضرين إن أمكن"],\n  "agenda": "محاور الاجتماع كنقاط واضحة",\n  "recommendations": "التوصيات والقرارات كنقاط واضحة",\n  "tasks": "المهام الناتجة: المهمة - المسؤول - تاريخ المتابعة إن وجد",\n  "approvalNote": "صيغة مختصرة للمدير للاعتماد النهائي"\n}\n\nبيانات النموذج الحالية:\n${JSON.stringify(current, null, 2)}\n\nقائمة مستخدمي المنصة المتاحين للمطابقة (الأولوية لمعرف Microsoft Object ID ثم البريد، ولا تعتمد الاسم تلقائيًا):\n${participantsList || 'لا توجد قائمة مستخدمين ظاهرة'}\n\nنص/ملف Teams:\n${teamsText || 'لا يوجد نص Teams، اعتمد على بيانات النموذج الحالية إن وجدت.'}`
     };
   }
 
@@ -2196,12 +2593,14 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
       if (obj.agenda) setVal('meeting-agenda', obj.agenda);
       if (obj.recommendations) setVal('meeting-recommendations', obj.recommendations);
       if (obj.tasks) setVal('meeting-tasks', obj.tasks);
-      const matched = applyAttendanceNames(obj.attendees || []);
+      const identityMatch = applyAttendanceByMicrosoftIdentity(obj.attendees || [], rawText || '');
+      const matched = identityMatch.count;
+      const unmatched = (obj.attendees || []).filter(a => { const emails = extractEmails(typeof a === 'object' ? (a.email || a.userPrincipalName || a.mail || '') : a); const ids = extractMicrosoftUserIds(typeof a === 'object' ? (a.microsoftUserId || a.microsoft_user_id || a.userId || a.objectId || '') : a); return !ids.some(id => identityMatch.objectIds.includes(id)) && !emails.some(e => identityMatch.emails.includes(e)); });
       const note = obj.approvalNote ? '\n\nملاحظة الاعتماد: ' + obj.approvalNote : '';
       const chatInput = $('meeting-chat-input');
       if (chatInput && note.trim()) chatInput.value = note.trim();
       localStorage.setItem('ss_last_ai_meeting_minutes', JSON.stringify({ result: obj, createdAt: Date.now() }));
-      status(`تمت تعبئة المحضر بالذكاء. تم تحديد ${matched} من الحضور المطابقين لحسابات المنصة. راجع المحضر ثم اضغط تجهيز لاعتماد المدير.`, true);
+      status(`تمت تعبئة المحضر بالذكاء. تمت مطابقة ${matched} حسابًا بهوية Microsoft (${identityMatch.objectIdMatches} بالمعرف و${identityMatch.emailMatches} بالبريد)${unmatched.length ? `، ويوجد ${unmatched.length} سجلًا يحتاج مراجعة يدوية` : ''}. راجع المحضر ثم اضغط تجهيز لاعتماد المدير.`, true);
       toast('تمت تعبئة محضر الاجتماع بالذكاء ✅');
       return;
     }
@@ -2240,8 +2639,10 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
       const raw = await askAIForMeeting(payload);
       const obj = safeJsonFromText(raw);
       const attendees = obj?.attendees || [];
-      const matched = applyAttendanceNames(attendees);
-      status(`تم استخراج ${attendees.length} اسمًا من Teams، وتم تحديد ${matched} حسابًا مطابقًا في قائمة المشاركين.`, true);
+      const identityMatch = applyAttendanceByMicrosoftIdentity(attendees, teamsText + '\n' + raw);
+      const matched = identityMatch.count;
+      const unmatchedCount = Math.max(0, attendees.length - matched);
+      status(`تم استخراج ${attendees.length} سجل حضور، وتمت مطابقة ${matched} حسابًا بهوية Microsoft (${identityMatch.objectIdMatches} بالمعرف و${identityMatch.emailMatches} بالبريد)${unmatchedCount ? `، وبقي ${unmatchedCount} سجلًا للمراجعة اليدوية` : ''}.`, true);
       toast('تم استخراج الحضور الفعلي ✅');
     } catch (err) {
       status('تعذر استخراج الحضور: ' + (err?.message || err));
@@ -2273,4 +2674,23 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
     status('تم تجهيز المحضر للاعتماد النهائي. يمكن للمدير مراجعته ثم استخدام زر حفظ/طباعة/إرسال.', true);
     toast('تم تجهيز المحضر لاعتماد المدير ✅');
   };
+})();
+
+
+/* Email fields direction guard: keep Arabic UI RTL, but emails/domains LTR */
+(function(){
+  function fixEmailDirection(){
+    document.querySelectorAll('input[type="email"], input[data-email-field="true"], #user-madrasati-email, #system-admin-email').forEach(function(el){
+      el.setAttribute('dir','ltr');
+      el.setAttribute('data-email-field','true');
+      el.style.direction='ltr';
+      el.style.textAlign='left';
+      el.style.unicodeBidi='plaintext';
+    });
+  }
+  document.addEventListener('DOMContentLoaded', fixEmailDirection);
+  window.addEventListener('load', fixEmailDirection);
+  document.addEventListener('focusin', function(e){
+    if(e.target && (e.target.matches('input[type="email"]') || e.target.id==='user-madrasati-email' || e.target.id==='system-admin-email')) fixEmailDirection();
+  });
 })();

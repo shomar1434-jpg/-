@@ -1519,6 +1519,15 @@ body{overflow-x:hidden}
 <p class="text-[11px] text-slate-400 font-bold mt-2">إدارة الحضور والغياب والتأخر والاستئذان، الإحصاءات اليومية والأسبوعية والشهرية، ونماذج الحسم والتقارير الرسمية</p>
 </div>
 </div>
+<div id="student-affairs-actions-card" class="hidden bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-cyan-400 cursor-pointer transition-all flex flex-col items-center gap-4 group min-h-[220px]" onclick="window.location.href='student_affairs_actions.html?return_to=agent.html'">
+<div class="w-16 h-16 bg-gradient-to-br from-[#15445A] to-[#0DA9A6] text-white rounded-[24px] flex items-center justify-center shadow-xl" aria-hidden="true">
+<svg class="w-9 h-9" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 3a4 4 0 110 8 4 4 0 010-8Z" stroke-width="1.8"/><path d="M5 21a7 7 0 0114 0M17 6h4v6h-4M18.5 8h1" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg>
+</div>
+<div class="text-center">
+<h3 class="font-black text-lg text-slate-800">إجراءات وكيل شؤون الطلاب</h3>
+<p class="text-[11px] text-slate-400 font-bold mt-2">الانضباط والمواظبة والحالات الطلابية والتواصل مع أولياء الأمور</p>
+</div>
+</div>
 <div class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-emerald-400 cursor-pointer transition-all flex flex-col items-center gap-4 group" onclick="openAgentRecordsView()">
 <div class="w-14 h-14 bg-emerald-600 text-white rounded-2xl flex items-center justify-center shadow-lg text-2xl">📚</div>
 <h3 class="font-bold text-lg text-slate-700 flex items-center gap-2">سجلات الوكيل</h3>
@@ -5807,7 +5816,37 @@ bWw+
     if(doc.indexOf('<!DOCTYPE html') === -1){
       doc = '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>' + esc(r.title || 'سجل') + '</title>'
         + '<style>@page{size:A4;margin:8mm}body{font-family:Tajawal,Arial;background:white;overflow-x:hidden}.safe-hidden-deactivate{display:none!important}</style>'
-        + '</head><body>' + doc + '</body></html>';
+        + '</head><body>' + doc + '
+<script id="student-affairs-actions-role-visibility">
+(function(){
+  'use strict';
+  function read(k,d){try{return JSON.parse(localStorage.getItem(k)||JSON.stringify(d));}catch(e){return d;}}
+  function normalize(v){
+    if(Array.isArray(v)) return v.map(String).map(function(x){return x.trim()}).filter(Boolean).filter(function(x){return x!=='general'});
+    v=String(v||'').trim();if(!v||v==='general')return[];
+    if(v.charAt(0)==='['){try{return normalize(JSON.parse(v));}catch(e){}}
+    return v.split(/[،,|]/).map(function(x){return x.trim()}).filter(Boolean).map(function(x){
+      var m={'deputy_students':'student_affairs','وكيل شؤون الطلاب':'student_affairs','وكيل الشؤون الطلابية':'student_affairs','وكيل/وكيلة شؤون الطلاب':'student_affairs','وكيلة شؤون الطلاب':'student_affairs'};
+      return m[x]||x;
+    });
+  }
+  function user(){return read('currentSchoolUser',null)||read('currentUser',null)||read('smart_school_current_session',null)||{};}
+  function categories(){
+    var q=new URLSearchParams(location.search||''),u=user();
+    var list=normalize(q.get('agency_type')||q.get('agency_types')||q.get('agent_categories')||u.agent_categories||u.agency_categories||u.agency_types||u.agency_type||u.agencyType||u.vice_agency_type||u.viceAgencyType||'');
+    if(list.length)return list;
+    var sid=String(u.schoolId||u.school_id||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||'default');
+    var map=read('smartSchoolUnifiedOpsV2_vp_agency_map_'+sid,{}),id=String(u.id||''),email=String(u.email||'').toLowerCase();
+    return normalize((id&&map[id])||(email&&map[email])||'');
+  }
+  function apply(){var card=document.getElementById('student-affairs-actions-card');if(!card)return;card.classList.toggle('hidden',categories().indexOf('student_affairs')===-1);}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',apply);else apply();
+  window.addEventListener('storage',function(e){if(/agency|user|school/i.test(String(e.key||'')))apply();});
+  window.addEventListener('focus',apply);
+})();
+</script>
+
+</body></html>';
     }
     if(autoPrint){
       var printScript = '<script>window.addEventListener("load",function(){setTimeout(function(){window.print()},500)});<\\/script>';

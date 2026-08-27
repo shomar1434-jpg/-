@@ -1354,6 +1354,7 @@ window.CLOUD_STATE_CONFIG={
 <script src="platform-persistence-guard.js"></script>
 <script defer src="school-base-settings-source.js"></script>
 <link rel="stylesheet" href="responsive-layout.css?v=20260818-responsive-1">
+<script defer src="student-affairs-data-bus.js"></script>
 </head>
 <body><div class="app"><aside class="sidebar no-print"><h1>سجلات الوكيل التفاعلية</h1><p>نماذج رسمية قابلة للتعبئة، مع تاريخ تلقائي وشعار وزارة التعليم وتوقيع وختم رقمي ينعكسان على جميع السجلات.</p><button class="toolbtn" onclick="openSettings()">⚙️ إعدادات الوكيل والتوقيع والختم</button><button class="toolbtn" onclick="window.location.href='wakil_staff_discipline.html'">⏱️ نظام الحضور والانضباط الوظيفي</button><button class="toolbtn" onclick="showCurrentAISchemaInfo()">👤 شخصية السجل الذكية</button><div class="nav" id="nav"></div></aside><main class="main"><div class="toolbar no-print"><div><strong id="currentTitle">سجلات الوكيل</strong><div class="status">كل الخانات قابلة للتعبئة، والتاريخ يتحدث تلقائيًا لليوم الحالي.</div></div><div class="group"><button class="btn" onclick="saveCurrent()">حفظ النموذج</button><button class="btn gray" onclick="window.print()">طباعة / حفظ PDF</button><button class="btn gold" onclick="clearCurrent()">تفريغ النموذج</button></div></div><section class="page" id="formPage"></section></main></div>
 <div class="ai-panel no-print" id="aiPanel"><h3>شخصية السجل الذكية</h3><pre id="aiResult">...</pre><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn" onclick="applyAIToCurrentForm()">تضمين النتيجة في النموذج</button><button class="btn gray" onclick="document.getElementById('aiPanel').style.display='none'">إغلاق</button></div></div>
@@ -1660,6 +1661,24 @@ function saveCurrentLocalOnly(){
   return data;
 }
 
+
+function publishStudentAffairsRecordEvent(data,centralRec){
+  try{
+    if(!window.StudentAffairsDataBus||!current)return;
+    var id=String(current.id||''),cat=String(current.category||'shared');
+    var studentRelevant=cat==='student_affairs'||['student-referral','repeated-absence-referral','student-permission','late-students-list','late-leave-warning'].indexOf(id)>-1;
+    if(!studentRelevant)return;
+    var eventType='case';
+    if(['student-daily-attendance','student-absence-inventory','student-morning-late','repeated-absence-referral','late-students-list','student-permission'].indexOf(id)>-1)eventType='attendance';
+    if(['student-behavior-violations','behavioral-risk-followup'].indexOf(id)>-1)eventType='behavior';
+    if(['parent-communication','family-meetings'].indexOf(id)>-1)eventType='guardian_communication';
+    var pick=function(names){for(var i=0;i<names.length;i++){var v=data[names[i]];if(v!==undefined&&v!==null&&String(v).trim())return String(v).trim();}return '';};
+    window.StudentAffairsDataBus.publish(eventType,{
+      record_id:centralRec&&centralRec.id,form_id:id,title:String(current.title||''),student_name:pick(['اسم الطالب','اسم الطالب / الموظف']),national_id:pick(['السجل المدني','السجل المدني / الهوية للأرشفة','رقم الهوية']),stage:pick(['المرحلة']),grade:pick(['الصف']),classroom:pick(['الفصل','الشعبة']),guardian_name:pick(['ولي الأمر']),guardian_phone:pick(['رقم التواصل']),status:'saved',summary:centralRec&&centralRec.summary||''
+    },'wakil_records');
+  }catch(e){console.error('[student affairs event publish]',e);}
+}
+
 async function saveCurrent(){
  const data=collect();data['آخر حفظ']=new Date().toLocaleString('ar-SA');
  const formStorageKey=formKey(),historyKey=archiveKey(),centralKey=WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY;
@@ -1675,6 +1694,7 @@ async function saveCurrent(){
   await verifyWakilRecordArchiveCloud([formStorageKey,historyKey,centralKey]);
   const verified=readWakilCentralArchive().find(r=>String(r.id)===String(centralRec.id));
   if(!verified||String(verified.folderId)!==folderId||String(verified.folderName)!==folderName)throw new Error('تعذر التحقق من وجود السجل داخل مجلد السجل الصحيح في الأرشيف');
+  publishStudentAffairsRecordEvent(data,centralRec);
   renderArchiveRows();alert('تم حفظ سجل الوكيل والتحقق منه سحابيًا داخل مجلد «'+folderName+'» في أرشيف السجلات ✅');return true;
  }catch(e){
   if(beforeForm===null)localStorage.removeItem(formStorageKey);else localStorage.setItem(formStorageKey,beforeForm);

@@ -3341,6 +3341,18 @@ body{overflow-x:hidden}
 
         // --- تعديل وظيفة الحفظ السحابي لتشمل التاريخ التفاعلي وتاريخ الإعداد ---
         function performanceArchiveFolderId(report){ return String((report && (report.archiveFolderId || report.category)) || ''); }
+        function selectedPerformanceArchiveDomain(){
+            const sel=document.getElementById('categorySelect');
+            if(!sel) return {id:'',name:''};
+            const id=String(sel.value||'').trim();
+            const opt=sel.options && sel.selectedIndex>=0 ? sel.options[sel.selectedIndex] : null;
+            let name=String(opt?.textContent||'').trim();
+            // اسم المجلد في الأرشيف يجب أن يكون الاسم المعتمد للمجال، لا عنوان التقرير.
+            // نحذف رقم الترتيب البصري فقط مثل "1. " مع إبقاء اسم المجال كاملاً.
+            name=name.replace(/^\s*[0-9٠-٩]+\s*[\.\-–—:]\s*/,'').trim();
+            return {id,name};
+        }
+
 function performanceArchiveFolderName(catId){
     const row=(typeof ALL_CATEGORIES!=='undefined'&&Array.isArray(ALL_CATEGORIES))?ALL_CATEGORIES.find(c=>String(c.id)===String(catId)):null;
     if(row&&row.name)return String(row.name);
@@ -3352,10 +3364,10 @@ async function saveReportToArchive() {
             if(typeof freezeReportDOMForArchive==='function')freezeReportDOMForArchive();
             const archiveKey='reports_archive',beforeRaw=localStorage.getItem(archiveKey)||'[]',previousEditingId=currentEditingId;
             let reports=[];try{reports=JSON.parse(beforeRaw);if(!Array.isArray(reports))reports=[]}catch(e){reports=[]}
-            const cat=String(document.getElementById('categorySelect').value||'');if(!cat)return showToast('اختر المجال أولاً ⚠️');
+            const selectedDomain=selectedPerformanceArchiveDomain();const cat=String(selectedDomain.id||'');if(!cat)return showToast('اختر المجال أولاً ⚠️');
             const folderName=performanceArchiveFolderName(cat),completion=typeof checkReportCompletionStatus==='function'?checkReportCompletionStatus():{isComplete:true};
             const old=previousEditingId?reports.find(r=>String(r.id)===String(previousEditingId)):null;
-            const data={id:previousEditingId||Date.now(),title:document.getElementById('field_prog_name')?.innerText||'تقرير جديد',category:cat,categoryName:folderName,archiveFolderId:cat,archiveFolderName:folderName,archiveRole:'kindergarten_teacher',reportDate:document.getElementById('dateInputHeader')?.value||'',date:old?.date||new Date().toLocaleDateString('ar-SA'),content:document.getElementById('report-content-container').innerHTML,isComplete:completion.isComplete,saveTimestamp:Date.now(),updatedAt:new Date().toISOString()};
+            if(selectedDomain.name) folderName=selectedDomain.name;const data={id:previousEditingId||Date.now(),title:document.getElementById('field_prog_name')?.innerText||'تقرير جديد',category:cat,categoryName:folderName,archiveFolderId:cat,archiveFolderName:folderName,archiveRole:'kindergarten_teacher',reportDate:document.getElementById('dateInputHeader')?.value||'',date:old?.date||new Date().toLocaleDateString('ar-SA'),content:document.getElementById('report-content-container').innerHTML,isComplete:completion.isComplete,saveTimestamp:Date.now(),updatedAt:new Date().toISOString()};
             const idx=reports.findIndex(r=>String(r.id)===String(data.id));if(idx>=0)reports[idx]=data;else reports.push(data);
             currentEditingId=data.id;localStorage.setItem(archiveKey,JSON.stringify(reports));
             try{if(!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.commit!=='function')throw new Error('محرك التحقق السحابي غير متاح');const cloud=await PlatformPersistenceGuard.commit([archiveKey]);if(!cloud||cloud.ok===false)throw new Error(cloud?.error||'تعذر تأكيد الحفظ السحابي');const saved=JSON.parse(localStorage.getItem(archiveKey)||'[]').find(r=>String(r.id)===String(data.id));if(!saved||performanceArchiveFolderId(saved)!==cat)throw new Error('لم يظهر التقرير داخل مجلد المجال المحدد');showToast('تم الحفظ في أرشيف تقارير الأداء الوظيفي / '+folderName+' ✅');return true}catch(e){localStorage.setItem(archiveKey,beforeRaw);currentEditingId=previousEditingId;showToast('تعذر تأكيد حفظ التقرير داخل مجلد المجال؛ تمت استعادة الأرشيف السابق.');console.error('[performance folder save]',e);return false}

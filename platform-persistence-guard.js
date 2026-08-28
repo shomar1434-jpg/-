@@ -95,7 +95,7 @@
 
   async function hydrateScope(scope){
     if(!window.PlatformStateEngine) return false;
-    const wanted=(explicitMode&&!prefixes.length)?[...exact]:undefined;
+    const wanted=explicitMode?[...exact]:undefined;
     const result=(scope==='user'&&targetOwnerUserId&&typeof PlatformStateEngine.pullUser==='function')?await PlatformStateEngine.pullUser(moduleKey,targetOwnerUserId,wanted):await PlatformStateEngine.pull(moduleKey,scope,wanted);
     const rows=result.items||[];
     const cloud=new Map(rows.map(r=>[String(r.state_key),r]));
@@ -121,6 +121,13 @@
 
 
   async function commit(keys){
+    // PERFORMANCE_ARCHIVE_EXACT_DOMAIN_2026_08_28
+    // قد يضغط المستخدم حفظ قبل اكتمال تهيئة المحرك السحابي؛ انتظر بدلاً من
+    // اعتبار ذلك فشلاً فورياً. لا يتم إرجاع نجاح إلا بعد القراءة من السحابة.
+    let engineWait=0;
+    while(!window.PlatformStateEngine && engineWait++<80){
+      await new Promise(r=>setTimeout(r,100));
+    }
     if(!window.PlatformStateEngine) return {ok:false,error:'محرك الحالة السحابية غير متاح'};
     const wanted=[...new Set((Array.isArray(keys)?keys:[keys]).map(String).filter(Boolean))].filter(track);
     if(!wanted.length) return {ok:true,verified:0};
@@ -144,14 +151,25 @@
       const scoped=wanted.filter(k=>scopeFor(k)===scope);
       if(!scoped.length) continue;
       try{
-        let result;
-        if(scope==='user'&&targetOwnerUserId&&typeof PlatformStateEngine.pullUser==='function'){
-          result=await PlatformStateEngine.pullUser(moduleKey,targetOwnerUserId,scoped);
-        }else{
-          result=await PlatformStateEngine.pull(moduleKey,scope,scoped);
+        let result,rows,map,verifyTry=0;
+        // بعض عمليات upsert تحتاج زمناً قصيراً قبل أن تظهر في قراءة التحقق.
+        // نعيد القراءة فقط؛ لا نعتبر البيانات المحلية دليلاً على النجاح.
+        while(verifyTry++<4){
+          if(scope==='user'&&targetOwnerUserId&&typeof PlatformStateEngine.pullUser==='function'){
+            result=await PlatformStateEngine.pullUser(moduleKey,targetOwnerUserId,scoped);
+          }else{
+            result=await PlatformStateEngine.pull(moduleKey,scope,scoped);
+          }
+          rows=Array.isArray(result)?result:(result?.items||result?.rows||[]);
+          map=new Map(rows.map(r=>[String(r.state_key||r.key||''),r]));
+          let complete=true;
+          for(const k of scoped){
+            const local=nativeGet.call(localStorage,k), row=map.get(k);
+            if(local!==null && (!row || row.deleted_at || row.deleted===true)){complete=false;break;}
+          }
+          if(complete) break;
+          await new Promise(r=>setTimeout(r,180*verifyTry));
         }
-        const rows=Array.isArray(result)?result:(result?.items||result?.rows||[]);
-        const map=new Map(rows.map(r=>[String(r.state_key||r.key||''),r]));
         for(const k of scoped){
           const local=nativeGet.call(localStorage,k);
           const row=map.get(k);

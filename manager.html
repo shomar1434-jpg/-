@@ -1477,12 +1477,6 @@ body{overflow-x:hidden}
 <h3 class="font-black text-xl text-slate-800">مركز المعلومات المدرسية</h3>
 <p class="text-[11px] text-slate-400 font-bold mt-2">مستودع بيانات الطلاب الرسمي للمدرسة النشطة حسب نور</p>
 </div>
-</div><div aria-label="فتح قسم القرارات والتكليفات" class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-violet-400 cursor-pointer transition-all flex flex-col items-center gap-4 group manager-section-card" id="decisionsAssignmentsCard" onclick="window.location.href='decisions_assignments.html'" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window.location.href='decisions_assignments.html';}" role="button" tabindex="0">
-<div class="w-20 h-20 bg-gradient-to-br from-violet-600 to-slate-800 text-white rounded-[26px] flex items-center justify-center shadow-xl text-3xl">📜</div>
-<div class="text-center">
-<h3 class="font-black text-xl text-slate-800">القرارات والتكليفات</h3>
-<p class="text-[11px] text-slate-400 font-bold mt-2">إدارة القرارات والتكليفات المدرسية ومتابعة ما يرتبط بها من إجراءات</p>
-</div>
 </div><div class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-teal-500 cursor-pointer transition-all flex flex-col items-center gap-4 group manager-section-card" onclick="window.location.href='central_task_center.html?role=manager'">
 <div class="w-20 h-20 bg-gradient-to-br from-teal-600 to-slate-800 text-white rounded-[26px] flex items-center justify-center shadow-xl text-3xl">🧭</div>
 <div class="text-center">
@@ -2924,6 +2918,18 @@ body{overflow-x:hidden}
         }
 
         function performanceArchiveFolderId(report){ return String((report && (report.archiveFolderId || report.category)) || ''); }
+        function selectedPerformanceArchiveDomain(){
+            const sel=document.getElementById('categorySelect');
+            if(!sel) return {id:'',name:''};
+            const id=String(sel.value||'').trim();
+            const opt=sel.options && sel.selectedIndex>=0 ? sel.options[sel.selectedIndex] : null;
+            let name=String(opt?.textContent||'').trim();
+            // اسم المجلد في الأرشيف يجب أن يكون الاسم المعتمد للمجال، لا عنوان التقرير.
+            // نحذف رقم الترتيب البصري فقط مثل "1. " مع إبقاء اسم المجال كاملاً.
+            name=name.replace(/^\s*[0-9٠-٩]+\s*[\.\-–—:]\s*/,'').trim();
+            return {id,name};
+        }
+
 function performanceArchiveFolderName(catId){
     const data=(typeof CATEGORY_DATA!=='undefined' && CATEGORY_DATA)?CATEGORY_DATA[String(catId)]:null;
     if(data && data.name) return String(data.name);
@@ -2943,7 +2949,7 @@ async function saveReportToArchive() {
             if(!cat){showToast('يرجى اختيار مجال البرنامج');return false}
             const old=previousEditingId?reports.find(r=>String(r.id)===String(previousEditingId)):null;
             const folderName=performanceArchiveFolderName(cat);
-            const data={id:previousEditingId||Date.now(),title:(document.getElementById('field_prog_name')?.innerText||'تقرير بدون عنوان').trim(),category:cat,categoryName:folderName,archiveFolderId:cat,archiveFolderName:folderName,archiveRole:'manager',content:document.getElementById('report-content-container').innerHTML,createdAt:old?.createdAt||systemDateStr,updatedAt:new Date().toISOString(),archiveType:'performanceReport'};
+            if(selectedDomain.name) folderName=selectedDomain.name;const data={id:previousEditingId||Date.now(),title:(document.getElementById('field_prog_name')?.innerText||'تقرير بدون عنوان').trim(),category:cat,categoryName:folderName,archiveFolderId:cat,archiveFolderName:folderName,archiveRole:'manager',content:document.getElementById('report-content-container').innerHTML,createdAt:old?.createdAt||systemDateStr,updatedAt:new Date().toISOString(),archiveType:'performanceReport'};
             const idx=reports.findIndex(r=>String(r.id)===String(data.id));if(idx>=0)reports[idx]=data;else reports.push(data);
             currentEditingId=data.id;localStorage.setItem(archiveKey,JSON.stringify(reports));
             try{

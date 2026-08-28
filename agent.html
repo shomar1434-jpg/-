@@ -1564,15 +1564,6 @@ body{overflow-x:hidden}
 <p class="text-[11px] text-slate-400 font-bold mt-2">استقبال بيانات المعلمين من مركز المعلومات، إنشاء أسبوع المتابعة، التكليفات، والمهام الإضافية</p>
 </div>
 </div>
-<div id="student-affairs-actions-card" class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-teal-400 cursor-pointer transition-all flex flex-col items-center gap-4 group min-h-[220px]" style="display:none" onclick="openStudentAffairsActions()">
-<div class="w-16 h-16 bg-gradient-to-br from-[#15445A] to-[#0DA9A6] text-white rounded-[24px] flex items-center justify-center shadow-xl">
-<svg class="w-9 h-9" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a4 4 0 110 8 4 4 0 010-8Z" stroke-width="1.8"/><path d="M4.5 21c.8-4.6 3.4-7 7.5-7s6.7 2.4 7.5 7" stroke-width="1.8" stroke-linecap="round"/><path d="M17 5h4v6h-4zM18.3 7h1.4M18.3 9h1.4" stroke-width="1.4" stroke-linecap="round"/></svg>
-</div>
-<div class="text-center">
-<h3 class="font-black text-lg text-slate-800">إجراءات وكيل شؤون الطلاب</h3>
-<p class="text-[11px] text-slate-400 font-bold mt-2">الانضباط والمواظبة والحالات الطلابية والتواصل مع أولياء الأمور</p>
-</div>
-</div>
 <div class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-cyan-400 cursor-pointer transition-all flex flex-col items-center gap-4 group min-h-[220px]" onclick="window.location.href='agent_exams_management.html'">
 <div class="w-16 h-16 bg-gradient-to-br from-cyan-600 to-emerald-700 text-white rounded-[24px] flex items-center justify-center shadow-xl text-3xl">📝</div>
 <div class="text-center">
@@ -5816,73 +5807,7 @@ bWw+
     if(doc.indexOf('<!DOCTYPE html') === -1){
       doc = '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>' + esc(r.title || 'سجل') + '</title>'
         + '<style>@page{size:A4;margin:8mm}body{font-family:Tajawal,Arial;background:white;overflow-x:hidden}.safe-hidden-deactivate{display:none!important}</style>'
-        + '</head><body>' + doc + '
-<script id="student-affairs-actions-role-guard-v1">
-(function(){
-  'use strict';
-  function parse(v){try{return JSON.parse(v||'null')}catch(_){return null}}
-  function normList(v){
-    if(Array.isArray(v))return v.map(String).map(x=>x.trim()).filter(Boolean);
-    v=String(v||'').trim(); if(!v)return[];
-    if(v[0]==='['){try{return normList(JSON.parse(v))}catch(_){}}
-    return v.split(/[،,|]/).map(x=>x.trim()).filter(Boolean);
-  }
-  function canonical(v){
-    v=String(v||'').trim();
-    if(['student_affairs','deputy_students'].includes(v))return 'student_affairs';
-    if(/شؤون\s*الطلاب|الشؤون\s*الطلابي/.test(v))return 'student_affairs';
-    return v;
-  }
-  function currentProfile(){
-    const q=new URLSearchParams(location.search||'');
-    const target=window.FOLLOW_TARGET_USER||null;
-    const local=parse(localStorage.getItem('currentSchoolUser'))||parse(localStorage.getItem('currentUser'))||parse(localStorage.getItem('smart_school_current_session'))||{};
-    const p=target||local||{};
-    const qAgency=q.get('agency_type')||q.get('agency_types')||q.get('agent_categories')||'';
-    if(qAgency)p.__queryAgency=qAgency;
-    return p;
-  }
-  function agencyMapLookup(p){
-    try{
-      const sid=String(p.schoolId||p.school_id||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||localStorage.getItem('active_school_id')||'default');
-      const map=parse(localStorage.getItem('smartSchoolUnifiedOpsV2_vp_agency_map_'+sid))||{};
-      const id=String(p.id||p.user_id||'');
-      const email=String(p.email||localStorage.getItem('currentUserEmail')||'').trim().toLowerCase();
-      return (id&&map[id])||(email&&map[email])||'';
-    }catch(_){return''}
-  }
-  function categories(){
-    const p=currentProfile();
-    const raw=p.__queryAgency||p.agent_categories||p.agency_categories||p.agency_types||p.agency_type||p.agencyType||p.vice_agency_type||p.viceAgencyType||p.roleLabel||p.role_label||agencyMapLookup(p)||'';
-    return normList(raw).map(canonical);
-  }
-  function allowed(){return categories().includes('student_affairs')}
-  function refresh(){
-    const card=document.getElementById('student-affairs-actions-card');
-    if(!card)return;
-    card.style.display=allowed()?'flex':'none';
-    card.setAttribute('aria-hidden',allowed()?'false':'true');
-  }
-  window.openStudentAffairsActions=function(){
-    if(!allowed())return;
-    const q=new URLSearchParams(location.search||'');
-    const next=new URL('student_affairs_actions.html',location.href);
-    next.searchParams.set('return_to','agent.html');
-    const sid=q.get('school_id')||q.get('schoolId')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||localStorage.getItem('active_school_id')||'';
-    if(sid)next.searchParams.set('school_id',sid);
-    next.searchParams.set('agency_type','student_affairs');
-    ['follow','followUser','followUserId','targetRole','viewer','viewerRole','followEmail'].forEach(k=>{const v=q.get(k);if(v)next.searchParams.set(k,v)});
-    location.href=next.toString();
-  };
-  window.StudentAffairsAgentAccess={allowed,categories,refresh};
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',refresh,{once:true});else refresh();
-  setTimeout(refresh,250);setTimeout(refresh,1000);setTimeout(refresh,2200);
-  window.addEventListener('storage',refresh);
-  window.addEventListener('school-user-role-updated',refresh);
-})();
-</script>
-
-</body></html>';
+        + '</head><body>' + doc + '</body></html>';
     }
     if(autoPrint){
       var printScript = '<script>window.addEventListener("load",function(){setTimeout(function(){window.print()},500)});<\\/script>';

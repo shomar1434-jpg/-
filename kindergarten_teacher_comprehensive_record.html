@@ -223,51 +223,119 @@
                 },
 
                 // Initialization Cycle (Standard Alpine.js V3 auto-init with safety fallbacks)
-                init() {
-                    const savedGlobal = localStorage.getItem('followup_global_v3');
-                    if (savedGlobal) {
-                        this.globalMetadata = Object.assign({
-                            school: 'مدرسة القمم الأهلية',
-                            semester: 'الفصل الدراسي الثالث',
-                            year: '1447 هـ',
-                            startDate: '2026-08-30',
-                            dateSystem: 'hijri'
-                        }, JSON.parse(savedGlobal));
-                    }
-
-                    const savedClasses = localStorage.getItem('followup_classes_v3');
-                    if (savedClasses) {
-                        try {
-                            const parsedClasses = JSON.parse(savedClasses) || [];
-                            const hasOldDemoData = parsedClasses.some(c => ['class-middle-1','class-high-1','class-primary-1'].includes(c.id));
-                            // تنظيف البيانات الوهمية السابقة حتى يبدأ سجل معلمة رياض الأطفال من مركز المعلومات فقط
-                            this.classes = hasOldDemoData ? [] : this.migrateLegacyStudentRecords(parsedClasses);
-                            if (hasOldDemoData) {
-                                localStorage.removeItem('followup_current_class_id_v3');
-                                this.showNotification('تم تنظيف بيانات السجل الوهمية السابقة، استخدم الاستيراد من مركز المعلومات', 'info');
-                            }
-                        } catch (e) {
-                            this.classes = [];
+                normalizeAcademicYear(value) {
+                    const raw=String(value||'').trim();
+                    const m=raw.match(/\d{4}/);
+                    return m?m[0]:(raw||'1448');
+                },
+                semesterStorageKey(value) {
+                    const n=String(value||'').replace(/\s+/g,' ').trim();
+                    if(n.includes('الأول')||n.includes('الاول')) return 'semester_1';
+                    if(n.includes('الثاني')) return 'semester_2';
+                    if(n.includes('الثالث')) return 'semester_3';
+                    return 'semester_1';
+                },
+                periodStorageKey(year,semester) {
+                    return `kindergarten_teacher_records_period_v1:${this.normalizeAcademicYear(year)}:${this.semesterStorageKey(semester)}`;
+                },
+                readPeriodState(year,semester) {
+                    try {
+                        const raw=localStorage.getItem(this.periodStorageKey(year,semester));
+                        const x=raw?JSON.parse(raw):null;
+                        return x&&typeof x==='object'?x:null;
+                    } catch(e) { return null; }
+                },
+                writePeriodState(year,semester,state) {
+                    localStorage.setItem(this.periodStorageKey(year,semester),JSON.stringify(state));
+                },
+                currentPeriodSnapshot() {
+                    return {
+                        globalMetadata: JSON.parse(JSON.stringify(this.globalMetadata||{})),
+                        classes: JSON.parse(JSON.stringify(this.classes||[])),
+                        currentClassId: this.currentClassId||'',
+                        savedAt: new Date().toISOString()
+                    };
+                },
+                async switchAcademicPeriod(nextSemester,nextYear) {
+                    if(this._switchingAcademicPeriod) return;
+                    this._switchingAcademicPeriod=true;
+                    const oldYear=this.globalMetadata.year, oldSemester=this.globalMetadata.semester;
+                    const oldKey=this.periodStorageKey(oldYear,oldSemester);
+                    const oldSnapshot=this.currentPeriodSnapshot();
+                    try {
+                        // ثبّت الفترة الحالية قبل الانتقال.
+                        this.writePeriodState(oldYear,oldSemester,oldSnapshot);
+                        const targetYear=String(nextYear||oldYear||'1448 هـ').trim();
+                        const targetSemester=String(nextSemester||oldSemester||'الفصل الدراسي الأول').trim();
+                        const targetKey=this.periodStorageKey(targetYear,targetSemester);
+                        const existing=this.readPeriodState(targetYear,targetSemester);
+                        if(existing) {
+                            this.globalMetadata=Object.assign({},this.globalMetadata,existing.globalMetadata||{},{year:targetYear,semester:targetSemester});
+                            this.classes=this.migrateLegacyStudentRecords(existing.classes||[]);
+                            this.currentClassId=(existing.currentClassId&&this.classes.some(c=>c.id===existing.currentClassId))?existing.currentClassId:(this.classes[0]?.id||'');
+                        } else {
+                            this.globalMetadata=Object.assign({},this.globalMetadata,{year:targetYear,semester:targetSemester});
+                            this.classes=[];
+                            this.currentClassId='';
+                            this.writePeriodState(targetYear,targetSemester,this.currentPeriodSnapshot());
                         }
-                    } else {
-                        this.classes = [];
+                        // مفاتيح التوافق القديمة تعكس الفترة النشطة فقط، ولا تمحو الفترات التاريخية.
+                        localStorage.setItem('followup_global_v3',JSON.stringify(this.globalMetadata));
+                        localStorage.setItem('followup_classes_v3',JSON.stringify(this.classes));
+                        localStorage.setItem('followup_current_class_id_v3',this.currentClassId||'');
+                        if(window.PlatformPersistenceGuard&&typeof PlatformPersistenceGuard.commit==='function') {
+                            const r=await PlatformPersistenceGuard.commit([oldKey,targetKey,'followup_global_v3','followup_classes_v3']);
+                            if(!r||r.ok===false) throw new Error(r?.error||'تعذر تأكيد الانتقال السحابي بين الفصول');
+                        }
+                        this.showNotification(`تم فتح ${targetSemester} للعام ${targetYear} دون التأثير على الفترة السابقة`,'success');
+                    } catch(e) {
+                        // لا نترك المستخدم على فترة لم يتأكد حفظ انتقالها سحابيًا.
+                        this.globalMetadata=JSON.parse(JSON.stringify(oldSnapshot.globalMetadata||{}));
+                        this.classes=this.migrateLegacyStudentRecords(oldSnapshot.classes||[]);
+                        this.currentClassId=oldSnapshot.currentClassId||'';
+                        localStorage.setItem('followup_global_v3',JSON.stringify(this.globalMetadata));
+                        localStorage.setItem('followup_classes_v3',JSON.stringify(this.classes));
+                        localStorage.setItem('followup_current_class_id_v3',this.currentClassId||'');
+                        console.error('[academic period switch]',e);
+                        this.showNotification('تعذر تأكيد تغيير الفصل/العام سحابيًا؛ تمت استعادة الفترة السابقة','error');
+                    } finally { this._switchingAcademicPeriod=false; }
+                },
+                init() {
+                    const legacyGlobalRaw=localStorage.getItem('followup_global_v3');
+                    let legacyGlobal={};
+                    try { legacyGlobal=legacyGlobalRaw?JSON.parse(legacyGlobalRaw):{}; } catch(e) {}
+                    const defaultGlobal={school:'مدرسة جديدة',semester:'الفصل الدراسي الأول',year:'1448 هـ',startDate:'',dateSystem:'hijri'};
+                    const candidateGlobal=Object.assign({},defaultGlobal,legacyGlobal||{});
+                    const period=this.readPeriodState(candidateGlobal.year,candidateGlobal.semester);
+                    let sourceClasses=[];
+                    if(period){
+                        this.globalMetadata=Object.assign({},defaultGlobal,period.globalMetadata||candidateGlobal);
+                        sourceClasses=period.classes||[];
+                    }else{
+                        this.globalMetadata=candidateGlobal;
+                        try { sourceClasses=JSON.parse(localStorage.getItem('followup_classes_v3')||'[]')||[]; } catch(e) { sourceClasses=[]; }
                     }
+                    const hasOldDemoData=sourceClasses.some(c=>['class-middle-1','class-high-1','class-primary-1'].includes(c.id));
+                    this.classes=hasOldDemoData?[]:this.migrateLegacyStudentRecords(sourceClasses);
+                    if(hasOldDemoData) localStorage.removeItem('followup_current_class_id_v3');
 
-                    const savedClassId = localStorage.getItem('followup_current_class_id_v3');
-                    if (savedClassId && this.classes.find(c => c.id === savedClassId)) {
-                        this.currentClassId = savedClassId;
-                    } else if (this.classes.length > 0) {
-                        this.currentClassId = this.classes[0].id;
-                    } else {
-                        this.currentClassId = '';
-                    }
+                    const savedClassId=(period&&period.currentClassId)||localStorage.getItem('followup_current_class_id_v3')||'';
+                    this.currentClassId=(savedClassId&&this.classes.some(c=>c.id===savedClassId))?savedClassId:(this.classes[0]?.id||'');
 
-                    // Watch states manually inside alpine to trigger storage updates
-                    this.$watch('classes', value => this.saveData());
-                    this.$watch('globalMetadata', value => this.saveData());
-                    this.$watch('currentClassId', value => {
-                        localStorage.setItem('followup_current_class_id_v3', value);
-                        this.speedIndex = 0; // Reset index when changing classes
+                    // ترحيل آمن للبيانات القديمة إلى أول فترة زمنية، دون حذف المفاتيح القديمة.
+                    const activeKey=this.periodStorageKey(this.globalMetadata.year,this.globalMetadata.semester);
+                    if(!localStorage.getItem(activeKey)) this.writePeriodState(this.globalMetadata.year,this.globalMetadata.semester,this.currentPeriodSnapshot());
+                    localStorage.setItem('followup_global_v3',JSON.stringify(this.globalMetadata));
+                    localStorage.setItem('followup_classes_v3',JSON.stringify(this.classes));
+
+                    this.$watch('classes',()=>this.saveData());
+                    this.$watch('globalMetadata.school',()=>this.saveData());
+                    this.$watch('globalMetadata.startDate',()=>this.saveData());
+                    this.$watch('globalMetadata.dateSystem',()=>this.saveData());
+                    this.$watch('currentClassId',value=>{
+                        localStorage.setItem('followup_current_class_id_v3',value||'');
+                        this.speedIndex=0;
+                        this.saveData();
                     });
                 },
 
@@ -526,8 +594,10 @@
                 },
 
                 saveData() {
-                    localStorage.setItem('followup_classes_v3', JSON.stringify(this.classes));
-                    localStorage.setItem('followup_global_v3', JSON.stringify(this.globalMetadata));
+                    if(this._switchingAcademicPeriod) return;
+                    localStorage.setItem('followup_classes_v3',JSON.stringify(this.classes));
+                    localStorage.setItem('followup_global_v3',JSON.stringify(this.globalMetadata));
+                    this.writePeriodState(this.globalMetadata.year,this.globalMetadata.semester,this.currentPeriodSnapshot());
                 },
 
                 // Notification Alerts Engine
@@ -1219,7 +1289,7 @@
 <link rel="stylesheet" href="premium-ui.css">
 <script defer src="premium-ui.js"></script>
 
-<script>window.CLOUD_STATE_CONFIG={moduleKey:'teacher_comprehensive',scope:'user',keys:['followup_global_v3', 'followup_classes_v3'],prefixes:[]};</script>
+<script>window.CLOUD_STATE_CONFIG={moduleKey:'teacher_comprehensive',scope:'user',keys:['followup_global_v3','followup_classes_v3'],prefixes:['kindergarten_teacher_records_period_v1:']};</script>
 <script src="platform-state-engine.js"></script>
 <script src="platform-persistence-guard.js"></script>
 <script defer src="school-base-settings-source.js"></script>
@@ -2387,7 +2457,7 @@
                 <div class="grid grid-cols-2 gap-4 font-sans font-semibold">
                     <div class="space-y-1">
                         <label class="text-xs font-bold text-slate-600 font-sans">الفصل الدراسي الحالي:</label>
-                        <select x-model="globalMetadata.semester"
+                        <select :value="globalMetadata.semester" @change="switchAcademicPeriod($event.target.value, globalMetadata.year)"
                                 class="w-full bg-slate-50 border border-slate-300 text-slate-700 text-xs rounded-lg p-2.5 cursor-pointer">
                             <option value="الفصل الدراسي الأول">الفصل الدراسي الأول</option>
                             <option value="الفصل الدراسي الثاني">الفصل الدراسي الثاني</option>
@@ -2398,7 +2468,8 @@
                     <div class="space-y-1">
                         <label class="text-xs font-bold text-slate-600 font-sans">العام الدراسي:</label>
                         <input type="text"
-                               x-model="globalMetadata.year"
+                               :value="globalMetadata.year"
+                               @change="switchAcademicPeriod(globalMetadata.semester, $event.target.value)"
                                class="w-full bg-slate-50 border border-slate-300 text-slate-700 text-xs rounded-lg p-2.5" />
                     </div>
                 </div>

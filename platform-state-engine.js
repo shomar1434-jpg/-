@@ -1,7 +1,7 @@
 (function(){
   'use strict';
   if(window.PlatformStateEngine) return;
-  const VERSION='1.0.0';
+  const VERSION='1.4.0-school-isolation-v8';
   const cfg={
     base:()=> (localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'')+'/functions/v1/platform-state',
     anon:()=>localStorage.getItem('smartSchoolSupabaseAnonKey')||'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM',
@@ -15,9 +15,27 @@
     if(cfg.token()) return cfg.token();
     return '';
   }
+  function expectedSchoolId(){
+    return String(
+      localStorage.getItem('active_school_id') ||
+      localStorage.getItem('current_school_id') ||
+      localStorage.getItem('school_id') ||
+      localStorage.getItem('smart_school_id') ||
+      window.PlatformCloudSession?.schoolId?.() || ''
+    ).trim();
+  }
   async function request(action,body={},opts={}){
     const token=await ensureSession();
     if(!token) throw new Error('الجلسة السحابية غير متاحة');
+    const expectedSchool=expectedSchoolId();
+    const tokenSchool=String(window.PlatformCloudSession?.schoolId?.()||'').trim();
+    if(!expectedSchool) throw new Error('تعذر تحديد المدرسة الحالية قبل المزامنة السحابية');
+    if(!tokenSchool || tokenSchool!==expectedSchool){
+      if(window.PlatformCloudSession?.recover) await window.PlatformCloudSession.recover();
+      const repaired=String(window.PlatformCloudSession?.schoolId?.()||'').trim();
+      if(repaired!==expectedSchool) throw new Error('جلسة السحابة لا تطابق المدرسة الحالية');
+    }
+    body={...body,expectedSchoolId:expectedSchool};
     const controller=new AbortController();
     const timer=setTimeout(()=>controller.abort(),opts.timeout||30000);
     try{
@@ -46,5 +64,5 @@
   const updateAdministrativeEmployeeStatus=(ownerUserId,status)=>request('admin-employee-status',{moduleKey:'admin_performance',ownerUserId,status});
   const removeAdministrativeEmployee=(ownerUserId)=>request('admin-employee-delete',{moduleKey:'admin_performance',ownerUserId});
   const health=()=>request('health',{});
-  window.PlatformStateEngine={VERSION:'1.3.0-admin-supervisor-actions',request,pull,pullUser,pullSchoolUsers,bulkUpsert,managerUpsertUser,updateAdministrativeEmployeeStatus,removeAdministrativeEmployee,health};
+  window.PlatformStateEngine={VERSION:'1.4.0-school-isolation-v8',request,pull,pullUser,pullSchoolUsers,bulkUpsert,managerUpsertUser,updateAdministrativeEmployeeStatus,removeAdministrativeEmployee,health};
 })();

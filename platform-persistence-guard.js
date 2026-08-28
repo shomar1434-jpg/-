@@ -434,6 +434,6 @@
   }
   window.addEventListener('pagehide',()=>void flush(true));
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')void flush(true)});
-  window.PlatformPersistenceGuard={VERSION:'2026.08.28-canonical-archive-v6',moduleKey,track,scopeFor,flush,commit,commitExact,readExact,readExactValues,writeExactValues,setLocalSilently,whenReady,boot,get hydrated(){return hydrated;}};
+  window.PlatformPersistenceGuard={VERSION:'2026.08.28-school-isolation-v8',moduleKey,track,scopeFor,flush,commit,commitExact,readExact,readExactValues,writeExactValues,setLocalSilently,whenReady,boot,get hydrated(){return hydrated;}};
   setTimeout(boot,0);
 })();

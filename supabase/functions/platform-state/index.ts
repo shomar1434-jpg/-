@@ -33,6 +33,10 @@ Deno.serve(async(req)=>{
 
     const action=new URL(req.url).searchParams.get('action')||'';
     const body=req.method==='GET'?{}:await req.json().catch(()=>({}));
+    const expectedSchoolId=String(body.expectedSchoolId||'').trim();
+    if(expectedSchoolId && expectedSchoolId!==String(s.school_id||'')){
+      return json({error:'جلسة السحابة لا تطابق المدرسة المفتوحة',code:'STATE_SCHOOL_CONTEXT_MISMATCH',requestId,sessionSchoolId:s.school_id,expectedSchoolId},409);
+    }
     const sessionRole=String(s.role||'').toLowerCase();
     const isManager=managers.has(sessionRole)||managers.has(String(s.role||''));
     const isAgent=agents.has(sessionRole)||agents.has(String(s.role||''));
@@ -43,7 +47,7 @@ Deno.serve(async(req)=>{
     const ownerKey=scope==='school'?'school':String(s.user_id||'');
     if(!moduleKey&&action!=='health') return json({error:'moduleKey مطلوب',code:'STATE_MODULE_REQUIRED',requestId},400);
 
-    if(action==='health') return json({ok:true,version:'1.3.0-admin-supervisor-actions',schoolId:s.school_id,userId:s.user_id,role:s.role});
+    if(action==='health') return json({ok:true,version:'1.4.0-school-isolation-v8',schoolId:s.school_id,userId:s.user_id,role:s.role});
 
     if(action==='pull'){
       let q=sb.from('platform_module_state').select('module_key,state_key,payload,deleted_at,updated_at,owner_key').eq('school_id',s.school_id).eq('module_key',moduleKey).eq('owner_key',ownerKey).order('updated_at',{ascending:true}).limit(2000);

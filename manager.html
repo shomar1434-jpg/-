@@ -1357,8 +1357,8 @@ body{overflow-x:hidden}
 <!-- PREMIUM_UI_2026 -->
 <link rel="stylesheet" href="premium-ui.css">
 <script defer src="premium-ui.js"></script>
-<script src="platform-state-engine.js"></script>
-<script src="platform-persistence-guard.js?v=20260828-canonical-archive-v6"></script>
+<script src="platform-state-engine.js?v=20260828-school-isolation-v8"></script>
+<script src="platform-persistence-guard.js?v=20260828-school-isolation-v8"></script>
 <script defer src="school-base-settings-source.js"></script>
 <style id="im-static-messaging-style">
 .im-static-messaging-btn{position:relative;display:inline-flex!important;align-items:center;justify-content:center;gap:7px;white-space:nowrap;text-decoration:none!important;background:#f0fdfa!important;color:#0f766e!important;border:1px solid #ccfbf1!important;border-radius:12px;padding:8px 14px;font-size:12px;font-weight:800;visibility:visible!important;opacity:1!important;pointer-events:auto!important}
@@ -1778,7 +1778,7 @@ body{overflow-x:hidden}
 </div>
 </div>
 <div class="flex gap-3 items-center">
-<button class="bg-teal-600 text-white px-6 py-2 rounded-xl text-xs font-bold flex items-center gap-2" onclick="preparePrint()">🖨️ طباعة و حفظ</button>
+<button class="bg-teal-600 text-white px-6 py-2 rounded-xl text-xs font-bold flex items-center gap-2" onclick="preparePrint()">🖨️ طباعة</button>
 <button class="bg-teal-50 text-teal-700 px-4 py-2 rounded-xl text-xs font-bold border border-teal-200 flex items-center gap-2" onclick="saveReportToArchive()">💾 حفظ في الأرشيف</button>
 </div>
 </nav>
@@ -2935,6 +2935,21 @@ body{overflow-x:hidden}
             return {id,name};
         }
 
+async function assertPerformanceSchoolSessionV8(){
+    const expected=String(localStorage.getItem('active_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||localStorage.getItem('smart_school_id')||'').trim();
+    if(!expected) throw new Error('تعذر تحديد المدرسة الحالية');
+    if(!window.PlatformCloudSession||typeof PlatformCloudSession.ensure!=='function') throw new Error('جلسة المدرسة السحابية غير متاحة');
+    await PlatformCloudSession.ensure();
+    const actual=String(PlatformCloudSession.schoolId?.()||'').trim();
+    if(actual!==expected) throw new Error('تم إيقاف الحفظ: جلسة السحابة تخص مدرسة أخرى');
+    if(window.PlatformStateEngine&&typeof PlatformStateEngine.health==='function'){
+      const h=await PlatformStateEngine.health();
+      if(String(h?.schoolId||'')!==expected) throw new Error('تم إيقاف الحفظ: المدرسة التي أكدها الخادم لا تطابق المدرسة المفتوحة');
+    }
+    return expected;
+}
+function performanceDomainCloudKeyV8(cat){return 'performance_reports_archive_v2_domain_'+String(cat||'').replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,80)}
+
 function performanceArchiveFolderName(catId){
     const data=(typeof CATEGORY_DATA!=='undefined' && CATEGORY_DATA)?CATEGORY_DATA[String(catId)]:null;
     if(data && data.name) return String(data.name);
@@ -2945,7 +2960,7 @@ function performanceArchiveFolderName(catId){
 
 async function saveReportToArchive() {
             try{ if(typeof showToast==='function') showToast('جاري حفظ التقرير والتحقق من الأرشيف السحابي...'); }catch(_e){}
-            try{await loadCanonicalPerformanceArchiveV6();}catch(e){if(typeof showToast==='function')showToast('تعذر استعادة أرشيف تقارير الأداء قبل الحفظ: '+String(e?.message||e));console.error('[performance canonical preload]',e);return false;}
+            try{await assertPerformanceSchoolSessionV8();await loadCanonicalPerformanceArchiveV6();}catch(e){if(typeof showToast==='function')showToast('تعذر استعادة أرشيف تقارير الأداء قبل الحفظ: '+String(e?.message||e));console.error('[performance canonical preload]',e);return false;}
             const archiveKey='school_reports', beforeRaw=localStorage.getItem(archiveKey)||'[]', previousEditingId=currentEditingId;
             let reports=[];try{reports=JSON.parse(beforeRaw);if(!Array.isArray(reports))reports=[]}catch(e){reports=[]}
             const systemDateStr=new Date().toLocaleDateString('ar-SA-u-ca-islamic-uma');
@@ -2961,7 +2976,16 @@ async function saveReportToArchive() {
             currentEditingId=data.id;localStorage.setItem(archiveKey,JSON.stringify(reports));
             try{
               if(!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.commit!=='function')throw new Error('محرك التحقق السحابي غير متاح');
-              await saveCanonicalPerformanceArchiveV7({folderId:cat,reportId:data.id,folderName:folderName}); const saved=JSON.parse(localStorage.getItem(archiveKey)||'[]').find(r=>String(r.id)===String(data.id)); if(!saved||performanceArchiveFolderId(saved)!==cat)throw new Error('لم يظهر التقرير داخل مجلد المجال المحدد محليًا');
+              await saveCanonicalPerformanceArchiveV6();
+              const __G=window.PlatformPersistenceGuard;
+              const __domainKey=performanceDomainCloudKeyV8(cat);
+              const __domainRaw=JSON.stringify(reports.filter(r=>performanceArchiveFolderId(r)===cat));
+              const __dw=await __G.writeExactValues({moduleKey:'manager',scope:'user',values:{[__domainKey]:__domainRaw}});
+              if(!__dw.ok) throw new Error(__dw.error||'تعذر حفظ مجلد المجال سحابيًا');
+              const __dr=await __G.readExactValues({moduleKey:'manager',scope:'user',keys:[__domainKey]});
+              if(!__dr.ok||__dr.values[__domainKey]!==__domainRaw) throw new Error('فشل التحقق السحابي من مجلد المجال المحدد');
+              const saved=JSON.parse(localStorage.getItem(archiveKey)||'[]').find(r=>String(r.id)===String(data.id));
+              if(!saved||performanceArchiveFolderId(saved)!==cat)throw new Error('لم يظهر التقرير داخل مجلد المجال المحدد');
               showToast('تم الحفظ في أرشيف تقارير الأداء الوظيفي / '+folderName+' ✅');return true;
             }catch(e){localStorage.setItem(archiveKey,beforeRaw);currentEditingId=previousEditingId;showToast('تعذر حفظ التقرير سحابيًا: '+String(e?.message||e||'خطأ غير معروف'));console.error('[performance folder save]',e);return false}
         }
@@ -3077,36 +3101,10 @@ async function saveReportToArchive() {
 
         function showToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3000); }
 
-        async function preparePrint() {
-            // «طباعة و حفظ»: لا تبدأ الطباعة إلا بعد تأكيد الحفظ السحابي للتقرير المفتوح.
-            const report = document.getElementById('report-content-container');
-            const app = document.getElementById('main-report-app');
-            if (!report || !app || app.classList.contains('hidden')) {
-                showToast("افتح التقرير أولاً قبل الطباعة");
-                return;
-            }
-            if (window.__managerPrintLock) return;
-            const saved=await saveReportToArchive();
-            if(!saved){showToast("تم إيقاف الطباعة لأن الحفظ السحابي لم يتأكد.");return;}
-            window.__managerPrintLock = true;
-
-            const cleanup = () => {
-                document.body.classList.remove('manager-report-printing');
-                window.__managerPrintLock = false;
-                window.removeEventListener('afterprint', cleanup);
-                window.removeEventListener('focus', delayedCleanup);
-            };
-            const delayedCleanup = () => setTimeout(cleanup, 400);
-
-            document.body.classList.add('manager-report-printing');
-            window.addEventListener('afterprint', cleanup, { once: true });
-            window.addEventListener('focus', delayedCleanup, { once: true });
-            showToast("جاري تجهيز تقرير المدير للطباعة...");
-            setTimeout(() => {
-                window.scrollTo(0, 0);
-                window.print();
-                setTimeout(() => { if (window.__managerPrintLock) cleanup(); }, 3000);
-            }, 250);
+        function preparePrint() {
+            // PRINT_ONLY_V8: printing is a presentation action only; it must never save or mutate the archive.
+            try { window.print(); return true; }
+            catch (e) { console.error('[performance print only]', e); return false; }
         }
 
         function openExitModal() { document.getElementById('exit-modal').style.display = 'flex'; }
@@ -5631,7 +5629,7 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
 
 
 <!-- Unified Comprehensive Cloud Storage -->
-<script src="platform-cloud-session.js?v=20260818-session-v12"></script>
+<script src="platform-cloud-session.js?v=20260828-school-isolation-v8"></script>
 <script src="cloud-task-engine.js?v=20260818-task-v9"></script>
 <script src="multi_school_switcher.js"></script>
 <script src="cloud-file-engine.js"></script>
@@ -5673,42 +5671,32 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
 })();
 </script>
 
-<script id="CANONICAL_PERFORMANCE_ARCHIVE_V7">
+<script id="CANONICAL_PERFORMANCE_ARCHIVE_V6">
 (function(){
-  if(window.__CANONICAL_PERFORMANCE_ARCHIVE_V7__)return;window.__CANONICAL_PERFORMANCE_ARCHIVE_V7__=true;
+  if(window.__CANONICAL_PERFORMANCE_ARCHIVE_V6__)return;window.__CANONICAL_PERFORMANCE_ARCHIVE_V6__=true;
   const MODULE="manager", LEGACY="school_reports", CANON='performance_reports_archive_v2';
-  const INDEX='performance_reports_archive_v2__domain_index';
   function g(){return window.PlatformPersistenceGuard}
   function arr(raw){try{const a=JSON.parse(raw||'[]');return Array.isArray(a)?a:[]}catch(e){return[]}}
-  function obj(raw){try{const o=JSON.parse(raw||'{}');return o&&typeof o==='object'&&!Array.isArray(o)?o:{}}catch(e){return{}}}
-  function folderId(r){return String((r&&(r.archiveFolderId||r.category))||'').trim()}
-  function safeId(id){return encodeURIComponent(String(id||'').trim()).replace(/%/g,'_')}
-  function folderKey(id){return CANON+'__domain__'+safeId(id)}
-  function uniqueReports(list){const m=new Map();(Array.isArray(list)?list:[]).forEach(function(r){if(!r||r.id===undefined||r.id===null)return;const k=String(r.id),old=m.get(k);if(!old||String(r.updatedAt||r.saveTimestamp||'')>=String(old.updatedAt||old.saveTimestamp||''))m.set(k,r)});return [...m.values()]}
-  async function readValues(keys){const G=g();if(!G||typeof G.readExactValues!=='function')throw new Error('محرك الأرشيف المرجعي V7 غير متاح');const r=await G.readExactValues({moduleKey:MODULE,scope:'user',keys});if(!r.ok)throw new Error(r.error||'تعذر قراءة الأرشيف المرجعي');return r.values||{}}
   async function loadCanonical(){
-    const G=g();if(!G||typeof G.readExactValues!=='function')throw new Error('محرك الأرشيف المرجعي V7 غير متاح');
-    const base=await readValues([CANON,INDEX]);let raw=base[CANON],index=obj(base[INDEX]),ids=Object.keys(index);
-    if(raw===undefined){const old=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:[LEGACY]});raw=old.ok&&old.values[LEGACY]!==undefined?old.values[LEGACY]:(localStorage.getItem(LEGACY)||'[]')}
-    let canonical=arr(raw),merged=[];
-    if(ids.length){const vals=await readValues(ids.map(folderKey));ids.forEach(function(id){merged.push(...arr(vals[folderKey(id)]))});merged.push(...canonical.filter(r=>!folderId(r)));canonical=uniqueReports(merged)}
-    const finalRaw=JSON.stringify(canonical);G.setLocalSilently(LEGACY,finalRaw);return canonical;
+    const G=g();if(!G||typeof G.readExactValues!=='function')throw new Error('محرك الأرشيف المرجعي V6 غير متاح');
+    let r=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:[CANON]});if(!r.ok)throw new Error(r.error||'تعذر قراءة الأرشيف المرجعي');
+    let raw=r.values[CANON];
+    if(raw===undefined){
+      const old=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:[LEGACY]});
+      raw=old.ok&&old.values[LEGACY]!==undefined?old.values[LEGACY]:(localStorage.getItem(LEGACY)||'[]');
+      if(arr(raw).length){const w=await G.writeExactValues({moduleKey:MODULE,scope:'user',values:{[CANON]:raw}});if(!w.ok)throw new Error(w.error||'تعذر ترحيل الأرشيف القديم');}
+    }
+    raw=raw===undefined?'[]':raw;G.setLocalSilently(LEGACY,raw);return arr(raw);
   }
-  async function saveCanonical(options){
-    options=options||{};const G=g();if(!G||typeof G.writeExactValues!=='function')throw new Error('محرك الأرشيف المرجعي V7 غير متاح');
-    const reports=arr(localStorage.getItem(LEGACY)||'[]'),raw=JSON.stringify(reports),current={};
-    reports.forEach(function(r){const id=folderId(r);if(!id)return;(current[id]||(current[id]=[])).push(r)});
-    const old=await readValues([INDEX]),oldIndex=obj(old[INDEX]),allIds=[...new Set([...Object.keys(oldIndex),...Object.keys(current)])],index={};
-    allIds.forEach(function(id){const sample=(current[id]||[])[0];index[id]=String(sample?.archiveFolderName||sample?.categoryName||oldIndex[id]||id)});
-    const values={[CANON]:raw,[INDEX]:JSON.stringify(index)};allIds.forEach(function(id){values[folderKey(id)]=JSON.stringify(current[id]||[])});
-    const w=await G.writeExactValues({moduleKey:MODULE,scope:'user',values});if(!w.ok)throw new Error(w.error||'تعذر حفظ أرشيف مجالات الأداء الوظيفي');
-    const verifyKeys=[CANON,INDEX];if(options.folderId)verifyKeys.push(folderKey(options.folderId));const vr=await readValues(verifyKeys);
-    if(String(vr[CANON]??'')!==raw)throw new Error('فشل التحقق من الأرشيف الكامل');
-    if(options.folderId){const fid=String(options.folderId),folderReports=arr(vr[folderKey(fid)]),hit=folderReports.find(r=>String(r.id)===String(options.reportId));if(!hit)throw new Error('لم يظهر التقرير في المجلد السحابي المطابق للمجال');if(folderId(hit)!==fid)throw new Error('معرّف مجلد التقرير السحابي لا يطابق المجال المختار');const expectedName=String(options.folderName||'').trim(),actualName=String(hit.archiveFolderName||hit.categoryName||'').trim();if(expectedName&&actualName!==expectedName)throw new Error('اسم مجلد التقرير السحابي لا يطابق اسم المجال المختار')}
-    return {ok:true,folderId:String(options.folderId||''),verified:verifyKeys.length};
+  async function saveCanonical(){
+    const G=g();if(!G||typeof G.writeExactValues!=='function')throw new Error('محرك الأرشيف المرجعي V6 غير متاح');
+    const raw=localStorage.getItem(LEGACY)||'[]';
+    const w=await G.writeExactValues({moduleKey:MODULE,scope:'user',values:{[CANON]:raw}});if(!w.ok)throw new Error(w.error||'تعذر حفظ الأرشيف المرجعي');
+    const r=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:[CANON]});if(!r.ok||r.values[CANON]!==raw)throw new Error('فشل التحقق النهائي من الأرشيف المرجعي');return true;
   }
-  window.loadCanonicalPerformanceArchiveV7=loadCanonical;window.saveCanonicalPerformanceArchiveV7=saveCanonical;window.loadCanonicalPerformanceArchiveV6=loadCanonical;window.saveCanonicalPerformanceArchiveV6=saveCanonical;window.verifyReportArchiveCloud=async function(){return saveCanonical()};
-  const oldOpen=window.openArchiveView;if(typeof oldOpen==='function')window.openArchiveView=async function(){try{await loadCanonical()}catch(e){console.error('[performance canonical V7 load]',e);if(typeof showToast==='function')showToast('تعذر استعادة أرشيف تقارير الأداء: '+(e.message||e));}return oldOpen.apply(this,arguments)};
+  window.loadCanonicalPerformanceArchiveV6=loadCanonical;window.saveCanonicalPerformanceArchiveV6=saveCanonical;
+  window.verifyReportArchiveCloud=async function(){return saveCanonical();};
+  const oldOpen=window.openArchiveView;if(typeof oldOpen==='function')window.openArchiveView=async function(){try{await loadCanonical();}catch(e){console.error('[performance canonical load]',e);if(typeof showToast==='function')showToast('تعذر استعادة أرشيف تقارير الأداء: '+(e.message||e));}return oldOpen.apply(this,arguments)};
 })();
 </script>
 </body>

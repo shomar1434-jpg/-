@@ -21,13 +21,15 @@
   }
 
   function directActiveSchoolId() {
+    // SCHOOL_SESSION_ISOLATION_V8: the visible/active school is authoritative.
+    // Never allow a stale tab token to define which school the page belongs to.
     return String(
-      sessionStorage.getItem(TAB_SCHOOL_KEY) ||
-      sessionStorage.getItem('smart_school_tab_school_v1') ||
       localStorage.getItem('active_school_id') ||
       localStorage.getItem('current_school_id') ||
       localStorage.getItem('school_id') ||
-      localStorage.getItem('smart_school_id') || ''
+      localStorage.getItem('smart_school_id') ||
+      sessionStorage.getItem('smart_school_tab_school_v1') ||
+      sessionStorage.getItem(TAB_SCHOOL_KEY) || ''
     ).trim();
   }
 
@@ -211,18 +213,16 @@
   function valid() {
     const currentToken = token();
     const expiry = expiresAt();
-    const activeSchool = sessionStorage.getItem(TAB_SCHOOL_KEY) || localStorage.getItem('active_school_id') || localStorage.getItem('current_school_id') || localStorage.getItem('school_id') || localStorage.getItem('smart_school_id') || '';
-    const sameSchool = !activeSchool || !schoolId() || String(activeSchool) === String(schoolId());
+    const activeSchool = directActiveSchoolId();
+    const tokenSchool = String(schoolId() || '').trim();
+    // A token without an explicit school, or one belonging to another school,
+    // is never accepted for an independent-school page.
+    const sameSchool = Boolean(activeSchool && tokenSchool && activeSchool === tokenSchool);
     return Boolean(currentToken && sameSchool && (!expiry || Date.parse(expiry) > Date.now() + 60_000));
   }
 
   function currentSchoolId() {
-    return sessionStorage.getItem(TAB_SCHOOL_KEY) ||
-      localStorage.getItem('active_school_id') ||
-      localStorage.getItem('current_school_id') ||
-      localStorage.getItem('school_id') ||
-      localStorage.getItem('smart_school_id') ||
-      schoolId() || '';
+    return directActiveSchoolId() || schoolId() || '';
   }
 
   function applyPayload(payload, renewed = true) {
@@ -289,7 +289,7 @@
     } catch (_) {}
   }
 
-  const SESSION_VERSION='2026.08.28-continuity-v2';
+  const SESSION_VERSION='2026.08.28-school-isolation-v8';
 
   window.PlatformCloudSession = {
     VERSION:SESSION_VERSION,

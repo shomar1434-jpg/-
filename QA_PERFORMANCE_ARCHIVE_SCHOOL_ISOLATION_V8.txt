@@ -1,0 +1,23 @@
+تقرير QA — عزل المدرسة وأرشيف الأداء الوظيفي V8
+
+السبب الجذري المؤكد:
+- platform-cloud-session.js كان يعطي أولوية لمعرف المدرسة المخزن داخل جلسة التبويب القديمة عند valid/currentSchoolId، مما يسمح بقبول رمز جلسة مدرسة سابقة بعد انتقال الواجهة إلى مدرسة أخرى.
+- platform-state كان يثق بالمدرسة الموجودة داخل الجلسة فقط ولا يستقبل expectedSchoolId من الواجهة، لذلك لم يكن يستطيع اكتشاف اختلاف سياق المدرسة.
+- زر طباعة تقرير المدير كان يستدعي الحفظ قبل window.print.
+
+التصحيح:
+- المدرسة النشطة في الواجهة أصبحت مرجع الهوية، ولا تقبل جلسة دون schoolId مطابق.
+- كل طلب platform-state يرسل expectedSchoolId، والخادم يرفض الاختلاف بكود STATE_SCHOOL_CONTEXT_MISMATCH (HTTP 409).
+- قبل حفظ تقرير الأداء يتم ensure + health والتحقق من schoolId من الخادم.
+- حفظ التقرير يكتب الأرشيف المرجعي ويكتب مفتاح مجال مستقل performance_reports_archive_v2_domain_<category> ويعيد قراءته للتحقق.
+- الطباعة لا تنفذ أي حفظ.
+
+الاختبارات:
+- Node syntax: platform-cloud-session.js / platform-state-engine.js / platform-persistence-guard.js: PASS.
+- اختبار جلسة قديمة SCHOOL_A مع واجهة SCHOOL_B: valid() = false: PASS.
+- فحص بنيوي للأقسام الثمانية: school assertion + domain key + print-only: PASS.
+- مقارنة فشلَي Syntax القديمين داخل agent.html: موجودان في النسخة المرجعية قبل التصحيح ولم ينتجا عن V8.
+- Edge Function platform-state V8 نُشرت بنجاح على المشروع المتصل وأصبحت ACTIVE.
+
+ملاحظة الاختبار الحي النهائي:
+يتطلب تسجيل الدخول من واجهة مدرسة فعلية ثم حفظ تقرير. بعد ذلك يجب ظهور صفين على الأقل في platform_module_state لنفس school_id/user/module: performance_reports_archive_v2 و performance_reports_archive_v2_domain_<category>.

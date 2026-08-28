@@ -1931,7 +1931,7 @@ body[data-ss-role="activity-leader"] [aria-label*="تحليل البيانات"]
 <link rel="stylesheet" href="premium-ui.css">
 <script defer src="premium-ui.js"></script>
 <script src="platform-state-engine.js"></script>
-<script src="platform-persistence-guard.js"></script>
+<script src="platform-persistence-guard.js?v=20260828-archive-domain-v4"></script>
 <script defer src="school-base-settings-source.js"></script>
 <style id="im-static-messaging-style">
 .im-static-messaging-btn{position:relative;display:inline-flex!important;align-items:center;justify-content:center;gap:7px;white-space:nowrap;text-decoration:none!important;background:#f0fdfa!important;color:#0f766e!important;border:1px solid #ccfbf1!important;border-radius:12px;padding:8px 14px;font-size:12px;font-weight:800;visibility:visible!important;opacity:1!important;pointer-events:auto!important}
@@ -3419,7 +3419,7 @@ async function saveReportToArchive() {
 
         function openPendingReport() { if (pendingReportIdToOpen) { closeReminderModal(); editReport(pendingReportIdToOpen); } }
         function closeReminderModal() { document.getElementById('reminder-modal').style.display = 'none'; }
-        function openArchiveView() { document.getElementById('welcome-dashboard').style.display = 'none'; document.getElementById('archive-view').style.display = 'block'; renderArchiveFolders(); }
+        async function openArchiveView() { try{if(window.PlatformPersistenceGuard&&typeof PlatformPersistenceGuard.readExact==='function')await PlatformPersistenceGuard.readExact({moduleKey:'activity_leader',scope:'user',keys:['reports_archive']});}catch(e){console.error('[performance archive hydrate]',e)} document.getElementById('welcome-dashboard').style.display = 'none'; document.getElementById('archive-view').style.display = 'block'; renderArchiveFolders(); }
         function closeArchiveView() { document.getElementById('archive-view').style.display = 'none'; document.getElementById('welcome-dashboard').style.display = 'block'; }
         
         function renderArchiveFolders() { 
@@ -4696,13 +4696,15 @@ body{overflow-x:hidden}
     {id:"events", name:"الأيام والمناسبات"},
     {id:"followup", name:"التوجيهات والمتابعة"}
   ];
+  async function hydrateActivityRecordsArchive(){try{if(window.PlatformPersistenceGuard&&typeof PlatformPersistenceGuard.readExact==='function')return await PlatformPersistenceGuard.readExact({moduleKey:'activity_leader',scope:'user',keys:['activity_leader_records_archive_v2']});}catch(e){console.error('[activity records hydrate]',e)}return null}
   function activityRecordsArchiveRead(){try{return JSON.parse(localStorage.getItem('activity_leader_records_archive_v2')||'[]')}catch(e){return []}}
   async function activityRecordsArchiveWrite(items){
     var key='activity_leader_records_archive_v2',before=localStorage.getItem(key)||'[]'; localStorage.setItem(key,JSON.stringify(items||[]));
-    try{if(!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.commit!=='function')throw new Error('محرك التحقق السحابي غير متاح');var c=await PlatformPersistenceGuard.commit([key]);if(!c||c.ok===false)throw new Error(c&&c.error||'تعذر التحقق السحابي');return true}catch(e){localStorage.setItem(key,before);console.error(e);alert('تعذر تأكيد العملية سحابياً؛ تمت استعادة الأرشيف السابق.');return false}
+    try{if(!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.commit!=='function')throw new Error('محرك التحقق السحابي غير متاح');var c=await PlatformPersistenceGuard.commitExact({moduleKey:'activity_leader',scope:'user',keys:[key]});if(!c||c.ok===false)throw new Error(c&&c.error||'تعذر التحقق السحابي');return true}catch(e){localStorage.setItem(key,before);console.error(e);alert('تعذر تأكيد العملية سحابياً؛ تمت استعادة الأرشيف السابق.');return false}
   }
   window.showActivityLeaderRecordsArchive=showActivityLeaderRecordsArchive;
-  function showActivityLeaderRecordsArchive(){
+  async function showActivityLeaderRecordsArchive(){
+    await hydrateActivityRecordsArchive();
     var items=activityRecordsArchiveRead(), counts={};
     items.forEach(function(x){counts[x.folderId]=(counts[x.folderId]||0)+1});
     panel('أرشيف سجلات مسؤول/ة النشاط',

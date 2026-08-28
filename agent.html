@@ -1401,7 +1401,7 @@ body{overflow-x:hidden}
 <link rel="stylesheet" href="premium-ui.css">
 <script defer src="premium-ui.js"></script>
 <script src="platform-state-engine.js"></script>
-<script src="platform-persistence-guard.js"></script>
+<script src="platform-persistence-guard.js?v=20260828-archive-domain-v4"></script>
 <script defer src="school-base-settings-source.js"></script>
 <style id="im-static-messaging-style">
 .im-static-messaging-btn{position:relative;display:inline-flex!important;align-items:center;justify-content:center;gap:7px;white-space:nowrap;text-decoration:none!important;background:#f0fdfa!important;color:#0f766e!important;border:1px solid #ccfbf1!important;border-radius:12px;padding:8px 14px;font-size:12px;font-weight:800;visibility:visible!important;opacity:1!important;pointer-events:auto!important}
@@ -2618,7 +2618,8 @@ body{overflow-x:hidden}
             showToast("تم حفظ هدف المجلد ✅");
         }
 
-        function openArchiveView() {
+        async function openArchiveView() {
+            try{if(window.PlatformPersistenceGuard&&typeof PlatformPersistenceGuard.readExact==='function')await PlatformPersistenceGuard.readExact({moduleKey:'agent',scope:'user',keys:['school_reports']});}catch(e){console.error('[performance archive hydrate]',e)}
             document.getElementById('welcome-dashboard').style.display='none';
             document.getElementById('archive-view').style.display='block';
             renderArchiveFolders();
@@ -5692,7 +5693,7 @@ bWw+
     localStorage.setItem(RECORDS_KEY,JSON.stringify(items||[]));
     try{
       if(!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.commit!=='function')throw new Error('طبقة الاستمرارية السحابية غير متاحة');
-      const r=await PlatformPersistenceGuard.commit([RECORDS_KEY]);
+      const r=await PlatformPersistenceGuard.commitExact({moduleKey:'agent',scope:'school',keys:[RECORDS_KEY]});
       if(!r||r.ok===false)throw new Error(r?.error||'تعذر تأكيد الحفظ السحابي');
       return true;
     }catch(e){
@@ -5718,12 +5719,13 @@ bWw+
     }
   }
 
-  window.openRecordsArchiveView = function(){
+  window.openRecordsArchiveView = async function(){
     const v = document.getElementById('records-archive-view');
     if(!v){
       alert('واجهة أرشيف السجلات غير موجودة في الصفحة.');
       return;
     }
+    try{if(window.PlatformPersistenceGuard&&typeof PlatformPersistenceGuard.readExact==='function')await PlatformPersistenceGuard.readExact({moduleKey:'agent',scope:'school',keys:[RECORDS_KEY]});}catch(e){console.error('[agent records archive hydrate]',e)}
     hideMainViews();
     v.classList.remove('hidden');
     v.style.display = 'block';

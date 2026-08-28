@@ -17,6 +17,8 @@
   let applying=false,hydrated=false,booted=false;
   const queues={user:new Map(),school:new Map()};
   let flushTimer=0;
+  let readyResolve;
+  const readyPromise=new Promise(function(resolve){readyResolve=resolve;});
 
   const hardExclude=[
     /^OPENAI_/i,/openai.*key/i,/supabase/i,/platform_file_session_token/i,
@@ -54,6 +56,7 @@
   // تمنع الصفحة العامة من التقاط مفاتيح أرشيف تخص وحدة أخرى من localStorage.
   // هذا هو الحاجز الجذري ضد تلوث module_key بين المدير/الوكيل/المعلم وبقية الأقسام.
   const archiveDomainOwners=[
+    {re:/^self_evaluation_archive(?:_v1)?$|^manager_self_evaluation_archive_v1$/i,modules:new Set(['self_evaluation'])},
     {re:/^school_manager_records_archive_v1$|^managerSchoolRecord_/i,modules:new Set(['manager'])},
     {re:/^wakil_records_pdf_archive_v3$|^wakil_archive_v5_|^wakil_form_v3_/i,modules:new Set(['agent'])},
     {re:/^activity_leader_records_archive_v2$|^activityLeaderRecord_/i,modules:new Set(['activity_leader'])},
@@ -259,6 +262,45 @@
   }
 
 
+  async function readExact(options){
+    options=options||{};
+    const exactModule=String(options.moduleKey||moduleKey).replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,100)||moduleKey;
+    const exactScope=String(options.scope||'user')==='school'?'school':'user';
+    const ownerUserId=String(options.ownerUserId||'').trim();
+    const keys=[...new Set((Array.isArray(options.keys)?options.keys:[options.keys]).map(String).filter(Boolean))];
+    if(!keys.length) return {ok:true,found:0,moduleKey:exactModule,scope:exactScope};
+    let tries=0;
+    while(!window.PlatformStateEngine && tries++<80) await new Promise(r=>setTimeout(r,100));
+    if(!window.PlatformStateEngine) return {ok:false,error:'محرك الحالة السحابية غير متاح'};
+    try{
+      let result;
+      if(exactScope==='user'&&ownerUserId&&typeof PlatformStateEngine.pullUser==='function') result=await PlatformStateEngine.pullUser(exactModule,ownerUserId,keys);
+      else result=await PlatformStateEngine.pull(exactModule,exactScope,keys);
+      const rows=Array.isArray(result)?result:(result?.items||result?.rows||[]);
+      const map=new Map(rows.map(r=>[String(r.state_key||r.key||''),r]));
+      const changed=[];
+      applying=true;
+      try{
+        for(const k of keys){
+          const row=map.get(k), before=nativeGet.call(localStorage,k);
+          if(!row || row.deleted_at || row.deleted===true){
+            if(options.removeMissing===true && before!==null){nativeRemove.call(localStorage,k);changed.push({key:k,oldValue:before,newValue:null});}
+            continue;
+          }
+          const raw=row.payload&&Object.prototype.hasOwnProperty.call(row.payload,'value')?String(row.payload.value):Object.prototype.hasOwnProperty.call(row,'value')?String(row.value):null;
+          if(raw===null) continue;
+          const val=await decodeCloudValue(raw);
+          if(before!==val){nativeSet.call(localStorage,k,val);changed.push({key:k,oldValue:before,newValue:val});}
+        }
+      }finally{applying=false;}
+      changed.forEach(x=>{try{window.dispatchEvent(new StorageEvent('storage',{key:x.key,oldValue:x.oldValue,newValue:x.newValue,storageArea:localStorage,url:location.href}));}catch(_){}});
+      return {ok:true,found:map.size,changed:changed.length,moduleKey:exactModule,scope:exactScope};
+    }catch(e){return {ok:false,error:e?.message||String(e),moduleKey:exactModule,scope:exactScope};}
+  }
+
+  function whenReady(){return hydrated?Promise.resolve({moduleKey,hydrated:true}):readyPromise;}
+
+
   async function commitExact(options){
     options=options||{};
     const exactModule=String(options.moduleKey||moduleKey).replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,100)||moduleKey;
@@ -309,19 +351,20 @@
     if(booted) return; booted=true;
     let tries=0;
     while(tries++<60&&!window.PlatformStateEngine) await new Promise(r=>setTimeout(r,100));
-    if(!window.PlatformStateEngine) return;
+    if(!window.PlatformStateEngine){hydrated=true;try{readyResolve({moduleKey,hydrated:false,error:'engine_unavailable'});}catch(_){} return;}
     try{
       const changedSchool=await hydrateScope('school');
       const changedUser=await hydrateScope('user');
       hydrated=true;
       window.dispatchEvent(new CustomEvent('platform-persistence-ready',{detail:{moduleKey,changed:changedSchool||changedUser}}));
+      try{readyResolve({moduleKey,hydrated:true,changed:changedSchool||changedUser});}catch(_){}
       // لا نعيد تحميل الصفحة بعد Hydration. إعادة التحميل كانت تسبب الومضة
       // والعودة المؤقتة إلى واجهة الترحيب في كل قسم مستقل. بدلاً من ذلك
       // نُبقي الصفحة الحالية ونعلن جاهزية البيانات، وتصل تغييرات المفاتيح عبر StorageEvent.
-    }catch(e){console.warn('[PersistenceGuard] hydrate skipped',moduleKey,e?.message||e);}
+    }catch(e){console.warn('[PersistenceGuard] hydrate skipped',moduleKey,e?.message||e);hydrated=true;try{readyResolve({moduleKey,hydrated:false,error:e?.message||String(e)});}catch(_){}}
   }
   window.addEventListener('pagehide',()=>void flush(true));
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')void flush(true)});
-  window.PlatformPersistenceGuard={VERSION:'2026.08.28-archive-domain-v3',moduleKey,track,scopeFor,flush,commit,commitExact,boot,get hydrated(){return hydrated;}};
+  window.PlatformPersistenceGuard={VERSION:'2026.08.28-archive-domain-v4',moduleKey,track,scopeFor,flush,commit,commitExact,readExact,whenReady,boot,get hydrated(){return hydrated;}};
   setTimeout(boot,0);
 })();

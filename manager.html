@@ -1358,7 +1358,7 @@ body{overflow-x:hidden}
 <link rel="stylesheet" href="premium-ui.css">
 <script defer src="premium-ui.js"></script>
 <script src="platform-state-engine.js"></script>
-<script src="platform-persistence-guard.js"></script>
+<script src="platform-persistence-guard.js?v=20260828-archive-domain-v4"></script>
 <script defer src="school-base-settings-source.js"></script>
 <style id="im-static-messaging-style">
 .im-static-messaging-btn{position:relative;display:inline-flex!important;align-items:center;justify-content:center;gap:7px;white-space:nowrap;text-decoration:none!important;background:#f0fdfa!important;color:#0f766e!important;border:1px solid #ccfbf1!important;border-radius:12px;padding:8px 14px;font-size:12px;font-weight:800;visibility:visible!important;opacity:1!important;pointer-events:auto!important}
@@ -2780,7 +2780,8 @@ body{overflow-x:hidden}
             updateReportProgress();
         }
 
-        function openArchiveView() { 
+        async function openArchiveView() { 
+            try{if(window.PlatformPersistenceGuard&&typeof PlatformPersistenceGuard.readExact==='function')await PlatformPersistenceGuard.readExact({moduleKey:'manager',scope:'user',keys:['school_reports']});}catch(e){console.error('[performance archive hydrate]',e)}
             document.getElementById('welcome-dashboard').style.display='none'; 
             document.getElementById('archive-view').style.display='block'; 
             document.getElementById('archiveSearchInput').value = "";
@@ -5429,11 +5430,24 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
     });
   }
   function showDashboard(){var d=document.getElementById('welcome-dashboard'); if(d){d.style.display='block'; if(d.classList)d.classList.remove('hidden');}}
+  async function hydrateCanonicalManagerArchive(kind){
+    try{
+      const g=window.PlatformPersistenceGuard;
+      if(!g||typeof g.readExact!=='function')return false;
+      if(kind==='self'){
+        const r=await g.readExact({moduleKey:'self_evaluation',scope:'school',keys:['manager_self_evaluation_archive_v1','self_evaluation_archive_v1']});
+        return !!(r&&r.ok!==false);
+      }
+      const r=await g.readExact({moduleKey:'manager',scope:'school',keys:['school_manager_records_archive_v1']});
+      return !!(r&&r.ok!==false);
+    }catch(e){console.error('[manager canonical archive hydrate]',e);return false;}
+  }
   async function showArchive(kind){
     var v=document.getElementById(viewId(kind));
     if(!v){alert('واجهة '+title(kind)+' غير موجودة.');return;}
     hideAllManagerViews();
     v.style.display='block'; if(v.classList)v.classList.remove('hidden');
+    await hydrateCanonicalManagerArchive(kind);
     if(kind==='manager'){
       // حتى على جهاز جديد: اجلب قرارات المدرسة من المصدر السحابي قبل بناء العدادات.
       await syncDecisionsArchiveFromCloud();

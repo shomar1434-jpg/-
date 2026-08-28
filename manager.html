@@ -2961,7 +2961,7 @@ async function saveReportToArchive() {
             currentEditingId=data.id;localStorage.setItem(archiveKey,JSON.stringify(reports));
             try{
               if(!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.commit!=='function')throw new Error('محرك التحقق السحابي غير متاح');
-              const cloud=await PlatformPersistenceGuard.commit([archiveKey]);if(!cloud||cloud.ok===false)throw new Error(cloud?.error||'تعذر تأكيد الحفظ السحابي');
+              const cloud=await PlatformPersistenceGuard.commitExact({moduleKey:'manager',scope:'user',keys:[archiveKey]});if(!cloud||cloud.ok===false)throw new Error(cloud?.error||'تعذر تأكيد الحفظ السحابي');
               const saved=JSON.parse(localStorage.getItem(archiveKey)||'[]').find(r=>String(r.id)===String(data.id));
               if(!saved||performanceArchiveFolderId(saved)!==cat)throw new Error('لم يظهر التقرير داخل مجلد المجال المحدد');
               showToast('تم الحفظ في أرشيف تقارير الأداء الوظيفي / '+folderName+' ✅');return true;

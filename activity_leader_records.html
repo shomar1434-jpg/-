@@ -708,7 +708,7 @@ td textarea,
 <!-- PREMIUM_UI_2026 -->
 <link rel="stylesheet" href="premium-ui.css">
 <script defer src="premium-ui.js"></script>
-<script>window.CLOUD_STATE_CONFIG={moduleKey:'activity_leader_records',scope:'user',keys:['activity_leader_records_archive_v2'],prefixes:['activityLeaderRecord_']};</script>
+<script>window.CLOUD_STATE_CONFIG={moduleKey:'activity_leader',scope:'user',legacyModules:['activity_leader_records'],keys:['activity_leader_records_archive_v2'],prefixes:['activityLeaderRecord_']};</script>
 <script src="platform-state-engine.js"></script>
 <script src="platform-persistence-guard.js"></script>
 <script defer src="school-base-settings-source.js"></script>
@@ -1061,7 +1061,7 @@ async function saveArchive(){
  localStorage.setItem(archiveKey,JSON.stringify(platformArchive));
  try{
    if(!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.commit!=='function')throw new Error('محرك التحقق السحابي غير متاح');
-   const cloud=await PlatformPersistenceGuard.commit([archiveKey]); if(!cloud||cloud.ok===false)throw new Error(cloud?.error||'تعذر تأكيد الحفظ السحابي');
+   const cloud=await PlatformPersistenceGuard.commitExact({moduleKey:'activity_leader',scope:'user',keys:[archiveKey]}); if(!cloud||cloud.ok===false)throw new Error(cloud?.error||'تعذر تأكيد الحفظ السحابي');
    const verify=JSON.parse(localStorage.getItem(archiveKey)||'[]').find(x=>Number(x.id)===Number(saved.id)&&x.folderId===current.id); if(!verify)throw new Error('لم يظهر السجل داخل مجلده بعد الحفظ');
    sessionStorage.removeItem('activity_record_edit_id');
    localStorage.removeItem(key()+"_draft");

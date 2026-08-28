@@ -1401,7 +1401,7 @@ body{overflow-x:hidden}
 <link rel="stylesheet" href="premium-ui.css">
 <script defer src="premium-ui.js"></script>
 <script src="platform-state-engine.js"></script>
-<script src="platform-persistence-guard.js?v=20260828-archive-persistence-v5"></script>
+<script src="platform-persistence-guard.js?v=20260828-canonical-archive-v6"></script>
 <script defer src="school-base-settings-source.js"></script>
 <style id="im-static-messaging-style">
 .im-static-messaging-btn{position:relative;display:inline-flex!important;align-items:center;justify-content:center;gap:7px;white-space:nowrap;text-decoration:none!important;background:#f0fdfa!important;color:#0f766e!important;border:1px solid #ccfbf1!important;border-radius:12px;padding:8px 14px;font-size:12px;font-weight:800;visibility:visible!important;opacity:1!important;pointer-events:auto!important}
@@ -2798,6 +2798,7 @@ function performanceArchiveFolderName(catId){
 
 async function saveReportToArchive() {
             try{ if(typeof showToast==='function') showToast('جاري حفظ التقرير والتحقق من الأرشيف السحابي...'); }catch(_e){}
+            try{await loadCanonicalPerformanceArchiveV6();}catch(e){if(typeof showToast==='function')showToast('تعذر استعادة أرشيف تقارير الأداء قبل الحفظ: '+String(e?.message||e));console.error('[performance canonical preload]',e);return false;}
             if(typeof freezeReportDOMForArchive==='function')freezeReportDOMForArchive();
             const archiveKey='school_reports',beforeRaw=localStorage.getItem(archiveKey)||'[]',previousEditingId=currentEditingId;
             let reports=[];try{reports=JSON.parse(beforeRaw);if(!Array.isArray(reports))reports=[]}catch(e){reports=[]}
@@ -2806,7 +2807,7 @@ async function saveReportToArchive() {
             if(selectedDomain.name) folderName=selectedDomain.name;const data={id:previousEditingId||Date.now(),title:document.getElementById('field_prog_name')?.innerText||'بدون عنوان',category:cat,categoryName:folderName,archiveFolderId:cat,archiveFolderName:folderName,archiveRole:'agent',content:typeof getSerializedReportContentForArchive==='function'?getSerializedReportContentForArchive():document.getElementById('report-content-container').innerHTML,createdAt:old?.createdAt||(typeof getSelectedReportDateDisplay==='function'?getSelectedReportDateDisplay():new Date().toLocaleDateString('ar-SA')),updatedAt:new Date().toISOString()};
             const idx=reports.findIndex(r=>String(r.id)===String(data.id));if(idx>=0)reports[idx]=data;else reports.push(data);
             currentEditingId=data.id;localStorage.setItem(archiveKey,JSON.stringify(reports));
-            try{if(!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.commit!=='function')throw new Error('محرك التحقق السحابي غير متاح');const cloud=await PlatformPersistenceGuard.commitExact({moduleKey:'agent',scope:'user',keys:[archiveKey]});if(!cloud||cloud.ok===false)throw new Error(cloud?.error||'تعذر تأكيد الحفظ السحابي');const saved=JSON.parse(localStorage.getItem(archiveKey)||'[]').find(r=>String(r.id)===String(data.id));if(!saved||performanceArchiveFolderId(saved)!==cat)throw new Error('لم يظهر التقرير داخل مجلد المجال المحدد');showToast('تم الحفظ في أرشيف تقارير الأداء الوظيفي / '+folderName+' ✅');return true}catch(e){localStorage.setItem(archiveKey,beforeRaw);currentEditingId=previousEditingId;showToast('تعذر حفظ التقرير سحابيًا: '+String(e?.message||e||'خطأ غير معروف'));console.error('[performance folder save]',e);return false}
+            try{if(!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.commit!=='function')throw new Error('محرك التحقق السحابي غير متاح');await saveCanonicalPerformanceArchiveV6();const saved=JSON.parse(localStorage.getItem(archiveKey)||'[]').find(r=>String(r.id)===String(data.id));if(!saved||performanceArchiveFolderId(saved)!==cat)throw new Error('لم يظهر التقرير داخل مجلد المجال المحدد');showToast('تم الحفظ في أرشيف تقارير الأداء الوظيفي / '+folderName+' ✅');return true}catch(e){localStorage.setItem(archiveKey,beforeRaw);currentEditingId=previousEditingId;showToast('تعذر حفظ التقرير سحابيًا: '+String(e?.message||e||'خطأ غير معروف'));console.error('[performance folder save]',e);return false}
         }
 
         function openSelectionModal(id) { boxId = id; document.getElementById('selection-modal').style.display='flex'; }
@@ -5636,8 +5637,8 @@ bWw+
   if(window.__RECORDS_ARCHIVE_ENGINE__) return;
   window.__RECORDS_ARCHIVE_ENGINE__ = true;
 
-  const RECORDS_KEY = 'wakil_records_pdf_archive_v3';
-  const LEGACY_KEYS = ['agent_records_archive', 'wakil_records_archive_v1', 'wakil_records_pdf_archive_v2'];
+  const RECORDS_KEY = 'agent_records_archive_v4';
+  const LEGACY_KEYS = ['wakil_records_pdf_archive_v3','agent_records_archive', 'wakil_records_archive_v1', 'wakil_records_pdf_archive_v2'];
   const RECORD_FOLDERS = [{"id":"school-timetables","name":"الجداول المدرسية","kind":"table","category":"educational"},{"id":"waiting-register","name":"حصص الانتظار","kind":"waiting","category":"educational"},{"id":"daily-supervision","name":"المناوبة والإشراف اليومي","kind":"supervision","category":"educational"},{"id":"daily-duty-report","name":"تقرير المناوبة اليومي","kind":"table","category":"educational"},{"id":"study-plans","name":"الخطط الدراسية","kind":"table","category":"educational"},{"id":"teaching-staff-development","name":"دعم وتطوير الهيئة التعليمية","kind":"table","category":"educational"},{"id":"teacher-admin-followup","name":"متابعة أعمال المعلمين والإداريين","kind":"table","category":"educational"},{"id":"achievement-learning-loss","name":"التحصيل الدراسي والفاقد التعليمي","kind":"table","category":"educational"},{"id":"general-exams-file","name":"ملف الاختبار العام","kind":"table","category":"educational"},{"id":"international-tests-file","name":"ملف الاختبارات الدولية","kind":"table","category":"educational"},{"id":"madrasati-platform","name":"منصة مدرستي","kind":"table","category":"educational"},{"id":"professional-growth","name":"النمو المهني","kind":"table","category":"educational"},{"id":"gifted-file","name":"ملف الموهوبين / الموهوبات","kind":"table","category":"educational"},{"id":"special-education","name":"التربية الخاصة","kind":"table","category":"educational"},{"id":"official-work-register","name":"سجل العمل الرسمي","kind":"table","category":"school_affairs"},{"id":"staff-permission","name":"استئذان الموظفين","kind":"permission","category":"school_affairs"},{"id":"staff-absence-inventory","name":"حصر غياب الموظفين","kind":"table","category":"school_affairs"},{"id":"delay-minutes-inventory","name":"حصر دقائق التأخير","kind":"table","category":"school_affairs"},{"id":"referrals","name":"التحويلات","kind":"table","category":"school_affairs"},{"id":"custody-warehouses-archive","name":"العهد والمستودعات والأرشفة","kind":"table","category":"school_affairs"},{"id":"maintenance-cleaning","name":"الصيانة والنظافة","kind":"table","category":"school_affairs"},{"id":"school-transport","name":"النقل المدرسي","kind":"table","category":"school_affairs"},{"id":"school-canteen","name":"المقصف المدرسي","kind":"table","category":"school_affairs"},{"id":"facilities","name":"المرافق","kind":"table","category":"school_affairs"},{"id":"labs-sources","name":"المعامل والمختبرات ومصادر التعلم","kind":"table","category":"school_affairs"},{"id":"admin-teacher-followup","name":"متابعة الإداريين والمعلمين","kind":"table","category":"school_affairs"},{"id":"visitors-register","name":"سجل الزائرين","kind":"table","category":"school_affairs"},{"id":"noor-leaves-followup","name":"متابعة إدخال الإجازات في نظام نور","kind":"table","category":"school_affairs"},{"id":"fares-entry-followup","name":"متابعة الإدخال في نظام فارس","kind":"table","category":"school_affairs"},{"id":"summary-print","name":"طباعة الخلاصة","kind":"table","category":"school_affairs"},{"id":"student-referral","name":"تحويل طالب للوكيل","kind":"student","category":"shared"},{"id":"repeated-absence-referral","name":"تحويل طالب متكرر الغياب","kind":"student","category":"shared"},{"id":"student-permission","name":"سجل استئذان الطلاب","kind":"permission","category":"shared"},{"id":"late-students-list","name":"كشف بأسماء الطلاب المتأخرين","kind":"late-list","category":"shared"},{"id":"late-leave-warning","name":"تنبيه عن تأخر أو انصراف","kind":"notice","category":"shared"},{"id":"deduction-late-leave","name":"قرار حسم تأخر وخروج","kind":"decision","category":"shared"},{"id":"deduction-absence","name":"قرار حسم غياب","kind":"decision","category":"shared"},{"id":"absence-inquiry","name":"مساءلة غياب","kind":"inquiry","category":"shared"},{"id":"student-daily-attendance","name":"متابعة الحضور اليومي للطلاب","kind":"table","category":"student_affairs"},{"id":"student-absence-inventory","name":"حصر غياب الطلاب","kind":"student","category":"student_affairs"},{"id":"student-morning-late","name":"حصر التأخر الصباحي للطلاب","kind":"late-list","category":"student_affairs"},{"id":"student-behavior-violations","name":"سجل المخالفات السلوكية","kind":"student","category":"student_affairs"},{"id":"student-cases-register","name":"سجل القضايا الطلابية","kind":"student","category":"student_affairs"},{"id":"special-student-cases","name":"الحالات الخاصة","kind":"student","category":"student_affairs"},{"id":"behavioral-risk-followup","name":"متابعة التعثر السلوكي","kind":"student","category":"student_affairs"},{"id":"student-remedial-plans","name":"متابعة الخطط العلاجية للطلاب","kind":"table","category":"student_affairs"},{"id":"student-profile","name":"ملف الطالب","kind":"student","category":"student_affairs"},{"id":"student-guidance-programs","name":"برامج التوجيه والإرشاد","kind":"table","category":"student_affairs"},{"id":"student-services","name":"الخدمات الطلابية والتكافل","kind":"table","category":"student_affairs"},{"id":"parent-communication","name":"سجل التواصل مع أولياء الأمور","kind":"student","category":"student_affairs"},{"id":"family-meetings","name":"محاضر الاجتماعات الأسرية والاستدعاءات","kind":"student","category":"student_affairs"},{"id":"student-safety-incidents","name":"الحوادث والإصابات والبلاغات الطلابية","kind":"student","category":"student_affairs"}];
   const WAKIL_RECORD_CATEGORY_LABELS = {educational:'أرشيف الشؤون التعليمية', school_affairs:'أرشيف الشؤون المدرسية', shared:'الأرشيف المشترك'};
   const WAKIL_RECORD_CATEGORY_ORDER = ['educational','school_affairs','shared'];
@@ -5693,7 +5694,7 @@ bWw+
     localStorage.setItem(RECORDS_KEY,JSON.stringify(items||[]));
     try{
       if(!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.commit!=='function')throw new Error('طبقة الاستمرارية السحابية غير متاحة');
-      const r=await PlatformPersistenceGuard.commitExact({moduleKey:'agent',scope:'school',keys:[RECORDS_KEY]});
+      const r=await PlatformPersistenceGuard.writeExactValues({moduleKey:'agent',scope:'school',values:{[RECORDS_KEY]:localStorage.getItem(RECORDS_KEY)||'[]'}});
       if(!r||r.ok===false)throw new Error(r?.error||'تعذر تأكيد الحفظ السحابي');
       return true;
     }catch(e){
@@ -5725,7 +5726,7 @@ bWw+
       alert('واجهة أرشيف السجلات غير موجودة في الصفحة.');
       return;
     }
-    try{if(window.PlatformPersistenceGuard&&typeof PlatformPersistenceGuard.readExact==='function')await PlatformPersistenceGuard.readExact({moduleKey:'agent',scope:'school',keys:[RECORDS_KEY]});}catch(e){console.error('[agent records archive hydrate]',e)}
+    try{const g=window.PlatformPersistenceGuard;if(g&&typeof g.readExactValues==='function'){let r=await g.readExactValues({moduleKey:'agent',scope:'school',keys:[RECORDS_KEY]});let raw=r.ok?r.values[RECORDS_KEY]:undefined;if(raw===undefined){let old=await g.readExactValues({moduleKey:'agent',scope:'school',keys:['wakil_records_pdf_archive_v3']});raw=old.ok&&old.values.wakil_records_pdf_archive_v3!==undefined?old.values.wakil_records_pdf_archive_v3:'[]';if(raw!=='[]')await g.writeExactValues({moduleKey:'agent',scope:'school',values:{[RECORDS_KEY]:raw}});}g.setLocalSilently(RECORDS_KEY,raw||'[]');}}catch(e){console.error('[agent records archive hydrate V6]',e)}
     hideMainViews();
     v.classList.remove('hidden');
     v.style.display = 'block';
@@ -5822,7 +5823,8 @@ bWw+
     if(doc.indexOf('<!DOCTYPE html') === -1){
       doc = '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>' + esc(r.title || 'سجل') + '</title>'
         + '<style>@page{size:A4;margin:8mm}body{font-family:Tajawal,Arial;background:white;overflow-x:hidden}.safe-hidden-deactivate{display:none!important}</style>'
-        + '</head><body>' + doc + '</body></html>';
+        + '</head><body>' + doc + '
+</body></html>';
     }
     if(autoPrint){
       var printScript = '<script>window.addEventListener("load",function(){setTimeout(function(){window.print()},500)});<\\/script>';
@@ -5936,7 +5938,7 @@ bWw+
     ['deactivateSystem','deactivateApp','resetActivation','clearActivation'].forEach(function(fn){try{window[fn]=function(){console.warn('تم تعطيل إلغاء التنشيط لحماية الأرشفة المحفوظة.');return false;};}catch(e){}});
     try{document.querySelectorAll('button,a,[role="button"],div[onclick],span[onclick]').forEach(function(el){var text=(el.textContent||'').replace(/\s+/g,' ').trim();var act=(el.getAttribute('onclick')||'');if(/إلغاء\s*تنشيط|الغاء\s*تنشيط|تعطيل\s*النظام|مسح\s*كافة\s*البيانات/.test(text)||/deactivate|resetActivation|clearActivation/.test(act)){el.classList.add('safe-hidden-deactivate');el.style.display='none';el.removeAttribute('onclick');}});}catch(e){}
   }
-  function boot(){hideActivationAndShowWelcome();protectDeactivation();setTimeout(protectDeactivation,300);setTimeout(hideActivationAndShowWelcome,500);}
+  var __v6ActivationBooted=false;function boot(){activateFlags();protectDeactivation();setTimeout(protectDeactivation,300);if(!__v6ActivationBooted){__v6ActivationBooted=true;hideActivationAndShowWelcome();}}
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot); else boot();
   window.addEventListener('load',boot);
 })();
@@ -6045,6 +6047,35 @@ bWw+
     if(!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.commit!=='function')throw new Error('محرك التحقق السحابي غير متاح');
     return PlatformPersistenceGuard.commit([key]);
   };
+})();
+</script>
+
+<script id="CANONICAL_PERFORMANCE_ARCHIVE_V6">
+(function(){
+  if(window.__CANONICAL_PERFORMANCE_ARCHIVE_V6__)return;window.__CANONICAL_PERFORMANCE_ARCHIVE_V6__=true;
+  const MODULE="agent", LEGACY="school_reports", CANON='performance_reports_archive_v2';
+  function g(){return window.PlatformPersistenceGuard}
+  function arr(raw){try{const a=JSON.parse(raw||'[]');return Array.isArray(a)?a:[]}catch(e){return[]}}
+  async function loadCanonical(){
+    const G=g();if(!G||typeof G.readExactValues!=='function')throw new Error('محرك الأرشيف المرجعي V6 غير متاح');
+    let r=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:[CANON]});if(!r.ok)throw new Error(r.error||'تعذر قراءة الأرشيف المرجعي');
+    let raw=r.values[CANON];
+    if(raw===undefined){
+      const old=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:[LEGACY]});
+      raw=old.ok&&old.values[LEGACY]!==undefined?old.values[LEGACY]:(localStorage.getItem(LEGACY)||'[]');
+      if(arr(raw).length){const w=await G.writeExactValues({moduleKey:MODULE,scope:'user',values:{[CANON]:raw}});if(!w.ok)throw new Error(w.error||'تعذر ترحيل الأرشيف القديم');}
+    }
+    raw=raw===undefined?'[]':raw;G.setLocalSilently(LEGACY,raw);return arr(raw);
+  }
+  async function saveCanonical(){
+    const G=g();if(!G||typeof G.writeExactValues!=='function')throw new Error('محرك الأرشيف المرجعي V6 غير متاح');
+    const raw=localStorage.getItem(LEGACY)||'[]';
+    const w=await G.writeExactValues({moduleKey:MODULE,scope:'user',values:{[CANON]:raw}});if(!w.ok)throw new Error(w.error||'تعذر حفظ الأرشيف المرجعي');
+    const r=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:[CANON]});if(!r.ok||r.values[CANON]!==raw)throw new Error('فشل التحقق النهائي من الأرشيف المرجعي');return true;
+  }
+  window.loadCanonicalPerformanceArchiveV6=loadCanonical;window.saveCanonicalPerformanceArchiveV6=saveCanonical;
+  window.verifyReportArchiveCloud=async function(){return saveCanonical();};
+  const oldOpen=window.openArchiveView;if(typeof oldOpen==='function')window.openArchiveView=async function(){try{await loadCanonical();}catch(e){console.error('[performance canonical load]',e);if(typeof showToast==='function')showToast('تعذر استعادة أرشيف تقارير الأداء: '+(e.message||e));}return oldOpen.apply(this,arguments)};
 })();
 </script>
 </body></html>

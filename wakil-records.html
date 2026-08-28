@@ -1351,7 +1351,7 @@ window.CLOUD_STATE_CONFIG={
 };
 </script>
 <script src="platform-state-engine.js"></script>
-<script src="platform-persistence-guard.js?v=20260828-archive-persistence-v5"></script>
+<script src="platform-persistence-guard.js?v=20260828-canonical-archive-v6"></script>
 <script id="canonical-record-archive-hydrate-v4">(function(){async function h(){try{var g=window.PlatformPersistenceGuard;if(g&&typeof g.readExact==='function')await g.readExact({moduleKey:'agent',scope:'school',keys:['wakil_records_pdf_archive_v3']});}catch(e){console.error('[record archive canonical hydrate]',e)}}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',h,{once:true});else h();window.addEventListener('platform-persistence-ready',h,{once:true});})();</script>
 <script defer src="school-base-settings-source.js"></script>
 <link rel="stylesheet" href="responsive-layout.css?v=20260818-responsive-1">
@@ -1526,12 +1526,15 @@ function getIdentityValue(data=null){
   return (data['السجل المدني']||data['رقم الهوية']||data['رقم السجل المدني']||'').toString().trim();
 }
 function collectSafe(){let d={};qsa('[data-field], [data-table]',qs('#formPage')).forEach(el=>{d[el.dataset.field||el.dataset.table]=el.value||''});return d}
-const WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY='wakil_records_pdf_archive_v3';
+const WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY='agent_records_archive_v4';
+async function hydrateWakilCanonicalV6(){const g=window.PlatformPersistenceGuard;if(!g||typeof g.readExactValues!=='function')return;let r=await g.readExactValues({moduleKey:'agent',scope:'school',keys:[WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY]});let raw=r.ok?r.values[WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY]:undefined;if(raw===undefined){const old=await g.readExactValues({moduleKey:'agent',scope:'school',keys:['wakil_records_pdf_archive_v3']});raw=old.ok&&old.values.wakil_records_pdf_archive_v3!==undefined?old.values.wakil_records_pdf_archive_v3:'[]';if(raw!=='[]')await g.writeExactValues({moduleKey:'agent',scope:'school',values:{[WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY]:raw}});}g.setLocalSilently(WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY,raw||'[]');}
+
 function archiveKey(){return 'wakil_archive_v5_'+current.id}
 async function verifyWakilRecordArchiveCloud(keys){
   if(!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.commit!=='function')throw new Error('طبقة الاستمرارية السحابية غير متاحة');
-  const r=await PlatformPersistenceGuard.commitExact({moduleKey:'agent',scope:'school',keys:keys});
-  if(!r||r.ok===false)throw new Error(r?.error||'تعذر تأكيد الحفظ السحابي');
+  const central=keys.includes(WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY);const other=keys.filter(k=>k!==WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY);
+  if(other.length){const rr=await PlatformPersistenceGuard.commitExact({moduleKey:'agent',scope:'school',keys:other});if(!rr||rr.ok===false)throw new Error(rr?.error||'تعذر تأكيد حفظ تفاصيل السجل');}
+  if(central){const rr=await PlatformPersistenceGuard.writeExactValues({moduleKey:'agent',scope:'school',values:{[WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY]:localStorage.getItem(WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY)||'[]'}});if(!rr||rr.ok===false)throw new Error(rr?.error||'تعذر تأكيد أرشيف الوكيل المرجعي');}
   return true;
 }
 function readWakilCentralArchive(){try{const a=JSON.parse(localStorage.getItem(WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY)||'[]');return Array.isArray(a)?a:[]}catch(e){return[]}}

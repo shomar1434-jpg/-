@@ -1931,7 +1931,7 @@ body[data-ss-role="activity-leader"] [aria-label*="تحليل البيانات"]
 <link rel="stylesheet" href="premium-ui.css">
 <script defer src="premium-ui.js"></script>
 <script src="platform-state-engine.js"></script>
-<script src="platform-persistence-guard.js?v=20260828-archive-persistence-v5"></script>
+<script src="platform-persistence-guard.js?v=20260828-canonical-archive-v6"></script>
 <script defer src="school-base-settings-source.js"></script>
 <style id="im-static-messaging-style">
 .im-static-messaging-btn{position:relative;display:inline-flex!important;align-items:center;justify-content:center;gap:7px;white-space:nowrap;text-decoration:none!important;background:#f0fdfa!important;color:#0f766e!important;border:1px solid #ccfbf1!important;border-radius:12px;padding:8px 14px;font-size:12px;font-weight:800;visibility:visible!important;opacity:1!important;pointer-events:auto!important}
@@ -3390,6 +3390,7 @@ function performanceArchiveFolderName(catId){
 
 async function saveReportToArchive() {
             try{ if(typeof showToast==='function') showToast('جاري حفظ التقرير والتحقق من الأرشيف السحابي...'); }catch(_e){}
+            try{await loadCanonicalPerformanceArchiveV6();}catch(e){if(typeof showToast==='function')showToast('تعذر استعادة أرشيف تقارير الأداء قبل الحفظ: '+String(e?.message||e));console.error('[performance canonical preload]',e);return false;}
             if(typeof freezeReportDOMForArchive==='function')freezeReportDOMForArchive();
             const archiveKey='reports_archive',beforeRaw=localStorage.getItem(archiveKey)||'[]',previousEditingId=currentEditingId;
             let reports=[];try{reports=JSON.parse(beforeRaw);if(!Array.isArray(reports))reports=[]}catch(e){reports=[]}
@@ -3399,7 +3400,7 @@ async function saveReportToArchive() {
             if(selectedDomain.name) folderName=selectedDomain.name;const data={id:previousEditingId||Date.now(),title:document.getElementById('field_prog_name')?.innerText||'تقرير جديد',category:cat,categoryName:folderName,archiveFolderId:cat,archiveFolderName:folderName,archiveRole:'activity_leader',reportDate:document.getElementById('dateInputHeader')?.value||'',date:old?.date||new Date().toLocaleDateString('ar-SA'),content:document.getElementById('report-content-container').innerHTML,isComplete:completion.isComplete,saveTimestamp:Date.now(),updatedAt:new Date().toISOString()};
             const idx=reports.findIndex(r=>String(r.id)===String(data.id));if(idx>=0)reports[idx]=data;else reports.push(data);
             currentEditingId=data.id;localStorage.setItem(archiveKey,JSON.stringify(reports));
-            try{if(!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.commit!=='function')throw new Error('محرك التحقق السحابي غير متاح');const cloud=await PlatformPersistenceGuard.commitExact({moduleKey:'activity_leader',scope:'user',keys:[archiveKey]});if(!cloud||cloud.ok===false)throw new Error(cloud?.error||'تعذر تأكيد الحفظ السحابي');const saved=JSON.parse(localStorage.getItem(archiveKey)||'[]').find(r=>String(r.id)===String(data.id));if(!saved||performanceArchiveFolderId(saved)!==cat)throw new Error('لم يظهر التقرير داخل مجلد المجال المحدد');showToast('تم الحفظ في أرشيف تقارير الأداء الوظيفي / '+folderName+' ✅');return true}catch(e){localStorage.setItem(archiveKey,beforeRaw);currentEditingId=previousEditingId;showToast('تعذر حفظ التقرير سحابيًا: '+String(e?.message||e||'خطأ غير معروف'));console.error('[performance folder save]',e);return false}
+            try{if(!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.commit!=='function')throw new Error('محرك التحقق السحابي غير متاح');await saveCanonicalPerformanceArchiveV6();const saved=JSON.parse(localStorage.getItem(archiveKey)||'[]').find(r=>String(r.id)===String(data.id));if(!saved||performanceArchiveFolderId(saved)!==cat)throw new Error('لم يظهر التقرير داخل مجلد المجال المحدد');showToast('تم الحفظ في أرشيف تقارير الأداء الوظيفي / '+folderName+' ✅');return true}catch(e){localStorage.setItem(archiveKey,beforeRaw);currentEditingId=previousEditingId;showToast('تعذر حفظ التقرير سحابيًا: '+String(e?.message||e||'خطأ غير معروف'));console.error('[performance folder save]',e);return false}
         }
 
         function checkPendingReminders() {
@@ -3590,6 +3591,7 @@ body{overflow-x:hidden}
 
 
 <!-- ACTIVITY_LEADER_GOALS_UPDATED_2026_05_26: المجالات والأهداف الوظيفية/الأدائية والتفصيلية لمسؤول/ة النشاط محدثة من ملف المستخدم. -->
+
 </body></html>`);
             printWindow.document.close();
             setTimeout(() => { loader.classList.add('hidden'); showToast("تم تجهيز مسودة ملف الإنجاز المهني كملف واحد ✅"); }, 1800);
@@ -4696,10 +4698,10 @@ body{overflow-x:hidden}
     {id:"events", name:"الأيام والمناسبات"},
     {id:"followup", name:"التوجيهات والمتابعة"}
   ];
-  async function hydrateActivityRecordsArchive(){try{if(window.PlatformPersistenceGuard&&typeof PlatformPersistenceGuard.readExact==='function')return await PlatformPersistenceGuard.readExact({moduleKey:'activity_leader',scope:'user',keys:['activity_leader_records_archive_v2']});}catch(e){console.error('[activity records hydrate]',e)}return null}
-  function activityRecordsArchiveRead(){try{return JSON.parse(localStorage.getItem('activity_leader_records_archive_v2')||'[]')}catch(e){return []}}
+  async function hydrateActivityRecordsArchive(){try{if(window.PlatformPersistenceGuard&&typeof PlatformPersistenceGuard.readExact==='function')return await PlatformPersistenceGuard.readExact({moduleKey:'activity_leader',scope:'user',keys:['activity_records_archive_v3']});}catch(e){console.error('[activity records hydrate]',e)}return null}
+  function activityRecordsArchiveRead(){try{return JSON.parse(localStorage.getItem('activity_records_archive_v3')||'[]')}catch(e){return []}}
   async function activityRecordsArchiveWrite(items){
-    var key='activity_leader_records_archive_v2',before=localStorage.getItem(key)||'[]'; localStorage.setItem(key,JSON.stringify(items||[]));
+    var key='activity_records_archive_v3',before=localStorage.getItem(key)||'[]'; localStorage.setItem(key,JSON.stringify(items||[]));
     try{if(!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.commit!=='function')throw new Error('محرك التحقق السحابي غير متاح');var c=await PlatformPersistenceGuard.commitExact({moduleKey:'activity_leader',scope:'user',keys:[key]});if(!c||c.ok===false)throw new Error(c&&c.error||'تعذر التحقق السحابي');return true}catch(e){localStorage.setItem(key,before);console.error(e);alert('تعذر تأكيد العملية سحابياً؛ تمت استعادة الأرشيف السابق.');return false}
   }
   window.showActivityLeaderRecordsArchive=showActivityLeaderRecordsArchive;
@@ -5467,176 +5469,6 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
 </div>
 </div>
 </div>
-<script id="ADVISOR_RECORDS_ARCHIVE_ENGINE">
-(function(){
-  if(window.__ADVISOR_RECORDS_ARCHIVE_ENGINE__) return;
-  window.__ADVISOR_RECORDS_ARCHIVE_ENGINE__ = true;
-
-  var ARCHIVE_KEY = 'advisor_records_archive_v1';
-  var SMART_ARCHIVE_KEY = 'reports_archive';
-  var FOLDERS = [{"id": "care-tab", "name": "استمارة الرعاية الفردية"}, {"id": "case-tab", "name": "دراسة حالة طالب/ـة (سري للغاية)"}, {"id": "emergency-tab", "name": "سجل المواقف اليومية الطارئة"}, {"id": "report-tab", "name": "تقرير برنامج توجيهي"}, {"id": "group-tab", "name": "جلسة الإرشاد الجمعي"}, {"id": "individual-tab", "name": "جلسة الإرشاد الفردي"}, {"id": "martyrs-tab", "name": "حصر أبناء/بنات الشهداء والمرابطين/المرابطات"}, {"id": "delay-tab", "name": "حصر التأخر الصباحي"}, {"id": "absence-tab", "name": "حصر الغياب المتكرر"}, {"id": "social-tab", "name": "حصر الحالات الاجتماعية"}, {"id": "economic-tab", "name": "حصر الحالات الاقتصادية"}, {"id": "health-psych-tab", "name": "حصر الحالات النفسية والصحية"}, {"id": "parent-visits-tab", "name": "متابعة زيارات ولي الأمر"}, {"id": "student-affairs-tab", "name": "نموذج أحوال الطالب/ـة الشامل"}];
-  var SMART_FOLDERS = [{"id": "مجال_01", "name": "أداء الواجبات الوظيفية"}, {"id": "مجال_02", "name": "التفاعل مع المجتمع المهني"}, {"id": "مجال_03", "name": "التفاعل مع أولياء الأمور"}, {"id": "مجال_04", "name": "التنويع في استراتيجيات التدريس"}, {"id": "مجال_05", "name": "تحسين نتائج المتعلمين"}, {"id": "مجال_06", "name": "إعداد وتنفيذ خطة التعلم"}, {"id": "مجال_07", "name": "توظيف تقنيات ووسائل التعلم المناسبة"}, {"id": "مجال_08", "name": "تهيئة بيئة تعليمية"}, {"id": "مجال_09", "name": "الإدارة الصفية"}, {"id": "مجال_10", "name": "تحليل نتائج المتعلمين وتشخيص مستوياتهم"}, {"id": "مجال_11", "name": "تنوع أساليب التقويم"}, {"id": "مجال_12", "name": "إعداد خطة مزمنة ومعتمدة لبرامج وفعاليات النشاط الطلابي"}, {"id": "مجال_13", "name": "تهيئة البيئة المدرسية للبرامج والأنشطة الطلابية"}, {"id": "مجال_14", "name": "يدعم المتعلمين وفق احتياجاتهم وميولهم للأنشطة"}, {"id": "مجال_15", "name": "يحفز المتعلمين على المشاركة في الأنشطة المدرسية"}];
-  var pendingSmartRecordId = null;
-
-  function esc(v){return String(v||'').replace(/[&<>"']/g,function(ch){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];});}
-  function read(){try{return JSON.parse(localStorage.getItem(ARCHIVE_KEY)||'[]');}catch(e){return [];}}
-  function write(items){localStorage.setItem(ARCHIVE_KEY,JSON.stringify(items||[]));}
-  function folderById(id){return FOLDERS.find(function(f){return f.id===id;})||FOLDERS[0]||{id:'other',name:'سجل'};}
-  function contentEl(){return document.getElementById('advisor-records-archive-content');}
-  function docForRecord(r, autoPrint){
-    var safeTitle = esc(r && r.title || 'سجل');
-    var doc = (r && r.htmlContent && String(r.htmlContent).indexOf('<!DOCTYPE html') !== -1)
-      ? String(r.htmlContent)
-      : '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>'+safeTitle+'</title><style>@page{size:A4;margin:8mm}body{font-family:Tajawal,Arial,sans-serif;background:white}</style><style id="ss-code-flash-guard">body{overflow-x:hidden}.safe-hidden-deactivate{display:none!important}</style><style id="evidence-print-fix">@media print{.evidence-box img,.evidence-box canvas,.evidence-box iframe,.evidence-box .uploaded-file,.evidence-box [data-evidence]{display:block!important;visibility:visible!important;opacity:1!important}}</style></head><body>'+ ((r&&r.htmlContent)||'<pre>'+esc((r&&r.summary)||'')+'</pre>') + '</body></html>';
-    if(autoPrint && doc.indexOf('window.print')===-1){
-      doc = doc.replace(/<\/body>/i, '<script>window.onload=function(){setTimeout(function(){window.print()},500)}<\\/script></body>');
-    }
-    return doc;
-  }
-
-  window.openAdvisorRecordsArchiveView = function(){
-    var v=document.getElementById('advisor-records-archive-view');
-    if(v) v.style.display='block';
-    renderAdvisorRecordsArchiveFolders();
-  };
-  window.closeAdvisorRecordsArchiveView = function(){
-    var v=document.getElementById('advisor-records-archive-view');
-    if(v) v.style.display='none';
-  };
-
-  window.renderAdvisorRecordsArchiveFolders = function(){
-    var c=contentEl(); if(!c) return;
-    var items=read();
-    var counts={};
-    items.forEach(function(r){counts[r.folderId]=(counts[r.folderId]||0)+1;});
-    c.innerHTML='<div class="ara-grid">'+FOLDERS.map(function(f){
-      return '<div class="ara-folder" onclick="openAdvisorRecordsArchiveFolder(\''+esc(f.id)+'\')">'
-        + '<span class="ara-count">'+(counts[f.id]||0)+' سجل</span>'
-        + '<div class="ara-icon">📂</div>'
-        + '<div class="ara-name">'+esc(f.name)+'</div>'
-        + '<div class="ara-note">تظهر هنا النسخ المحفوظة من هذا النموذج.</div>'
-        + '</div>';
-    }).join('')+'</div>';
-  };
-
-  window.openAdvisorRecordsArchiveFolder = function(folderId){
-    var c=contentEl(); if(!c) return;
-    var folder=folderById(folderId);
-    var rows=read().filter(function(r){return r.folderId===folderId;});
-    c.innerHTML='<section class="ara-list">'
-      + '<div style="background:white;border:1px solid #d1fae5;border-radius:22px;padding:16px;margin-bottom:16px;display:flex;justify-content:space-between;gap:12px;align-items:center;">'
-      + '<div><b style="color:#0f766e;">📂 '+esc(folder.name)+'</b><div style="font-size:11px;color:#64748b;margin-top:6px;font-weight:700;">عدد السجلات: '+rows.length+'</div></div>'
-      + '<button class="ara-btn ara-soft" onclick="renderAdvisorRecordsArchiveFolders()">رجوع</button>'
-      + '</div>'
-      + (rows.length?rows.map(function(r){
-        return '<div class="ara-row">'
-          + '<div><b>'+esc(r.displayName||r.studentName||r.baseName||folder.name)+'</b><div style="font-size:10px;color:#64748b;margin-top:5px;">'+esc(r.title||folder.name)+' — '+esc(r.createdAt||'')+'</div></div>'
-          + '<div class="ara-actions" style="display:flex;gap:7px;flex-wrap:wrap;">'
-          + '<button class="ara-soft" onclick="previewAdvisorArchivedRecord('+Number(r.id)+')">👁️ معاينة</button>'
-          + '<button class="ara-primary" onclick="openAdvisorSmartSendModal('+Number(r.id)+')">📤 إرسال للأرشيف الذكي</button>'
-          + '<button class="ara-danger" onclick="deleteAdvisorArchivedRecord('+Number(r.id)+')">🗑️ حذف</button>'
-          + '</div></div>';
-      }).join(''):'<div style="background:white;border:1px dashed #cbd5e1;border-radius:22px;padding:30px;text-align:center;color:#94a3b8;font-weight:900;">📭 لا توجد سجلات محفوظة داخل هذا المجلد بعد.</div>')
-      + '</section>';
-  };
-
-  window.previewAdvisorArchivedRecord = function(id){
-    var r=read().find(function(x){return String(x.id)===String(id);});
-    if(!r) return;
-    var w=window.open('','_blank');
-    w.document.open();
-    w.document.write(docForRecord(r,false));
-    w.document.close();
-  };
-
-  window.printAdvisorArchivedRecord = function(id){
-    var r=read().find(function(x){return String(x.id)===String(id);});
-    if(!r) return;
-    var w=window.open('','_blank');
-    w.document.open();
-    w.document.write(docForRecord(r,true));
-    w.document.close();
-  };
-
-  window.deleteAdvisorArchivedRecord = function(id){
-    if(!confirm('هل تريد حذف هذا السجل؟')) return;
-    var item=read().find(function(x){return String(x.id)===String(id);});
-    write(read().filter(function(r){return String(r.id)!==String(id);}));
-    if(item) openAdvisorRecordsArchiveFolder(item.folderId); else renderAdvisorRecordsArchiveFolders();
-  };
-
-  window.openAdvisorSmartSendModal = function(id){
-    pendingSmartRecordId = id;
-    var modal=document.getElementById('advisor-smart-send-modal');
-    var select=document.getElementById('advisor-smart-folder-select');
-    if(select){
-      select.innerHTML = SMART_FOLDERS.map(function(f){
-        return '<option value="'+esc(f.id)+'">'+esc(f.name)+'</option>';
-      }).join('');
-    }
-    if(modal){modal.style.display='flex';}
-  };
-
-  window.closeAdvisorSmartSendModal = function(){
-    pendingSmartRecordId = null;
-    var modal=document.getElementById('advisor-smart-send-modal');
-    if(modal) modal.style.display='none';
-  };
-
-  window.confirmAdvisorSendToSmartArchive = function(){
-    var id=pendingSmartRecordId;
-    var sel=document.getElementById('advisor-smart-folder-select');
-    var cat=sel ? sel.value : '';
-    var r=read().find(function(x){return String(x.id)===String(id);});
-    if(!r || !cat) return;
-    var reports=[];
-    try{reports=JSON.parse(localStorage.getItem(SMART_ARCHIVE_KEY)||'[]');}catch(e){reports=[];}
-    var doc=docForRecord(r,false);
-    reports.push({
-      id: Date.now(),
-      title: (r.title||folderById(r.folderId).name) + ' - ' + (r.displayName||r.baseName||''),
-      category: cat,
-      content: '<div style="height:86vh;border:1px solid #e2e8f0;border-radius:18px;overflow:hidden;background:white"><iframe title="معاينة سجل الموجه" style="width:100%;height:100%;border:0;background:white" srcdoc="'+esc(doc)+'"></iframe></div>',
-      createdAt: new Date().toLocaleString('ar-SA'),
-      readOnly: true,
-      archiveType: 'studentAdvisorSmartArchivePreview',
-      sourceRecordId: r.id
-    });
-    localStorage.setItem(SMART_ARCHIVE_KEY, JSON.stringify(reports));
-    closeAdvisorSmartSendModal();
-    alert('تم إرسال نسخة السجل إلى الأرشيف الذكي.');
-  };
-
-  window.saveAdvisorRecordToArchive = function(payload){
-    payload=payload||{};
-    var items=read();
-    var folderId=payload.folderId||payload.formId||FOLDERS[0].id;
-    var studentName=(payload.personName||payload.studentName||'').trim();
-    if(!studentName) studentName='بدون اسم';
-    var duplicateNo=items.filter(function(r){return r.folderId===folderId && r.baseName===studentName;}).length+1;
-    items.push({
-      id:Date.now(),
-      folderId:folderId,
-      title:payload.title||folderById(folderId).name,
-      baseName:studentName,
-      studentName:studentName,
-      duplicateNo:duplicateNo,
-      displayName: duplicateNo>1 ? studentName+' ('+duplicateNo+')' : studentName,
-      htmlContent:payload.htmlContent||'',
-      summary:payload.summary||'',
-      pdfMode:true,
-      createdAt:new Date().toLocaleString('ar-SA')
-    });
-    write(items);
-    if(document.getElementById('advisor-records-archive-view') && document.getElementById('advisor-records-archive-view').style.display!=='none') renderAdvisorRecordsArchiveFolders();
-  };
-
-  window.addEventListener('message',function(event){
-    var data=event.data||{};
-    if(data.type==='ADVISOR_RECORD_SAVED') saveAdvisorRecordToArchive(data.payload||{});
-  });
-})();
-</script>
 <!-- ADVISOR_RECORDS_ARCHIVE_END -->
 <script id="SMART_ARCHIVE_ADVISOR_RECORD_ACTIONS_FIX">
 (function(){
@@ -5707,7 +5539,7 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
     ['deactivateSystem','deactivateApp','resetActivation','clearActivation'].forEach(function(fn){try{window[fn]=function(){console.warn('تم تعطيل إلغاء التنشيط لحماية الأرشفة المحفوظة.');return false;};}catch(e){}});
     try{document.querySelectorAll('button,a,[role="button"],div[onclick],span[onclick]').forEach(function(el){var text=(el.textContent||'').replace(/\s+/g,' ').trim();var act=(el.getAttribute('onclick')||'');if(/إلغاء\s*تنشيط|الغاء\s*تنشيط|تعطيل\s*النظام|مسح\s*كافة\s*البيانات/.test(text)||/deactivate|resetActivation|clearActivation/.test(act)){el.classList.add('safe-hidden-deactivate');el.style.display='none';el.removeAttribute('onclick');}});}catch(e){}
   }
-  function boot(){hideActivationAndShowWelcome();protectDeactivation();setTimeout(protectDeactivation,300);setTimeout(hideActivationAndShowWelcome,500);}
+  var __v6ActivationBooted=false;function boot(){activateFlags();protectDeactivation();setTimeout(protectDeactivation,300);if(!__v6ActivationBooted){__v6ActivationBooted=true;hideActivationAndShowWelcome();}}
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot); else boot();
   window.addEventListener('load',boot);
 })();
@@ -5976,5 +5808,35 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
   };
 })();
 </script>
+
+<script id="CANONICAL_PERFORMANCE_ARCHIVE_V6">
+(function(){
+  if(window.__CANONICAL_PERFORMANCE_ARCHIVE_V6__)return;window.__CANONICAL_PERFORMANCE_ARCHIVE_V6__=true;
+  const MODULE="activity_leader", LEGACY="reports_archive", CANON='performance_reports_archive_v2';
+  function g(){return window.PlatformPersistenceGuard}
+  function arr(raw){try{const a=JSON.parse(raw||'[]');return Array.isArray(a)?a:[]}catch(e){return[]}}
+  async function loadCanonical(){
+    const G=g();if(!G||typeof G.readExactValues!=='function')throw new Error('محرك الأرشيف المرجعي V6 غير متاح');
+    let r=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:[CANON]});if(!r.ok)throw new Error(r.error||'تعذر قراءة الأرشيف المرجعي');
+    let raw=r.values[CANON];
+    if(raw===undefined){
+      const old=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:[LEGACY]});
+      raw=old.ok&&old.values[LEGACY]!==undefined?old.values[LEGACY]:(localStorage.getItem(LEGACY)||'[]');
+      if(arr(raw).length){const w=await G.writeExactValues({moduleKey:MODULE,scope:'user',values:{[CANON]:raw}});if(!w.ok)throw new Error(w.error||'تعذر ترحيل الأرشيف القديم');}
+    }
+    raw=raw===undefined?'[]':raw;G.setLocalSilently(LEGACY,raw);return arr(raw);
+  }
+  async function saveCanonical(){
+    const G=g();if(!G||typeof G.writeExactValues!=='function')throw new Error('محرك الأرشيف المرجعي V6 غير متاح');
+    const raw=localStorage.getItem(LEGACY)||'[]';
+    const w=await G.writeExactValues({moduleKey:MODULE,scope:'user',values:{[CANON]:raw}});if(!w.ok)throw new Error(w.error||'تعذر حفظ الأرشيف المرجعي');
+    const r=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:[CANON]});if(!r.ok||r.values[CANON]!==raw)throw new Error('فشل التحقق النهائي من الأرشيف المرجعي');return true;
+  }
+  window.loadCanonicalPerformanceArchiveV6=loadCanonical;window.saveCanonicalPerformanceArchiveV6=saveCanonical;
+  window.verifyReportArchiveCloud=async function(){return saveCanonical();};
+  const oldOpen=window.openArchiveView;if(typeof oldOpen==='function')window.openArchiveView=async function(){try{await loadCanonical();}catch(e){console.error('[performance canonical load]',e);if(typeof showToast==='function')showToast('تعذر استعادة أرشيف تقارير الأداء: '+(e.message||e));}return oldOpen.apply(this,arguments)};
+})();
+</script>
+<script id="CANONICAL_RECORD_MIGRATION_V6">(function(){async function m(){try{const g=window.PlatformPersistenceGuard;if(!g||typeof g.readExactValues!=='function')return;let r=await g.readExactValues({moduleKey:"activity_leader",scope:'user',keys:["activity_records_archive_v3"]});let raw=r.ok?r.values["activity_records_archive_v3"]:undefined;if(raw===undefined){const old=await g.readExactValues({moduleKey:"activity_leader",scope:'user',keys:["activity_leader_records_archive_v2"]});raw=old.ok&&old.values["activity_leader_records_archive_v2"]!==undefined?old.values["activity_leader_records_archive_v2"]:'[]';if(raw!=='[]')await g.writeExactValues({moduleKey:"activity_leader",scope:'user',values:{["activity_records_archive_v3"]:raw}});}g.setLocalSilently("activity_records_archive_v3",raw||'[]');}catch(e){console.error('[record V6 migrate]',e)}}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',m,{once:true});else m();})();</script>
 </body>
 </html>

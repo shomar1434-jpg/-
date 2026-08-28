@@ -301,7 +301,7 @@ const $=id=>document.getElementById(id);
 const fields=['type','name','nid','decisionNo','day','date','greg','start','school','edu','manager','customTitle','customMission','customResponsibilities','customDuration'];
 let digitalAssets={signature:'',stamp:''};
 let currentArchiveRecordId=null;
-const MANAGER_ARCHIVE_KEY='school_manager_records_archive_v1';
+const MANAGER_ARCHIVE_KEY='school_manager_records_archive_v1'; // legacy read-only; V6 never writes this key
 const DECISIONS_ARCHIVE_KEY='school_manager_decisions_assignments_archive_v1';
 const DECISIONS_FOLDER_ID='decisionsAssignments';
 const DECISIONS_FOLDER_NAME='القرارات والتكليفات';
@@ -566,8 +566,7 @@ function archiveWrite(rows){
      recordName:DECISIONS_FOLDER_NAME
    }));
    localStorage.setItem(DECISIONS_ARCHIVE_KEY,JSON.stringify(clean));
-   const managerRows=readArchiveArray(MANAGER_ARCHIVE_KEY).filter(r=>!(r&&r.recordType==='decision_assignment'));
-   localStorage.setItem(MANAGER_ARCHIVE_KEY,JSON.stringify(clean.concat(managerRows)));
+   // V6: manager records are a separate canonical domain. Decisions are merged at render-time only.
    return true;
  }catch(e){console.error('decision archive save failed',e);return false}
 }

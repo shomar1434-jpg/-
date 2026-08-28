@@ -1358,7 +1358,7 @@ body{overflow-x:hidden}
 <link rel="stylesheet" href="premium-ui.css">
 <script defer src="premium-ui.js"></script>
 <script src="platform-state-engine.js"></script>
-<script src="platform-persistence-guard.js?v=20260828-archive-persistence-v5"></script>
+<script src="platform-persistence-guard.js?v=20260828-canonical-archive-v6"></script>
 <script defer src="school-base-settings-source.js"></script>
 <style id="im-static-messaging-style">
 .im-static-messaging-btn{position:relative;display:inline-flex!important;align-items:center;justify-content:center;gap:7px;white-space:nowrap;text-decoration:none!important;background:#f0fdfa!important;color:#0f766e!important;border:1px solid #ccfbf1!important;border-radius:12px;padding:8px 14px;font-size:12px;font-weight:800;visibility:visible!important;opacity:1!important;pointer-events:auto!important}
@@ -2870,8 +2870,7 @@ body{overflow-x:hidden}
             localStorage.setItem('school_reports', JSON.stringify(filtered));
             try{
                 if(window.PlatformPersistenceGuard&&typeof PlatformPersistenceGuard.commit==='function'){
-                    const r=await PlatformPersistenceGuard.commit(['school_reports']);
-                    if(!r||r.ok===false)throw new Error(r?.error||'تعذر تأكيد الحذف السحابي');
+                    await saveCanonicalPerformanceArchiveV6();
                 }
                 showToast("تم حذف التقرير والتحقق سحابيًا 🗑️");
                 if (currentArchiveFolder) openArchiveFolder(currentArchiveFolder);
@@ -2900,8 +2899,7 @@ body{overflow-x:hidden}
                     const data = JSON.parse(e.target.result);
                     if (Array.isArray(data)) {
                         localStorage.setItem('school_reports', JSON.stringify(data));
-                        showToast("تم استعادة الأرشيف بنجاح 📤");
-                        renderArchiveFolders();
+                        saveCanonicalPerformanceArchiveV6().then(function(){showToast("تم استعادة الأرشيف والتحقق منه سحابيًا 📤");renderArchiveFolders();}).catch(function(err){showToast("تعذر حفظ الأرشيف المستورد سحابيًا: "+(err.message||err));});
                     }
                 } catch (err) { alert("الملف غير صالح."); }
             };
@@ -2947,6 +2945,7 @@ function performanceArchiveFolderName(catId){
 
 async function saveReportToArchive() {
             try{ if(typeof showToast==='function') showToast('جاري حفظ التقرير والتحقق من الأرشيف السحابي...'); }catch(_e){}
+            try{await loadCanonicalPerformanceArchiveV6();}catch(e){if(typeof showToast==='function')showToast('تعذر استعادة أرشيف تقارير الأداء قبل الحفظ: '+String(e?.message||e));console.error('[performance canonical preload]',e);return false;}
             const archiveKey='school_reports', beforeRaw=localStorage.getItem(archiveKey)||'[]', previousEditingId=currentEditingId;
             let reports=[];try{reports=JSON.parse(beforeRaw);if(!Array.isArray(reports))reports=[]}catch(e){reports=[]}
             const systemDateStr=new Date().toLocaleDateString('ar-SA-u-ca-islamic-uma');
@@ -2962,7 +2961,7 @@ async function saveReportToArchive() {
             currentEditingId=data.id;localStorage.setItem(archiveKey,JSON.stringify(reports));
             try{
               if(!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.commit!=='function')throw new Error('محرك التحقق السحابي غير متاح');
-              const cloud=await PlatformPersistenceGuard.commitExact({moduleKey:'manager',scope:'user',keys:[archiveKey]});if(!cloud||cloud.ok===false)throw new Error(cloud?.error||'تعذر تأكيد الحفظ السحابي');
+              await saveCanonicalPerformanceArchiveV6();
               const saved=JSON.parse(localStorage.getItem(archiveKey)||'[]').find(r=>String(r.id)===String(data.id));
               if(!saved||performanceArchiveFolderId(saved)!==cat)throw new Error('لم يظهر التقرير داخل مجلد المجال المحدد');
               showToast('تم الحفظ في أرشيف تقارير الأداء الوظيفي / '+folderName+' ✅');return true;
@@ -4688,6 +4687,7 @@ document.addEventListener("click", function(e){
 </style>
 </head><body>${editor.innerHTML}\n
 <!-- SCHOOL COMMAND CENTER M1-M4 -->
+
 </body></html>`;
       record.file = new Blob([htmlDoc], {type:'application/msword'});
       if(!/\.doc$/i.test(record.name)) record.name = record.name.replace(/\.(docx|doc)$/i,'') + '_معدل.doc';
@@ -4863,14 +4863,16 @@ document.addEventListener("click", function(e){
     var activation=document.getElementById('activation-overlay');
     if(activation){activation.style.display='none';activation.style.visibility='hidden';activation.setAttribute('aria-hidden','true');}
     var gate=document.getElementById('welcome-gate'), dash=document.getElementById('welcome-dashboard'), app=document.getElementById('main-report-app');
-    if(gate && (!app || app.style.display==='none')) gate.style.display='flex';
-    else if(dash && (!app || app.style.display==='none')) dash.style.display='block';
+    var activeSection=app && !app.classList.contains('hidden') && getComputedStyle(app).display!=='none';
+    if(activeSection)return;
+    if(gate && gate.dataset.v6InitialShown!=='1'){gate.dataset.v6InitialShown='1';gate.style.display='flex';}
+    else if(dash && gate && gate.style.display==='none') dash.style.display='block';
   }
   function protectDeactivation(){
     ['deactivateSystem','deactivateApp','resetActivation','clearActivation'].forEach(function(fn){try{window[fn]=function(){console.warn('تم تعطيل إلغاء التنشيط لحماية الأرشفة المحفوظة.');return false;};}catch(e){}});
     try{document.querySelectorAll('button,a,[role="button"],div[onclick],span[onclick]').forEach(function(el){var text=(el.textContent||'').replace(/\s+/g,' ').trim();var act=(el.getAttribute('onclick')||'');if(/إلغاء\s*تنشيط|الغاء\s*تنشيط|تعطيل\s*النظام|مسح\s*كافة\s*البيانات/.test(text)||/deactivate|resetActivation|clearActivation/.test(act)){el.classList.add('safe-hidden-deactivate');el.style.display='none';el.removeAttribute('onclick');}});}catch(e){}
   }
-  function boot(){hideActivationAndShowWelcome();protectDeactivation();setTimeout(protectDeactivation,300);setTimeout(hideActivationAndShowWelcome,500);}
+  var __v6ActivationBooted=false;function boot(){activateFlags();protectDeactivation();setTimeout(protectDeactivation,300);if(!__v6ActivationBooted){__v6ActivationBooted=true;hideActivationAndShowWelcome();}}
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot); else boot();
   window.addEventListener('load',boot);
 })();
@@ -5346,8 +5348,7 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
     });
     try{localStorage.setItem(DECISIONS_ARCHIVE_KEY,JSON.stringify(rows));}catch(e){}
     try{
-      var manager=readArray(['school_manager_records_archive_v1']).filter(function(r){return !(r&&r.recordType==='decision_assignment');});
-      localStorage.setItem('school_manager_records_archive_v1',JSON.stringify(rows.concat(manager)));
+      // V6: do not mirror decisions into manager records canonical archive.
     }catch(e){}
     return rows;
   }
@@ -5415,9 +5416,9 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
   function keys(kind){
     return kind==='self'
       ? ['manager_self_evaluation_archive_v1','self_evaluation_archive_v1','self_evaluation_archive','school_self_evaluation_archive_v1']
-      : ['school_manager_records_archive_v1','manager_records_archive_v1','manager_records_archive','school_manager_archive_v1'];
+      : ['manager_records_archive_v2','school_manager_records_archive_v1','manager_records_archive_v1','manager_records_archive','school_manager_archive_v1'];
   }
-  function primaryKey(kind){return kind==='self'?'manager_self_evaluation_archive_v1':'school_manager_records_archive_v1';}
+  function primaryKey(kind){return kind==='self'?'manager_self_evaluation_archive_v1':'manager_records_archive_v2';}
   function listFor(kind){return kind==='self'?selfFolders:managerFolders;}
   function contentId(kind){return kind==='self'?'self-evaluation-archive-content':'manager-records-archive-content';}
   function backId(kind){return kind==='self'?'self-eval-back-to-folders':'manager-records-back-to-folders';}
@@ -5430,6 +5431,13 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
     });
   }
   function showDashboard(){var d=document.getElementById('welcome-dashboard'); if(d){d.style.display='block'; if(d.classList)d.classList.remove('hidden');}}
+  async function hydrateManagerRecordsCanonicalV6(){
+    const g=window.PlatformPersistenceGuard;if(!g||typeof g.readExactValues!=='function')return {ok:false,error:'V6 unavailable'};
+    let r=await g.readExactValues({moduleKey:'manager',scope:'school',keys:['manager_records_archive_v2']});
+    if(!r.ok)return r;let raw=r.values.manager_records_archive_v2;
+    if(raw===undefined){const old=await g.readExactValues({moduleKey:'manager',scope:'school',keys:['school_manager_records_archive_v1']});raw=old.ok&&old.values.school_manager_records_archive_v1!==undefined?old.values.school_manager_records_archive_v1:'[]';try{const a=JSON.parse(raw||'[]');raw=JSON.stringify(Array.isArray(a)?a.filter(x=>!(x&&x.recordType==='decision_assignment')):[])}catch(_){raw='[]'};if(raw!=='[]')await g.writeExactValues({moduleKey:'manager',scope:'school',values:{manager_records_archive_v2:raw}});}
+    g.setLocalSilently('manager_records_archive_v2',raw||'[]');return {ok:true};
+  }
   async function hydrateCanonicalManagerArchive(kind){
     try{
       const g=window.PlatformPersistenceGuard;
@@ -5438,7 +5446,7 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
         const r=await g.readExact({moduleKey:'self_evaluation',scope:'school',keys:['manager_self_evaluation_archive_v1','self_evaluation_archive_v1']});
         return !!(r&&r.ok!==false);
       }
-      const r=await g.readExact({moduleKey:'manager',scope:'school',keys:['school_manager_records_archive_v1']});
+      const r=await hydrateManagerRecordsCanonicalV6();
       return !!(r&&r.ok!==false);
     }catch(e){console.error('[manager canonical archive hydrate]',e);return false;}
   }
@@ -5664,6 +5672,35 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
   try{const u=new URL(location.href);u.searchParams.delete('return_to');history.replaceState(null,'',u.pathname+u.search+u.hash)}catch(e){}
  }
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(apply,80),{once:true});else setTimeout(apply,80);
+})();
+</script>
+
+<script id="CANONICAL_PERFORMANCE_ARCHIVE_V6">
+(function(){
+  if(window.__CANONICAL_PERFORMANCE_ARCHIVE_V6__)return;window.__CANONICAL_PERFORMANCE_ARCHIVE_V6__=true;
+  const MODULE="manager", LEGACY="school_reports", CANON='performance_reports_archive_v2';
+  function g(){return window.PlatformPersistenceGuard}
+  function arr(raw){try{const a=JSON.parse(raw||'[]');return Array.isArray(a)?a:[]}catch(e){return[]}}
+  async function loadCanonical(){
+    const G=g();if(!G||typeof G.readExactValues!=='function')throw new Error('محرك الأرشيف المرجعي V6 غير متاح');
+    let r=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:[CANON]});if(!r.ok)throw new Error(r.error||'تعذر قراءة الأرشيف المرجعي');
+    let raw=r.values[CANON];
+    if(raw===undefined){
+      const old=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:[LEGACY]});
+      raw=old.ok&&old.values[LEGACY]!==undefined?old.values[LEGACY]:(localStorage.getItem(LEGACY)||'[]');
+      if(arr(raw).length){const w=await G.writeExactValues({moduleKey:MODULE,scope:'user',values:{[CANON]:raw}});if(!w.ok)throw new Error(w.error||'تعذر ترحيل الأرشيف القديم');}
+    }
+    raw=raw===undefined?'[]':raw;G.setLocalSilently(LEGACY,raw);return arr(raw);
+  }
+  async function saveCanonical(){
+    const G=g();if(!G||typeof G.writeExactValues!=='function')throw new Error('محرك الأرشيف المرجعي V6 غير متاح');
+    const raw=localStorage.getItem(LEGACY)||'[]';
+    const w=await G.writeExactValues({moduleKey:MODULE,scope:'user',values:{[CANON]:raw}});if(!w.ok)throw new Error(w.error||'تعذر حفظ الأرشيف المرجعي');
+    const r=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:[CANON]});if(!r.ok||r.values[CANON]!==raw)throw new Error('فشل التحقق النهائي من الأرشيف المرجعي');return true;
+  }
+  window.loadCanonicalPerformanceArchiveV6=loadCanonical;window.saveCanonicalPerformanceArchiveV6=saveCanonical;
+  window.verifyReportArchiveCloud=async function(){return saveCanonical();};
+  const oldOpen=window.openArchiveView;if(typeof oldOpen==='function')window.openArchiveView=async function(){try{await loadCanonical();}catch(e){console.error('[performance canonical load]',e);if(typeof showToast==='function')showToast('تعذر استعادة أرشيف تقارير الأداء: '+(e.message||e));}return oldOpen.apply(this,arguments)};
 })();
 </script>
 </body>

@@ -713,13 +713,13 @@ td textarea,
 window.CLOUD_STATE_CONFIG={
   moduleKey:'manager',
   scope:'school',
-  keys:['school_manager_records_archive_v1'],
+  keys:[],
   prefixes:['manager_records_','managerSchoolRecord_']
 };
 </script>
 <script src="platform-state-engine.js"></script>
-<script src="platform-persistence-guard.js?v=20260828-archive-persistence-v5"></script>
-<script id="canonical-record-archive-hydrate-v4">(function(){async function h(){try{var g=window.PlatformPersistenceGuard;if(g&&typeof g.readExact==='function')await g.readExact({moduleKey:'manager',scope:'school',keys:['school_manager_records_archive_v1']});}catch(e){console.error('[record archive canonical hydrate]',e)}}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',h,{once:true});else h();window.addEventListener('platform-persistence-ready',h,{once:true});})();</script>
+<script src="platform-persistence-guard.js?v=20260828-canonical-archive-v6"></script>
+<script id="canonical-record-archive-hydrate-v6">(function(){async function h(){try{var g=window.PlatformPersistenceGuard;if(!g||typeof g.readExactValues!=='function')return;var r=await g.readExactValues({moduleKey:'manager',scope:'school',keys:['manager_records_archive_v2']});var raw=r.ok?r.values.manager_records_archive_v2:undefined;if(raw===undefined){var old=await g.readExactValues({moduleKey:'manager',scope:'school',keys:['school_manager_records_archive_v1']});raw=old.ok&&old.values.school_manager_records_archive_v1!==undefined?old.values.school_manager_records_archive_v1:'[]';try{var a=JSON.parse(raw||'[]');raw=JSON.stringify(Array.isArray(a)?a.filter(function(x){return !(x&&x.recordType==='decision_assignment')}):[])}catch(_){raw='[]'};if(raw!=='[]')await g.writeExactValues({moduleKey:'manager',scope:'school',values:{manager_records_archive_v2:raw}});}g.setLocalSilently('manager_records_archive_v2',raw||'[]');}catch(e){console.error('[manager records V6 hydrate]',e)}}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',h,{once:true});else h();})();</script>
 <script defer src="school-base-settings-source.js"></script>
 <style id="uw-verified-back-style">
 .uw-verified-title-back{display:inline-flex!important;align-items:center!important;justify-content:center!important;vertical-align:middle!important;margin-inline-end:10px!important;width:36px!important;height:36px!important;border-radius:11px!important;background:#f1f5f9!important;color:#0f766e!important;border:1px solid #cbd5e1!important;text-decoration:none!important;font-size:20px!important;font-weight:900!important}
@@ -1124,10 +1124,22 @@ function fill(data){
 function autoDraft(){localStorage.setItem(key()+"_draft",JSON.stringify(collect()))}
 function loadDraft(){fill(JSON.parse(localStorage.getItem(key()+"_draft")||"{}"))}
 let managerRecordEditingIndex=null;
+async function hydrateManagerRecordCanonicalV6(){
+ try{
+  const g=window.PlatformPersistenceGuard;if(!g||typeof g.readExactValues!=='function')throw new Error('محرك الأرشيف المرجعي V6 غير متاح');
+  let r=await g.readExactValues({moduleKey:'manager',scope:'school',keys:['manager_records_archive_v2']});let raw=r.ok?r.values.manager_records_archive_v2:undefined;
+  if(raw===undefined){const old=await g.readExactValues({moduleKey:'manager',scope:'school',keys:['school_manager_records_archive_v1']});raw=old.ok&&old.values.school_manager_records_archive_v1!==undefined?old.values.school_manager_records_archive_v1:'[]';try{let a=JSON.parse(raw||'[]');raw=JSON.stringify(Array.isArray(a)?a.filter(x=>!(x&&x.recordType==='decision_assignment')):[])}catch(_){raw='[]'};if(raw!=='[]'){const w=await g.writeExactValues({moduleKey:'manager',scope:'school',values:{manager_records_archive_v2:raw}});if(!w.ok)throw new Error(w.error||'تعذر ترحيل أرشيف المدير');}}
+  g.setLocalSilently('manager_records_archive_v2',raw||'[]');
+  let rows=[];try{rows=JSON.parse(raw||'[]');if(!Array.isArray(rows))rows=[]}catch(_){rows=[]}
+  const localRows=rows.filter(x=>String(x.folderId||x.recordId||'')===String(current.id)).map(x=>({id:x.sourceRecordId||x.id,title:x.title||current.title,savedAt:x.updatedAt||x.createdAt||'',updatedAt:x.updatedAt||'',createdAt:x.createdAt||'',values:x.values||{}}));
+  g.setLocalSilently(key()+'_archive',JSON.stringify(localRows));return rows;
+ }catch(e){console.error('[manager record canonical hydrate V6]',e);throw e}
+}
 async function saveArchive(){
+ try{await hydrateManagerRecordCanonicalV6();}catch(e){alert('تعذر استعادة أرشيف سجلات المدير قبل الحفظ: '+String(e?.message||e));return false;}
  try{if(window.PlatformCloudSession&&typeof window.PlatformCloudSession.ensure==='function')await window.PlatformCloudSession.ensure();}
  catch(e){alert('تعذر تهيئة جلسة المدرسة السحابية لحفظ السجل. أعد تسجيل الدخول إذا استمرت المشكلة.');console.error('[manager record session]',e);return false;}
- const data=collect(), localKey=key()+"_archive", platformKey="school_manager_records_archive_v1";
+ const data=collect(), localKey=key()+"_archive", platformKey="manager_records_archive_v2";
  const beforeLocal=localStorage.getItem(localKey)||"[]", beforePlatform=localStorage.getItem(platformKey)||"[]";
  let list=[],platformArchive=[];try{list=JSON.parse(beforeLocal);if(!Array.isArray(list))list=[]}catch(e){list=[]}
  try{platformArchive=JSON.parse(beforePlatform);if(!Array.isArray(platformArchive))platformArchive=[]}catch(e){platformArchive=[]}
@@ -1165,7 +1177,7 @@ async function saveArchive(){
 
  try{
    if(window.PlatformPersistenceGuard&&typeof PlatformPersistenceGuard.commit==='function'){
-     const r=await PlatformPersistenceGuard.commitExact({moduleKey:'manager',scope:'school',keys:[localKey,platformKey]});
+     const r=await PlatformPersistenceGuard.writeExactValues({moduleKey:'manager',scope:'school',values:{[platformKey]:localStorage.getItem(platformKey)||'[]'}});
      if(!r||r.ok===false)throw new Error(r?.error||'تعذر تأكيد الحفظ السحابي');
    }
    const verifyRows=JSON.parse(localStorage.getItem(platformKey)||'[]');
@@ -1184,7 +1196,7 @@ async function saveArchive(){
    console.error('[manager record save]',e);renderArchive();return false;
  }
 }
-async function toggleArchive(){const panel=document.getElementById('archivePanel');panel.classList.toggle('show');if(panel.classList.contains('show')){try{const g=window.PlatformPersistenceGuard;if(g&&typeof g.readExact==='function')await g.readExact({moduleKey:'manager',scope:'school',keys:[key()+'_archive','school_manager_records_archive_v1']});}catch(e){console.error('[manager record archive hydrate]',e)}}renderArchive()}
+async function toggleArchive(){const panel=document.getElementById('archivePanel');panel.classList.toggle('show');if(panel.classList.contains('show')){try{const g=window.PlatformPersistenceGuard;if(g&&typeof g.readExact==='function')var rr=await g.readExactValues({moduleKey:'manager',scope:'school',keys:['manager_records_archive_v2']});if(rr.ok&&rr.values.manager_records_archive_v2!==undefined)g.setLocalSilently('manager_records_archive_v2',rr.values.manager_records_archive_v2);}catch(e){console.error('[manager record archive hydrate]',e)}}renderArchive()}
 function renderArchive(){
  const box=document.getElementById('archiveList');
  const list=JSON.parse(localStorage.getItem(key()+"_archive")||"[]");

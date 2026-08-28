@@ -37,7 +37,7 @@
   ];
   const schoolPatterns=[
     /^school_actual_reality$/,/^school_committees$/,/^school_operational_plan$/,/^school_indicators_data$/,
-    /^self_evaluation_archive_/i,/^self_evaluation_archive_v1$/,/^manager_self_evaluation_archive_v1$/,/^school_info$/,/^school_manager_records_archive_v1$/,/^manager_records_.*_archive$/i,/^wakil_records_pdf_archive_v3$/,/^wakil_archive_v5_/i,/^wakil_form_v3_/i,/^school_operational_execution_v1$/,/^schoolImpactAssessments$/,
+    /^self_evaluation_archive_/i,/^self_evaluation_archive_v1$/,/^manager_self_evaluation_archive_v1$/,/^school_info$/,/^school_manager_records_archive_v1$/,/^manager_records_archive_v2$/,/^manager_records_.*_archive$/i,/^wakil_records_pdf_archive_v3$/,/^agent_records_archive_v4$/,/^wakil_archive_v5_/i,/^wakil_form_v3_/i,/^school_operational_execution_v1$/,/^schoolImpactAssessments$/,
     /^category_goals$/,
     /^archive_folder_goals$/,/^managerRecordsFooterSettings$/,/^activityLeaderFooterSettings$/,
     /^setting_(region|school|sig|stamp)$/,/^def_[mp]$/,/^persist_(region|school|sig_data|stamp_data)$/,
@@ -57,11 +57,11 @@
   // هذا هو الحاجز الجذري ضد تلوث module_key بين المدير/الوكيل/المعلم وبقية الأقسام.
   const archiveDomainOwners=[
     {re:/^self_evaluation_archive(?:_v1)?$|^manager_self_evaluation_archive_v1$/i,modules:new Set(['self_evaluation'])},
-    {re:/^school_manager_records_archive_v1$|^managerSchoolRecord_/i,modules:new Set(['manager'])},
-    {re:/^wakil_records_pdf_archive_v3$|^wakil_archive_v5_|^wakil_form_v3_/i,modules:new Set(['agent'])},
-    {re:/^activity_leader_records_archive_v2$|^activityLeaderRecord_/i,modules:new Set(['activity_leader'])},
-    {re:/^advisor_records_archive_v1$|^moajeh_/i,modules:new Set(['student_advisor'])},
-    {re:/^(school_reports|reports_archive)$/i,modules:new Set(['manager','agent','teacher','activity_leader','kindergarten_teacher','student_advisor','health_advisor','student_advisor_analysis_tool'])}
+    {re:/^school_manager_records_archive_v1$|^manager_records_archive_v2$|^managerSchoolRecord_/i,modules:new Set(['manager'])},
+    {re:/^wakil_records_pdf_archive_v3$|^agent_records_archive_v4$|^wakil_archive_v5_|^wakil_form_v3_/i,modules:new Set(['agent'])},
+    {re:/^activity_leader_records_archive_v2$|^activity_records_archive_v3$|^activityLeaderRecord_/i,modules:new Set(['activity_leader'])},
+    {re:/^advisor_records_archive_v1$|^student_advisor_records_archive_v2$|^moajeh_/i,modules:new Set(['student_advisor'])},
+    {re:/^(school_reports|reports_archive|performance_reports_archive_v2)$/i,modules:new Set(['manager','agent','teacher','activity_leader','kindergarten_teacher','student_advisor','health_advisor','student_advisor_analysis_tool'])}
   ];
   function moduleOwnsReservedKey(k){
     const key=String(k||'');
@@ -358,6 +358,64 @@
     return {ok:false,error:'تعذر التحقق من تطابق الأرشيف السحابي مع البيانات المحلية',moduleKey:exactModule,scope:exactScope};
   }
 
+
+
+  // CANONICAL_ARCHIVE_ENGINE_V6
+  // Direct canonical read/write APIs. They do not use localStorage as the cloud source,
+  // so legacy page writers and intercepted storage events cannot overwrite canonical archives.
+  function setLocalSilently(key,value){
+    applying=true;
+    try{ if(value===null||value===undefined) nativeRemove.call(localStorage,String(key)); else nativeSet.call(localStorage,String(key),String(value)); }
+    finally{ applying=false; }
+  }
+  async function readExactValues(options){
+    options=options||{};
+    const exactModule=String(options.moduleKey||moduleKey).replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,100)||moduleKey;
+    const exactScope=String(options.scope||'user')==='school'?'school':'user';
+    const ownerUserId=String(options.ownerUserId||'').trim();
+    const keys=[...new Set((Array.isArray(options.keys)?options.keys:[options.keys]).map(String).filter(Boolean))];
+    if(!keys.length)return {ok:true,found:0,values:{},moduleKey:exactModule,scope:exactScope};
+    dropQueuedKeys(keys);
+    let tries=0;while(!window.PlatformStateEngine&&tries++<80)await new Promise(r=>setTimeout(r,100));
+    if(!window.PlatformStateEngine)return {ok:false,error:'محرك الحالة السحابية غير متاح',values:{}};
+    try{
+      let result;
+      if(exactScope==='user'&&ownerUserId&&typeof PlatformStateEngine.pullUser==='function')result=await PlatformStateEngine.pullUser(exactModule,ownerUserId,keys);
+      else result=await PlatformStateEngine.pull(exactModule,exactScope,keys);
+      const rows=Array.isArray(result)?result:(result?.items||result?.rows||[]),values={};
+      for(const row of rows){
+        const k=String(row.state_key||row.key||'');if(!k||row.deleted_at||row.deleted===true)continue;
+        const raw=row.payload&&Object.prototype.hasOwnProperty.call(row.payload,'value')?String(row.payload.value):Object.prototype.hasOwnProperty.call(row,'value')?String(row.value):null;
+        if(raw!==null)values[k]=await decodeCloudValue(raw);
+      }
+      return {ok:true,found:Object.keys(values).length,values,moduleKey:exactModule,scope:exactScope};
+    }catch(e){return {ok:false,error:e?.message||String(e),values:{},moduleKey:exactModule,scope:exactScope};}
+  }
+  async function writeExactValues(options){
+    options=options||{};
+    const exactModule=String(options.moduleKey||moduleKey).replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,100)||moduleKey;
+    const exactScope=String(options.scope||'user')==='school'?'school':'user';
+    const ownerUserId=String(options.ownerUserId||'').trim();
+    const values=options.values&&typeof options.values==='object'?options.values:{};
+    const keys=Object.keys(values).map(String).filter(Boolean);
+    if(!keys.length)return {ok:true,verified:0,moduleKey:exactModule,scope:exactScope};
+    dropQueuedKeys(keys);
+    let tries=0;while(!window.PlatformStateEngine&&tries++<80)await new Promise(r=>setTimeout(r,100));
+    if(!window.PlatformStateEngine)return {ok:false,error:'محرك الحالة السحابية غير متاح'};
+    const original={};const cloudItems=[];
+    for(const k of keys){original[k]=String(values[k]??'');cloudItems.push({key:k,value:await encodeCloudValue(original[k]),deleted:false});}
+    try{
+      if(exactScope==='user'&&ownerUserId&&typeof PlatformStateEngine.managerUpsertUser==='function')await PlatformStateEngine.managerUpsertUser(exactModule,ownerUserId,cloudItems);
+      else await PlatformStateEngine.bulkUpsert(exactModule,exactScope,cloudItems);
+    }catch(e){return {ok:false,error:e?.message||String(e)};}
+    for(let attempt=1;attempt<=5;attempt++){
+      const rr=await readExactValues({moduleKey:exactModule,scope:exactScope,ownerUserId,keys});
+      if(rr.ok&&keys.every(k=>Object.prototype.hasOwnProperty.call(rr.values,k)&&String(rr.values[k])===original[k]))return {ok:true,verified:keys.length,moduleKey:exactModule,scope:exactScope};
+      await new Promise(r=>setTimeout(r,180*attempt));
+    }
+    return {ok:false,error:'تعذر التحقق من الأرشيف المرجعي بعد الكتابة',moduleKey:exactModule,scope:exactScope};
+  }
+
   async function boot(){
     if(booted) return; booted=true;
     let tries=0;
@@ -376,6 +434,6 @@
   }
   window.addEventListener('pagehide',()=>void flush(true));
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')void flush(true)});
-  window.PlatformPersistenceGuard={VERSION:'2026.08.28-archive-persistence-v5',moduleKey,track,scopeFor,flush,commit,commitExact,readExact,whenReady,boot,get hydrated(){return hydrated;}};
+  window.PlatformPersistenceGuard={VERSION:'2026.08.28-canonical-archive-v6',moduleKey,track,scopeFor,flush,commit,commitExact,readExact,readExactValues,writeExactValues,setLocalSilently,whenReady,boot,get hydrated(){return hydrated;}};
   setTimeout(boot,0);
 })();

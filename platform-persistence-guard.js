@@ -65,6 +65,30 @@
     scheduleFlush();
   }
   function scheduleFlush(){clearTimeout(flushTimer);flushTimer=setTimeout(()=>void flush(),550)}
+  const LARGE_VALUE_THRESHOLD=220000;
+  const COMPRESSED_PREFIX='__PG_GZIP_B64_V1__:';
+  async function encodeCloudValue(value){
+    const text=String(value??'');
+    if(text.length<LARGE_VALUE_THRESHOLD||typeof CompressionStream==='undefined') return text;
+    try{
+      const bytes=new TextEncoder().encode(text);
+      const stream=new Blob([bytes]).stream().pipeThrough(new CompressionStream('gzip'));
+      const buf=await new Response(stream).arrayBuffer();
+      const arr=new Uint8Array(buf);let bin='';
+      for(let i=0;i<arr.length;i+=0x8000) bin+=String.fromCharCode(...arr.subarray(i,i+0x8000));
+      const packed=COMPRESSED_PREFIX+btoa(bin);
+      return packed.length<text.length?packed:text;
+    }catch(e){console.warn('[PersistenceGuard] compression skipped',e?.message||e);return text;}
+  }
+  async function decodeCloudValue(value){
+    const text=String(value??'');
+    if(!text.startsWith(COMPRESSED_PREFIX)) return text;
+    if(typeof DecompressionStream==='undefined') throw new Error('المتصفح لا يدعم فك بيانات الأرشيف السحابية المضغوطة');
+    const bin=atob(text.slice(COMPRESSED_PREFIX.length));const arr=new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
+    const stream=new Blob([arr]).stream().pipeThrough(new DecompressionStream('gzip'));
+    return await new Response(stream).text();
+  }
   async function flush(keepalive=false){
     clearTimeout(flushTimer);flushTimer=0;
     if(!window.PlatformStateEngine) return;
@@ -74,8 +98,10 @@
       for(let i=0;i<items.length;i+=200){
         const batch=items.slice(i,i+200);
         try{
-          if(scope==='user'&&targetOwnerUserId&&typeof PlatformStateEngine.managerUpsertUser==='function') await PlatformStateEngine.managerUpsertUser(moduleKey,targetOwnerUserId,batch,{keepalive});
-          else await PlatformStateEngine.bulkUpsert(moduleKey,scope,batch,{keepalive});
+          const cloudBatch=[];
+          for(const x of batch) cloudBatch.push(x.deleted?x:{...x,value:await encodeCloudValue(x.value)});
+          if(scope==='user'&&targetOwnerUserId&&typeof PlatformStateEngine.managerUpsertUser==='function') await PlatformStateEngine.managerUpsertUser(moduleKey,targetOwnerUserId,cloudBatch,{keepalive});
+          else await PlatformStateEngine.bulkUpsert(moduleKey,scope,cloudBatch,{keepalive});
         }
         catch(e){batch.forEach(x=>q.set(x.key,x)); console.warn('[PersistenceGuard] flush failed',moduleKey,scope,e?.message||e); break;}
       }
@@ -110,7 +136,8 @@
           if(before!==null){nativeRemove.call(localStorage,k);changed=true;changedKeys.push({key:k,oldValue:before,newValue:null});}
           continue;
         }
-        const val=r.payload&&Object.prototype.hasOwnProperty.call(r.payload,'value')?String(r.payload.value):null;
+        const cloudVal=r.payload&&Object.prototype.hasOwnProperty.call(r.payload,'value')?String(r.payload.value):null;
+        const val=cloudVal===null?null:await decodeCloudValue(cloudVal);
         if(val!==null&&before!==val){nativeSet.call(localStorage,k,val);changed=true;changedKeys.push({key:k,oldValue:before,newValue:val});}
       }
       if(changedKeys.length){
@@ -187,8 +214,9 @@
             if(row && !row.deleted_at && !(row.deleted===true)) return {ok:false,error:'تعذر التحقق من حذف '+k};
           }else{
             if(!row || row.deleted_at || row.deleted===true) return {ok:false,error:'تعذر التحقق من حفظ '+k};
-            const cloud=row.payload&&Object.prototype.hasOwnProperty.call(row.payload,'value')?String(row.payload.value):
+            const cloudRaw=row.payload&&Object.prototype.hasOwnProperty.call(row.payload,'value')?String(row.payload.value):
                         Object.prototype.hasOwnProperty.call(row,'value')?String(row.value):null;
+            const cloud=cloudRaw===null?null:await decodeCloudValue(cloudRaw);
             if(cloud!==String(local)) return {ok:false,error:'القيمة السحابية لا تطابق البيانات المحلية للمفتاح '+k};
           }
         }
@@ -216,6 +244,6 @@
   }
   window.addEventListener('pagehide',()=>void flush(true));
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')void flush(true)});
-  window.PlatformPersistenceGuard={VERSION:'2026.08.28-no-reload-v2',moduleKey,track,scopeFor,flush,commit,boot,get hydrated(){return hydrated;}};
+  window.PlatformPersistenceGuard={VERSION:'2026.08.28-archive-integrity-v3',moduleKey,track,scopeFor,flush,commit,boot,get hydrated(){return hydrated;}};
   setTimeout(boot,0);
 })();

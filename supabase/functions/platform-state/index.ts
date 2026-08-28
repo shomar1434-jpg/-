@@ -12,7 +12,7 @@ const managers=new Set(['manager','owner','school_manager','principal','مدير
 const agents=new Set(['agent','agency','wakil','vice','deputy','وكيل','وكيلة']);
 const schoolAggregateModules=new Set(['teacher_comprehensive','admin_performance']);
 const MAX_ITEMS=250;
-const MAX_TOTAL_CHARS=3_500_000;
+const MAX_TOTAL_CHARS=6_500_000;
 
 Deno.serve(async(req)=>{
   if(req.method==='OPTIONS') return new Response('ok',{headers:cors});

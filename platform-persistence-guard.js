@@ -35,7 +35,7 @@
   const schoolPatterns=[
     /^school_actual_reality$/,/^school_committees$/,/^school_operational_plan$/,/^school_indicators_data$/,
     /^self_evaluation_archive_/i,/^self_evaluation_archive_v1$/,/^manager_self_evaluation_archive_v1$/,/^school_info$/,/^school_manager_records_archive_v1$/,/^manager_records_.*_archive$/i,/^wakil_records_pdf_archive_v3$/,/^wakil_archive_v5_/i,/^wakil_form_v3_/i,/^school_operational_execution_v1$/,/^schoolImpactAssessments$/,
-    /^sh_/i,/^activity_leader_records_archive_/i,/^category_goals$/,
+    /^sh_/i,/^activity_leader_records_archive_/i,/^advisor_records_archive_v1$/,/^category_goals$/,
     /^archive_folder_goals$/,/^managerRecordsFooterSettings$/,/^activityLeaderFooterSettings$/,
     /^setting_(region|school|sig|stamp)$/,/^def_[mp]$/,/^persist_(region|school|sig_data|stamp_data)$/,
     /^smart_education_office$/,/^smart_school_teacher_extra_roles_map$/,/^school_academic_year$/,
@@ -95,7 +95,7 @@
 
   async function hydrateScope(scope){
     if(!window.PlatformStateEngine) return false;
-    const wanted=explicitMode?[...exact]:undefined;
+    const wanted=(explicitMode&&!prefixes.length)?[...exact]:undefined;
     const result=(scope==='user'&&targetOwnerUserId&&typeof PlatformStateEngine.pullUser==='function')?await PlatformStateEngine.pullUser(moduleKey,targetOwnerUserId,wanted):await PlatformStateEngine.pull(moduleKey,scope,wanted);
     const rows=result.items||[];
     const cloud=new Map(rows.map(r=>[String(r.state_key),r]));

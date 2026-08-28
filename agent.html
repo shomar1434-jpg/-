@@ -2799,8 +2799,8 @@ async function saveReportToArchive() {
             if(typeof freezeReportDOMForArchive==='function')freezeReportDOMForArchive();
             const archiveKey='school_reports',beforeRaw=localStorage.getItem(archiveKey)||'[]',previousEditingId=currentEditingId;
             let reports=[];try{reports=JSON.parse(beforeRaw);if(!Array.isArray(reports))reports=[]}catch(e){reports=[]}
-            const cat=String(document.getElementById('categorySelect')?.value||'');if(!cat){showToast('اختر المجال');return false}
-            const folderName=performanceArchiveFolderName(cat),old=previousEditingId?reports.find(r=>String(r.id)===String(previousEditingId)):null;
+            const selectedDomain=selectedPerformanceArchiveDomain();const cat=String(selectedDomain.id||'');if(!cat){showToast('اختر المجال');return false}
+            let folderName=performanceArchiveFolderName(cat);const old=previousEditingId?reports.find(r=>String(r.id)===String(previousEditingId)):null;
             if(selectedDomain.name) folderName=selectedDomain.name;const data={id:previousEditingId||Date.now(),title:document.getElementById('field_prog_name')?.innerText||'بدون عنوان',category:cat,categoryName:folderName,archiveFolderId:cat,archiveFolderName:folderName,archiveRole:'agent',content:typeof getSerializedReportContentForArchive==='function'?getSerializedReportContentForArchive():document.getElementById('report-content-container').innerHTML,createdAt:old?.createdAt||(typeof getSelectedReportDateDisplay==='function'?getSelectedReportDateDisplay():new Date().toLocaleDateString('ar-SA')),updatedAt:new Date().toISOString()};
             const idx=reports.findIndex(r=>String(r.id)===String(data.id));if(idx>=0)reports[idx]=data;else reports.push(data);
             currentEditingId=data.id;localStorage.setItem(archiveKey,JSON.stringify(reports));

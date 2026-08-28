@@ -2918,18 +2918,6 @@ body{overflow-x:hidden}
         }
 
         function performanceArchiveFolderId(report){ return String((report && (report.archiveFolderId || report.category)) || ''); }
-        function selectedPerformanceArchiveDomain(){
-            const sel=document.getElementById('categorySelect');
-            if(!sel) return {id:'',name:''};
-            const id=String(sel.value||'').trim();
-            const opt=sel.options && sel.selectedIndex>=0 ? sel.options[sel.selectedIndex] : null;
-            let name=String(opt?.textContent||'').trim();
-            // اسم المجلد في الأرشيف يجب أن يكون الاسم المعتمد للمجال، لا عنوان التقرير.
-            // نحذف رقم الترتيب البصري فقط مثل "1. " مع إبقاء اسم المجال كاملاً.
-            name=name.replace(/^\s*[0-9٠-٩]+\s*[\.\-–—:]\s*/,'').trim();
-            return {id,name};
-        }
-
 function performanceArchiveFolderName(catId){
     const data=(typeof CATEGORY_DATA!=='undefined' && CATEGORY_DATA)?CATEGORY_DATA[String(catId)]:null;
     if(data && data.name) return String(data.name);
@@ -2949,7 +2937,7 @@ async function saveReportToArchive() {
             if(!cat){showToast('يرجى اختيار مجال البرنامج');return false}
             const old=previousEditingId?reports.find(r=>String(r.id)===String(previousEditingId)):null;
             const folderName=performanceArchiveFolderName(cat);
-            if(selectedDomain.name) folderName=selectedDomain.name;const data={id:previousEditingId||Date.now(),title:(document.getElementById('field_prog_name')?.innerText||'تقرير بدون عنوان').trim(),category:cat,categoryName:folderName,archiveFolderId:cat,archiveFolderName:folderName,archiveRole:'manager',content:document.getElementById('report-content-container').innerHTML,createdAt:old?.createdAt||systemDateStr,updatedAt:new Date().toISOString(),archiveType:'performanceReport'};
+            const data={id:previousEditingId||Date.now(),title:(document.getElementById('field_prog_name')?.innerText||'تقرير بدون عنوان').trim(),category:cat,categoryName:folderName,archiveFolderId:cat,archiveFolderName:folderName,archiveRole:'manager',content:document.getElementById('report-content-container').innerHTML,createdAt:old?.createdAt||systemDateStr,updatedAt:new Date().toISOString(),archiveType:'performanceReport'};
             const idx=reports.findIndex(r=>String(r.id)===String(data.id));if(idx>=0)reports[idx]=data;else reports.push(data);
             currentEditingId=data.id;localStorage.setItem(archiveKey,JSON.stringify(reports));
             try{
@@ -5317,9 +5305,78 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
 (function(){
   'use strict';
   window.__MANAGER_ARCHIVES_STABLE_FOLDER_ENGINE_V2__ = true;
-  var managerFolders = [{"id": "schoolProfile", "name": "سجل البيانات الشاملة للمدرسة"}, {"id": "orgStructure", "name": "سجل الهيكل التنظيمي وتوزيع المسؤوليات"}, {"id": "operationalPlan", "name": "سجل الخطة التشغيلية وملف الشواهد"}, {"id": "committees", "name": "سجل المجالس واللجان"}, {"id": "meetings", "name": "سجل الاجتماعات"}, {"id": "powers", "name": "سجل الصلاحيات والقرارات المدرسية"}, {"id": "correspondence", "name": "سجل الاتصالات الإدارية: الصادر والوارد والتعاميم"}, {"id": "supportSupervisor", "name": "ملف تقارير المشرفات والمشرفين"}, {"id": "internalAudit", "name": "سجل التدقيق الداخلي"}, {"id": "riskGovernance", "name": "سجل المخاطر والحوكمة المدرسية"}, {"id": "partnerships", "name": "سجل الشراكات والمجتمع المدرسي"}, {"id": "classVisits", "name": "سجل الزيارات الصفية ودعم التدريس"}, {"id": "teacherPerformance", "name": "سجل الأداء الوظيفي"}, {"id": "curriculum", "name": "سجل تنفيذ الخطط الدراسية والمناهج"}, {"id": "lessonPlanning", "name": "سجل التخطيط للدروس وتحسين الممارسات"}, {"id": "plc", "name": "سجل المجتمعات المهنية والتعلم التعاوني"}, {"id": "remedialEnrichment", "name": "سجل الخطط العلاجية والإثرائية"}, {"id": "learningResources", "name": "سجل مصادر التعلم والتقنيات التعليمية"}, {"id": "specialGifted", "name": "سجل رعاية الموهوبين وذوي الاحتياجات التعليمية"}, {"id": "safety", "name": "سجل الأمن والسلامة والطوارئ"}, {"id": "discipline", "name": "سجل الانضباط المدرسي والسلوك"}, {"id": "studentCases", "name": "سجل الحالات الطلابية والدعم المساند"}, {"id": "health", "name": "سجل الصحة المدرسية والبيئة الآمنة"}, {"id": "maintenance", "name": "سجل الصيانة والمرافق والتجهيزات"}, {"id": "custody", "name": "سجل العهد والجرد والمستودعات"}, {"id": "transport", "name": "سجل النقل المدرسي والحركة اليومية"}, {"id": "activities", "name": "سجل الأنشطة والبرامج المدرسية"}, {"id": "digital", "name": "سجل التحول الرقمي والخدمات الإلكترونية"}, {"id": "achievement", "name": "سجل التحصيل الدراسي وتحليل النتائج"}, {"id": "kpis", "name": "سجل مؤشرات الأداء المدرسي"}, {"id": "nationalTests", "name": "سجل الاختبارات الوطنية والمركزية"}, {"id": "skills", "name": "سجل المهارات الأساسية والفجوات التعليمية"}, {"id": "improvementPlan", "name": "سجل خطط التحسين وقياس الأثر"}, {"id": "attendanceImpact", "name": "سجل أثر الانضباط على نواتج التعلم"}, {"id": "excellence", "name": "ملف التعزيز والتكريم"}, {"id": "closingReports", "name": "سجل التقارير الختامية ورفع التوصيات"}, {"id": "announcements", "name": "سجل النشرات والتبليغات"}, {"id": "assignmentsJobDescriptions", "name": "سجل التكليفات والوصف الوظيفي"}, {"id": "operatingBudget", "name": "سجل الميزانية التشغيلية"}, {"id": "teachingDevelopment", "name": "سجل دعم وتطوير الهيئة التعليمية"}, {"id": "staffFollowup", "name": "سجل متابعة الهيئة التعليمية والإدارية"}, {"id": "documentControl", "name": "سجل ضبط الوثائق"}, {"id": "learnerAttitude", "name": "سجل قياس اتجاه المتعلمين نحو المدرسة"}, {"id": "internationalTests", "name": "سجل الاختبارات الدولية"}];
+  var managerFolders = [{"id": "schoolProfile", "name": "سجل البيانات الشاملة للمدرسة"}, {"id": "orgStructure", "name": "سجل الهيكل التنظيمي وتوزيع المسؤوليات"}, {"id": "operationalPlan", "name": "سجل الخطة التشغيلية وملف الشواهد"}, {"id": "committees", "name": "سجل المجالس واللجان"}, {"id": "meetings", "name": "سجل الاجتماعات"}, {"id": "powers", "name": "سجل الصلاحيات والقرارات المدرسية"}, {"id": "correspondence", "name": "سجل الاتصالات الإدارية: الصادر والوارد والتعاميم"}, {"id": "supportSupervisor", "name": "ملف تقارير المشرفات والمشرفين"}, {"id": "internalAudit", "name": "سجل التدقيق الداخلي"}, {"id": "riskGovernance", "name": "سجل المخاطر والحوكمة المدرسية"}, {"id": "partnerships", "name": "سجل الشراكات والمجتمع المدرسي"}, {"id": "classVisits", "name": "سجل الزيارات الصفية ودعم التدريس"}, {"id": "teacherPerformance", "name": "سجل الأداء الوظيفي"}, {"id": "curriculum", "name": "سجل تنفيذ الخطط الدراسية والمناهج"}, {"id": "lessonPlanning", "name": "سجل التخطيط للدروس وتحسين الممارسات"}, {"id": "plc", "name": "سجل المجتمعات المهنية والتعلم التعاوني"}, {"id": "remedialEnrichment", "name": "سجل الخطط العلاجية والإثرائية"}, {"id": "learningResources", "name": "سجل مصادر التعلم والتقنيات التعليمية"}, {"id": "specialGifted", "name": "سجل رعاية الموهوبين وذوي الاحتياجات التعليمية"}, {"id": "safety", "name": "سجل الأمن والسلامة والطوارئ"}, {"id": "discipline", "name": "سجل الانضباط المدرسي والسلوك"}, {"id": "studentCases", "name": "سجل الحالات الطلابية والدعم المساند"}, {"id": "health", "name": "سجل الصحة المدرسية والبيئة الآمنة"}, {"id": "maintenance", "name": "سجل الصيانة والمرافق والتجهيزات"}, {"id": "custody", "name": "سجل العهد والجرد والمستودعات"}, {"id": "transport", "name": "سجل النقل المدرسي والحركة اليومية"}, {"id": "activities", "name": "سجل الأنشطة والبرامج المدرسية"}, {"id": "digital", "name": "سجل التحول الرقمي والخدمات الإلكترونية"}, {"id": "achievement", "name": "سجل التحصيل الدراسي وتحليل النتائج"}, {"id": "kpis", "name": "سجل مؤشرات الأداء المدرسي"}, {"id": "nationalTests", "name": "سجل الاختبارات الوطنية والمركزية"}, {"id": "skills", "name": "سجل المهارات الأساسية والفجوات التعليمية"}, {"id": "improvementPlan", "name": "سجل خطط التحسين وقياس الأثر"}, {"id": "attendanceImpact", "name": "سجل أثر الانضباط على نواتج التعلم"}, {"id": "excellence", "name": "ملف التعزيز والتكريم"}, {"id": "closingReports", "name": "سجل التقارير الختامية ورفع التوصيات"}, {"id": "announcements", "name": "سجل النشرات والتبليغات"}, {"id": "assignmentsJobDescriptions", "name": "سجل التكليفات والوصف الوظيفي"}, {"id": "decisionsAssignments", "name": "القرارات والتكليفات"}, {"id": "operatingBudget", "name": "سجل الميزانية التشغيلية"}, {"id": "teachingDevelopment", "name": "سجل دعم وتطوير الهيئة التعليمية"}, {"id": "staffFollowup", "name": "سجل متابعة الهيئة التعليمية والإدارية"}, {"id": "documentControl", "name": "سجل ضبط الوثائق"}, {"id": "learnerAttitude", "name": "سجل قياس اتجاه المتعلمين نحو المدرسة"}, {"id": "internationalTests", "name": "سجل الاختبارات الدولية"}];
   var selfFolders = [{"id": "selfEval_01", "name": "تشكيل فريق التقويم الذاتي"}, {"id": "selfEval_02", "name": "نشر ثقافة التقويم الذاتي"}, {"id": "selfEval_03", "name": "الخطة الإجرائية للتقويم الذاتي"}, {"id": "selfEval_04", "name": "محاضر اجتماعات فريق التقويم"}, {"id": "selfEval_05", "name": "توزيع مهام أعضاء الفريق"}, {"id": "selfEval_06", "name": "بيانات عامة عن المدرسة"}, {"id": "selfEval_07", "name": "سجل مؤشرات الأداء المدرسي"}, {"id": "selfEval_08", "name": "الخطة التشغيلية ومتابعة التنفيذ"}, {"id": "selfEval_09", "name": "الشراكات المجتمعية"}, {"id": "selfEval_10", "name": "التطوير المهني"}, {"id": "selfEval_11", "name": "حقوق المتعلم وحمايته"}, {"id": "selfEval_12", "name": "التقرير الختامي للتقويم الذاتي"}, {"id": "selfEval_13", "name": "خطة التحسين ومتابعة التنفيذ"}, {"id": "selfEval_14", "name": "الزيارات الصفية"}, {"id": "selfEval_15", "name": "تحليل الممارسات الصفية"}, {"id": "selfEval_16", "name": "متابعة تنفيذ المنهج"}, {"id": "selfEval_17", "name": "التخطيط للدروس ونواتج التعلم"}, {"id": "selfEval_18", "name": "أدوات التقويم المتنوعة"}, {"id": "selfEval_19", "name": "تحليل نتائج التقويم الصفي"}, {"id": "selfEval_20", "name": "البرامج العلاجية"}, {"id": "selfEval_21", "name": "البرامج الإثرائية"}, {"id": "selfEval_22", "name": "دعم الفروق الفردية"}, {"id": "selfEval_23", "name": "المجتمعات المهنية التعليمية"}, {"id": "selfEval_24", "name": "توظيف التقنية والتعلم الإلكتروني"}, {"id": "selfEval_25", "name": "مقابلات المعلمين والمتعلمين"}, {"id": "selfEval_26", "name": "الشواهد الصفية الرقمية"}, {"id": "selfEval_27", "name": "التحصيل الدراسي العام"}, {"id": "selfEval_28", "name": "تحليل نتائج الاختبارات"}, {"id": "selfEval_29", "name": "نتائج نافس والاختبارات الوطنية"}, {"id": "selfEval_30", "name": "القدرات والتحصيلي للمرحلة الثانوية"}, {"id": "selfEval_31", "name": "المهارات الأساسية"}, {"id": "selfEval_32", "name": "الطلاب المتفوقون"}, {"id": "selfEval_33", "name": "الطلاب المتعثرون وخطط الدعم"}, {"id": "selfEval_34", "name": "الانضباط والمواظبة"}, {"id": "selfEval_35", "name": "السلوك والقيم والمواطنة"}, {"id": "selfEval_36", "name": "الصحة المدرسية والنمو الشخصي"}, {"id": "selfEval_37", "name": "المشاركات والإنجازات الطلابية"}, {"id": "selfEval_38", "name": "قياس أثر البرامج العلاجية والإثرائية"}, {"id": "selfEval_39", "name": "مقارنة التحسن بين الفترات"}, {"id": "selfEval_40", "name": "بيانات البيئة المدرسية"}, {"id": "selfEval_41", "name": "جاهزية المبنى والفصول"}, {"id": "selfEval_42", "name": "الأمن والسلامة"}, {"id": "selfEval_43", "name": "خطط الإخلاء والطوارئ"}, {"id": "selfEval_44", "name": "تنفيذ فرضيات الإخلاء"}, {"id": "selfEval_45", "name": "الصيانة والبلاغات"}, {"id": "selfEval_46", "name": "المختبرات ومصادر التعلم"}, {"id": "selfEval_47", "name": "التجهيزات والتقنيات"}, {"id": "selfEval_48", "name": "النظافة والبيئة الجاذبة"}, {"id": "selfEval_49", "name": "الصحة المدرسية"}, {"id": "selfEval_50", "name": "المقصف المدرسي"}, {"id": "selfEval_51", "name": "المخاطر ومعالجتها"}, {"id": "selfEval_52", "name": "رضا المستفيدين عن البيئة المدرسية"}, {"id": "selfEval_53", "name": "الخطة التشغيلية"}, {"id": "selfEval_54", "name": "قرارات اللجان"}, {"id": "selfEval_55", "name": "اجتماعات اللجان"}, {"id": "selfEval_56", "name": "قرارات الفرق"}, {"id": "selfEval_57", "name": "اجتماعات الفرق"}, {"id": "selfEval_58", "name": "قرارات المجالس"}, {"id": "selfEval_59", "name": "اجتماعات المجالس"}, {"id": "selfEval_60", "name": "بيانات المدرسة للتقويم الذاتي"}, {"id": "selfEval_61", "name": "واقع المدرسة الفعلي"}, {"id": "selfEval_62", "name": "بوابة التميز والمؤشرات"}, {"id": "selfEval_63", "name": "سجلات التقويم الذاتي والمؤشرات"}];
   var currentArchiveFolder = null;
+  var DECISIONS_ARCHIVE_KEY='school_manager_decisions_assignments_archive_v1';
+  var DECISIONS_FOLDER_ID='decisionsAssignments';
+  var DECISIONS_FOLDER_NAME='القرارات والتكليفات';
+  var DECISIONS_CLOUD_MODULE='manager_decisions_assignments';
+  var DECISIONS_CLOUD_RECORD_TYPE='decision_assignment_archive';
+
+  function decisionRowsLocal(){
+    try{
+      var a=JSON.parse(localStorage.getItem(DECISIONS_ARCHIVE_KEY)||'[]');
+      return Array.isArray(a)?a.filter(function(r){return r&&r.recordType==='decision_assignment';}):[];
+    }catch(e){return [];}
+  }
+  function mirrorDecisionRows(rows){
+    rows=(rows||[]).filter(function(r){return r&&r.recordType==='decision_assignment';}).map(function(r){
+      return Object.assign({},r,{folderId:DECISIONS_FOLDER_ID,folderName:DECISIONS_FOLDER_NAME,recordName:DECISIONS_FOLDER_NAME});
+    });
+    try{localStorage.setItem(DECISIONS_ARCHIVE_KEY,JSON.stringify(rows));}catch(e){}
+    try{
+      var manager=readArray(['school_manager_records_archive_v1']).filter(function(r){return !(r&&r.recordType==='decision_assignment');});
+      localStorage.setItem('school_manager_records_archive_v1',JSON.stringify(rows.concat(manager)));
+    }catch(e){}
+    return rows;
+  }
+  function decisionCloudReady(){
+    return !!(window.CloudFileEngine && (window.PlatformCloudSession?.token?.() || sessionStorage.getItem('platform_tab_session_token_v1') || localStorage.getItem('platform_file_session_token')));
+  }
+  async function readCloudDecisionFile(fileRow){
+    try{
+      if(!fileRow||!fileRow.id)return null;
+      var blob=await CloudFileEngine.getBlob(String(fileRow.id));
+      var rec=JSON.parse(await blob.text());
+      if(!rec||typeof rec!=='object'||rec.recordType!=='decision_assignment')return null;
+      rec.cloudFileId=String(fileRow.id);
+      rec.cloudSynced=true;
+      rec.folderId=DECISIONS_FOLDER_ID;
+      rec.folderName=DECISIONS_FOLDER_NAME;
+      rec.recordName=DECISIONS_FOLDER_NAME;
+      return rec;
+    }catch(e){console.warn('[manager decisions cloud read]',fileRow&&fileRow.id,e);return null;}
+  }
+  async function syncDecisionsArchiveFromCloud(){
+    if(!decisionCloudReady())return decisionRowsLocal();
+    try{
+      if(window.PlatformCloudSession&&typeof PlatformCloudSession.ensure==='function')await PlatformCloudSession.ensure();
+      var r=await CloudFileEngine.list({ownershipScope:'school',moduleKey:DECISIONS_CLOUD_MODULE,recordType:DECISIONS_CLOUD_RECORD_TYPE,limit:1000});
+      var files=(r&&r.files)||[], rows=[];
+      for(var i=0;i<files.length;i++){
+        var rec=await readCloudDecisionFile(files[i]);
+        if(rec)rows.push(rec);
+      }
+      if(rows.length||files.length===0)mirrorDecisionRows(rows);
+      return rows;
+    }catch(e){
+      console.warn('[manager decisions cloud sync]',e);
+      return decisionRowsLocal();
+    }
+  }
+  async function resolveDecisionCloudFileId(record){
+    if(record&&record.cloudFileId)return String(record.cloudFileId);
+    if(!decisionCloudReady())return '';
+    try{
+      var r=await CloudFileEngine.list({ownershipScope:'school',moduleKey:DECISIONS_CLOUD_MODULE,recordType:DECISIONS_CLOUD_RECORD_TYPE,limit:1000});
+      var files=(r&&r.files)||[], id=String(record&&record.id||'');
+      var f=files.find(function(x){
+        return String(x&&x.metadata&&x.metadata.recordLocalId||'')===id || String(x&&x.record_id||'')===id;
+      });
+      return f&&f.id?String(f.id):'';
+    }catch(e){return '';}
+  }
   function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(ch){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];});}
   function readArray(keys){
     for(var i=0;i<keys.length;i++){
@@ -5353,11 +5410,15 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
     });
   }
   function showDashboard(){var d=document.getElementById('welcome-dashboard'); if(d){d.style.display='block'; if(d.classList)d.classList.remove('hidden');}}
-  function showArchive(kind){
+  async function showArchive(kind){
     var v=document.getElementById(viewId(kind));
     if(!v){alert('واجهة '+title(kind)+' غير موجودة.');return;}
     hideAllManagerViews();
     v.style.display='block'; if(v.classList)v.classList.remove('hidden');
+    if(kind==='manager'){
+      // حتى على جهاز جديد: اجلب قرارات المدرسة من المصدر السحابي قبل بناء العدادات.
+      await syncDecisionsArchiveFromCloud();
+    }
     renderFolders(kind);
   }
   function flattenLegacySelfEvaluationArchive(){
@@ -5381,6 +5442,16 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
   }
   function archive(kind){
     var arr=readArray(keys(kind));
+    if(kind==='manager'){
+      // دمج فهرس المدير مع أرشيف القرارات المتخصص مع إزالة التكرار حسب id.
+      var mapM=new Map();
+      arr.concat(decisionRowsLocal()).forEach(function(r){
+        if(!r)return;
+        var k=String(r.id||r.createdAt||r.title||'');
+        if(k&&!mapM.has(k))mapM.set(k,r);
+      });
+      return Array.from(mapM.values());
+    }
     if(kind!=='self')return arr;
     var legacy=flattenLegacySelfEvaluationArchive(),map=new Map();
     arr.concat(legacy).forEach(function(r){
@@ -5448,11 +5519,19 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
         var id=esc(r.id||r.createdAt||r.title||Math.random());
         return '<div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex justify-between items-center gap-3 flex-wrap">'
           +'<div><h4 class="font-bold text-slate-800">'+esc(r.displayName||r.title||r.recordName||folder.name)+'</h4><p class="text-[10px] text-slate-400 font-bold mt-1">'+esc(r.createdAt||r.uploadedAt||r.savedAt||'')+'</p></div>'
-          +'<div class="flex gap-2 flex-wrap"><button data-preview-kind="'+kind+'" data-item-id="'+id+'" class="bg-teal-600 text-white px-4 py-2 rounded-xl text-[10px] font-bold">عرض</button><button data-print-kind="'+kind+'" data-item-id="'+id+'" class="bg-slate-700 text-white px-4 py-2 rounded-xl text-[10px] font-bold">طباعة</button><button data-delete-kind="'+kind+'" data-item-id="'+id+'" class="bg-red-50 text-red-500 px-4 py-2 rounded-xl text-[10px] font-bold">حذف</button></div></div>';
+          +'<div class="flex gap-2 flex-wrap"><button data-preview-kind="'+kind+'" data-item-id="'+id+'" class="bg-teal-600 text-white px-4 py-2 rounded-xl text-[10px] font-bold">عرض</button><button data-print-kind="'+kind+'" data-item-id="'+id+'" class="bg-slate-700 text-white px-4 py-2 rounded-xl text-[10px] font-bold">طباعة</button>'+(kind==='manager'&&r.recordType==='decision_assignment'?'<button data-edit-decision-id="'+id+'" class="bg-amber-50 text-amber-700 px-4 py-2 rounded-xl text-[10px] font-bold">تعديل</button>':'')+'<button data-delete-kind="'+kind+'" data-item-id="'+id+'" class="bg-red-50 text-red-500 px-4 py-2 rounded-xl text-[10px] font-bold">حذف</button></div></div>';
       }).join(''):'<div class="bg-white border border-dashed border-slate-200 rounded-[30px] p-10 text-center text-slate-400 font-bold">لا توجد سجلات محفوظة داخل هذا المجلد.</div>')+'</section>';
     var back=c.querySelector('[data-back-kind]'); if(back) back.onclick=function(){renderFolders(this.getAttribute('data-back-kind'));};
     c.querySelectorAll('[data-preview-kind]').forEach(function(x){x.onclick=function(){previewItem(this.getAttribute('data-preview-kind'),this.getAttribute('data-item-id'),false);};});
     c.querySelectorAll('[data-print-kind]').forEach(function(x){x.onclick=function(){previewItem(this.getAttribute('data-print-kind'),this.getAttribute('data-item-id'),true);};});
+    c.querySelectorAll('[data-edit-decision-id]').forEach(function(x){x.onclick=function(){
+      var id=this.getAttribute('data-edit-decision-id');
+      var u=new URL('decisions_assignments.html',location.href);
+      u.searchParams.set('editAssignment',id);
+      var qs=new URLSearchParams(location.search||'');
+      ['schoolId','school_id','school','schoolCode','school_code'].forEach(function(k){if(qs.get(k))u.searchParams.set(k,qs.get(k));});
+      location.href=u.toString();
+    };});
     c.querySelectorAll('[data-delete-kind]').forEach(function(x){x.onclick=function(){deleteItem(this.getAttribute('data-delete-kind'),this.getAttribute('data-item-id'));};});
   }
   function findItem(kind,id){return archive(kind).find(function(r){return String(r.id||r.createdAt||r.title)===String(id);});}
@@ -5464,7 +5543,32 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
     return html;
   }
   function previewItem(kind,id,autoPrint){var r=findItem(kind,id); if(!r){alert('تعذر العثور على السجل.');return;} var w=window.open('','_blank'); if(!w){alert('يرجى السماح بالنوافذ المنبثقة.');return;} w.document.open(); w.document.write(safeDoc(r,autoPrint)); w.document.close();}
-  function deleteItem(kind,id){if(!confirm('هل تريد حذف هذا السجل؟'))return; var key=primaryKey(kind); var arr=readArray([key]).filter(function(r){return String(r.id||r.createdAt||r.title)!==String(id);}); writeArray(key,arr); if(currentArchiveFolder&&currentArchiveFolder.kind===kind) openFolder(kind,currentArchiveFolder.id); else renderFolders(kind);}
+  async function deleteItem(kind,id){
+    if(!confirm('هل تريد حذف هذا السجل؟'))return;
+    var item=findItem(kind,id);
+    if(kind==='manager'&&item&&item.recordType==='decision_assignment'){
+      try{
+        if(!window.CloudFileEngine)throw new Error('محرك الملفات السحابي غير متاح');
+        if(window.PlatformCloudSession&&typeof PlatformCloudSession.ensure==='function')await PlatformCloudSession.ensure();
+        var fileId=await resolveDecisionCloudFileId(item);
+        if(!fileId)throw new Error('تعذر تحديد ملف القرار السحابي');
+        await CloudFileEngine.trash(fileId);
+        // لا نحذف النسخة المحلية قبل نجاح الحذف السحابي.
+        var remaining=decisionRowsLocal().filter(function(r){return String(r.id)!==String(id);});
+        mirrorDecisionRows(remaining);
+        alert('تم حذف قرار التكليف من الأرشيف السحابي بنجاح.');
+      }catch(e){
+        console.error('[manager decision delete]',e);
+        alert('تعذر حذف قرار التكليف سحابيًا: '+(e&&e.message||e)+'\nلم يتم حذف النسخة المحلية.');
+        return;
+      }
+    }else{
+      var key=primaryKey(kind);
+      var arr=readArray([key]).filter(function(r){return String(r.id||r.createdAt||r.title)!==String(id);});
+      writeArray(key,arr);
+    }
+    if(currentArchiveFolder&&currentArchiveFolder.kind===kind) openFolder(kind,currentArchiveFolder.id); else renderFolders(kind);
+  }
   window.openManagerRecordsArchiveView=function(){showArchive('manager');};
   window.closeManagerRecordsArchiveView=function(){var v=document.getElementById('manager-records-archive-view'); if(v){v.style.display='none'; if(v.classList)v.classList.add('hidden');} showDashboard();};
   window.renderManagerRecordsArchiveFolders=function(){renderFolders('manager');};

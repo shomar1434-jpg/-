@@ -391,7 +391,7 @@ function migrateLegacyDecisionRecords(){
  const map=new Map();
  [...legacy,...dedicated].forEach(r=>{if(r&&r.id)map.set(String(r.id),r)});
  const merged=[...map.values()].sort((a,b)=>String(b.updatedAt||b.savedAt||b.createdAt||'').localeCompare(String(a.updatedAt||a.savedAt||a.createdAt||'')));
- try{localStorage.setItem(DECISIONS_ARCHIVE_KEY,JSON.stringify(merged))}catch(e){}
+ archiveWrite(merged);
  return merged;
 }
 
@@ -556,7 +556,20 @@ function archiveRead(){
  return migrateLegacyDecisionRecords();
 }
 function archiveWrite(rows){
- try{localStorage.setItem(DECISIONS_ARCHIVE_KEY,JSON.stringify(rows||[]));return true}catch(e){console.error('decision archive save failed',e);return false}
+ // DECISIONS_MANAGER_ARCHIVE_INTEGRATION_2026_08_28
+ // المصدر المتخصص يبقى محفوظاً مستقلاً، ونحافظ في الوقت نفسه على فهرس
+ // أرشيف سجلات المدير حتى تظهر القرارات في مجلدها الصحيح دون فقد بقية السجلات.
+ try{
+   const clean=(rows||[]).filter(r=>r&&r.recordType==='decision_assignment').map(r=>Object.assign({},r,{
+     folderId:DECISIONS_FOLDER_ID,
+     folderName:DECISIONS_FOLDER_NAME,
+     recordName:DECISIONS_FOLDER_NAME
+   }));
+   localStorage.setItem(DECISIONS_ARCHIVE_KEY,JSON.stringify(clean));
+   const managerRows=readArchiveArray(MANAGER_ARCHIVE_KEY).filter(r=>!(r&&r.recordType==='decision_assignment'));
+   localStorage.setItem(MANAGER_ARCHIVE_KEY,JSON.stringify(clean.concat(managerRows)));
+   return true;
+ }catch(e){console.error('decision archive save failed',e);return false}
 }
 function normalizePersonName(v){return String(v||'').replace(/\s+/g,' ').trim()}
 function nextSequenceForAssignee(name,rows,excludeId){

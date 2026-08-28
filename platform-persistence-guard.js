@@ -38,7 +38,7 @@
   const schoolPatterns=[
     /^school_actual_reality$/,/^school_committees$/,/^school_operational_plan$/,/^school_indicators_data$/,
     /^self_evaluation_archive_/i,/^self_evaluation_archive_v1$/,/^manager_self_evaluation_archive_v1$/,/^school_info$/,/^school_manager_records_archive_v1$/,/^manager_records_archive_v2$/,/^manager_records_.*_archive$/i,/^wakil_records_pdf_archive_v3$/,/^agent_records_archive_v4$/,/^wakil_archive_v5_/i,/^wakil_form_v3_/i,/^school_operational_execution_v1$/,/^schoolImpactAssessments$/,
-    /^category_goals$/,
+    /^(school_reports|reports_archive|performance_reports_archive_v2)(?:$|_domain_)/i,/^category_goals$/,
     /^archive_folder_goals$/,/^managerRecordsFooterSettings$/,/^activityLeaderFooterSettings$/,
     /^setting_(region|school|sig|stamp)$/,/^def_[mp]$/,/^persist_(region|school|sig_data|stamp_data)$/,
     /^smart_education_office$/,/^smart_school_teacher_extra_roles_map$/,/^school_academic_year$/,
@@ -61,7 +61,7 @@
     {re:/^wakil_records_pdf_archive_v3$|^agent_records_archive_v4$|^wakil_archive_v5_|^wakil_form_v3_/i,modules:new Set(['agent'])},
     {re:/^activity_leader_records_archive_v2$|^activity_records_archive_v3$|^activityLeaderRecord_/i,modules:new Set(['activity_leader'])},
     {re:/^advisor_records_archive_v1$|^student_advisor_records_archive_v2$|^moajeh_/i,modules:new Set(['student_advisor'])},
-    {re:/^(school_reports|reports_archive|performance_reports_archive_v2)$/i,modules:new Set(['manager','agent','teacher','activity_leader','kindergarten_teacher','student_advisor','health_advisor','student_advisor_analysis_tool'])}
+    {re:/^(school_reports|reports_archive|performance_reports_archive_v2)(?:$|_domain_)/i,modules:new Set(['manager','agent','teacher','activity_leader','kindergarten_teacher','student_advisor','health_advisor','student_advisor_analysis_tool'])}
   ];
   function moduleOwnsReservedKey(k){
     const key=String(k||'');

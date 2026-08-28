@@ -3441,7 +3441,7 @@ async function saveReportToArchive() {
             if(selectedDomain.name) folderName=selectedDomain.name;const data={id:previousEditingId||Date.now(),title:document.getElementById('field_prog_name')?.innerText||'تقرير جديد',category:cat,categoryName:folderName,archiveFolderId:cat,archiveFolderName:folderName,archiveRole:'health_advisor',reportDate:document.getElementById('dateInputHeader')?.value||'',date:old?.date||new Date().toLocaleDateString('ar-SA'),content:document.getElementById('report-content-container').innerHTML,isComplete:completion.isComplete,saveTimestamp:Date.now(),updatedAt:new Date().toISOString()};
             const idx=reports.findIndex(r=>String(r.id)===String(data.id));if(idx>=0)reports[idx]=data;else reports.push(data);
             currentEditingId=data.id;localStorage.setItem(archiveKey,JSON.stringify(reports));
-            try{if(!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.commit!=='function')throw new Error('محرك التحقق السحابي غير متاح');await saveCanonicalPerformanceArchiveV6();const __G=window.PlatformPersistenceGuard;const __domainKey=performanceDomainCloudKeyV8(cat);const __domainRaw=JSON.stringify(reports.filter(r=>performanceArchiveFolderId(r)===cat));const __dw=await __G.writeExactValues({moduleKey:'health_advisor',scope:'user',values:{[__domainKey]:__domainRaw}});if(!__dw.ok)throw new Error(__dw.error||'تعذر حفظ مجلد المجال سحابيًا');const __dr=await __G.readExactValues({moduleKey:'health_advisor',scope:'user',keys:[__domainKey]});if(!__dr.ok||__dr.values[__domainKey]!==__domainRaw)throw new Error('فشل التحقق السحابي من مجلد المجال المحدد');const saved=JSON.parse(localStorage.getItem(archiveKey)||'[]').find(r=>String(r.id)===String(data.id));if(!saved||performanceArchiveFolderId(saved)!==cat)throw new Error('لم يظهر التقرير داخل مجلد المجال المحدد');showToast('تم الحفظ في أرشيف تقارير الأداء الوظيفي / '+folderName+' ✅');return true}catch(e){localStorage.setItem(archiveKey,beforeRaw);currentEditingId=previousEditingId;showToast('تعذر حفظ التقرير سحابيًا: '+String(e?.message||e||'خطأ غير معروف'));console.error('[performance folder save]',e);return false}
+            try{if(!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.commit!=='function')throw new Error('محرك التحقق السحابي غير متاح');await saveCanonicalPerformanceArchiveV6();const __G=window.PlatformPersistenceGuard;const __domainKey=performanceDomainCloudKeyV8(cat);const __domainRaw=JSON.stringify(reports.filter(r=>performanceArchiveFolderId(r)===cat));const __dw=await __G.writeExactValues({moduleKey:'health_advisor',scope:'school',values:{[__domainKey]:__domainRaw}});if(!__dw.ok)throw new Error(__dw.error||'تعذر حفظ مجلد المجال سحابيًا');const __dr=await __G.readExactValues({moduleKey:'health_advisor',scope:'school',keys:[__domainKey]});if(!__dr.ok||__dr.values[__domainKey]!==__domainRaw)throw new Error('فشل التحقق السحابي من مجلد المجال المحدد');const saved=JSON.parse(localStorage.getItem(archiveKey)||'[]').find(r=>String(r.id)===String(data.id));if(!saved||performanceArchiveFolderId(saved)!==cat)throw new Error('لم يظهر التقرير داخل مجلد المجال المحدد');showToast('تم الحفظ في أرشيف تقارير الأداء الوظيفي / '+folderName+' ✅');return true}catch(e){localStorage.setItem(archiveKey,beforeRaw);currentEditingId=previousEditingId;showToast('تعذر حفظ التقرير سحابيًا: '+String(e?.message||e||'خطأ غير معروف'));console.error('[performance folder save]',e);return false}
         }
 
         function checkPendingReminders() {
@@ -5444,21 +5444,38 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
   function g(){return window.PlatformPersistenceGuard}
   function arr(raw){try{const a=JSON.parse(raw||'[]');return Array.isArray(a)?a:[]}catch(e){return[]}}
   async function loadCanonical(){
-    const G=g();if(!G||typeof G.readExactValues!=='function')throw new Error('محرك الأرشيف المرجعي V6 غير متاح');
-    let r=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:[CANON]});if(!r.ok)throw new Error(r.error||'تعذر قراءة الأرشيف المرجعي');
-    let raw=r.values[CANON];
+    const G=g();if(!G||typeof G.readExactValues!=='function')throw new Error('محرك الأرشيف المرجعي V9 غير متاح');
+    let raw;
+    const schoolCanon=await G.readExactValues({moduleKey:MODULE,scope:'school',keys:[CANON]});
+    if(!schoolCanon.ok)throw new Error(schoolCanon.error||'تعذر قراءة أرشيف المدرسة');
+    raw=schoolCanon.values[CANON];
     if(raw===undefined){
-      const old=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:[LEGACY]});
-      raw=old.ok&&old.values[LEGACY]!==undefined?old.values[LEGACY]:(localStorage.getItem(LEGACY)||'[]');
-      if(arr(raw).length){const w=await G.writeExactValues({moduleKey:MODULE,scope:'user',values:{[CANON]:raw}});if(!w.ok)throw new Error(w.error||'تعذر ترحيل الأرشيف القديم');}
+      const schoolLegacy=await G.readExactValues({moduleKey:MODULE,scope:'school',keys:[LEGACY]});
+      if(schoolLegacy.ok&&schoolLegacy.values[LEGACY]!==undefined)raw=schoolLegacy.values[LEGACY];
     }
-    raw=raw===undefined?'[]':raw;G.setLocalSilently(LEGACY,raw);return arr(raw);
+    // ترحيل آمن لمرة واحدة من النسخ الحديثة التي خزنت الأرشيف خطأً في نطاق المستخدم.
+    if(raw===undefined||!arr(raw).length){
+      const userCanon=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:[CANON]});
+      if(userCanon.ok&&userCanon.values[CANON]!==undefined&&arr(userCanon.values[CANON]).length)raw=userCanon.values[CANON];
+      if(raw===undefined||!arr(raw).length){
+        const userLegacy=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:[LEGACY]});
+        if(userLegacy.ok&&userLegacy.values[LEGACY]!==undefined&&arr(userLegacy.values[LEGACY]).length)raw=userLegacy.values[LEGACY];
+      }
+    }
+    if(raw===undefined)raw=localStorage.getItem(LEGACY)||'[]';
+    raw=raw===undefined?'[]':raw;
+    if(arr(raw).length){
+      const w=await G.writeExactValues({moduleKey:MODULE,scope:'school',values:{[CANON]:raw,[LEGACY]:raw}});
+      if(!w.ok)throw new Error(w.error||'تعذر تثبيت أرشيف المدرسة');
+    }
+    G.setLocalSilently(LEGACY,raw);return arr(raw);
   }
   async function saveCanonical(){
-    const G=g();if(!G||typeof G.writeExactValues!=='function')throw new Error('محرك الأرشيف المرجعي V6 غير متاح');
+    const G=g();if(!G||typeof G.writeExactValues!=='function')throw new Error('محرك الأرشيف المرجعي V9 غير متاح');
     const raw=localStorage.getItem(LEGACY)||'[]';
-    const w=await G.writeExactValues({moduleKey:MODULE,scope:'user',values:{[CANON]:raw}});if(!w.ok)throw new Error(w.error||'تعذر حفظ الأرشيف المرجعي');
-    const r=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:[CANON]});if(!r.ok||r.values[CANON]!==raw)throw new Error('فشل التحقق النهائي من الأرشيف المرجعي');return true;
+    const w=await G.writeExactValues({moduleKey:MODULE,scope:'school',values:{[CANON]:raw,[LEGACY]:raw}});if(!w.ok)throw new Error(w.error||'تعذر حفظ أرشيف المدرسة');
+    const r=await G.readExactValues({moduleKey:MODULE,scope:'school',keys:[CANON,LEGACY]});
+    if(!r.ok||r.values[CANON]!==raw||r.values[LEGACY]!==raw)throw new Error('فشل التحقق النهائي من أرشيف المدرسة');return true;
   }
   window.loadCanonicalPerformanceArchiveV6=loadCanonical;window.saveCanonicalPerformanceArchiveV6=saveCanonical;
   window.verifyReportArchiveCloud=async function(){return saveCanonical();};

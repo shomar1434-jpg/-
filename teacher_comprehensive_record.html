@@ -440,6 +440,23 @@
                     return [];
                 },
 
+                async getInformationCenterStudents(forceRefresh = false) {
+                    try {
+                        if (window.SchoolInformationSource) {
+                            if (forceRefresh && typeof window.SchoolInformationSource.refresh === 'function') await window.SchoolInformationSource.refresh();
+                            if (typeof window.SchoolInformationSource.getStudents === 'function') {
+                                const rows = await window.SchoolInformationSource.getStudents();
+                                if (Array.isArray(rows) && rows.length) {
+                                    this.centerImportStatus = `تم جلب ${rows.length} طالب/طالبة من المصدر الموحد لمركز المعلومات.`;
+                                    return rows;
+                                }
+                            }
+                        }
+                    } catch (e) { console.warn('تعذر قراءة المصدر الموحد لمركز المعلومات:', e); }
+                    let rows = await this.getInformationCenterStudents(true);
+                    return rows;
+                },
+
                 async fetchStudentsFromSupabaseIfAvailable() {
                     // قراءة واسعة وآمنة من Supabase: لا نفلتر بالمرحلة/الصف قبل معرفة الصفوف؛
                     // لأن جدول students قد يحفظ stage بصيغة "ثانوي" و grade بصيغة "الأول الثانوي".
@@ -521,8 +538,7 @@
 
                     this.applyCenterDiscoveredClass();
                     this.centerImportStatus = 'جاري جلب طلاب الصف المختار من مركز المعلومات...';
-                    let sourceStudents = await this.fetchStudentsFromSupabaseIfAvailable();
-                    if (!sourceStudents.length) sourceStudents = this.getCenterStudentsFromLocalSources();
+                    let sourceStudents = await this.getInformationCenterStudents(true);
 
                     const form = this.centerImportForm;
                     const stageLabel = this.stagesMeta[form.stage]?.label || '';
@@ -2848,7 +2864,7 @@
     </style>
 
 <!-- Unified Cloud File Engine v3 -->
-<script src="platform-cloud-session.js?v=20260818-session-v12"></script>
+<script src="platform-cloud-session.js?v=20260828-session-continuity-v2"></script>
 <script src="cloud-file-engine.js"></script>
 <script src="cloud-file-bootstrap.js"></script>
 <script src="cloud-upload-hub.js"></script>
@@ -2861,7 +2877,7 @@
 <script src="school-activity-engine.js"></script>
   <script src="evidence-library-source.js"></script>
 
-<script src="school-information-source.js"></script>
+<script src="school-information-source.js?v=20260828-teacher-center-v3"></script>
 <script src="internal-messaging.js"></script>
 <script defer src="unified_workspace.js"></script>
 <script defer src="school_navigation_guard.js"></script>

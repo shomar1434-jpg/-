@@ -35,7 +35,7 @@
   const schoolPatterns=[
     /^school_actual_reality$/,/^school_committees$/,/^school_operational_plan$/,/^school_indicators_data$/,
     /^self_evaluation_archive_/i,/^self_evaluation_archive_v1$/,/^manager_self_evaluation_archive_v1$/,/^school_info$/,/^school_manager_records_archive_v1$/,/^manager_records_.*_archive$/i,/^wakil_records_pdf_archive_v3$/,/^wakil_archive_v5_/i,/^wakil_form_v3_/i,/^school_operational_execution_v1$/,/^schoolImpactAssessments$/,
-    /^sh_/i,/^activity_leader_records_archive_/i,/^advisor_records_archive_v1$/,/^category_goals$/,
+    /^category_goals$/,
     /^archive_folder_goals$/,/^managerRecordsFooterSettings$/,/^activityLeaderFooterSettings$/,
     /^setting_(region|school|sig|stamp)$/,/^def_[mp]$/,/^persist_(region|school|sig_data|stamp_data)$/,
     /^smart_education_office$/,/^smart_school_teacher_extra_roles_map$/,/^school_academic_year$/,
@@ -102,11 +102,21 @@
     let changed=false;
     applying=true;
     try{
+      const changedKeys=[];
       for(const [k,r] of cloud){
         if(!track(k)||scopeFor(k)!==scope) continue;
-        if(r.deleted_at){if(nativeGet.call(localStorage,k)!==null){nativeRemove.call(localStorage,k);changed=true;}continue;}
+        const before=nativeGet.call(localStorage,k);
+        if(r.deleted_at){
+          if(before!==null){nativeRemove.call(localStorage,k);changed=true;changedKeys.push({key:k,oldValue:before,newValue:null});}
+          continue;
+        }
         const val=r.payload&&Object.prototype.hasOwnProperty.call(r.payload,'value')?String(r.payload.value):null;
-        if(val!==null&&nativeGet.call(localStorage,k)!==val){nativeSet.call(localStorage,k,val);changed=true;}
+        if(val!==null&&before!==val){nativeSet.call(localStorage,k,val);changed=true;changedKeys.push({key:k,oldValue:before,newValue:val});}
+      }
+      if(changedKeys.length){
+        queueMicrotask(()=>changedKeys.forEach(x=>{
+          try{window.dispatchEvent(new StorageEvent('storage',{key:x.key,oldValue:x.oldValue,newValue:x.newValue,storageArea:localStorage,url:location.href}));}catch(_){ }
+        }));
       }
       const migration=[];
       for(let i=0;i<localStorage.length;i++){
@@ -199,15 +209,13 @@
       const changedUser=await hydrateScope('user');
       hydrated=true;
       window.dispatchEvent(new CustomEvent('platform-persistence-ready',{detail:{moduleKey,changed:changedSchool||changedUser}}));
-      const schoolId=nativeGet.call(localStorage,'active_school_id')||nativeGet.call(localStorage,'current_school_id')||'';
-      const reloadKey=`platform_persistence_hydrated:${moduleKey}:${schoolId}`;
-      if((changedSchool||changedUser)&&!sessionStorage.getItem(reloadKey)){
-        sessionStorage.setItem(reloadKey,'1'); location.reload();
-      }
+      // لا نعيد تحميل الصفحة بعد Hydration. إعادة التحميل كانت تسبب الومضة
+      // والعودة المؤقتة إلى واجهة الترحيب في كل قسم مستقل. بدلاً من ذلك
+      // نُبقي الصفحة الحالية ونعلن جاهزية البيانات، وتصل تغييرات المفاتيح عبر StorageEvent.
     }catch(e){console.warn('[PersistenceGuard] hydrate skipped',moduleKey,e?.message||e);}
   }
   window.addEventListener('pagehide',()=>void flush(true));
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')void flush(true)});
-  window.PlatformPersistenceGuard={moduleKey,track,scopeFor,flush,commit,boot,get hydrated(){return hydrated;}};
+  window.PlatformPersistenceGuard={VERSION:'2026.08.28-no-reload-v2',moduleKey,track,scopeFor,flush,commit,boot,get hydrated(){return hydrated;}};
   setTimeout(boot,0);
 })();

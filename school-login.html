@@ -512,7 +512,7 @@
     </form>
   </main>
 
-<script src="platform-cloud-session.js?v=20260818-clean-session-v1"></script>
+<script src="platform-cloud-session.js?v=20260828-session-continuity-v2"></script>
 <script id="school-logout-scope-cleanup-v1">
 (function(){
   try{
@@ -868,8 +868,9 @@
       }
       const schoolName = user.schoolName || (school && (school.schoolName || school.school_name || school.name)) || '';
       if(!window.PlatformCloudSession){ setMsg('محرك الجلسة السحابية غير متاح. حدّث الصفحة ثم حاول مرة أخرى.'); return; }
+      let cloudSession = null;
       try{
-        const cloudSession = await window.PlatformCloudSession.open(loginId,password,schoolId);
+        cloudSession = await window.PlatformCloudSession.open(loginId,password,schoolId);
         if(!cloudSession || !cloudSession.token) throw new Error('لم يتم إنشاء رمز جلسة صالح');
       }catch(sessionError){
         console.error('تعذر إنشاء جلسة المنصة السحابية:',sessionError);
@@ -895,7 +896,7 @@
       localStorage.setItem('currentUser', JSON.stringify(user));
       if(schoolId){ localStorage.setItem('current_school_id', schoolId); localStorage.setItem('school_id', schoolId); localStorage.setItem('smart_school_id', schoolId); }
       if(schoolName){ localStorage.setItem('current_school_name', schoolName); localStorage.setItem('school_name', schoolName); localStorage.setItem('persist_school', schoolName); }
-      localStorage.setItem('smart_school_current_session', JSON.stringify({ id:user.id||'', name:user.name||'', email:user.email||loginId, role, agent_categories:agencyCats, agency_categories:agencyCats, agency_types:agencyCats, agency_type:agencyCats.join(','), agencyType:agencyCats.join(','), teacher_extra_roles:teacherExtraRoles, additional_assignments:teacherExtraRoles, extra_roles:teacherExtraRoles, schoolId, schoolName, loginAt:new Date().toISOString(), independentSchool:true, loginMode:'direct' }));
+      localStorage.setItem('smart_school_current_session', JSON.stringify({ id:user.id||'', name:user.name||'', email:user.email||loginId, role, agent_categories:agencyCats, agency_categories:agencyCats, agency_types:agencyCats, agency_type:agencyCats.join(','), agencyType:agencyCats.join(','), teacher_extra_roles:teacherExtraRoles, additional_assignments:teacherExtraRoles, extra_roles:teacherExtraRoles, schoolId, schoolName, loginAt:new Date().toISOString(), independentSchool:true, loginMode:'direct', cloudToken:cloudSession?.token||'', cloudExpiresAt:cloudSession?.expiresAt||'', cloudUserId:cloudSession?.userId||user.id||'', cloudSchoolId:cloudSession?.schoolId||schoolId, cloudRole:cloudSession?.role||role }));
       setMsg('تم التحقق من الحساب، جارٍ فتح القسم...', 'ok');
       const target = fileForRole(role);
       const q = new URLSearchParams({ role, uid:user.id || '', email:user.email || loginId, schoolId:schoolId || '', school_name:schoolName || '', schoolMode:'independent', independent:'true', loginMode:'direct', direct:'1', agency_type:agencyCats.join(','), teacher_extra_roles:teacherExtraRoles.join(',') });

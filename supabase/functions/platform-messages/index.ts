@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
+const PLATFORM_MESSAGES_VERSION='2026.08.28-attachment-atomic-v4';
 const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type, x-platform-session','Access-Control-Allow-Methods':'GET, POST, OPTIONS'};
 const json=(b:unknown,s=200)=>new Response(JSON.stringify(b),{status:s,headers:{...cors,'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
 const sha256=async(v:string)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(v)))).map(x=>x.toString(16).padStart(2,'0')).join('');
@@ -20,15 +21,27 @@ Deno.serve(async(req)=>{
   const action=new URL(req.url).searchParams.get('action')||'inbox',body=req.method==='POST'?await req.json().catch(()=>({})):{};
   const recipientQuery=(messageId?:string,columns='*')=>{let q=sb.from('internal_message_recipients').select(columns).eq('school_id',schoolId);if(messageId)q=q.eq('message_id',messageId);return isUuid(userId)?q.eq('recipient_user_id',userId):q.eq('recipient_email',email)};
   const canAccess=async(id:string)=>{const {data:m}=await sb.from('internal_messages').select('*').eq('school_id',schoolId).eq('id',id).maybeSingle();if(!m)return {m:null,r:null};const {data:r}=await recipientQuery(id).maybeSingle();return {m,r};};
+  const schoolUsers=async()=>{
+   const merged=new Map<string,any>();
+   try{
+    const {data:members,error:memberError}=await sb.from('school_members').select('user_id,role,role_label,status,email').eq('school_id',schoolId);if(memberError)throw memberError;
+    const active=(members||[]).filter((m:any)=>String(m.status||'active')!=='deleted');
+    const ids=[...new Set(active.map((m:any)=>String(m.user_id||'')).filter(isUuid))];
+    let identities:any[]=[];if(ids.length){const {data,error}=await sb.from('users').select('id,email,full_name,role,status').in('id',ids);if(error)throw error;identities=data||[];}
+    const by=new Map(identities.map((u:any)=>[String(u.id),u]));
+    for(const m of active){const u=by.get(String(m.user_id))||{};const row={...u,id:m.user_id||u.id,email:m.email||u.email||'',full_name:u.full_name||m.email||'',role:m.role||u.role||'',role_label:m.role_label||'',status:m.status||u.status||'active',school_id:schoolId};if(row.id)merged.set(String(row.id),row);}
+   }catch(e){console.warn('[platform-messages] school_members fallback',e);}
+   try{const {data,error}=await sb.from('users').select('id,email,full_name,role,status').eq('school_id',schoolId);if(!error)for(const u of data||[]){if(String(u.status||'active')!=='deleted'&&u.id&&!merged.has(String(u.id)))merged.set(String(u.id),u);}}catch(_){ }
+   return [...merged.values()];
+  };
   if(action==='users'){
-   const {data,error}=await sb.from('users').select('id,email,full_name,role,status').eq('school_id',schoolId).order('full_name');if(error)throw error;
-   const users=(data||[]).filter((u:any)=>String(u.status||'active')!=='deleted');const counts:any={};users.forEach((u:any)=>{const k=String(u.role||'user');counts[k]=(counts[k]||0)+1});return json({users,roleCounts:counts,current:{id:userId,role,email},permissions:{groupSend:isOwner,allSchool:isManager,official:isOwner,convertTask:isOwner}});
+   const users=(await schoolUsers()).sort((a:any,b:any)=>String(a.full_name||a.email||'').localeCompare(String(b.full_name||b.email||''),'ar'));const counts:any={};users.forEach((u:any)=>{const k=String(u.role||'user');counts[k]=(counts[k]||0)+1});return json({users,roleCounts:counts,current:{id:userId,role,email},permissions:{groupSend:isOwner,allSchool:isManager,official:isOwner,convertTask:isOwner},version:PLATFORM_MESSAGES_VERSION});
   }
   if(action==='send'){
    const direct=Array.isArray(body.recipientIds)?body.recipientIds.filter(isUuid):[],roles=Array.isArray(body.recipientRoles)?body.recipientRoles.map((x:any)=>safe(x,80)).filter(Boolean):[];
    if((roles.length||body.allSchool)&&!isOwner)return json({error:'الإرسال إلى فئة كاملة متاح للمدير والوكيل فقط'},403);if(body.allSchool&&!isManager)return json({error:'الإرسال إلى جميع المنسوبين متاح لمدير المدرسة فقط'},403);
    if(!body.allSchool&&!roles.length&&!direct.length)return json({error:'اختر مستلمًا واحدًا على الأقل'},400);
-   const {data:rawTargets,error:ue}=await sb.from('users').select('id,email,full_name,role,status').eq('school_id',schoolId);if(ue)throw ue;
+   const rawTargets=await schoolUsers();
    let targets=(rawTargets||[]).filter((u:any)=>String(u.status||'active')!=='deleted'&&(body.allSchool||direct.includes(String(u.id))||roles.includes(String(u.role||''))));targets=[...new Map(targets.map((u:any)=>[String(u.id),u])).values()];if(!targets.length)return json({error:'لم يتم العثور على مستلمين مطابقين داخل المدرسة'},400);if(!isOwner&&targets.length>20)return json({error:'يمكن للمستخدم إرسال الرسالة إلى 20 مستلمًا كحد أقصى'},400);
    const subject=safe(body.subject,300),text=safe(body.body,20000);if(!subject||!text)return json({error:'العنوان ونص الرسالة مطلوبان'},400);
    const type=['message','official','notice','action_request'].includes(String(body.messageType))?String(body.messageType):'message';if(type==='official'&&!isOwner)return json({error:'التعميم الرسمي متاح للمدير والوكيل فقط'},403);
@@ -38,30 +51,28 @@ Deno.serve(async(req)=>{
    if(type==='official'&&ackMode==='none')ackMode='signature';
    const requireAck=ackMode==='signature';
    const linked=body.linked||{};const row:any={id:mid,school_id:schoolId,sender_user_id:isUuid(userId)?userId:null,sender_name:safe(body.senderName||s.user_name||email||'مستخدم',200),sender_role:role,subject,body:text,priority:['important','urgent'].includes(String(body.priority))?String(body.priority):'normal',message_type:type,require_ack:requireAck,acknowledgement_mode:ackMode,due_at:body.dueAt||null,thread_id:thread,parent_message_id:isUuid(body.parentMessageId)?body.parentMessageId:null,linked_module:safe(linked.module,120)||null,linked_record_type:safe(linked.recordType,120)||null,linked_record_id:safe(linked.recordId,240)||null,linked_title:safe(linked.title,500)||null,linked_url:safeUrl(linked.url)||null,metadata:body.metadata||{}};
+   const att=Array.isArray(body.attachments)?body.attachments.slice(0,15):[];
+   const requestedAttachmentIds=att.map((a:any)=>String(a?.fileId||'')).filter(isUuid);
+   if(requestedAttachmentIds.length!==att.length)return json({error:'يوجد مرفق غير صالح ضمن الرسالة',code:'MESSAGE_ATTACHMENT_INVALID'},400);
+   let attachmentFiles:Map<string,any>=new Map();
+   if(requestedAttachmentIds.length){
+    const {data:fs,error:fe}=await sb.from('platform_files').select('id,school_id,ownership_scope,owner_user_id,uploaded_by,display_name,original_name,mime_type,file_size,status,bucket_name,storage_path').eq('school_id',schoolId).in('id',requestedAttachmentIds);if(fe)throw fe;
+    attachmentFiles=new Map((fs||[]).filter((f:any)=>f.status==='active').map((f:any)=>[String(f.id),f]));
+    for(const a of att){const f=attachmentFiles.get(String(a.fileId));if(!f)return json({error:'أحد المرفقات غير موجود أو غير نشط داخل المدرسة',code:'MESSAGE_ATTACHMENT_MISSING'},409);const senderCanAttach=String(f.school_id)===schoolId&&(String(f.ownership_scope)==='school'||String(f.owner_user_id||'')===userId||isManager);if(!senderCanAttach)return json({error:'لا توجد صلاحية لإرفاق أحد الملفات المحددة',code:'MESSAGE_ATTACHMENT_FORBIDDEN'},403);if(!isUuid(userId)&&!f.uploaded_by)return json({error:'تعذر تحديد مالك ربط المرفق',code:'MESSAGE_ATTACHMENT_OWNER_MISSING'},409);}
+   }
+   const rollbackMessage=async()=>{try{await sb.from('platform_file_links').delete().eq('school_id',schoolId).eq('module_key','internal_messages').eq('record_type','internal_message').eq('record_id',mid)}catch(_){ }try{await sb.from('internal_message_attachments').delete().eq('school_id',schoolId).eq('message_id',mid)}catch(_){ }try{await sb.from('internal_message_recipients').delete().eq('school_id',schoolId).eq('message_id',mid)}catch(_){ }try{await sb.from('internal_messages').delete().eq('school_id',schoolId).eq('id',mid)}catch(_){ }};
    const {error:me}=await sb.from('internal_messages').insert(row);if(me)throw me;
-   const recs=targets.map((u:any)=>({school_id:schoolId,message_id:mid,recipient_user_id:u.id,recipient_email:String(u.email||'').toLowerCase()||null,recipient_name:u.full_name||u.email||'',recipient_role:u.role||''}));if(recs.length){const {error}=await sb.from('internal_message_recipients').insert(recs);if(error)throw error;}
-   const att=Array.isArray(body.attachments)?body.attachments.slice(0,15):[];const requestedAttachmentIds=att.map((a:any)=>String(a?.fileId||'')).filter(isUuid);let savedAttachmentCount=0;if(att.length){if(requestedAttachmentIds.length!==att.length)return json({error:'يوجد مرفق غير صالح ضمن الرسالة',code:'MESSAGE_ATTACHMENT_INVALID'},400);const ids=requestedAttachmentIds;if(ids.length){const {data:fs,error:fe}=await sb.from('platform_files').select('id,school_id,ownership_scope,owner_user_id,uploaded_by,display_name,original_name,mime_type,file_size,status,bucket_name,storage_path').eq('school_id',schoolId).in('id',ids);if(fe)throw fe;const fmap:Map<string,any>=new Map((fs||[]).filter((f:any)=>f.status==='active').map((f:any)=>[String(f.id),f]));const rows=[];for(const a of att){
-    const f=fmap.get(String(a.fileId));if(!f)continue;
-    const senderCanAttach=String(f.school_id)===schoolId&&(String(f.ownership_scope)==='school'||String(f.owner_user_id||'')===userId||isManager);
-    if(!senderCanAttach)throw new Error('لا توجد صلاحية لإرفاق أحد الملفات المحددة');
-    rows.push({school_id:schoolId,message_id:mid,file_id:f.id,file_name:f.display_name||f.original_name||'مرفق',mime_type:f.mime_type||null,file_size:Number(f.file_size||0),source:a.source==='library'?'library':'device'});
-    const linkKey={school_id:schoolId,file_id:f.id,module_key:'internal_messages',record_type:'internal_message',record_id:mid,relation_type:'attachment'};
-    const {data:existingLinks,error:linkFindError}=await sb.from('platform_file_links').select('id,deleted_at').match(linkKey).order('created_at',{ascending:false}).limit(1);
-    if(linkFindError)throw linkFindError;
-    const existingLink=(existingLinks||[])[0]||null;
-    const linkedBy=isUuid(userId)?userId:f.uploaded_by;
-    if(!linkedBy)throw new Error('تعذر تحديد مالك ربط المرفق');
-    if(existingLink){
-      const {error:linkRestoreError}=await sb.from('platform_file_links').update({deleted_at:null,linked_by:linkedBy,is_primary:false,metadata:{source:a.source||'device'}}).eq('id',existingLink.id);
-      if(linkRestoreError)throw linkRestoreError;
-    }else{
-      const {error:linkInsertError}=await sb.from('platform_file_links').insert({...linkKey,linked_by:linkedBy,is_primary:false,metadata:{source:a.source||'device'}});
-      if(linkInsertError)throw linkInsertError;
+   const recs=targets.map((u:any)=>({school_id:schoolId,message_id:mid,recipient_user_id:u.id,recipient_email:String(u.email||'').toLowerCase()||null,recipient_name:u.full_name||u.email||'',recipient_role:u.role||''}));
+   let savedAttachmentCount=0;
+   try{
+    if(recs.length){const {error}=await sb.from('internal_message_recipients').insert(recs);if(error)throw error;}
+    if(att.length){const rows=[];for(const a of att){const f=attachmentFiles.get(String(a.fileId));const linkedBy=isUuid(userId)?userId:f.uploaded_by;rows.push({school_id:schoolId,message_id:mid,file_id:f.id,file_name:f.display_name||f.original_name||'مرفق',mime_type:f.mime_type||null,file_size:Number(f.file_size||0),source:a.source==='library'?'library':'device'});const linkKey={school_id:schoolId,file_id:f.id,module_key:'internal_messages',record_type:'internal_message',record_id:mid,relation_type:'attachment'};const {data:existingLinks,error:linkFindError}=await sb.from('platform_file_links').select('id,deleted_at').match(linkKey).order('created_at',{ascending:false}).limit(1);if(linkFindError)throw linkFindError;const existingLink=(existingLinks||[])[0]||null;if(existingLink){const {error}=await sb.from('platform_file_links').update({deleted_at:null,linked_by:linkedBy,is_primary:false,metadata:{source:a.source||'device'}}).eq('id',existingLink.id);if(error)throw error;}else{const {error}=await sb.from('platform_file_links').insert({...linkKey,linked_by:linkedBy,is_primary:false,metadata:{source:a.source||'device'}});if(error)throw error;}}
+     if(rows.length){const {error:ae}=await sb.from('internal_message_attachments').insert(rows);if(ae)throw ae;savedAttachmentCount=rows.length;}
     }
-   }if(rows.length){const {error:ae}=await sb.from('internal_message_attachments').insert(rows);if(ae)throw ae;savedAttachmentCount=rows.length;}}}
-   if(savedAttachmentCount!==requestedAttachmentIds.length)return json({error:'لم يتم تأكيد حفظ جميع المرفقات. لم يتم اعتماد الرسالة كمكتملة.',code:'MESSAGE_ATTACHMENTS_NOT_CONFIRMED',requestedAttachmentCount:requestedAttachmentIds.length,savedAttachmentCount},409);
-   if(requestedAttachmentIds.length){const {data:verifyAtt,error:verifyAttError}=await sb.from('internal_message_attachments').select('file_id').eq('school_id',schoolId).eq('message_id',mid);if(verifyAttError)throw verifyAttError;const verifiedIds=new Set((verifyAtt||[]).map((x:any)=>String(x.file_id)));const missing=requestedAttachmentIds.filter((id:string)=>!verifiedIds.has(id));if(missing.length)return json({error:'تعذر التحقق من حفظ بعض المرفقات. لم يتم اعتماد الإرسال.',code:'MESSAGE_ATTACHMENTS_VERIFY_FAILED',requestedAttachmentCount:requestedAttachmentIds.length,savedAttachmentCount:verifiedIds.size,missingFileIds:missing},409);savedAttachmentCount=verifiedIds.size;}
-   return json({ok:true,messageId:mid,recipientCount:recs.length,requestedAttachmentCount:requestedAttachmentIds.length,savedAttachmentCount,attachmentsConfirmed:savedAttachmentCount===requestedAttachmentIds.length});
+    if(savedAttachmentCount!==requestedAttachmentIds.length)throw new Error('MESSAGE_ATTACHMENTS_NOT_CONFIRMED');
+    if(requestedAttachmentIds.length){const {data:verifyAtt,error:verifyAttError}=await sb.from('internal_message_attachments').select('file_id').eq('school_id',schoolId).eq('message_id',mid);if(verifyAttError)throw verifyAttError;const verifiedIds=new Set((verifyAtt||[]).map((x:any)=>String(x.file_id)));const missing=requestedAttachmentIds.filter((id:string)=>!verifiedIds.has(id));if(missing.length)throw new Error('MESSAGE_ATTACHMENTS_VERIFY_FAILED:'+missing.join(','));savedAttachmentCount=verifiedIds.size;}
+   }catch(sendError){await rollbackMessage();const msg=sendError instanceof Error?sendError.message:String(sendError);return json({error:msg.startsWith('MESSAGE_ATTACHMENTS_')?'لم يتم تأكيد حفظ جميع المرفقات؛ أُلغي إرسال الرسالة دون إنشاء نسخة ناقصة.':msg,code:msg.split(':')[0],messageId:mid,requestedAttachmentCount:requestedAttachmentIds.length,savedAttachmentCount},409);}
+   return json({ok:true,version:PLATFORM_MESSAGES_VERSION,messageId:mid,recipientCount:recs.length,requestedAttachmentCount:requestedAttachmentIds.length,savedAttachmentCount,attachmentsConfirmed:savedAttachmentCount===requestedAttachmentIds.length});
   }
   if(action==='attachment-url'){
    const messageId=safe(body.messageId,60),fileId=safe(body.fileId,60);

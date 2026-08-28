@@ -718,7 +718,7 @@ window.CLOUD_STATE_CONFIG={
 };
 </script>
 <script src="platform-state-engine.js"></script>
-<script src="platform-persistence-guard.js?v=20260828-archive-domain-v4"></script>
+<script src="platform-persistence-guard.js?v=20260828-archive-persistence-v5"></script>
 <script id="canonical-record-archive-hydrate-v4">(function(){async function h(){try{var g=window.PlatformPersistenceGuard;if(g&&typeof g.readExact==='function')await g.readExact({moduleKey:'manager',scope:'school',keys:['school_manager_records_archive_v1']});}catch(e){console.error('[record archive canonical hydrate]',e)}}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',h,{once:true});else h();window.addEventListener('platform-persistence-ready',h,{once:true});})();</script>
 <script defer src="school-base-settings-source.js"></script>
 <style id="uw-verified-back-style">
@@ -786,8 +786,8 @@ window.CLOUD_STATE_CONFIG={
     </div>
 
     <section id="archivePanel" class="archivePanel">
-      <h3 style="margin:0 0 8px;color:var(--primary2)">الأرشيف المحلي</h3>
-      <div class="small">يتم الحفظ داخل متصفح الجهاز باستخدام LocalStorage.</div>
+      <h3 style="margin:0 0 8px;color:var(--primary2)">نسخ السجل المحفوظة</h3>
+      <div class="small">تتم استعادة النسخ من أرشيف المدرسة السحابي، مع نسخة محلية مؤقتة لسرعة العرض.</div>
       <div id="archiveList"></div>
     </section>
 
@@ -1180,11 +1180,11 @@ async function saveArchive(){
    return true;
  }catch(e){
    localStorage.setItem(localKey,beforeLocal);localStorage.setItem(platformKey,beforePlatform);
-   alert("تعذر تأكيد الحفظ السحابي؛ تمت استعادة النسخة السابقة.");
+   alert("تعذر تأكيد الحفظ السحابي: "+String(e?.message||e||"خطأ غير معروف")+"؛ تمت استعادة النسخة السابقة.");
    console.error('[manager record save]',e);renderArchive();return false;
  }
 }
-function toggleArchive(){document.getElementById('archivePanel').classList.toggle('show');renderArchive()}
+async function toggleArchive(){const panel=document.getElementById('archivePanel');panel.classList.toggle('show');if(panel.classList.contains('show')){try{const g=window.PlatformPersistenceGuard;if(g&&typeof g.readExact==='function')await g.readExact({moduleKey:'manager',scope:'school',keys:[key()+'_archive','school_manager_records_archive_v1']});}catch(e){console.error('[manager record archive hydrate]',e)}}renderArchive()}
 function renderArchive(){
  const box=document.getElementById('archiveList');
  const list=JSON.parse(localStorage.getItem(key()+"_archive")||"[]");

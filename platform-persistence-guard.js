@@ -81,7 +81,9 @@
     return schoolPatterns.some(r=>r.test(String(k||'')))?'school':'user';
   }
   function queue(k,value,deleted){
-    if(applying||!track(k)) return;
+    // V5: لا نرفع أي كتابة تهيئة محلية قبل اكتمال Hydration.
+    // صفحات المنصة تنشئ بعض مفاتيح الأرشيف بقيمة [] أثناء الإقلاع؛ رفعها قبل قراءة السحابة كان يمسح الأرشيف الصحيح.
+    if(applying||!hydrated||!track(k)) return;
     const scope=scopeFor(k),q=queues[scope];
     q.set(String(k),{key:String(k),value:deleted?'':String(value??''),deleted:!!deleted});
     scheduleFlush();
@@ -262,6 +264,11 @@
   }
 
 
+  function dropQueuedKeys(keys){
+    const wanted=new Set((keys||[]).map(String));
+    for(const scope of ['school','user']) for(const k of wanted) queues[scope].delete(k);
+  }
+
   async function readExact(options){
     options=options||{};
     const exactModule=String(options.moduleKey||moduleKey).replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,100)||moduleKey;
@@ -269,6 +276,8 @@
     const ownerUserId=String(options.ownerUserId||'').trim();
     const keys=[...new Set((Array.isArray(options.keys)?options.keys:[options.keys]).map(String).filter(Boolean))];
     if(!keys.length) return {ok:true,found:0,moduleKey:exactModule,scope:exactScope};
+    // أي قيمة queued قبل القراءة المرجعية لا يجوز أن تُكتب فوق ما سنجلبه من السحابة.
+    dropQueuedKeys(keys);
     let tries=0;
     while(!window.PlatformStateEngine && tries++<80) await new Promise(r=>setTimeout(r,100));
     if(!window.PlatformStateEngine) return {ok:false,error:'محرك الحالة السحابية غير متاح'};
@@ -312,6 +321,8 @@
     while(!window.PlatformStateEngine && tries++<80) await new Promise(r=>setTimeout(r,100));
     if(!window.PlatformStateEngine) return {ok:false,error:'محرك الحالة السحابية غير متاح'};
 
+    // commitExact هو صاحب الحقيقة لهذه المفاتيح؛ ألغِ أي flush قديم لها أولاً.
+    dropQueuedKeys(keys);
     const items=keys.map(k=>{const v=nativeGet.call(localStorage,k);return {key:k,value:v===null?'':String(v),deleted:v===null};});
     const cloudItems=[];for(const x of items)cloudItems.push(x.deleted?x:{...x,value:await encodeCloudValue(x.value)});
     try{
@@ -340,7 +351,7 @@
             if(cloud!==it.value){complete=false;break;}
           }
         }
-        if(complete) return {ok:true,verified:keys.length,moduleKey:exactModule,scope:exactScope};
+        if(complete){dropQueuedKeys(keys);return {ok:true,verified:keys.length,moduleKey:exactModule,scope:exactScope};}
       }catch(e){if(attempt===5)return {ok:false,error:e?.message||String(e)};}
       await new Promise(r=>setTimeout(r,180*attempt));
     }
@@ -365,6 +376,6 @@
   }
   window.addEventListener('pagehide',()=>void flush(true));
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')void flush(true)});
-  window.PlatformPersistenceGuard={VERSION:'2026.08.28-archive-domain-v4',moduleKey,track,scopeFor,flush,commit,commitExact,readExact,whenReady,boot,get hydrated(){return hydrated;}};
+  window.PlatformPersistenceGuard={VERSION:'2026.08.28-archive-persistence-v5',moduleKey,track,scopeFor,flush,commit,commitExact,readExact,whenReady,boot,get hydrated(){return hydrated;}};
   setTimeout(boot,0);
 })();

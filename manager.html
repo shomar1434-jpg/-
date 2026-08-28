@@ -1358,7 +1358,7 @@ body{overflow-x:hidden}
 <link rel="stylesheet" href="premium-ui.css">
 <script defer src="premium-ui.js"></script>
 <script src="platform-state-engine.js"></script>
-<script src="platform-persistence-guard.js?v=20260828-archive-domain-v4"></script>
+<script src="platform-persistence-guard.js?v=20260828-archive-persistence-v5"></script>
 <script defer src="school-base-settings-source.js"></script>
 <style id="im-static-messaging-style">
 .im-static-messaging-btn{position:relative;display:inline-flex!important;align-items:center;justify-content:center;gap:7px;white-space:nowrap;text-decoration:none!important;background:#f0fdfa!important;color:#0f766e!important;border:1px solid #ccfbf1!important;border-radius:12px;padding:8px 14px;font-size:12px;font-weight:800;visibility:visible!important;opacity:1!important;pointer-events:auto!important}
@@ -2966,7 +2966,7 @@ async function saveReportToArchive() {
               const saved=JSON.parse(localStorage.getItem(archiveKey)||'[]').find(r=>String(r.id)===String(data.id));
               if(!saved||performanceArchiveFolderId(saved)!==cat)throw new Error('لم يظهر التقرير داخل مجلد المجال المحدد');
               showToast('تم الحفظ في أرشيف تقارير الأداء الوظيفي / '+folderName+' ✅');return true;
-            }catch(e){localStorage.setItem(archiveKey,beforeRaw);currentEditingId=previousEditingId;showToast('تعذر تأكيد حفظ التقرير داخل مجلد المجال؛ تمت استعادة الأرشيف السابق.');console.error('[performance folder save]',e);return false}
+            }catch(e){localStorage.setItem(archiveKey,beforeRaw);currentEditingId=previousEditingId;showToast('تعذر حفظ التقرير سحابيًا: '+String(e?.message||e||'خطأ غير معروف'));console.error('[performance folder save]',e);return false}
         }
         function syncDayFromDate() {
             const dateSel = document.getElementById('dateInputHeader');
@@ -5447,6 +5447,8 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
     if(!v){alert('واجهة '+title(kind)+' غير موجودة.');return;}
     hideAllManagerViews();
     v.style.display='block'; if(v.classList)v.classList.remove('hidden');
+    var loadingBox=document.getElementById(contentId(kind));
+    if(loadingBox) loadingBox.innerHTML='<div class="bg-white/90 rounded-[28px] p-8 text-center text-slate-500 font-bold">جاري استعادة الأرشيف السحابي والتحقق من بيانات المدرسة...</div>';
     await hydrateCanonicalManagerArchive(kind);
     if(kind==='manager'){
       // حتى على جهاز جديد: اجلب قرارات المدرسة من المصدر السحابي قبل بناء العدادات.

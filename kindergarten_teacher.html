@@ -3361,6 +3361,7 @@ function performanceArchiveFolderName(catId){
 }
 
 async function saveReportToArchive() {
+            try{ if(typeof showToast==='function') showToast('جاري حفظ التقرير والتحقق من الأرشيف السحابي...'); }catch(_e){}
             if(typeof freezeReportDOMForArchive==='function')freezeReportDOMForArchive();
             const archiveKey='reports_archive',beforeRaw=localStorage.getItem(archiveKey)||'[]',previousEditingId=currentEditingId;
             let reports=[];try{reports=JSON.parse(beforeRaw);if(!Array.isArray(reports))reports=[]}catch(e){reports=[]}
@@ -4531,7 +4532,7 @@ body{overflow-x:hidden}
         const __enhancedGoHome = goHome;
         goHome = function() { saveDraftSnapshot(true); __enhancedGoHome(); refreshDashboardMetrics(); };
         const __enhancedSaveReportToArchive = saveReportToArchive;
-        saveReportToArchive = async function() { await __enhancedSaveReportToArchive(); refreshDashboardMetrics(); saveDraftSnapshot(true); };
+        saveReportToArchive = async function() { const ok=await __enhancedSaveReportToArchive(); if(ok){ refreshDashboardMetrics(); saveDraftSnapshot(true); } return ok; };
         const __enhancedUpdateReportProgress = updateReportProgress;
         updateReportProgress = function() { __enhancedUpdateReportProgress(); };
 

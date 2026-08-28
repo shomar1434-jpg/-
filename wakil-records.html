@@ -1672,7 +1672,7 @@ async function saveCurrent(){
   if(window.PlatformCloudSession&&typeof window.PlatformCloudSession.ensure==='function') await window.PlatformCloudSession.ensure();
   localStorage.setItem(formStorageKey,JSON.stringify(data));
   const historyRec=addArchiveSnapshot(data);
-  const archive=readWakilCentralArchive(),folderId=String(current.id),folderName=String(current.title||'سجل');
+  const archive=readWakilCentralArchive(),folderId=String(current.archiveFolder||current.id),folderName=String(current.title||'سجل');
   const personName=guessWakilPersonNameForRecordsArchive(data)||'بدون اسم';
   const duplicateNo=archive.filter(r=>String(r.folderId)===folderId&&String(r.personName||'').trim()===String(personName).trim()).length+1;
   window.__wakilRecordArchiveSeq=(window.__wakilRecordArchiveSeq||0)+1;const centralRec={id:(Date.now()*1000)+(window.__wakilRecordArchiveSeq%1000),sourceHistoryId:historyRec.id,formId:folderId,folderId,folderName,recordName:folderName,category:current.category||'shared',categoryLabel:wakilCategoryLabel(current.category||'shared'),title:folderName,personName,personType:current.kind&&String(current.kind).includes('staff')?'employee':(String(current.title||'').includes('موظ')||String(current.title||'').includes('معلم')?'employee':'student'),displayName:duplicateNo>1?personName+' ('+duplicateNo+')':personName,duplicateNo,summary:Object.entries(data).map(([k,v])=>k+': '+v).join('\n'),htmlContent:getCurrentFormHTMLForRecordsArchive(),printableHTML:getCurrentRecordPrintableDocumentForArchive(),createdAt:new Date().toLocaleString('ar-SA'),updatedAt:new Date().toISOString()};

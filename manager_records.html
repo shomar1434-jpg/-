@@ -1136,65 +1136,17 @@ async function hydrateManagerRecordCanonicalV6(){
  }catch(e){console.error('[manager record canonical hydrate V6]',e);throw e}
 }
 async function saveArchive(){
- try{await hydrateManagerRecordCanonicalV6();}catch(e){alert('تعذر استعادة أرشيف سجلات المدير قبل الحفظ: '+String(e?.message||e));return false;}
- try{if(window.PlatformCloudSession&&typeof window.PlatformCloudSession.ensure==='function')await window.PlatformCloudSession.ensure();}
- catch(e){alert('تعذر تهيئة جلسة المدرسة السحابية لحفظ السجل. أعد تسجيل الدخول إذا استمرت المشكلة.');console.error('[manager record session]',e);return false;}
  const data=collect(), localKey=key()+"_archive", platformKey="manager_records_archive_v2";
  const beforeLocal=localStorage.getItem(localKey)||"[]", beforePlatform=localStorage.getItem(platformKey)||"[]";
- let list=[],platformArchive=[];try{list=JSON.parse(beforeLocal);if(!Array.isArray(list))list=[]}catch(e){list=[]}
- try{platformArchive=JSON.parse(beforePlatform);if(!Array.isArray(platformArchive))platformArchive=[]}catch(e){platformArchive=[]}
- const nowIso=new Date().toISOString();
-
- let recordId=null;
- if(managerRecordEditingIndex!==null && list[managerRecordEditingIndex]){
-   const old=list[managerRecordEditingIndex];
-   recordId=old.id||old.archiveId||Date.now();
-   data.id=recordId;data.createdAt=old.createdAt||old.savedAt;data.updatedAt=nowIso;
-   list[managerRecordEditingIndex]=data;
- }else{
-   recordId=Date.now();data.id=recordId;data.updatedAt=nowIso;list.unshift(data);
- }
- localStorage.setItem(localKey,JSON.stringify(list));
- localStorage.removeItem(key()+"_draft");
-
- const folderId=String(current.id);
- const existingIndex=platformArchive.findIndex(x=>String(x.sourceLocalKey||'')===localKey && String(x.sourceRecordId||x.id)===String(recordId));
- const oldPlatform=existingIndex>=0?platformArchive[existingIndex]:null;
- const sameFolderCount=platformArchive.filter(x=>x.folderId===folderId).length+(existingIndex>=0?0:1);
- const platformRow={
-   id:oldPlatform?.id||recordId,
-   sourceRecordId:recordId,sourceLocalKey:localKey,
-   folderId,folderName:current.title,recordName:current.title,recordId:String(current.id),title:current.title,
-   displayName:oldPlatform?.displayName||(current.title+" - نسخة "+sameFolderCount),
-   duplicateNo:oldPlatform?.duplicateNo||sameFolderCount,
-   values:data.values,
-   htmlContent:"<!DOCTYPE html>"+document.documentElement.outerHTML,
-   createdAt:oldPlatform?.createdAt||new Date().toLocaleString('ar-SA'),
-   updatedAt:nowIso
- };
- if(existingIndex>=0)platformArchive[existingIndex]=platformRow;else platformArchive.push(platformRow);
- localStorage.setItem(platformKey,JSON.stringify(platformArchive));
-
- try{
-   if(window.PlatformPersistenceGuard&&typeof PlatformPersistenceGuard.commit==='function'){
-     const r=await PlatformPersistenceGuard.writeExactValues({moduleKey:'manager',scope:'school',values:{[platformKey]:localStorage.getItem(platformKey)||'[]'}});
-     if(!r||r.ok===false)throw new Error(r?.error||'تعذر تأكيد الحفظ السحابي');
-   }
-   const verifyRows=JSON.parse(localStorage.getItem(platformKey)||'[]');
-   const verified=verifyRows.find(x=>String(x.sourceLocalKey||'')===localKey&&String(x.sourceRecordId||x.id)===String(recordId));
-   if(!verified||String(verified.folderId)!==String(current.id)||String(verified.folderName)!==String(current.title)){
-     throw new Error('تعذر التحقق من حفظ السجل داخل مجلد السجل الصحيح');
-   }
-   managerRecordEditingIndex=null;
-   if(window.parent&&window.parent!==window){try{window.parent.postMessage({type:'MANAGER_RECORD_SAVED',payload:platformRow},'*')}catch(e){}}
-   renderArchive();
-   alert("تم حفظ سجل المدير والتحقق منه سحابيًا داخل أرشيف السجلات.");
-   return true;
- }catch(e){
-   localStorage.setItem(localKey,beforeLocal);localStorage.setItem(platformKey,beforePlatform);
-   alert("تعذر تأكيد الحفظ السحابي: "+String(e?.message||e||"خطأ غير معروف")+"؛ تمت استعادة النسخة السابقة.");
-   console.error('[manager record save]',e);renderArchive();return false;
- }
+ let list=[],platformArchive=[];try{list=JSON.parse(beforeLocal);if(!Array.isArray(list))list=[]}catch(_){list=[]}try{platformArchive=JSON.parse(beforePlatform);if(!Array.isArray(platformArchive))platformArchive=[]}catch(_){platformArchive=[]}
+ const nowIso=new Date().toISOString();let recordId=null;
+ if(managerRecordEditingIndex!==null&&list[managerRecordEditingIndex]){const old=list[managerRecordEditingIndex];recordId=old.id||old.archiveId||Date.now();data.id=recordId;data.createdAt=old.createdAt||old.savedAt;data.updatedAt=nowIso;list[managerRecordEditingIndex]=data;}else{recordId=Date.now();data.id=recordId;data.updatedAt=nowIso;list.unshift(data);}
+ localStorage.setItem(localKey,JSON.stringify(list));localStorage.removeItem(key()+"_draft");
+ const folderId=String(current.id),folderName=String(current.title||'سجل');
+ const existingIndex=platformArchive.findIndex(x=>String(x.sourceLocalKey||'')===localKey&&String(x.sourceRecordId||x.id)===String(recordId));const oldPlatform=existingIndex>=0?platformArchive[existingIndex]:null;const sameFolderCount=platformArchive.filter(x=>String(x.folderId)===folderId).length+(existingIndex>=0?0:1);
+ const platformRow={id:oldPlatform?.id||recordId,sourceRecordId:recordId,sourceLocalKey:localKey,folderId,folderName,recordName:folderName,recordId:String(current.id),title:folderName,displayName:oldPlatform?.displayName||(folderName+" - نسخة "+sameFolderCount),duplicateNo:oldPlatform?.duplicateNo||sameFolderCount,values:data.values,htmlContent:"<!DOCTYPE html>"+document.documentElement.outerHTML,createdAt:oldPlatform?.createdAt||new Date().toLocaleString('ar-SA'),updatedAt:nowIso};
+ if(existingIndex>=0)platformArchive[existingIndex]=platformRow;else platformArchive.push(platformRow);const raw=JSON.stringify(platformArchive);localStorage.setItem(platformKey,raw);
+ try{if(window.PlatformCloudSession&&typeof PlatformCloudSession.ensure==='function')await PlatformCloudSession.ensure();const G=window.PlatformPersistenceGuard;if(!G||typeof G.writeExactValues!=='function'||typeof G.readExactValues!=='function')throw new Error('محرك الحفظ السحابي غير متاح');const w=await G.writeExactValues({moduleKey:'manager',scope:'school',values:{[platformKey]:raw}});if(!w||w.ok===false)throw new Error(w?.error||'تعذر الحفظ السحابي');const r=await G.readExactValues({moduleKey:'manager',scope:'school',keys:[platformKey]});let cloud=[];try{cloud=JSON.parse(r?.values?.[platformKey]||'[]')}catch(_){cloud=[]}const verified=cloud.find(x=>String(x.sourceRecordId||x.id)===String(recordId)&&String(x.folderId)===folderId&&String(x.folderName)===folderName);if(!verified)throw new Error('لم يظهر السجل في مجلد «'+folderName+'» بعد التحقق السحابي');G.setLocalSilently?.(platformKey,r.values[platformKey]);managerRecordEditingIndex=null;renderArchive();alert('تم حفظ سجل المدير داخل مجلد «'+folderName+'» في أرشيف السجلات ✅');return true;}catch(e){localStorage.setItem(localKey,beforeLocal);localStorage.setItem(platformKey,beforePlatform);alert('تعذر تأكيد الحفظ السحابي: '+String(e?.message||e)+'؛ تمت استعادة النسخة السابقة.');console.error('[manager record V10]',e);renderArchive();return false;}
 }
 async function toggleArchive(){const panel=document.getElementById('archivePanel');panel.classList.toggle('show');if(panel.classList.contains('show')){try{const g=window.PlatformPersistenceGuard;if(g&&typeof g.readExact==='function')var rr=await g.readExactValues({moduleKey:'manager',scope:'school',keys:['manager_records_archive_v2']});if(rr.ok&&rr.values.manager_records_archive_v2!==undefined)g.setLocalSilently('manager_records_archive_v2',rr.values.manager_records_archive_v2);}catch(e){console.error('[manager record archive hydrate]',e)}}renderArchive()}
 function renderArchive(){
@@ -1220,7 +1172,7 @@ function editArchive(i){
  alert("تم فتح السجل للتعديل. اضغط «حفظ في الأرشيف» لتحديث نفس السجل.");
 }
 async function deleteArchive(i){
- const localKey=key()+"_archive",platformKey="school_manager_records_archive_v1";
+ const localKey=key()+"_archive",platformKey="manager_records_archive_v2";
  const beforeLocal=localStorage.getItem(localKey)||"[]",beforePlatform=localStorage.getItem(platformKey)||"[]";
  const list=JSON.parse(beforeLocal),item=list[i];if(!item)return;
  if(!confirm("هل تريد حذف هذا السجل من الأرشيف؟"))return;

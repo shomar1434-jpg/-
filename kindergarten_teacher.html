@@ -3376,19 +3376,26 @@ function performanceArchiveFolderName(catId){
 }
 
 async function saveReportToArchive() {
-            try{ if(typeof showToast==='function') showToast('جاري حفظ التقرير والتحقق من الأرشيف السحابي...'); }catch(_e){}
-            try{await assertPerformanceSchoolSessionV8();await loadCanonicalPerformanceArchiveV6();}catch(e){if(typeof showToast==='function')showToast('تعذر استعادة أرشيف تقارير الأداء قبل الحفظ: '+String(e?.message||e));console.error('[performance canonical preload]',e);return false;}
-            if(typeof freezeReportDOMForArchive==='function')freezeReportDOMForArchive();
-            const archiveKey='reports_archive',beforeRaw=localStorage.getItem(archiveKey)||'[]',previousEditingId=currentEditingId;
-            let reports=[];try{reports=JSON.parse(beforeRaw);if(!Array.isArray(reports))reports=[]}catch(e){reports=[]}
-            const selectedDomain=selectedPerformanceArchiveDomain();const cat=String(selectedDomain.id||'');if(!cat)return showToast('اختر المجال أولاً ⚠️');
-            let folderName=performanceArchiveFolderName(cat);const completion=typeof checkReportCompletionStatus==='function'?checkReportCompletionStatus():{isComplete:true};
-            const old=previousEditingId?reports.find(r=>String(r.id)===String(previousEditingId)):null;
-            if(selectedDomain.name) folderName=selectedDomain.name;const data={id:previousEditingId||Date.now(),title:document.getElementById('field_prog_name')?.innerText||'تقرير جديد',category:cat,categoryName:folderName,archiveFolderId:cat,archiveFolderName:folderName,archiveRole:'kindergarten_teacher',reportDate:document.getElementById('dateInputHeader')?.value||'',date:old?.date||new Date().toLocaleDateString('ar-SA'),content:document.getElementById('report-content-container').innerHTML,isComplete:completion.isComplete,saveTimestamp:Date.now(),updatedAt:new Date().toISOString()};
-            const idx=reports.findIndex(r=>String(r.id)===String(data.id));if(idx>=0)reports[idx]=data;else reports.push(data);
-            currentEditingId=data.id;localStorage.setItem(archiveKey,JSON.stringify(reports));
-            try{if(!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.commit!=='function')throw new Error('محرك التحقق السحابي غير متاح');await saveCanonicalPerformanceArchiveV6();const __G=window.PlatformPersistenceGuard;const __domainKey=performanceDomainCloudKeyV8(cat);const __domainRaw=JSON.stringify(reports.filter(r=>performanceArchiveFolderId(r)===cat));const __dw=await __G.writeExactValues({moduleKey:'kindergarten_teacher',scope:'school',values:{[__domainKey]:__domainRaw}});if(!__dw.ok)throw new Error(__dw.error||'تعذر حفظ مجلد المجال سحابيًا');const __dr=await __G.readExactValues({moduleKey:'kindergarten_teacher',scope:'school',keys:[__domainKey]});if(!__dr.ok||__dr.values[__domainKey]!==__domainRaw)throw new Error('فشل التحقق السحابي من مجلد المجال المحدد');const saved=JSON.parse(localStorage.getItem(archiveKey)||'[]').find(r=>String(r.id)===String(data.id));if(!saved||performanceArchiveFolderId(saved)!==cat)throw new Error('لم يظهر التقرير داخل مجلد المجال المحدد');showToast('تم الحفظ في أرشيف تقارير الأداء الوظيفي / '+folderName+' ✅');return true}catch(e){localStorage.setItem(archiveKey,beforeRaw);currentEditingId=previousEditingId;showToast('تعذر حفظ التقرير سحابيًا: '+String(e?.message||e||'خطأ غير معروف'));console.error('[performance folder save]',e);return false}
-        }
+    const archiveKey='reports_archive', previousEditingId=currentEditingId, beforeRaw=localStorage.getItem(archiveKey)||'[]';
+    let reports=[];try{reports=JSON.parse(beforeRaw);if(!Array.isArray(reports))reports=[]}catch(_){reports=[]}
+    const selected=selectedPerformanceArchiveDomain(); const cat=String(selected.id||'').trim(); if(!cat){showToast('اختر المجال أولاً ⚠️');return false;}
+    const folderName=String(selected.name||performanceArchiveFolderName(cat)||cat).trim();
+    if(typeof freezeReportDOMForArchive==='function')freezeReportDOMForArchive();
+    const completion=typeof checkReportCompletionStatus==='function'?checkReportCompletionStatus():{isComplete:true};
+    const old=previousEditingId?reports.find(r=>String(r.id)===String(previousEditingId)):null;
+    const data={id:previousEditingId||Date.now(),title:(document.getElementById('field_prog_name')?.innerText||'تقرير جديد').trim(),category:cat,categoryName:folderName,archiveFolderId:cat,archiveFolderName:folderName,archiveRole:'kindergarten_teacher',reportDate:document.getElementById('dateInputHeader')?.value||'',date:old?.date||new Date().toLocaleDateString('ar-SA'),content:document.getElementById('report-content-container').innerHTML,isComplete:completion.isComplete,saveTimestamp:Date.now(),updatedAt:new Date().toISOString(),archiveType:'performanceReport'};
+    const idx=reports.findIndex(r=>String(r.id)===String(data.id));if(idx>=0)reports[idx]=data;else reports.push(data);
+    currentEditingId=data.id; const raw=JSON.stringify(reports); localStorage.setItem(archiveKey,raw);
+    try{
+      if(!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.writeExactValues!=='function'||typeof PlatformPersistenceGuard.readExactValues!=='function')throw new Error('محرك الحفظ السحابي غير متاح');
+      if(window.PlatformCloudSession&&typeof PlatformCloudSession.ensure==='function')await PlatformCloudSession.ensure();
+      const w=await PlatformPersistenceGuard.writeExactValues({moduleKey:'kindergarten_teacher',scope:'school',values:{[archiveKey]:raw}});if(!w||w.ok===false)throw new Error(w?.error||'تعذر حفظ الأرشيف السحابي');
+      const r=await PlatformPersistenceGuard.readExactValues({moduleKey:'kindergarten_teacher',scope:'school',keys:[archiveKey]});if(!r||r.ok===false)throw new Error(r?.error||'تعذر إعادة قراءة الأرشيف السحابي');
+      const cloudRaw=r.values?.[archiveKey];let cloud=[];try{cloud=JSON.parse(cloudRaw||'[]');if(!Array.isArray(cloud))cloud=[]}catch(_){cloud=[]}
+      const verified=cloud.find(x=>String(x.id)===String(data.id)&&String(x.category||x.archiveFolderId||'')===cat);if(!verified)throw new Error('لم يظهر التقرير داخل مجال «'+folderName+'» بعد التحقق السحابي');
+      PlatformPersistenceGuard.setLocalSilently?.(archiveKey,cloudRaw||raw);showToast('تم الحفظ في أرشيف تقارير الأداء الوظيفي / '+folderName+' ✅');return true;
+    }catch(e){localStorage.setItem(archiveKey,beforeRaw);currentEditingId=previousEditingId;showToast('تعذر حفظ التقرير سحابيًا: '+String(e?.message||e));console.error('[performance archive V10]',e);return false;}
+}
 
         function checkPendingReminders() {
             const reports = JSON.parse(localStorage.getItem('reports_archive') || '[]');
@@ -3407,7 +3414,18 @@ async function saveReportToArchive() {
 
         function openPendingReport() { if (pendingReportIdToOpen) { closeReminderModal(); editReport(pendingReportIdToOpen); } }
         function closeReminderModal() { document.getElementById('reminder-modal').style.display = 'none'; }
-        async function openArchiveView() { try{if(window.PlatformPersistenceGuard&&typeof PlatformPersistenceGuard.readExact==='function')await PlatformPersistenceGuard.readExact({moduleKey:'kindergarten_teacher',scope:'user',keys:['reports_archive']});}catch(e){console.error('[performance archive hydrate]',e)} document.getElementById('welcome-dashboard').style.display = 'none'; document.getElementById('archive-view').style.display = 'block'; renderArchiveFolders(); }
+async function openArchiveView() {
+    try{
+      if(window.PlatformPersistenceGuard&&typeof PlatformPersistenceGuard.readExactValues==='function'){
+        const r=await PlatformPersistenceGuard.readExactValues({moduleKey:'kindergarten_teacher',scope:'school',keys:['reports_archive']});
+        if(r&&r.ok&&r.values&&r.values['reports_archive']!==undefined) PlatformPersistenceGuard.setLocalSilently?.('reports_archive',r.values['reports_archive']);
+      }
+    }catch(e){console.error('[performance archive V10 hydrate]',e)}
+    document.getElementById('welcome-dashboard').style.display='none';
+    document.getElementById('archive-view').style.display='block';
+    
+    renderArchiveFolders();
+}
         function closeArchiveView() { document.getElementById('archive-view').style.display = 'none'; document.getElementById('welcome-dashboard').style.display = 'block'; }
         
         function renderArchiveFolders() { 
@@ -5473,50 +5491,12 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
 })();
 </script>
 
-<script id="CANONICAL_PERFORMANCE_ARCHIVE_V6">
-(function(){
-  if(window.__CANONICAL_PERFORMANCE_ARCHIVE_V6__)return;window.__CANONICAL_PERFORMANCE_ARCHIVE_V6__=true;
-  const MODULE="kindergarten_teacher", LEGACY="reports_archive", CANON='performance_reports_archive_v2';
-  function g(){return window.PlatformPersistenceGuard}
-  function arr(raw){try{const a=JSON.parse(raw||'[]');return Array.isArray(a)?a:[]}catch(e){return[]}}
-  async function loadCanonical(){
-    const G=g();if(!G||typeof G.readExactValues!=='function')throw new Error('محرك الأرشيف المرجعي V9 غير متاح');
-    let raw;
-    const schoolCanon=await G.readExactValues({moduleKey:MODULE,scope:'school',keys:[CANON]});
-    if(!schoolCanon.ok)throw new Error(schoolCanon.error||'تعذر قراءة أرشيف المدرسة');
-    raw=schoolCanon.values[CANON];
-    if(raw===undefined){
-      const schoolLegacy=await G.readExactValues({moduleKey:MODULE,scope:'school',keys:[LEGACY]});
-      if(schoolLegacy.ok&&schoolLegacy.values[LEGACY]!==undefined)raw=schoolLegacy.values[LEGACY];
-    }
-    // ترحيل آمن لمرة واحدة من النسخ الحديثة التي خزنت الأرشيف خطأً في نطاق المستخدم.
-    if(raw===undefined||!arr(raw).length){
-      const userCanon=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:[CANON]});
-      if(userCanon.ok&&userCanon.values[CANON]!==undefined&&arr(userCanon.values[CANON]).length)raw=userCanon.values[CANON];
-      if(raw===undefined||!arr(raw).length){
-        const userLegacy=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:[LEGACY]});
-        if(userLegacy.ok&&userLegacy.values[LEGACY]!==undefined&&arr(userLegacy.values[LEGACY]).length)raw=userLegacy.values[LEGACY];
-      }
-    }
-    if(raw===undefined)raw=localStorage.getItem(LEGACY)||'[]';
-    raw=raw===undefined?'[]':raw;
-    if(arr(raw).length){
-      const w=await G.writeExactValues({moduleKey:MODULE,scope:'school',values:{[CANON]:raw,[LEGACY]:raw}});
-      if(!w.ok)throw new Error(w.error||'تعذر تثبيت أرشيف المدرسة');
-    }
-    G.setLocalSilently(LEGACY,raw);return arr(raw);
-  }
-  async function saveCanonical(){
-    const G=g();if(!G||typeof G.writeExactValues!=='function')throw new Error('محرك الأرشيف المرجعي V9 غير متاح');
-    const raw=localStorage.getItem(LEGACY)||'[]';
-    const w=await G.writeExactValues({moduleKey:MODULE,scope:'school',values:{[CANON]:raw,[LEGACY]:raw}});if(!w.ok)throw new Error(w.error||'تعذر حفظ أرشيف المدرسة');
-    const r=await G.readExactValues({moduleKey:MODULE,scope:'school',keys:[CANON,LEGACY]});
-    if(!r.ok||r.values[CANON]!==raw||r.values[LEGACY]!==raw)throw new Error('فشل التحقق النهائي من أرشيف المدرسة');return true;
-  }
-  window.loadCanonicalPerformanceArchiveV6=loadCanonical;window.saveCanonicalPerformanceArchiveV6=saveCanonical;
-  window.verifyReportArchiveCloud=async function(){return saveCanonical();};
-  const oldOpen=window.openArchiveView;if(typeof oldOpen==='function')window.openArchiveView=async function(){try{await loadCanonical();}catch(e){console.error('[performance canonical load]',e);if(typeof showToast==='function')showToast('تعذر استعادة أرشيف تقارير الأداء: '+(e.message||e));}return oldOpen.apply(this,arguments)};
-})();
-</script>
+<script id="STABLE_PERFORMANCE_ARCHIVE_V10">(function(){
+if(window.__STABLE_PERFORMANCE_ARCHIVE_V10_KINDERGARTEN_TEACHER__)return;window.__STABLE_PERFORMANCE_ARCHIVE_V10_KINDERGARTEN_TEACHER__=true;
+const MODULE='kindergarten_teacher',KEY='reports_archive';
+async function load(){const G=window.PlatformPersistenceGuard;if(!G||typeof G.readExactValues!=='function')return [];const r=await G.readExactValues({moduleKey:MODULE,scope:'school',keys:[KEY]});if(r&&r.ok&&r.values&&r.values[KEY]!==undefined)G.setLocalSilently?.(KEY,r.values[KEY]);try{const a=JSON.parse(localStorage.getItem(KEY)||'[]');return Array.isArray(a)?a:[]}catch(_){return[]}}
+async function save(){const G=window.PlatformPersistenceGuard;if(!G||typeof G.writeExactValues!=='function')throw new Error('محرك الحفظ السحابي غير متاح');const raw=localStorage.getItem(KEY)||'[]';const w=await G.writeExactValues({moduleKey:MODULE,scope:'school',values:{[KEY]:raw}});if(!w||w.ok===false)throw new Error(w?.error||'تعذر حفظ الأرشيف');return true}
+window.loadCanonicalPerformanceArchiveV6=load;window.saveCanonicalPerformanceArchiveV6=save;window.verifyReportArchiveCloud=save;
+})();</script>
 </body>
 </html>

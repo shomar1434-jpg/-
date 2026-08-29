@@ -117,9 +117,9 @@ button{border:0;border-radius:9px;padding:10px 13px;font:700 12px 'Alyamama';cur
 <script src="school-information-source.js?v=20260824-decisions-assignees-1"></script>
 <script src="platform-cloud-session.js?v=20260829-manager-verify-access-v4"></script>
 <script src="cloud-file-engine.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js?v=20260830"></script>
 <script src="internal-messaging.js?v=20260829-decisions-send-v2"></script>
-<meta name="decisions-assignments-version" content="2026.08.29-cloud-archive-messaging-v2">
+<meta name="decisions-assignments-version" content="2026.08.30-pdf-render-v3">
 </head>
 <body>
 <a class="manager-return-btn" href="manager.html?return_to=sections" aria-label="العودة إلى واجهة الأقسام الرئيسية للمدير" title="العودة للأقسام الرئيسية">←</a>
@@ -835,34 +835,118 @@ async function buildDecisionPdfFile(record){
  if(!window.html2pdf)throw new Error('تعذر تحميل محرك PDF. أعد تحميل الصفحة ثم حاول مرة أخرى.');
  const official=String(record?.officialHtml||'').trim();
  if(!official)throw new Error('النسخة الرسمية للقرار غير متاحة. افتح القرار واحفظه مجددًا أولًا.');
- const host=document.createElement('div');
- host.setAttribute('data-decision-pdf-export','1');
- host.style.cssText='position:fixed;left:-12000px;top:0;width:210mm;background:#fff;z-index:-1;';
+
  const parsed=new DOMParser().parseFromString(official,'text/html');
- // ننقل تنسيقات النسخة الرسمية نفسها، ولا نقرأها كنص إطلاقًا.
- [...parsed.querySelectorAll('style')].forEach(st=>{const c=document.createElement('style');c.textContent=st.textContent||'';host.appendChild(c)});
+ const parsedBody=parsed.body?parsed.body.innerHTML:'';
+ if(!parsedBody || String(parsed.body?.innerText||'').replace(/\s+/g,' ').trim().length<40)
+   throw new Error('محتوى النسخة الرسمية للقرار غير مكتمل؛ أعد حفظ القرار قبل الإرسال.');
+
+ // مهم: لا نضع عنصر الالتقاط خارج viewport. بعض إصدارات Chrome لا ترسم العناصر
+ // الموضوعة عند left:-12000px فينتج PDF أبيض رغم أن الملف صالح تقنيًا.
+ const stage=document.createElement('div');
+ stage.id='decision-pdf-capture-stage';
+ stage.setAttribute('data-decision-pdf-export','1');
+ stage.style.cssText=[
+   'position:absolute','left:0','top:0','width:210mm','min-height:297mm',
+   'background:#fff','z-index:2147483000','margin:0','padding:0',
+   'visibility:visible','display:block','overflow:visible','pointer-events:none'
+ ].join(';');
+
+ // غطاء بصري فوق مساحة الالتقاط حتى لا تومض ورقة القرار أمام المستخدم أثناء التصوير.
+ const shield=document.createElement('div');
+ shield.id='decision-pdf-capture-shield';
+ shield.style.cssText='position:fixed;inset:0;z-index:2147483646;background:#fff;display:flex;align-items:center;justify-content:center;font:700 15px Alyamama,Tahoma,Arial;color:#0a7978;pointer-events:auto;';
+ shield.textContent='جارٍ تجهيز نسخة PDF الرسمية...';
+
+ // ننقل جميع التنسيقات المحفوظة مع القرار ثم نفرض قواعد A4 الخاصة بالالتقاط.
+ [...parsed.querySelectorAll('style')].forEach(st=>{
+   const c=document.createElement('style');c.textContent=st.textContent||'';stage.appendChild(c);
+ });
+ const force=document.createElement('style');
+ force.textContent=`
+   #decision-pdf-capture-stage{width:210mm!important;background:#fff!important;direction:rtl!important}
+   #decision-pdf-capture-stage .manager-return-btn,
+   #decision-pdf-capture-stage .panel,
+   #decision-pdf-capture-stage .no-print{display:none!important}
+   #decision-pdf-capture-stage .workspace{display:block!important;width:210mm!important;margin:0!important;padding:0!important;gap:0!important;align-items:initial!important}
+   #decision-pdf-capture-stage .page,
+   #decision-pdf-capture-stage .decision-page,
+   #decision-pdf-capture-stage .tasks-page{
+      display:block!important;visibility:visible!important;opacity:1!important;
+      width:210mm!important;height:297mm!important;min-height:297mm!important;
+      margin:0!important;padding:11mm 14mm 10mm!important;
+      box-shadow:none!important;overflow:hidden!important;
+      zoom:1!important;transform:none!important;background:#fff!important;
+      page-break-after:always!important;break-after:page!important;
+   }
+   #decision-pdf-capture-stage .page:last-child{page-break-after:auto!important;break-after:auto!important}
+   #decision-pdf-capture-stage *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+ `;
+ stage.appendChild(force);
  const body=document.createElement('div');
- body.innerHTML=parsed.body?parsed.body.innerHTML:official;
- host.appendChild(body);document.body.appendChild(host);
+ body.innerHTML=parsedBody;
+ stage.appendChild(body);
+ document.body.appendChild(stage);
+ document.body.appendChild(shield);
+
  try{
-   const imgs=[...host.querySelectorAll('img')];
-   await Promise.all(imgs.map(img=>img.complete?Promise.resolve():new Promise(resolve=>{img.onload=img.onerror=resolve;setTimeout(resolve,5000)})));
+   const pages=[...stage.querySelectorAll('.decision-page,.tasks-page,.page')];
+   if(!pages.length)throw new Error('لم يتم العثور على صفحات القرار الرسمية داخل النسخة المحفوظة.');
+   const meaningful=pages.some(p=>String(p.innerText||'').replace(/\s+/g,' ').trim().length>40);
+   if(!meaningful)throw new Error('صفحات القرار الرسمية فارغة قبل إنشاء PDF.');
+
+   const imgs=[...stage.querySelectorAll('img')];
+   await Promise.all(imgs.map(img=>img.complete?Promise.resolve():new Promise(resolve=>{
+     img.onload=img.onerror=resolve;setTimeout(resolve,5000);
+   })));
    if(document.fonts?.ready)await Promise.race([document.fonts.ready,new Promise(r=>setTimeout(r,4000))]);
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+
    const worker=window.html2pdf().set({
      margin:0,filename:'decision.pdf',
      image:{type:'jpeg',quality:.99},
-     html2canvas:{scale:2,useCORS:true,allowTaint:false,scrollX:0,scrollY:0,backgroundColor:'#ffffff'},
+     html2canvas:{
+       scale:2,useCORS:true,allowTaint:false,scrollX:0,scrollY:0,
+       backgroundColor:'#ffffff',logging:false,
+       windowWidth:Math.max(document.documentElement.clientWidth,794),
+       windowHeight:Math.max(document.documentElement.clientHeight,1123)
+     },
      jsPDF:{unit:'mm',format:'a4',orientation:'portrait',compress:true},
-     pagebreak:{mode:['css','legacy']}
-   }).from(host).toPdf();
+     pagebreak:{mode:['css','legacy'],before:'.tasks-page'}
+   }).from(stage);
+
+   // فحص الرسم نفسه قبل إنشاء PDF؛ يمنع إرسال صفحة بيضاء حتى لو كان PDF صالح البنية.
+   await worker.toCanvas();
+   const canvas=await worker.get('canvas');
+   if(!canvas || !canvas.width || !canvas.height)throw new Error('تعذر رسم القرار قبل إنشاء PDF.');
+   const ctx=canvas.getContext('2d',{willReadFrequently:true});
+   if(ctx){
+     const w=canvas.width,h=canvas.height;
+     let nonWhite=0,samples=0;
+     const stepX=Math.max(1,Math.floor(w/80)),stepY=Math.max(1,Math.floor(h/120));
+     for(let y=0;y<h;y+=stepY){
+       for(let x=0;x<w;x+=stepX){
+         const px=ctx.getImageData(x,y,1,1).data;samples++;
+         if(px[3]>0 && (px[0]<248 || px[1]<248 || px[2]<248))nonWhite++;
+       }
+     }
+     if(samples && nonWhite/samples<0.002)
+       throw new Error('تم اكتشاف مخرج بصري فارغ قبل إنشاء PDF؛ أوقف الإرسال لحماية القرار من الإرسال كصفحة بيضاء.');
+   }
+
+   await worker.toPdf();
    const blob=await worker.outputPdf('blob');
-   if(!(blob instanceof Blob)||blob.size<500)throw new Error('تعذر إنشاء ملف PDF صالح للقرار.');
+   if(!(blob instanceof Blob)||blob.size<1500)throw new Error('تعذر إنشاء ملف PDF صالح للقرار.');
    const head=new Uint8Array(await blob.slice(0,5).arrayBuffer());
    if(String.fromCharCode(...head)!=='%PDF-')throw new Error('مخرج القرار ليس ملف PDF صالحًا.');
+
    const safeTitle=String(record.assignmentTitle||record.displayName||'قرار تكليف').replace(/[\\/:*?"<>|]+/g,'_').slice(0,80);
    const safeNo=String(record.decisionNo||record.id||Date.now()).replace(/[^0-9A-Za-z_-]+/g,'_').slice(0,50);
    return new File([blob],safeTitle+'_'+safeNo+'.pdf',{type:'application/pdf'});
- }finally{host.remove()}
+ }finally{
+   try{shield.remove()}catch(_){ }
+   try{stage.remove()}catch(_){ }
+ }
 }
 async function uploadDecisionPdfForMessage(record){
  if(!window.CloudFileEngine)throw new Error('محرك الملفات السحابي غير متاح.');

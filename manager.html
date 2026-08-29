@@ -5663,11 +5663,23 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
         var id=esc(r.id||r.createdAt||r.title||Math.random());
         return '<div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex justify-between items-center gap-3 flex-wrap">'
           +'<div><h4 class="font-bold text-slate-800">'+esc(r.displayName||r.title||r.recordName||folder.name)+'</h4><p class="text-[10px] text-slate-400 font-bold mt-1">'+esc(r.createdAt||r.uploadedAt||r.savedAt||'')+'</p></div>'
-          +'<div class="flex gap-2 flex-wrap"><button data-preview-kind="'+kind+'" data-item-id="'+id+'" class="bg-teal-600 text-white px-4 py-2 rounded-xl text-[10px] font-bold">عرض</button><button data-print-kind="'+kind+'" data-item-id="'+id+'" class="bg-slate-700 text-white px-4 py-2 rounded-xl text-[10px] font-bold">طباعة</button>'+(kind==='manager'&&r.recordType==='decision_assignment'?'<button data-edit-decision-id="'+id+'" class="bg-amber-50 text-amber-700 px-4 py-2 rounded-xl text-[10px] font-bold">تعديل</button>':'')+'<button data-delete-kind="'+kind+'" data-item-id="'+id+'" class="bg-red-50 text-red-500 px-4 py-2 rounded-xl text-[10px] font-bold">حذف</button></div></div>';
+          +(kind==='self'
+            ? '<div class="flex gap-2 flex-wrap"><button data-edit-self-id="'+id+'" class="bg-amber-50 text-amber-700 px-4 py-2 rounded-xl text-[10px] font-bold">تعديل</button><button data-preview-kind="'+kind+'" data-item-id="'+id+'" class="bg-teal-600 text-white px-4 py-2 rounded-xl text-[10px] font-bold">معاينة</button><button data-delete-kind="'+kind+'" data-item-id="'+id+'" class="bg-red-50 text-red-500 px-4 py-2 rounded-xl text-[10px] font-bold">حذف</button></div></div>'
+            : '<div class="flex gap-2 flex-wrap"><button data-preview-kind="'+kind+'" data-item-id="'+id+'" class="bg-teal-600 text-white px-4 py-2 rounded-xl text-[10px] font-bold">عرض</button><button data-print-kind="'+kind+'" data-item-id="'+id+'" class="bg-slate-700 text-white px-4 py-2 rounded-xl text-[10px] font-bold">طباعة</button>'+(r.recordType==='decision_assignment'?'<button data-edit-decision-id="'+id+'" class="bg-amber-50 text-amber-700 px-4 py-2 rounded-xl text-[10px] font-bold">تعديل</button>':'')+'<button data-delete-kind="'+kind+'" data-item-id="'+id+'" class="bg-red-50 text-red-500 px-4 py-2 rounded-xl text-[10px] font-bold">حذف</button></div></div>');
       }).join(''):'<div class="bg-white border border-dashed border-slate-200 rounded-[30px] p-10 text-center text-slate-400 font-bold">لا توجد سجلات محفوظة داخل هذا المجلد.</div>')+'</section>';
     var back=c.querySelector('[data-back-kind]'); if(back) back.onclick=function(){renderFolders(this.getAttribute('data-back-kind'));};
     c.querySelectorAll('[data-preview-kind]').forEach(function(x){x.onclick=function(){previewItem(this.getAttribute('data-preview-kind'),this.getAttribute('data-item-id'),false);};});
     c.querySelectorAll('[data-print-kind]').forEach(function(x){x.onclick=function(){previewItem(this.getAttribute('data-print-kind'),this.getAttribute('data-item-id'),true);};});
+    c.querySelectorAll('[data-edit-self-id]').forEach(function(x){x.onclick=function(){
+      var id=this.getAttribute('data-edit-self-id');
+      var item=findItem('self',id);
+      if(!item){alert('تعذر العثور على الملف المحفوظ.');return;}
+      try{sessionStorage.setItem('self_evaluation_edit_id_v1',String(id));}catch(e){}
+      var u=new URL('self_evaluation_records.html',location.href);
+      u.searchParams.set('editArchive',String(id));
+      u.searchParams.set('return_to','manager.html');
+      location.href=u.toString();
+    };});
     c.querySelectorAll('[data-edit-decision-id]').forEach(function(x){x.onclick=function(){
       var id=this.getAttribute('data-edit-decision-id');
       var u=new URL('decisions_assignments.html',location.href);
@@ -5679,9 +5691,18 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
     c.querySelectorAll('[data-delete-kind]').forEach(function(x){x.onclick=function(){deleteItem(this.getAttribute('data-delete-kind'),this.getAttribute('data-item-id'));};});
   }
   function findItem(kind,id){return archive(kind).find(function(r){return String(r.id||r.createdAt||r.title)===String(id);});}
+  function legacySelfVisualDoc(r){
+    function walk(v){
+      if(v==null||v==='')return '<span style="color:#94a3b8">—</span>';
+      if(Array.isArray(v))return v.length?'<div style="display:grid;gap:6px">'+v.map(function(x,i){return '<div style="border:1px solid #e2e8f0;border-radius:8px;padding:8px"><b style="color:#475569">'+(i+1)+'</b> '+walk(x)+'</div>';}).join(''):'<span style="color:#94a3b8">—</span>';
+      if(typeof v==='object')return '<table style="width:100%;border-collapse:collapse;font-size:12px">'+Object.keys(v).map(function(k){return '<tr><th style="width:28%;background:#f8fafc;border:1px solid #cbd5e1;padding:7px;text-align:right">'+esc(k)+'</th><td style="border:1px solid #cbd5e1;padding:7px">'+walk(v[k])+'</td></tr>';}).join('')+'</table>';
+      return '<span style="white-space:pre-wrap">'+esc(v)+'</span>';
+    }
+    return '<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(r&&r.title||'ملف التقويم الذاتي')+'</title><style>@page{size:A4 portrait;margin:10mm}*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}body{margin:0;background:#e5e7eb;font-family:Tajawal,Arial;color:#0f172a}.sheet{width:210mm;min-height:297mm;margin:12px auto;background:#fff;padding:12mm;box-shadow:0 8px 28px #0002}.head{border-bottom:2px solid #0f766e;padding-bottom:8px;margin-bottom:12px}.head h1{font-size:20px;margin:0;color:#0f766e}.meta{font-size:11px;color:#64748b;margin-top:5px}@media print{body{background:#fff}.sheet{width:auto;min-height:0;margin:0;padding:0;box-shadow:none}}</style></head><body><div class="sheet"><div class="head"><h1>'+esc(r&&r.title||r&&r.recordName||'ملف التقويم الذاتي')+'</h1><div class="meta">'+esc(r&&r.folderName||'')+' · '+esc(r&&r.savedAt||'')+'</div></div>'+walk(r&&r.data||{})+'</div></body></html>';
+  }
   function safeDoc(r,autoPrint){
     var html=(r&&(r.htmlContent||r.pdfHtml||r.officialHtml||r.templateHtml))||'';
-    if(!html) html='<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>'+esc((r&&r.title)||'سجل')+'</title></head><body style="font-family:Tajawal,Arial;padding:30px"><h2>'+esc((r&&r.title)||'سجل')+'</h2><div>'+esc((r&&r.notes)||'لا يوجد محتوى محفوظ لهذا السجل.')+'</div></body></html>';
+    if(!html) html=legacySelfVisualDoc(r||{});
     var ps=autoPrint?'<script>window.addEventListener("load",function(){setTimeout(function(){window.print();},500);});<\\/script>':'';
     if(autoPrint) html=html.replace(/<\/body>/i,ps+'</body>');
     return html;
@@ -5704,6 +5725,27 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
       }catch(e){
         console.error('[manager decision delete]',e);
         alert('تعذر حذف قرار التكليف سحابيًا: '+(e&&e.message||e)+'\nلم يتم حذف النسخة المحلية.');
+        return;
+      }
+    }else if(kind==='self'){
+      var flatKey='manager_self_evaluation_archive_v1',objKey='self_evaluation_archive_v1';
+      var beforeFlat=localStorage.getItem(flatKey),beforeObj=localStorage.getItem(objKey);
+      try{
+        var flat=readArray([flatKey]).filter(function(r){return String(r.id||r.createdAt||r.title)!==String(id);});
+        writeArray(flatKey,flat);
+        var obj={};try{obj=JSON.parse(localStorage.getItem(objKey)||'{}')||{};}catch(_){obj={};}
+        if(obj.folders){Object.keys(obj.folders).forEach(function(n){var f=obj.folders[n];if(f&&Array.isArray(f.items))f.items=f.items.filter(function(r){return String(r.id||r.createdAt||r.title)!==String(id);});});}
+        localStorage.setItem(objKey,JSON.stringify(obj));
+        var g=window.PlatformPersistenceGuard;
+        if(!g||typeof g.commit!=='function')throw new Error('طبقة الحفظ السحابي غير متاحة');
+        var rr=(typeof g.commitExact==='function')?await g.commitExact({moduleKey:'self_evaluation',scope:'school',keys:[flatKey,objKey]}):await g.commit([flatKey,objKey]);
+        if(!rr||rr.ok===false)throw new Error(rr&&rr.error||'تعذر تأكيد الحذف السحابي');
+        alert('تم حذف الملف من أرشيف التقويم الذاتي والتحقق من الحذف سحابيًا.');
+      }catch(e){
+        if(beforeFlat===null)localStorage.removeItem(flatKey);else localStorage.setItem(flatKey,beforeFlat);
+        if(beforeObj===null)localStorage.removeItem(objKey);else localStorage.setItem(objKey,beforeObj);
+        console.error('[self evaluation archive delete]',e);
+        alert('تعذر حذف الملف سحابيًا، لذلك تمت استعادة النسخة السابقة.');
         return;
       }
     }else{

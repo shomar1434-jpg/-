@@ -2523,6 +2523,7 @@ h1{font-size:18px;margin:0;color:#0f3f75;font-weight:900}
             this.loadData();
             this.normalizeHijriDateParts();
             this.$nextTick(() =&gt; {
+                this.restoreArchiveEditContext();
                 lucide.createIcons();
             });
         },
@@ -2667,6 +2668,59 @@ h1{font-size:18px;margin:0;color:#0f3f75;font-weight:900}
                 };
                 return map[mode][kind];
             },
+            buildArchivePrintSnapshot(title){
+                try{
+                    const source=document.querySelector('#app main');
+                    if(!source)return '';
+                    const clone=source.cloneNode(true);
+                    const srcControls=source.querySelectorAll('input, textarea, select');
+                    const dstControls=clone.querySelectorAll('input, textarea, select');
+                    srcControls.forEach((control,index)=&gt;{
+                        const c=dstControls[index];if(!c)return;
+                        const d=document.createElement('div');
+                        d.className=(c.className||'')+' archived-control-value';
+                        if(control.tagName==='SELECT')d.textContent=control.options[control.selectedIndex]?.text||'';
+                        else if(control.type==='radio'||control.type==='checkbox')d.textContent=control.checked?'☑':'☐';
+                        else d.textContent=control.value||'';
+                        c.replaceWith(d);
+                    });
+                    clone.querySelectorAll('.no-print,button,input[type=file]').forEach(el=&gt;el.remove());
+                    clone.querySelectorAll('[hidden]').forEach(el=&gt;el.remove());
+                    const styles=Array.from(document.querySelectorAll('head style')).map(s=&gt;s.textContent||'').join('\n');
+                    return `&lt;!DOCTYPE html&gt;&lt;html lang=&quot;ar&quot; dir=&quot;rtl&quot;&gt;&lt;head&gt;&lt;meta charset=&quot;UTF-8&quot;&gt;&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width,initial-scale=1&quot;&gt;&lt;title&gt;${String(title||'ملف التقويم الذاتي').replace(/[&lt;&gt;]/g,'')}&lt;/title&gt;&lt;script src=&quot;https://cdn.tailwindcss.com&quot;&gt;&lt;\/script&gt;&lt;link href=&quot;https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&amp;display=swap&quot; rel=&quot;stylesheet&quot;&gt;&lt;style&gt;${styles}
+@page{size:A4 portrait;margin:8mm}html,body{margin:0!important;padding:0!important;background:#fff!important;overflow:visible!important}.archive-print-sheet{width:100%!important;max-width:210mm!important;margin:0 auto!important;background:#fff!important;padding:5mm!important}.archive-print-sheet,.archive-print-sheet *{max-height:none!important;overflow:visible!important}.archived-control-value{white-space:pre-wrap!important;overflow-wrap:anywhere!important;min-height:5mm;padding:.8mm 1mm;border:1px solid #d7dee8;border-radius:4px;background:#fff}@media screen{body{background:#e5e7eb!important;padding:12px!important}.archive-print-sheet{box-shadow:0 8px 30px #0002}}@media print{.archive-print-sheet{max-width:none!important;padding:0!important;box-shadow:none!important}}&lt;/style&gt;&lt;/head&gt;&lt;body&gt;&lt;div class=&quot;archive-print-sheet&quot;&gt;${clone.outerHTML}&lt;/div&gt;&lt;/body&gt;&lt;/html&gt;`;
+                }catch(e){console.error('[self evaluation snapshot]',e);return ''}
+            },
+            restoreArchiveEditContext(){
+                try{
+                    const qs=new URLSearchParams(window.parent&amp;&amp;window.parent!==window?window.parent.location.search:window.location.search);
+                    const editId=qs.get('editArchive')||sessionStorage.getItem('self_evaluation_edit_id_v1')||'';
+                    if(!editId)return;
+                    let flat=[];try{flat=JSON.parse(localStorage.getItem('manager_self_evaluation_archive_v1')||'[]');if(!Array.isArray(flat))flat=[]}catch(_){flat=[]}
+                    let row=flat.find(x=&gt;String(x.id)===String(editId));
+                    if(!row){
+                        let obj={};try{obj=JSON.parse(localStorage.getItem('self_evaluation_archive_v1')||'{}')||{}}catch(_){obj={}}
+                        Object.values(obj.folders||{}).some(f=&gt;{const a=Array.isArray(f?.items)?f.items:[];row=a.find(x=&gt;String(x.id)===String(editId));return !!row});
+                    }
+                    if(!row)return;
+                    this._archiveEditId=String(row.id);this._archiveEditRow=row;
+                    const p=JSON.parse(JSON.stringify(row.data||{}));
+                    if(row.type==='school_info'){this.schoolInfo=p;this.currentTab='schoolBaseData';}
+                    else if(row.type==='school_reality'){this.actualReality=p;this.currentTab='actualReality';}
+                    else if(row.type==='operational_plan'){this.operationalPlan=p;this.currentTab='operationalPlan';}
+                    else if(row.type==='indicators_portal'){this.indicatorsData=p;this.currentTab='indicatorsPortal';}
+                    else if(row.type==='formation_decision'){
+                        let i=this.committees.findIndex(c=&gt;String(c.id)===String(p.id));
+                        if(i&gt;=0)this.committees.splice(i,1,p);else this.committees.unshift(p);
+                        this.selectedCommitteeId=p.id||this.committees[0]?.id||'';this.currentTab='formations';
+                    }else if(row.type==='formation_meetings'){
+                        let c=this.committees.find(x=&gt;String(x.id)===String(p.formationId))||this.committees.find(x=&gt;String(x.name)===String(p.formationName));
+                        if(c){c.meetings=Array.isArray(p.meetings)?p.meetings:[];this.selectedCommitteeId=c.id;}
+                        this.currentTab='meetings';
+                    }
+                    this.showToast('تم فتح النسخة المحفوظة للتعديل. الحفظ التالي سيحدّث نفس الملف في الأرشيف.');
+                }catch(e){console.error('[self evaluation restore archive edit]',e)}
+            },
             async writeArchiveRecord(folderId,folderName,title,type,payload){
                 const objectKey=&#x27;self_evaluation_archive_v1&#x27;,flatKey=&#x27;manager_self_evaluation_archive_v1&#x27;;
                 const keys=[&#x27;school_info&#x27;,&#x27;school_actual_reality&#x27;,&#x27;school_committees&#x27;,&#x27;school_operational_plan&#x27;,&#x27;school_indicators_data&#x27;,objectKey,flatKey];
@@ -2682,14 +2736,20 @@ h1{font-size:18px;margin:0;color:#0f3f75;font-weight:900}
 
                     let archive={};try{archive=JSON.parse(localStorage.getItem(objectKey)||&#x27;{}&#x27;)||{}}catch(e){archive={}}
                     if(!archive.folders)archive.folders={};
+                    const editId=this._archiveEditId||&#x27;&#x27;;
+                    if(editId&amp;&amp;archive.folders){Object.values(archive.folders).forEach(f=&gt;{if(f&amp;&amp;Array.isArray(f.items))f.items=f.items.filter(x=&gt;String(x.id)!==String(editId))})}
                     const folder=archive.folders[folderName]||(archive.folders[folderName]={name:folderName,folderId,createdAt:now,items:[]});
                     folder.folderId=folderId;
-                    const id=`${type}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
-                    const row={id,folderId,folderName,recordName:folderName,title,type,source:&#x27;قسم التقويم الذاتي&#x27;,savedAt:now,schoolName:this.schoolInfo?.name||&#x27;&#x27;,academicYear:this.schoolInfo?.hijriYear||&#x27;&#x27;,data:JSON.parse(JSON.stringify(payload||{}))};
+                    const id=editId||`${type}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+                    const oldRow=this._archiveEditRow||{};
+                    await this.$nextTick();
+                    const htmlContent=this.buildArchivePrintSnapshot(title);
+                    const row={...oldRow,id,folderId,folderName,recordName:folderName,title,type,source:&#x27;قسم التقويم الذاتي&#x27;,savedAt:oldRow.savedAt||now,updatedAt:now,schoolName:this.schoolInfo?.name||&#x27;&#x27;,academicYear:this.schoolInfo?.hijriYear||&#x27;&#x27;,data:JSON.parse(JSON.stringify(payload||{})),htmlContent,archiveFormat:&#x27;print-snapshot-v2&#x27;,sourceFile:&#x27;self_evaluation_records.html&#x27;};
                     folder.items.unshift(row);folder.updatedAt=now;
                     localStorage.setItem(objectKey,JSON.stringify(archive));
 
                     let flat=[];try{flat=JSON.parse(localStorage.getItem(flatKey)||&#x27;[]&#x27;);if(!Array.isArray(flat))flat=[]}catch(e){flat=[]}
+                    if(editId)flat=flat.filter(x=&gt;String(x.id)!==String(editId));
                     flat.unshift(row);localStorage.setItem(flatKey,JSON.stringify(flat));
 
                     const guard=(window.parent&amp;&amp;window.parent.PlatformPersistenceGuard)||window.PlatformPersistenceGuard;
@@ -2699,7 +2759,9 @@ h1{font-size:18px;margin:0;color:#0f3f75;font-weight:900}
                     const verifyObj=JSON.parse(localStorage.getItem(objectKey)||&#x27;{}&#x27;)?.folders?.[folderName]?.items?.some(x=&gt;x.id===id&amp;&amp;String(x.folderId)===folderId);
                     const verifyFlat=JSON.parse(localStorage.getItem(flatKey)||&#x27;[]&#x27;).some(x=&gt;x.id===id&amp;&amp;String(x.folderId)===folderId&amp;&amp;String(x.folderName)===folderName);
                     if(!verifyObj||!verifyFlat)throw new Error(&#x27;تعذر التحقق من ظهور السجل داخل مجلد الأرشيف الصحيح&#x27;);
-                    this.showToast(`تم الحفظ والتحقق سحابيًا في أرشيف التقويم الذاتي / ${folderName}`);
+                    this._archiveEditId=String(id);this._archiveEditRow=row;
+                    try{sessionStorage.setItem(&#x27;self_evaluation_edit_id_v1&#x27;,String(id))}catch(_){ }
+                    this.showToast(`${editId?&#x27;تم تحديث الملف المحفوظ والتحقق منه سحابيًا في&#x27;:&#x27;تم الحفظ والتحقق سحابيًا في&#x27;} أرشيف التقويم الذاتي / ${folderName}`);
                     return row;
                 }catch(e){
                     keys.forEach(k=&gt;{if(before[k]===null)localStorage.removeItem(k);else localStorage.setItem(k,before[k])});

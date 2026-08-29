@@ -119,7 +119,7 @@ button{border:0;border-radius:9px;padding:10px 13px;font:700 12px 'Alyamama';cur
 <script src="cloud-file-engine.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js?v=20260830"></script>
 <script src="internal-messaging.js?v=20260829-decisions-send-v2"></script>
-<meta name="decisions-assignments-version" content="2026.08.30-pdf-render-v3">
+<meta name="decisions-assignments-version" content="2026.08.30-no-auto-restore-v5">
 </head>
 <body>
 <a class="manager-return-btn" href="manager.html?return_to=sections" aria-label="العودة إلى واجهة الأقسام الرئيسية للمدير" title="العودة للأقسام الرئيسية">←</a>
@@ -398,7 +398,7 @@ function migrateLegacyDecisionRecords(){
  return merged;
 }
 
-function recoverLastLegacyDecisionDraft(){
+function recoverLastLegacyDecisionDraft_MANUAL_ONLY(){
   /*
    * النسخ القديمة كانت تحتفظ بنموذج واحد فقط في takleef1448_approved.
    * نستعيده إذا كان يحتوي اسماً ولم نجد سجلاً مطابقاً له في الأرشيف.
@@ -413,7 +413,7 @@ function recoverLastLegacyDecisionDraft(){
   const assignee=normalizePersonName(draft.name||'');
   if(!assignee)return {recovered:false,reason:'no_name'};
 
-  const rows=migrateLegacyDecisionRecords();
+  const rows=archiveRead();
   const same=rows.find(r=>{
     if(!r||r.recordType!=='decision_assignment')return false;
     const f=r.formData||{};
@@ -531,7 +531,7 @@ async function findCloudDecision(localId){
   const files=await cloudListDecisionFiles();
   return files.find(f=>cloudMetaLocalId(f)===String(localId)||String(f.record_id||'')===String(localId))||null;
 }
-async function migrateLocalDecisionsToCloud(){
+async function migrateLocalDecisionsToCloud_MANUAL_ONLY(){
   if(!cloudReady())return {migrated:0,skipped:0,offline:true};
   const rows=archiveRead();
   if(!rows.length)return {migrated:0,skipped:0};
@@ -556,7 +556,10 @@ async function migrateLocalDecisionsToCloud(){
 }
 
 function archiveRead(){
- return migrateLegacyDecisionRecords();
+ // V5: الأرشيف المتخصص الحالي هو المصدر المحلي الوحيد.
+ // لا ندمج تلقائيًا أي أرشيف قديم لأن ذلك قد يعيد سجلات سبق حذفها.
+ return readArchiveArray(DECISIONS_ARCHIVE_KEY)
+   .filter(r=>r&&r.recordType==='decision_assignment');
 }
 function archiveWrite(rows){
  // DECISIONS_MANAGER_ARCHIVE_INTEGRATION_2026_08_28
@@ -681,17 +684,10 @@ async function init(){
  $('signatureFile').addEventListener('change',e=>readAsset(e,'signature'));
  $('stampFile').addEventListener('change',e=>readAsset(e,'stamp'));
  loadData();
- const recoveryResult=recoverLastLegacyDecisionDraft();
+ // V5: لا استعادة ولا ترحيل تلقائي من أي Snapshot/مفتاح قديم عند فتح القسم.
+ // السجلات القديمة تبقى في التخزين دون حذف، ولا تنتقل إلى الأرشيف إلا بإجراء صريح من المستخدم.
  await loadAssigneeNames($('name').value);
- let migrationResult={};
- try{migrationResult=await migrateLocalDecisionsToCloud();}catch(e){console.warn('[decision migration]',e)}
  const editing=await loadArchiveRecordForEdit();
- if(recoveryResult&&recoveryResult.recovered&&!editing){
-   setTimeout(()=>alert('تم العثور على آخر نموذج قديم محفوظ على هذا الجهاز. تمت إضافته إلى قائمة الاستعادة وسيتم رفعه للسحابة عند توفر الجلسة. يرجى مراجعته قبل الاعتماد.'),250);
- }
- if(migrationResult?.migrated>0&&!editing){
-   setTimeout(()=>alert('تم ترحيل '+migrationResult.migrated+' قرار/تكليف قديم من هذا الجهاز إلى الأرشيف السحابي للمدرسة دون تكرار.'),450);
- }
  if(!editing)render();
 }
 function readAsset(event,type){

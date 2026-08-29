@@ -570,6 +570,13 @@
   const explicitManagerEmail = decodeParam(firstParam(['managerEmail','manager_email','memail','email','adminEmail']) || rawParam(['managerEmail','manager_email','memail','email','adminEmail'])).toLowerCase();
   let targetSchoolId = firstParam(['schoolId','school_id','id','sid']) || rawParam(['schoolId','school_id','id','sid']) || pathSchoolRef() || '';
   const targetSchoolCode = firstParam(['school','schoolCode','school_code','scode','code','registrationCode','registration_code','ref']) || rawParam(['school','schoolCode','school_code','scode','code','registrationCode','registration_code','ref']) || ''; // لا نعتمد على localStorage هنا حتى لا تتداخل المدارس المستقلة
+  try{
+    if(targetSchoolId || targetSchoolCode){
+      const schoolKeys=['active_school_id','active_school_name','active_school_code','activeSchoolId','selected_school_id','current_school_id','current_school_name','school_id','school_name','school_code','smart_school_id','smart_school_name','persist_school','smartSchool.currentSchool','smartSchool:activeSchool','smart_school_active_school','smart_school_active_school_id','smart_school_active_school_name','smart_school_current_session','independent_school_mode','smart_school_tab_school_v1','smart_school_tab_role_v1','active_school_login_url'];
+      schoolKeys.forEach(k=>{localStorage.removeItem(k);sessionStorage.removeItem(k)});
+      ['platform_tab_session_token_v1','platform_tab_session_expires_v1','platform_tab_session_user_v1','platform_tab_session_school_v1','platform_tab_session_role_v1'].forEach(k=>sessionStorage.removeItem(k));
+    }
+  }catch(_){ }
   let activeSchool = null;
   function provisionalSchoolFromLink(){
     if(!explicitSchoolName && !targetSchoolId && !targetSchoolCode && !explicitManagerEmail) return null;
@@ -676,70 +683,26 @@
   }
   async function resolveActiveSchool(){
     if(activeSchool) return activeSchool;
-    const localSchools = readSchools();
-    let school = findCachedSchoolByLink();
-    const refs = [targetSchoolId, targetSchoolCode].filter(Boolean);
-
-    for(const ref of refs){
-      if(school) break;
-      school = localSchools.find(s => [s.schoolId,s.id,s.school_id,s.schoolCode,s.school_code,s.registration_code,s.registrationCode].map(v=>String(v||'')).includes(String(ref)));
-    }
-    const currentTypedEmail = String((document.getElementById('login-email') && document.getElementById('login-email').value) || '').trim().toLowerCase();
-    const managerEmailToResolve = explicitManagerEmail || currentTypedEmail;
-    if(!school && managerEmailToResolve){
-      school = localSchools.find(s => String(s.managerEmail || s.manager_email || s.email || s.principal_email || s.admin_email || s.owner_email || '').trim().toLowerCase() === managerEmailToResolve);
-    }
-
+    let school=null;
+    const refs=[targetSchoolId,targetSchoolCode].map(v=>String(v||'').trim()).filter(Boolean);
     try{
-      if(!school && window.SmartSchoolSupabase){
-        const sb = window.SmartSchoolSupabase.getClient && window.SmartSchoolSupabase.getClient();
+      if(window.SmartSchoolSupabase){
+        const sb=window.SmartSchoolSupabase.getClient&&window.SmartSchoolSupabase.getClient();
         if(sb){
-          for(const ref of refs){
-            if(school) break;
-            for(const col of ['id','school_code','registration_code']){
-              if(school) break;
-              const q = await sb.from('schools').select('*').eq(col,ref).maybeSingle();
-              if(q && q.data) school = window.SmartSchoolSupabase.normalizeSchool ? window.SmartSchoolSupabase.normalizeSchool(q.data) : q.data;
-            }
-          }
-          if(!school && managerEmailToResolve){
-            for(const col of ['manager_email','email','principal_email','admin_email','owner_email']){
-              if(school) break;
-              const q = await sb.from('schools').select('*').ilike(col, managerEmailToResolve).limit(1);
-              if(q && !q.error && q.data && q.data[0]) school = window.SmartSchoolSupabase.normalizeSchool ? window.SmartSchoolSupabase.normalizeSchool(q.data[0]) : q.data[0];
-            }
-          }
-          if(!school){
-            const currentUrl = location.href;
-            const q = await sb.from('schools').select('*').or(`login_link.ilike.%${encodeURIComponent(targetSchoolId||targetSchoolCode)}%,registration_link.ilike.%${encodeURIComponent(targetSchoolId||targetSchoolCode)}%`).limit(1);
-            if(q && !q.error && q.data && q.data[0]) school = window.SmartSchoolSupabase.normalizeSchool ? window.SmartSchoolSupabase.normalizeSchool(q.data[0]) : q.data[0];
-          }
+          if(targetSchoolId){const q=await sb.from('schools').select('*').eq('id',targetSchoolId).maybeSingle();if(q&&!q.error&&q.data)school=window.SmartSchoolSupabase.normalizeSchool?window.SmartSchoolSupabase.normalizeSchool(q.data):q.data;}
+          if(!school&&targetSchoolCode){const q=await sb.from('schools').select('*').eq('school_code',targetSchoolCode).maybeSingle();if(q&&!q.error&&q.data)school=window.SmartSchoolSupabase.normalizeSchool?window.SmartSchoolSupabase.normalizeSchool(q.data):q.data;}
         }
       }
-    }catch(e){ console.warn('school resolve fallback', e); }
-
-    // لا نستخدم بيانات الاسم/البريد القادمة من الرابط كحقيقة تشغيلية.
-    // إن لم نجد المدرسة في Supabase أو التخزين المحلي، نوقف الدخول بدل عرض واجهة شكلية.
-    if(school){ cacheActiveSchool(school); updateSchoolTitle(school); }
-    return school || null;
-  }
-  function readUsers(){
-    const rows=[];
-    ['smart_school_users','offline_users_backup','schoolUsers','users'].forEach(k=>rows.push(...readArrayKeys([k])));
-    for(let i=0;i<localStorage.length;i++){
-      const k=localStorage.key(i) || '';
-      if(/user|school/i.test(k)) rows.push(...readArrayKeys([k]));
+    }catch(e){console.warn('تعذر التحقق من المدرسة في Supabase',e)}
+    if(!school&&refs.length)school=findCachedSchoolByLink();
+    if(school){
+      const sid=String(school.schoolId||school.id||school.school_id||'').trim();
+      const scode=String(school.schoolCode||school.school_code||'').trim();
+      if(targetSchoolId&&sid&&sid!==String(targetSchoolId))return null;
+      if(targetSchoolCode&&scode&&scode!==String(targetSchoolCode))return null;
+      cacheActiveSchool(school);updateSchoolTitle(school);
     }
-    const seen=new Set();
-    return rows.filter(u=>{
-      if(!u || typeof u!=='object') return false;
-      const key=String(u.id||'')+'|'+String(u.email||'')+'|'+String(u.schoolId||u.school_id||'');
-      if(seen.has(key)) return false; seen.add(key); return true;
-    });
-  }
-  function isActiveAccount(user){
-    const status = String(user.status || '').toLowerCase();
-    return !['deleted','disabled','blocked','inactive','محذوف','معطل','موقوف'].includes(status) && (status === 'active' || status === 'activated' || status === 'approved' || status === 'مفعل' || status === 'نشط' || status === '' || user.isActive === true || user.active === true || user.is_primary_manager === true || user.isPrimaryManager === true);
+    return school||null;
   }
   function normalizeLocalUser(u, school){
     if(!u) return null;

@@ -1741,10 +1741,8 @@ const launchApp = (appId) => {
             const reg = row.registration_code || row.registrationCode || '';
             const status = row.status || 'active';
             const basePath = location.href.split('/').slice(0,-1).join('/');
-            const registrationLink = row.registration_link || row.registrationLink ||
-                `${basePath}/register.html?schoolId=${encodeURIComponent(id)}&school=${encodeURIComponent(code)}&reg=${encodeURIComponent(reg)}&token=${encodeURIComponent(reg)}&source=supabase_school_registration`;
-            const loginLink = row.login_link || row.loginLink ||
-                `${basePath}/school-login.html?schoolId=${encodeURIComponent(id)}&school=${encodeURIComponent(code)}&source=supabase_school_login`;
+            const registrationLink = `${basePath}/register.html?schoolId=${encodeURIComponent(id)}&school=${encodeURIComponent(code)}&reg=${encodeURIComponent(reg)}&token=${encodeURIComponent(reg)}&source=supabase_school_registration`;
+            const loginLink = `${basePath}/school-login.html?schoolId=${encodeURIComponent(id)}&school=${encodeURIComponent(code)}&source=supabase_school_login`;
             return {
                 id, schoolId:id, schoolCode:code, schoolName:name,
                 managerName, managerEmail, managerDisplayEmail, status,

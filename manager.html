@@ -3697,9 +3697,9 @@ async function legacyPerformanceSave_DISABLED() {
   function esc(s){return String(s||'').replace(/[&<>"']/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]})}
   function fmt(d){try{return new Date(d||Date.now()).toLocaleString('ar-SA')}catch(e){return''}}
   function storedSchool(){try{return JSON.parse(localStorage.getItem('smartSchool.currentSchool')||'null')||{}}catch(e){return {}}}
-  function currentSchoolId(){var q=new URLSearchParams(location.search||''); var st=storedSchool(); return localStorage.getItem('active_school_id')||localStorage.getItem('smart_school_active_school_id')||localStorage.getItem('platform_file_session_school_id')||sessionStorage.getItem('active_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||localStorage.getItem('smart_school_id')||q.get('schoolId')||q.get('school_id')||st.schoolId||st.id||''}
-  function currentSchoolCode(){var q=new URLSearchParams(location.search||''); var st=storedSchool(); return localStorage.getItem('active_school_code')||sessionStorage.getItem('active_school_code')||q.get('school')||q.get('schoolCode')||q.get('school_code')||st.schoolCode||st.school_code||''}
-  function currentSchoolName(){var q=new URLSearchParams(location.search||''); var st=storedSchool(); return localStorage.getItem('active_school_name')||sessionStorage.getItem('active_school_name')||localStorage.getItem('current_school_name')||localStorage.getItem('school_name')||localStorage.getItem('persist_school')||q.get('school_name')||q.get('schoolName')||st.schoolName||st.school_name||''}
+  function currentSchoolId(){var q=new URLSearchParams(location.search||''); var st=storedSchool(); var cloud='';try{cloud=String(window.PlatformCloudSession&&PlatformCloudSession.schoolId&&PlatformCloudSession.schoolId()||'')}catch(e){} return q.get('schoolId')||q.get('school_id')||cloud||sessionStorage.getItem('smart_school_tab_school_v1')||sessionStorage.getItem('current_school_id')||localStorage.getItem('platform_file_session_school_id')||localStorage.getItem('active_school_id')||localStorage.getItem('smart_school_active_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||localStorage.getItem('smart_school_id')||st.schoolId||st.id||''}
+  function currentSchoolCode(){var q=new URLSearchParams(location.search||''); var st=storedSchool(); return q.get('school')||q.get('schoolCode')||q.get('school_code')||sessionStorage.getItem('active_school_code')||localStorage.getItem('active_school_code')||st.schoolCode||st.school_code||''}
+  function currentSchoolName(){var q=new URLSearchParams(location.search||''); var st=storedSchool(); return q.get('school_name')||q.get('schoolName')||sessionStorage.getItem('current_school_name')||sessionStorage.getItem('active_school_name')||localStorage.getItem('current_school_name')||localStorage.getItem('active_school_name')||localStorage.getItem('school_name')||localStorage.getItem('persist_school')||st.schoolName||st.school_name||''}
   async function resolveManagerSchoolContext(){
     var sid=currentSchoolId(), scode=currentSchoolCode(), sname=currentSchoolName(), school=null;
     try{
@@ -3904,9 +3904,8 @@ async function legacyPerformanceSave_DISABLED() {
     var sid=String(ctx.schoolId||currentSchoolId()||'').trim();
     var scode=String(ctx.schoolCode||currentSchoolCode()||'').trim();
     var sname=String(ctx.schoolName||currentSchoolName()||'المدرسة').trim();
-    var token=String(ctx.registrationCode||localStorage.getItem(NS+'_reg_token')||'').trim();
-    if(!token){token='REG-'+Math.random().toString(36).slice(2,10).toUpperCase();localStorage.setItem(NS+'_reg_token',token);}
-    if(!sid && !scode){
+    var token=String(ctx.registrationCode||'').trim();
+    if(!sid || !token){
       panel('إرسال رابط التسجيل','<div class="ss-card red"><b>تعذر تحديد المدرسة الحالية</b><div class="ss-muted">الجلسة الحالية لا تحتوي على school_id صالح. اضغط «تحديث بيانات المدرسة»، وإذا استمرت المشكلة سجّل الخروج ثم ادخل من رابط المدرسة المستقلة.</div></div><div class="ss-actions"><button class="ss-action secondary" id="refreshCtx">تحديث بيانات المدرسة</button></div>');
       var rr=document.getElementById('refreshCtx');if(rr)rr.onclick=function(){showRegLink()};return;
     }

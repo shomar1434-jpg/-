@@ -51,7 +51,7 @@
     try{
       if(!school) return;
       const schoolCode = school.school_code || school.schoolCode || school.id || '';
-      const loginLink = school.login_link || school.loginLink || (schoolCode ? ('school-login.html?school=' + encodeURIComponent(schoolCode)) : 'school-login.html');
+      const loginLink = buildSchoolLinks(school).loginLink;
       localStorage.setItem('active_school_login_url', loginLink);
       sessionStorage.setItem('active_school_login_url', loginLink);
       if(schoolCode){
@@ -77,8 +77,8 @@
       managerDisplayEmail: row.school_email || row.manager_email || '',
       status: row.status || 'pending',
       registrationCode: row.registration_code || '',
-      registrationLink: row.registration_link || '',
-      loginLink: row.login_link || '',
+      registrationLink: buildSchoolLinks(row).registrationLink,
+      loginLink: buildSchoolLinks(row).loginLink,
       createdAt: row.created_at || '',
       roleLabel: publicRoleLabel,
       role_label: publicRoleLabel,

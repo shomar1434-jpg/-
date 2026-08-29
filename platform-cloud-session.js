@@ -217,9 +217,12 @@
   }
 
   function currentSchoolId() {
-    // SECURITY V1: the active school comes only from the authenticated cloud session.
-    // URL/query/localStorage school selectors are never authority for protected pages.
-    return String(sessionStorage.getItem(TAB_SCHOOL_KEY) || localStorage.getItem(SCHOOL_KEY) || '').trim();
+    return sessionStorage.getItem(TAB_SCHOOL_KEY) ||
+      localStorage.getItem('active_school_id') ||
+      localStorage.getItem('current_school_id') ||
+      localStorage.getItem('school_id') ||
+      localStorage.getItem('smart_school_id') ||
+      schoolId() || '';
   }
 
   function applyPayload(payload, renewed = true) {
@@ -273,47 +276,6 @@
     return recover();
   }
 
-  async function verifyAccess(requiredRoles = []) {
-    const payload = await memberships(); // server-side validation of x-platform-session
-    const current = payload && payload.current ? payload.current : {};
-    const sid = String(current.schoolId || '').trim();
-    const uid = String(current.userId || '').trim();
-    const rr = String(current.role || '').trim();
-    if (!sid || !uid || !rr) {
-      const error = new Error('الجلسة لا تحتوي على مدرسة ومستخدم ودور موثقين.');
-      error.code = 'VERIFIED_CONTEXT_INCOMPLETE';
-      throw error;
-    }
-    const membershipsList = Array.isArray(payload.memberships) ? payload.memberships : [];
-    const normalize = (v) => String(v || '').trim().toLowerCase();
-    const aliases = {
-      manager: ['manager','principal','school_manager','مدير','مديرة'],
-      agent: ['agent','deputy','vice','wakil','وكيل','وكيلة']
-    };
-    const allowed = (requiredRoles || []).flatMap((role) => aliases[normalize(role)] || [normalize(role)]);
-    const member = membershipsList.find((m) =>
-      String(m.schoolId || '') === sid &&
-      String(m.userId || '') === uid &&
-      (!rr || normalize(m.role) === normalize(rr))
-    ) || membershipsList.find((m) => String(m.schoolId || '') === sid && String(m.userId || '') === uid);
-    if (!member) {
-      const error = new Error('المستخدم غير مرتبط بالمدرسة الحالية بعضوية فعالة.');
-      error.code = 'VERIFIED_MEMBERSHIP_MISSING';
-      throw error;
-    }
-    if (allowed.length && !allowed.includes(normalize(rr)) && !allowed.includes(normalize(member.role))) {
-      const error = new Error('الدور الحالي غير مخول بفتح هذه الصفحة.');
-      error.code = 'VERIFIED_ROLE_DENIED';
-      throw error;
-    }
-    // Reconcile non-authoritative compatibility keys only after server verification.
-    ['active_school_id','current_school_id','school_id','smart_school_id'].forEach((k) => localStorage.setItem(k, sid));
-    sessionStorage.setItem(TAB_SCHOOL_KEY, sid);
-    sessionStorage.setItem(TAB_USER_KEY, uid);
-    sessionStorage.setItem(TAB_ROLE_KEY, rr || String(member.role || ''));
-    return { schoolId: sid, userId: uid, role: rr || String(member.role || ''), membership: member };
-  }
-
   function clear() {
     const tabToken=sessionStorage.getItem(TAB_TOKEN_KEY)||'';const sharedToken=localStorage.getItem(TOKEN_KEY)||'';
     [TAB_TOKEN_KEY,TAB_EXPIRES_KEY,TAB_USER_KEY,TAB_SCHOOL_KEY,TAB_ROLE_KEY].forEach(k=>sessionStorage.removeItem(k));
@@ -327,7 +289,7 @@
     } catch (_) {}
   }
 
-  const SESSION_VERSION='2026.08.29-security-isolation-v1';
+  const SESSION_VERSION='2026.08.28-continuity-v2';
 
   window.PlatformCloudSession = {
     VERSION:SESSION_VERSION,
@@ -343,7 +305,6 @@
     ensure,
     recover,
     restoreFromKnownContext,
-    verifyAccess,
     clear,
   };
 

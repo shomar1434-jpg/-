@@ -1938,6 +1938,11 @@ body[data-ss-role="activity-leader"] [aria-label*="تحليل البيانات"]
 .im-static-messaging-btn:hover{background:#ccfbf1!important}
 .im-static-messaging-btn .im-toolbar-badge{position:absolute;top:-7px;left:-7px;min-width:18px;height:18px;padding:0 4px;border-radius:999px;background:#dc2626;color:#fff;font:700 10px/18px Tahoma;text-align:center;display:none}
 </style><link rel="stylesheet" href="responsive-layout.css?v=20260818-responsive-1">
+
+<style id="activity-leader-secure-entry-pending-style">
+html.activity-leader-auth-pending body{visibility:hidden!important;}
+</style>
+<script id="activity-leader-secure-entry-pending-flag">document.documentElement.classList.add('activity-leader-auth-pending');</script>
 </head>
 <body class="global-app-bg" data-ss-role="activity-leader">
 <div class="hidden no-print fixed inset-0 bg-white/90 backdrop-blur flex-col items-center justify-center z-[10001]" id="share-loader">
@@ -5555,28 +5560,6 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
   });
 })();
 </script>
-<script id="safe-activation-bypass-tail">
-(function(){
-  if(window.__SAFE_ACTIVATION_BYPASS_TAIL__) return;
-  window.__SAFE_ACTIVATION_BYPASS_TAIL__ = true;
-  function activateFlags(){try{localStorage.setItem('school_active','true');localStorage.setItem('app_activated','true');localStorage.setItem('activation_status','active');sessionStorage.setItem('school_active','true');sessionStorage.setItem('app_activated','true');}catch(e){}}
-  function hideActivationAndShowWelcome(){
-    activateFlags();
-    var activation=document.getElementById('activation-overlay');
-    if(activation){activation.style.display='none';activation.style.visibility='hidden';activation.setAttribute('aria-hidden','true');}
-    var gate=document.getElementById('welcome-gate'), dash=document.getElementById('welcome-dashboard'), app=document.getElementById('main-report-app');
-    if(gate && (!app || app.style.display==='none')) gate.style.display='flex';
-    else if(dash && (!app || app.style.display==='none')) dash.style.display='block';
-  }
-  function protectDeactivation(){
-    ['deactivateSystem','deactivateApp','resetActivation','clearActivation'].forEach(function(fn){try{window[fn]=function(){console.warn('تم تعطيل إلغاء التنشيط لحماية الأرشفة المحفوظة.');return false;};}catch(e){}});
-    try{document.querySelectorAll('button,a,[role="button"],div[onclick],span[onclick]').forEach(function(el){var text=(el.textContent||'').replace(/\s+/g,' ').trim();var act=(el.getAttribute('onclick')||'');if(/إلغاء\s*تنشيط|الغاء\s*تنشيط|تعطيل\s*النظام|مسح\s*كافة\s*البيانات/.test(text)||/deactivate|resetActivation|clearActivation/.test(act)){el.classList.add('safe-hidden-deactivate');el.style.display='none';el.removeAttribute('onclick');}});}catch(e){}
-  }
-  var __v6ActivationBooted=false;function boot(){activateFlags();protectDeactivation();setTimeout(protectDeactivation,300);if(!__v6ActivationBooted){__v6ActivationBooted=true;hideActivationAndShowWelcome();}}
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot); else boot();
-  window.addEventListener('load',boot);
-})();
-</script>
 <script src="performance-file-engine.js"></script>
 <script src="section-dashboard-safe-fix.js"></script>
 <!-- ACTIVITY_LEADER_GOALS_UPDATED_2026_05_26: المجالات والأهداف الوظيفية/الأدائية والتفصيلية لمسؤول/ة النشاط محدثة من ملف المستخدم. -->
@@ -5798,6 +5781,32 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
 
 <!-- Unified Comprehensive Cloud Storage -->
 <script src="platform-cloud-session.js?v=20260828-school-isolation-v8"></script>
+<script id="activity-leader-school-access-gate-clean-v1">
+(function(){
+'use strict';
+if(window.__ACTIVITY_LEADER_SCHOOL_ACCESS_GATE_CLEAN_V1__) return;
+window.__ACTIVITY_LEADER_SCHOOL_ACCESS_GATE_CLEAN_V1__=true;
+const same=(a,b)=>String(a||'').trim()===String(b||'').trim();
+function reveal(context){window.__VERIFIED_SCHOOL_CONTEXT__=context;document.documentElement.classList.remove('activity-leader-auth-pending');const s=document.getElementById('activity-leader-secure-entry-pending-style');if(s)s.remove();}
+function deny(reason){console.error('[activity-leader access gate]',reason);const u='school-login.html?reason=school_access_denied';try{location.replace(u)}catch(_){location.href=u}}
+async function verify(){
+ try{
+  if(!window.PlatformCloudSession||typeof PlatformCloudSession.ensure!=='function'||typeof PlatformCloudSession.memberships!=='function')throw new Error('SESSION_ENGINE_UNAVAILABLE');
+  await PlatformCloudSession.ensure();
+  const schoolId=String(PlatformCloudSession.schoolId?.()||'').trim(),userId=String(PlatformCloudSession.userId?.()||'').trim();
+  if(!schoolId||!userId)throw new Error('SESSION_CONTEXT_MISSING');
+  const payload=await PlatformCloudSession.memberships(), current=payload&&payload.current?payload.current:{};
+  if(!same(current.schoolId,schoolId)||!same(current.userId,userId))throw new Error('SESSION_CONTEXT_MISMATCH');
+  const list=Array.isArray(payload?.memberships)?payload.memberships:[];
+  const membership=list.find(m=>same(m.schoolId,schoolId)&&same(m.userId,userId));
+  if(!membership)throw new Error('SCHOOL_MEMBERSHIP_DENIED');
+  reveal({schoolId,userId,role:membership.role||current.role||'',membershipId:membership.membershipId||''});
+ }catch(e){deny(e&&(e.code||e.message)||String(e))}
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',verify,{once:true});else verify();
+})();
+</script>
+
 <script src="multi_school_switcher.js"></script>
 <script src="cloud-file-engine.js"></script>
 <script src="cloud-file-bootstrap.js"></script>
@@ -5815,8 +5824,6 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
 <script src="internal-messaging.js"></script>
 
 <script defer src="unified_workspace.js"></script>
-<script defer src="school_navigation_guard.js"></script>
-
 <!-- Agent Core V2: school/role/year scoped -->
 <script src="agent-role-profiles.js"></script>
 <script src="agent-section-adapters.js"></script>

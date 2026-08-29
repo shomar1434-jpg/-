@@ -315,24 +315,26 @@ const launchApp = (appId) => {
             if (!target) return showToast('لم يتم العثور على ملف القسم');
             const isSystemAdmin = !!(currentUser?.isRootAdmin || sessionStorage.getItem('system_admin_context') === '1' || sessionStorage.getItem('system_admin_verified') === 'true');
             try {
-                const tabRole=(isSystemAdmin && appId==='administrative_employee')?'system_admin':(currentUser?.role || appId);
-                sessionStorage.setItem('smart_school_tab_role_v1',tabRole);
-                if(isSystemAdmin && appId==='administrative_employee'){
+                if(isSystemAdmin){
+                    // System Admin owns a tab-scoped context only. Never overwrite the
+                    // independent-school role/user context kept in shared localStorage.
                     sessionStorage.setItem('system_admin_context','1');
                     sessionStorage.setItem('system_admin_verified','true');
+                    sessionStorage.setItem('smart_school_tab_role_v1','system_admin');
+                    sessionStorage.setItem('system_admin_target_section',appId);
                 }else{
+                    sessionStorage.setItem('smart_school_tab_role_v1',currentUser?.role || appId);
                     localStorage.setItem('currentRole', currentUser?.role || appId);
+                    localStorage.setItem('currentUserName', currentUser?.name || '');
+                    localStorage.setItem('currentUserEmail', currentUser?.email || '');
+                    localStorage.setItem('smart_school_active_role', appId);
                 }
-                localStorage.setItem('currentUserName', currentUser?.name || '');
-                localStorage.setItem('currentUserEmail', currentUser?.email || '');
-                localStorage.setItem('smart_school_active_role', appId);
             } catch(e) {}
-            if(isSystemAdmin && appId==='administrative_employee'){
-                window.location.href = target + '?mode=system_admin&systemAdmin=1&returnHome=' + encodeURIComponent('index.html?systemAdminReturn=1');
+            if(isSystemAdmin){
+                window.location.href = target + '?mode=system_admin&systemAdmin=1&section=' + encodeURIComponent(appId) + '&returnHome=' + encodeURIComponent('index.html?systemAdminReturn=1');
                 return;
             }
-            let suffix = `?role=${encodeURIComponent(currentUser?.role || appId)}&uid=${encodeURIComponent(currentUser?.id || '')}`;
-            if (isSystemAdmin) suffix += '&systemAdmin=1&returnHome=' + encodeURIComponent('index.html?systemAdminReturn=1');
+            const suffix = `?role=${encodeURIComponent(currentUser?.role || appId)}&uid=${encodeURIComponent(currentUser?.id || '')}`;
             window.location.href = target + suffix;
         };
 

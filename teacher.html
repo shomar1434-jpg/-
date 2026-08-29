@@ -2068,7 +2068,7 @@ html.teacher-auth-pending body{visibility:hidden!important;}
 </style>
 <script id="teacher-secure-entry-pending-flag">document.documentElement.classList.add('teacher-auth-pending');</script>
 </head>
-<body class="global-app-bg" data-ss-role="teacher">
+<body class="global-app-bg" data-ss-role="teacher" data-teacher-entry-version="clean-secure-v2-runtime">
 <script data-openai-engine="true" defer="" src="./openai-engine.js"></script>
 <script data-top-ai-center="true" defer="" src="./top-ai-center.js"></script>
 <div class="hidden no-print fixed inset-0 bg-white/90 backdrop-blur flex-col items-center justify-center z-[10001]" id="share-loader">
@@ -4566,18 +4566,25 @@ body{overflow-x:hidden}
         saveReportToArchive = async function() { const ok=await __enhancedSaveReportToArchive(); if(ok){ refreshDashboardMetrics(); saveDraftSnapshot(true); } return ok; };
         const __enhancedUpdateReportProgress = updateReportProgress;
         updateReportProgress = function() { __enhancedUpdateReportProgress(); };
+        window.addEventListener('load', function () {
+            const safeInit = function(name, fn){
+                try { if (typeof fn === 'function') fn(); }
+                catch (e) { console.warn('[teacher init] '+name, e); }
+            };
+            safeInit('loadSavedTheme', window.loadSavedTheme);
+            safeInit('setupSecurityGuardrails', window.setupSecurityGuardrails);
+            safeInit('deviceId', function(){
+                const target=document.getElementById('device-id-value');
+                if(target && typeof getDeviceId==='function') target.innerText=getDeviceId();
+            });
+            try { localStorage.setItem('app_activated','true'); } catch(_) {}
+            safeInit('setupDateDropdown', window.setupDateDropdown);
+            safeInit('populateBeneficiaries', window.populateBeneficiaries);
+            setTimeout(function(){ safeInit('checkPendingReminders', window.checkPendingReminders); }, 2000);
+            safeInit('refreshDashboardMetrics', window.refreshDashboardMetrics);
+            safeInit('refreshAssistantAlertCount', window.refreshAssistantAlertCount);
+        }, { once:true });
 
-        window.onload = function () { 
-            loadSavedTheme();
-            setupSecurityGuardrails(); 
-            document.getElementById('device-id-value').innerText = getDeviceId(); 
-            localStorage.setItem('app_activated', 'true'); showWelcomeGate(); 
-            setupDateDropdown(); 
-            populateBeneficiaries(); 
-            setTimeout(checkPendingReminders, 2000);
-            refreshDashboardMetrics();
-            refreshAssistantAlertCount();
-        };
     </script>
 <!-- SmartSchool Cloud Storage Unified Menu -->
 <!-- SmartSchool Final Role Actions Module -->
@@ -5190,21 +5197,66 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
 <!-- Unified Comprehensive Cloud Storage -->
 <script src="platform-cloud-session.js?v=20260828-school-isolation-v8"></script>
 
-<script id="teacher-school-access-gate-clean-v1">
+<script id="teacher-dual-access-gate-clean-v3">
 (function(){
   'use strict';
-  if(window.__TEACHER_SCHOOL_ACCESS_GATE_CLEAN_V1__) return;
-  window.__TEACHER_SCHOOL_ACCESS_GATE_CLEAN_V1__=true;
+  if(window.__TEACHER_DUAL_ACCESS_GATE_CLEAN_V3__) return;
+  window.__TEACHER_DUAL_ACCESS_GATE_CLEAN_V3__=true;
 
   const TEACHER_ROLES=new Set(['teacher','school_teacher','معلم','معلمة']);
   const norm=v=>String(v||'').trim().toLowerCase();
   const same=(a,b)=>String(a||'').trim()===String(b||'').trim();
+
+  function requestedSystemAdminContext(){
+    try{
+      const q=new URLSearchParams(location.search||'');
+      return q.get('systemAdmin')==='1' || q.get('mode')==='system_admin' ||
+        sessionStorage.getItem('system_admin_context')==='1' ||
+        sessionStorage.getItem('system_admin_verified')==='true';
+    }catch(_){return false;}
+  }
+  async function verifySystemAdminAccess(){
+    const bridge=window.SmartSchoolSupabase;
+    const sb=bridge&&typeof bridge.getClient==='function'?bridge.getClient():null;
+    if(!sb||!sb.auth||!sb.functions) throw new Error('SYSTEM_ADMIN_AUTH_UNAVAILABLE');
+    const sr=await sb.auth.getSession();
+    const session=sr&&sr.data&&sr.data.session;
+    if(!session||!session.access_token) throw new Error('SYSTEM_ADMIN_SESSION_MISSING');
+    const result=await sb.functions.invoke('system-admin',{body:{action:'verify'}});
+    if(result.error||!result.data||result.data.ok!==true) throw new Error((result.error&&result.error.message)||'SYSTEM_ADMIN_NOT_AUTHORIZED');
+    const ctx={type:'system_admin',role:'system_admin',verified:true,user:result.data.user||null};
+    window.__VERIFIED_SYSTEM_ADMIN_CONTEXT__=ctx;
+    try{sessionStorage.setItem('system_admin_context','1');sessionStorage.setItem('system_admin_verified','true');document.documentElement.setAttribute('data-system-admin-context','1');}catch(_){}
+    return ctx;
+  }
 
   function revealAuthorizedPage(context){
     window.__VERIFIED_TEACHER_SCHOOL_CONTEXT__=context;
     document.documentElement.classList.remove('teacher-auth-pending');
     const style=document.getElementById('teacher-secure-entry-pending-style');
     if(style) style.remove();
+    // بدء واجهة المعلم الأصلية بعد نجاح التحقق مباشرة، دون انتظار window.onload.
+    requestAnimationFrame(function(){
+      try{
+        const activation=document.getElementById('activation-overlay');
+        const gate=document.getElementById('welcome-gate');
+        const dash=document.getElementById('welcome-dashboard');
+        const main=document.getElementById('main-report-app');
+        const archive=document.getElementById('archive-view');
+        const stats=document.getElementById('stats-view');
+        if(activation) activation.style.display='none';
+        if(dash) dash.style.display='none';
+        if(main) main.classList.add('hidden');
+        if(archive) archive.style.display='none';
+        if(stats) stats.style.display='none';
+        if(typeof window.showWelcomeGate==='function') window.showWelcomeGate();
+        else if(gate) gate.style.display='flex';
+        window.__TEACHER_ENTRY_READY__=true;
+      }catch(entryError){
+        console.error('[teacher original entry bootstrap]',entryError);
+        throw entryError;
+      }
+    });
   }
 
   function deny(reason){
@@ -5214,7 +5266,13 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
   }
 
   async function verify(){
+    const systemAdminRequested=requestedSystemAdminContext();
     try{
+      if(systemAdminRequested){
+        const ctx=await verifySystemAdminAccess();
+        revealAuthorizedPage(ctx);
+        return;
+      }
       if(!window.PlatformCloudSession || typeof PlatformCloudSession.ensure!=='function' || typeof PlatformCloudSession.memberships!=='function'){
         throw new Error('TEACHER_SESSION_ENGINE_UNAVAILABLE');
       }
@@ -5236,7 +5294,11 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
 
       revealAuthorizedPage({schoolId,userId,role:membership.role||current.role||sessionRole,membershipId:membership.membershipId||''});
     }catch(error){
-      deny(error && (error.code||error.message) || String(error));
+      if(systemAdminRequested){
+        try{sessionStorage.removeItem('system_admin_context');sessionStorage.removeItem('system_admin_verified');}catch(_){}
+        const u='index.html?systemAdminReturn=1&reason=system_admin_access_denied';
+        try{location.replace(u)}catch(_){location.href=u}
+      }else deny(error && (error.code||error.message) || String(error));
     }
   }
 

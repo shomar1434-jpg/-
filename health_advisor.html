@@ -5259,10 +5259,35 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
 if(window.__HEALTH_ADVISOR_SCHOOL_ACCESS_GATE_CLEAN_V1__) return;
 window.__HEALTH_ADVISOR_SCHOOL_ACCESS_GATE_CLEAN_V1__=true;
 const same=(a,b)=>String(a||'').trim()===String(b||'').trim();
+
+  function requestedSystemAdminContext(){
+    try{
+      const q=new URLSearchParams(location.search||'');
+      return q.get('systemAdmin')==='1' || q.get('mode')==='system_admin' ||
+        sessionStorage.getItem('system_admin_context')==='1' ||
+        sessionStorage.getItem('system_admin_verified')==='true';
+    }catch(_){return false;}
+  }
+  async function verifySystemAdminAccess(){
+    const bridge=window.SmartSchoolSupabase;
+    const sb=bridge&&typeof bridge.getClient==='function'?bridge.getClient():null;
+    if(!sb||!sb.auth||!sb.functions) throw new Error('SYSTEM_ADMIN_AUTH_UNAVAILABLE');
+    const sr=await sb.auth.getSession();
+    const session=sr&&sr.data&&sr.data.session;
+    if(!session||!session.access_token) throw new Error('SYSTEM_ADMIN_SESSION_MISSING');
+    const result=await sb.functions.invoke('system-admin',{body:{action:'verify'}});
+    if(result.error||!result.data||result.data.ok!==true) throw new Error((result.error&&result.error.message)||'SYSTEM_ADMIN_NOT_AUTHORIZED');
+    const ctx={type:'system_admin',role:'system_admin',verified:true,user:result.data.user||null};
+    window.__VERIFIED_SYSTEM_ADMIN_CONTEXT__=ctx;
+    try{sessionStorage.setItem('system_admin_context','1');sessionStorage.setItem('system_admin_verified','true');document.documentElement.setAttribute('data-system-admin-context','1');}catch(_){}
+    return ctx;
+  }
 function reveal(context){window.__VERIFIED_SCHOOL_CONTEXT__=context;document.documentElement.classList.remove('health-advisor-auth-pending');const s=document.getElementById('health-advisor-secure-entry-pending-style');if(s)s.remove();}
 function deny(reason){console.error('[health-advisor access gate]',reason);const u='school-login.html?reason=school_access_denied';try{location.replace(u)}catch(_){location.href=u}}
 async function verify(){
- try{
+ const systemAdminRequested=requestedSystemAdminContext();
+  try{
+    if(systemAdminRequested){const ctx=await verifySystemAdminAccess();reveal(ctx);return;}
   if(!window.PlatformCloudSession||typeof PlatformCloudSession.ensure!=='function'||typeof PlatformCloudSession.memberships!=='function')throw new Error('SESSION_ENGINE_UNAVAILABLE');
   await PlatformCloudSession.ensure();
   const schoolId=String(PlatformCloudSession.schoolId?.()||'').trim(),userId=String(PlatformCloudSession.userId?.()||'').trim();
@@ -5273,7 +5298,7 @@ async function verify(){
   const membership=list.find(m=>same(m.schoolId,schoolId)&&same(m.userId,userId));
   if(!membership)throw new Error('SCHOOL_MEMBERSHIP_DENIED');
   reveal({schoolId,userId,role:membership.role||current.role||'',membershipId:membership.membershipId||''});
- }catch(e){deny(e&&(e.code||e.message)||String(e))}
+ }catch(e){if(systemAdminRequested){try{sessionStorage.removeItem('system_admin_context');sessionStorage.removeItem('system_admin_verified')}catch(_){}const u='index.html?systemAdminReturn=1&reason=system_admin_access_denied';try{location.replace(u)}catch(_){location.href=u}}else deny(e&&e.message||String(e))}
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',verify,{once:true});else verify();
 })();

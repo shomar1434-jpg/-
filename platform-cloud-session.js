@@ -189,6 +189,7 @@
   }
 
   function token() {
+    if (isSystemAdminContext()) return '';
     return sessionStorage.getItem(TAB_TOKEN_KEY) || localStorage.getItem(TOKEN_KEY) || '';
   }
 
@@ -197,18 +198,22 @@
   }
 
   function userId() {
+    if (isSystemAdminContext()) return '';
     return sessionStorage.getItem(TAB_USER_KEY) || localStorage.getItem(USER_KEY) || '';
   }
 
   function schoolId() {
+    if (isSystemAdminContext()) return '';
     return sessionStorage.getItem(TAB_SCHOOL_KEY) || localStorage.getItem(SCHOOL_KEY) || '';
   }
 
   function role() {
+    if (isSystemAdminContext()) return 'system_admin';
     return sessionStorage.getItem(TAB_ROLE_KEY) || localStorage.getItem(ROLE_KEY) || '';
   }
 
   function valid() {
+    if (isSystemAdminContext()) return false;
     const currentToken = token();
     const expiry = expiresAt();
     const activeSchool = sessionStorage.getItem(TAB_SCHOOL_KEY) || localStorage.getItem('active_school_id') || localStorage.getItem('current_school_id') || localStorage.getItem('school_id') || localStorage.getItem('smart_school_id') || '';
@@ -270,6 +275,11 @@
   }
 
   async function ensure() {
+    if (isSystemAdminContext()) {
+      const error = new Error('جلسة مدير النظام منفصلة عن جلسات المدارس المستقلة.');
+      error.code = 'SYSTEM_ADMIN_SCHOOL_SESSION_BLOCKED';
+      throw error;
+    }
     if (valid()) return token();
     restoreFromKnownContext();
     if (valid()) return token();
@@ -289,7 +299,7 @@
     } catch (_) {}
   }
 
-  const SESSION_VERSION='2026.08.28-continuity-v2';
+  const SESSION_VERSION='2026.08.29-system-admin-school-isolation-v3';
 
   window.PlatformCloudSession = {
     VERSION:SESSION_VERSION,

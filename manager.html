@@ -11,7 +11,9 @@
       if(!window.PlatformCloudSession || typeof PlatformCloudSession.verifyAccess!=='function') throw new Error('SECURITY_GATE_MISSING');
       const ctx=await PlatformCloudSession.verifyAccess(['manager']);
       window.__VERIFIED_SCHOOL_CONTEXT__=ctx;
+      document.documentElement.dataset.platformAccess='verified';
       document.documentElement.style.visibility='visible';
+      try{ window.dispatchEvent(new CustomEvent('platform:access-verified',{detail:ctx})); }catch(_){ }
       return ctx;
     }catch(e){
       try{ window.PlatformCloudSession && PlatformCloudSession.clear(); }catch(_){ }
@@ -19,6 +21,55 @@
       throw e;
     }
   })();
+})();
+</script>
+<style id="platform-verified-welcome-style">
+html[data-platform-access="verified"] #welcome-gate{visibility:visible!important;opacity:1!important;pointer-events:auto!important}
+html[data-platform-access="verified"] #welcome-gate > *{visibility:visible!important;opacity:1!important}
+</style>
+<script id="platform-verified-welcome-bridge">
+(function(){
+  if(window.__PLATFORM_VERIFIED_WELCOME_BRIDGE__) return;
+  window.__PLATFORM_VERIFIED_WELCOME_BRIDGE__=true;
+  let entered=false;
+  const originalEnterName='enterApp';
+  function renderVerifiedWelcome(){
+    if(entered) return;
+    const activation=document.getElementById('activation-overlay');
+    const gate=document.getElementById('welcome-gate');
+    const dash=document.getElementById('welcome-dashboard');
+    if(activation){activation.style.setProperty('display','none','important');activation.style.setProperty('visibility','hidden','important');activation.setAttribute('aria-hidden','true');}
+    if(dash){dash.style.display='none';}
+    if(gate){
+      gate.dataset.v6InitialShown='1';
+      gate.removeAttribute('hidden');
+      gate.style.setProperty('display','flex','important');
+      gate.style.setProperty('visibility','visible','important');
+      gate.style.setProperty('opacity','1','important');
+      gate.style.setProperty('pointer-events','auto','important');
+      Array.from(gate.children||[]).forEach(function(el){
+        el.style.setProperty('visibility','visible','important');
+        el.style.setProperty('opacity','1','important');
+      });
+    }
+  }
+  function bindEnterTracking(){
+    const current=window[originalEnterName];
+    if(typeof current==='function' && !current.__platformVerifiedWrapped){
+      const wrapped=function(){entered=true;return current.apply(this,arguments)};
+      wrapped.__platformVerifiedWrapped=true;
+      window[originalEnterName]=wrapped;
+    }
+  }
+  function afterDom(){
+    bindEnterTracking();
+    Promise.resolve(window.__PLATFORM_ACCESS_READY__).then(function(){
+      renderVerifiedWelcome();
+      setTimeout(function(){bindEnterTracking(); if(!entered) renderVerifiedWelcome();},60);
+      setTimeout(function(){bindEnterTracking(); if(!entered) renderVerifiedWelcome();},300);
+    }).catch(function(){});
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',afterDom,{once:true}); else afterDom();
 })();
 </script>
 

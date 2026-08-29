@@ -6,14 +6,22 @@
 <script src="platform-cloud-session.js?v=20260829-security-isolation-v1"></script>
 <script id="platform-manager-access-gate">
 (function(){
+  function revealVerifiedWelcome(){
+    const activation=document.getElementById('activation-overlay');
+    const gate=document.getElementById('welcome-gate');
+    const dash=document.getElementById('welcome-dashboard');
+    if(activation) activation.style.display='none';
+    if(dash) dash.style.display='none';
+    if(gate) gate.style.display='flex';
+  }
   window.__PLATFORM_ACCESS_READY__ = (async function(){
     try{
       if(!window.PlatformCloudSession || typeof PlatformCloudSession.verifyAccess!=='function') throw new Error('SECURITY_GATE_MISSING');
       const ctx=await PlatformCloudSession.verifyAccess(['manager']);
       window.__VERIFIED_SCHOOL_CONTEXT__=ctx;
-      document.documentElement.dataset.platformAccess='verified';
       document.documentElement.style.visibility='visible';
-      try{ window.dispatchEvent(new CustomEvent('platform:access-verified',{detail:ctx})); }catch(_){ }
+      if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',revealVerifiedWelcome,{once:true});
+      else revealVerifiedWelcome();
       return ctx;
     }catch(e){
       try{ window.PlatformCloudSession && PlatformCloudSession.clear(); }catch(_){ }
@@ -21,80 +29,6 @@
       throw e;
     }
   })();
-})();
-</script>
-<style id="platform-verified-welcome-style">
-html[data-platform-access="verified"]:not([data-platform-entered="1"]) #welcome-gate{visibility:visible!important;opacity:1!important;pointer-events:auto!important}
-html[data-platform-access="verified"]:not([data-platform-entered="1"]) #welcome-gate > *{visibility:visible!important;opacity:1!important}
-html[data-platform-access="verified"][data-platform-entered="1"] #welcome-gate{display:none!important;visibility:hidden!important;opacity:0!important;pointer-events:none!important}
-html[data-platform-access="verified"][data-platform-entered="1"] #welcome-dashboard{display:block!important;visibility:visible!important;opacity:1!important;pointer-events:auto!important}
-</style>
-<script id="platform-verified-welcome-bridge">
-(function(){
-  if(window.__PLATFORM_VERIFIED_WELCOME_BRIDGE__) return;
-  window.__PLATFORM_VERIFIED_WELCOME_BRIDGE__=true;
-  let entered=false;
-  const originalEnterName='enterApp';
-  function renderVerifiedWelcome(){
-    if(entered) return;
-    document.documentElement.removeAttribute('data-platform-entered');
-    const activation=document.getElementById('activation-overlay');
-    const gate=document.getElementById('welcome-gate');
-    const dash=document.getElementById('welcome-dashboard');
-    if(activation){activation.style.setProperty('display','none','important');activation.style.setProperty('visibility','hidden','important');activation.setAttribute('aria-hidden','true');}
-    if(dash){dash.style.display='none';}
-    if(gate){
-      gate.dataset.v6InitialShown='1';
-      gate.removeAttribute('hidden');
-      gate.style.setProperty('display','flex','important');
-      gate.style.setProperty('visibility','visible','important');
-      gate.style.setProperty('opacity','1','important');
-      gate.style.setProperty('pointer-events','auto','important');
-      Array.from(gate.children||[]).forEach(function(el){
-        el.style.setProperty('visibility','visible','important');
-        el.style.setProperty('opacity','1','important');
-      });
-    }
-  }
-  function bindEnterTracking(){
-    const current=window[originalEnterName];
-    if(typeof current==='function' && !current.__platformVerifiedWrapped){
-      const wrapped=function(){
-        entered=true;
-        document.documentElement.setAttribute('data-platform-entered','1');
-        const gate=document.getElementById('welcome-gate');
-        const dash=document.getElementById('welcome-dashboard');
-        if(gate){
-          gate.style.setProperty('display','none','important');
-          gate.style.setProperty('visibility','hidden','important');
-          gate.style.setProperty('opacity','0','important');
-          gate.style.setProperty('pointer-events','none','important');
-        }
-        const result=current.apply(this,arguments);
-        if(dash){
-          dash.removeAttribute('hidden');
-          dash.classList.remove('hidden');
-          dash.style.setProperty('display','block','important');
-          dash.style.setProperty('visibility','visible','important');
-          dash.style.setProperty('opacity','1','important');
-          dash.style.setProperty('pointer-events','auto','important');
-          try{dash.scrollTop=0;}catch(_){}
-        }
-        return result;
-      };
-      wrapped.__platformVerifiedWrapped=true;
-      window[originalEnterName]=wrapped;
-    }
-  }
-  function afterDom(){
-    bindEnterTracking();
-    Promise.resolve(window.__PLATFORM_ACCESS_READY__).then(function(){
-      renderVerifiedWelcome();
-      setTimeout(function(){bindEnterTracking(); if(!entered) renderVerifiedWelcome();},60);
-      setTimeout(function(){bindEnterTracking(); if(!entered) renderVerifiedWelcome();},300);
-    }).catch(function(){});
-  }
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',afterDom,{once:true}); else afterDom();
 })();
 </script>
 
@@ -2249,7 +2183,12 @@ body{overflow-x:hidden}
             }
         }
 
-        function enterApp() { document.getElementById('welcome-gate').style.display='none'; document.getElementById('welcome-dashboard').style.display='block'; }
+        function enterApp() {
+            const gate=document.getElementById('welcome-gate');
+            const dash=document.getElementById('welcome-dashboard');
+            if(gate){ gate.style.display='none'; gate.hidden=true; }
+            if(dash){ dash.hidden=false; dash.classList.remove('hidden'); dash.style.display='block'; }
+        }
         function showManagerSectionsHome() {
             const gate=document.getElementById('welcome-gate'),dash=document.getElementById('welcome-dashboard'),app=document.getElementById('main-report-app');
             if(gate)gate.style.display='none';if(app)app.classList.add('hidden');

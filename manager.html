@@ -6025,5 +6025,102 @@ window.__PERFORMANCE_ARCHIVE_CLEAN_V5_2__={archiveViewSource:'V5-only',editResto
 })();
 </script>
 
+
+
+<!-- Performance Archive Clean V5.4: PDF-like readonly archive preview -->
+<style id="PERFORMANCE_ARCHIVE_V54_PREVIEW_STYLE">
+#performance-archive-pdf-preview{position:fixed;inset:0;z-index:999999;background:rgba(15,23,42,.78);display:none;align-items:stretch;justify-content:center;padding:18px;direction:rtl}
+#performance-archive-pdf-preview.is-open{display:flex}
+#performance-archive-pdf-preview .pav54-shell{width:min(1180px,100%);height:100%;background:#eef2f7;border-radius:22px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.35);display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.7)}
+#performance-archive-pdf-preview .pav54-toolbar{height:58px;flex:0 0 58px;background:#fff;border-bottom:1px solid #dbe4ea;display:flex;align-items:center;justify-content:space-between;padding:0 16px;gap:12px}
+#performance-archive-pdf-preview .pav54-title{font-family:Tajawal,Arial,sans-serif;font-size:13px;font-weight:800;color:#0f766e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#performance-archive-pdf-preview .pav54-actions{display:flex;gap:8px;align-items:center}
+#performance-archive-pdf-preview .pav54-btn{border:0;border-radius:12px;padding:9px 14px;font-family:Tajawal,Arial,sans-serif;font-size:11px;font-weight:800;cursor:pointer}
+#performance-archive-pdf-preview .pav54-print{background:#0f8b83;color:#fff}
+#performance-archive-pdf-preview .pav54-close{background:#f1f5f9;color:#334155}
+#performance-archive-pdf-preview iframe{width:100%;height:calc(100% - 58px);border:0;background:#d9e0e7;display:block}
+@media(max-width:720px){#performance-archive-pdf-preview{padding:0}#performance-archive-pdf-preview .pav54-shell{border-radius:0}.pav54-print{display:none}}
+</style>
+<div id="performance-archive-pdf-preview" aria-hidden="true">
+  <div class="pav54-shell" role="dialog" aria-modal="true" aria-label="معاينة تقرير الأداء">
+    <div class="pav54-toolbar">
+      <div class="pav54-title" id="performance-archive-pdf-title">معاينة تقرير الأداء</div>
+      <div class="pav54-actions">
+        <button type="button" class="pav54-btn pav54-print" id="performance-archive-pdf-print">🖨️ طباعة</button>
+        <button type="button" class="pav54-btn pav54-close" id="performance-archive-pdf-close">إغلاق ✕</button>
+      </div>
+    </div>
+    <iframe id="performance-archive-pdf-frame" title="معاينة التقرير للقراءة فقط"></iframe>
+  </div>
+</div>
+<script id="PERFORMANCE_ARCHIVE_CLEAN_V5_4_PDF_PREVIEW">
+(function(){
+'use strict';
+function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+function previewNodes(){return {overlay:document.getElementById('performance-archive-pdf-preview'),frame:document.getElementById('performance-archive-pdf-frame'),title:document.getElementById('performance-archive-pdf-title')};}
+function closePreview(){const n=previewNodes();if(n.overlay){n.overlay.classList.remove('is-open');n.overlay.setAttribute('aria-hidden','true');}if(n.frame){try{n.frame.src='about:blank';}catch(_){}}}
+function restoreReadonlyState(doc){
+  const root=doc.getElementById('report-content-container');if(!root)return;
+  root.querySelectorAll('select[data-saved-value]').forEach(el=>{const v=el.getAttribute('data-saved-value');if(Array.from(el.options||[]).some(o=>String(o.value)===String(v)))el.value=v;});
+  root.querySelectorAll('input[data-saved-value]').forEach(el=>{if(!['checkbox','radio'].includes(String(el.type||'').toLowerCase()))el.value=el.getAttribute('data-saved-value')||'';});
+  root.querySelectorAll('textarea[data-saved-value]').forEach(el=>{el.value=el.getAttribute('data-saved-value')||'';});
+  root.querySelectorAll('input,select,textarea,button').forEach(el=>{el.disabled=true;el.setAttribute('tabindex','-1');});
+  root.querySelectorAll('[contenteditable]').forEach(el=>el.setAttribute('contenteditable','false'));
+  root.querySelectorAll('a').forEach(el=>{el.removeAttribute('href');el.setAttribute('tabindex','-1');});
+}
+function buildPreviewDoc(doc,report){
+  const parentStyles=Array.from(document.querySelectorAll('style,link[rel="stylesheet"]')).map(n=>n.outerHTML).join('\n');
+  const base='<base href="'+esc(document.baseURI)+'">';
+  const title=esc(report?.programName||report?.title||'تقرير أداء');
+  const printLike=`<style id="PAV54_SCREEN_AS_PRINT">
+    html,body{margin:0!important;padding:0!important;background:#d9e0e7!important;direction:rtl!important;overflow:auto!important;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+    body.manager-report-printing{width:auto!important;min-width:0!important;height:auto!important;background:#d9e0e7!important;overflow:auto!important;padding:12mm 0!important}
+    body.manager-report-printing>#main-report-app{display:block!important;visibility:visible!important;position:static!important;width:210mm!important;height:auto!important;margin:0 auto!important;padding:0!important;background:transparent!important;overflow:visible!important}
+    body.manager-report-printing #main-report-app>*:not(#report-content-container){display:none!important}
+    body.manager-report-printing #report-content-container{display:block!important;visibility:visible!important;position:static!important;width:210mm!important;height:auto!important;margin:0!important;padding:0!important;background:transparent!important;overflow:visible!important;pointer-events:none!important}
+    body.manager-report-printing #report-content-container .page-container{display:flex!important;visibility:visible!important;width:210mm!important;height:297mm!important;min-height:297mm!important;max-height:297mm!important;margin:0 auto 12mm!important;padding:7mm!important;border:0!important;border-radius:0!important;box-shadow:0 6px 28px rgba(15,23,42,.18)!important;overflow:hidden!important;background:#fff!important;box-sizing:border-box!important;page-break-inside:avoid!important;break-inside:avoid!important}
+    body.manager-report-printing #report-content-container .border-double-frame{display:flex!important;visibility:visible!important;height:100%!important;min-height:0!important;padding:8mm!important;overflow:hidden!important;border:2px solid var(--primary)!important;border-radius:12mm!important;box-sizing:border-box!important}
+    body.manager-report-printing #report-content-container .page-container *{visibility:visible!important}
+    body.manager-report-printing .no-print,body.manager-report-printing nav,body.manager-report-printing button,body.manager-report-printing .delete-btn-box,body.manager-report-printing .magic-goal-btn,body.manager-report-printing .support-goal-btn,body.manager-report-printing .progress-top-bar,body.manager-report-printing .theme-icon-btn,body.manager-report-printing input[type=file]{display:none!important;visibility:hidden!important}
+    body.manager-report-printing select{appearance:none!important;-webkit-appearance:none!important;border:none!important;background:transparent!important;opacity:1!important;color:inherit!important}
+    body.manager-report-printing input,body.manager-report-printing textarea{opacity:1!important;color:inherit!important;-webkit-text-fill-color:currentColor!important}
+    body.manager-report-printing #page2 section.h-full{height:100%!important;display:flex!important;flex-direction:column!important;justify-content:space-between!important;overflow:hidden!important}
+    body.manager-report-printing #page2 h3{margin-top:5mm!important;margin-bottom:5mm!important;line-height:1.2!important}
+    body.manager-report-printing #page2 .evidence-grid{flex:0 0 auto!important;height:136mm!important;max-height:136mm!important;gap:6mm!important;margin-bottom:4mm!important}
+    body.manager-report-printing #page2 .evidence-box{aspect-ratio:auto!important;height:64mm!important;max-height:64mm!important;border-radius:8mm!important;overflow:hidden!important}
+    body.manager-report-printing #page2 footer{flex:0 0 auto!important;margin-top:2mm!important;padding-bottom:0!important}
+    body.manager-report-printing #page2 footer table td{padding:2mm!important;line-height:1.2!important}
+    body.manager-report-printing #page2 footer tr:nth-child(2) td{height:12mm!important}
+    body.manager-report-printing #page2 footer tr:nth-child(4) td{height:26mm!important}
+    body.manager-report-printing .sig-stamp-container{height:24mm!important;max-height:24mm!important;min-height:24mm!important;display:flex!important;align-items:center!important;justify-content:center!important;overflow:hidden!important}
+    body.manager-report-printing .sig-stamp-container img{max-width:98%!important;max-height:98%!important;object-fit:contain!important}
+    @media print{html,body,body.manager-report-printing{background:#fff!important;padding:0!important}body.manager-report-printing #report-content-container .page-container{margin:0!important;box-shadow:none!important}body.manager-report-printing #page1{page-break-after:always!important;break-after:page!important}body.manager-report-printing #page2{page-break-after:avoid!important;break-after:avoid!important}}
+  </style>`;
+  const html='<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+base+'<title>'+title+'</title>'+parentStyles+printLike+'</head><body class="manager-report-printing"><div id="main-report-app"><div id="report-content-container">'+String(report?.content||'')+'</div></div></body></html>';
+  doc.open();doc.write(html);doc.close();
+  const done=()=>{restoreReadonlyState(doc);try{doc.defaultView.scrollTo(0,0);}catch(_){}};
+  if(doc.readyState==='complete')done();else doc.addEventListener('DOMContentLoaded',done,{once:true});
+}
+window.previewArchivedReadOnly=async function(id){
+  try{
+    const r=await PerformanceArchiveCleanV5.fetchReport(String(id));
+    if(!r){showToast('تعذر العثور على التقرير');return false;}
+    if(!r.content){showToast('هذا التقرير لا يحتوي نسخة قابلة للمعاينة');return false;}
+    const n=previewNodes();if(!n.overlay||!n.frame)throw new Error('واجهة المعاينة غير متاحة');
+    if(n.title)n.title.textContent='معاينة PDF — '+String(r.programName||r.title||'تقرير أداء');
+    n.overlay.classList.add('is-open');n.overlay.setAttribute('aria-hidden','false');
+    const doc=n.frame.contentDocument||n.frame.contentWindow.document;
+    buildPreviewDoc(doc,r);
+    return true;
+  }catch(e){console.error('[Performance V5.4 preview]',e);showToast('تعذر معاينة التقرير: '+String(e?.message||e));return false;}
+};
+const closeBtn=document.getElementById('performance-archive-pdf-close');if(closeBtn)closeBtn.onclick=closePreview;
+const printBtn=document.getElementById('performance-archive-pdf-print');if(printBtn)printBtn.onclick=function(){const f=document.getElementById('performance-archive-pdf-frame');try{f?.contentWindow?.focus();f?.contentWindow?.print();}catch(e){showToast('تعذر فتح الطباعة من المعاينة');}};
+const overlay=document.getElementById('performance-archive-pdf-preview');if(overlay)overlay.addEventListener('click',e=>{if(e.target===overlay)closePreview();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&overlay?.classList.contains('is-open'))closePreview();});
+window.__PERFORMANCE_ARCHIVE_CLEAN_V5_4__={pdfLikeReadonlyPreview:true,usesPrintLayout:true,editingSeparated:true};
+})();
+</script>
+
 </body>
 </html>

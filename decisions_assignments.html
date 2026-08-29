@@ -117,6 +117,7 @@ button{border:0;border-radius:9px;padding:10px 13px;font:700 12px 'Alyamama';cur
 <script src="school-information-source.js?v=20260824-decisions-assignees-1"></script>
 <script src="platform-cloud-session.js?v=20260829-manager-verify-access-v4"></script>
 <script src="cloud-file-engine.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <script src="internal-messaging.js?v=20260829-decisions-send-v2"></script>
 <meta name="decisions-assignments-version" content="2026.08.29-cloud-archive-messaging-v2">
 </head>
@@ -830,63 +831,116 @@ async function resolveSavedAssignmentRecipient(record){
  if(matches.length>1)throw new Error('يوجد أكثر من حساب مطابق لاسم المكلف؛ افتح القرار واختر المكلف مجددًا لتثبيت الحساب الصحيح');
  throw new Error('لم يتم العثور على حساب مستخدم مطابق للمكلف داخل المدرسة');
 }
+async function buildDecisionPdfFile(record){
+ if(!window.html2pdf)throw new Error('تعذر تحميل محرك PDF. أعد تحميل الصفحة ثم حاول مرة أخرى.');
+ const official=String(record?.officialHtml||'').trim();
+ if(!official)throw new Error('النسخة الرسمية للقرار غير متاحة. افتح القرار واحفظه مجددًا أولًا.');
+ const host=document.createElement('div');
+ host.setAttribute('data-decision-pdf-export','1');
+ host.style.cssText='position:fixed;left:-12000px;top:0;width:210mm;background:#fff;z-index:-1;';
+ const parsed=new DOMParser().parseFromString(official,'text/html');
+ // ننقل تنسيقات النسخة الرسمية نفسها، ولا نقرأها كنص إطلاقًا.
+ [...parsed.querySelectorAll('style')].forEach(st=>{const c=document.createElement('style');c.textContent=st.textContent||'';host.appendChild(c)});
+ const body=document.createElement('div');
+ body.innerHTML=parsed.body?parsed.body.innerHTML:official;
+ host.appendChild(body);document.body.appendChild(host);
+ try{
+   const imgs=[...host.querySelectorAll('img')];
+   await Promise.all(imgs.map(img=>img.complete?Promise.resolve():new Promise(resolve=>{img.onload=img.onerror=resolve;setTimeout(resolve,5000)})));
+   if(document.fonts?.ready)await Promise.race([document.fonts.ready,new Promise(r=>setTimeout(r,4000))]);
+   const worker=window.html2pdf().set({
+     margin:0,filename:'decision.pdf',
+     image:{type:'jpeg',quality:.99},
+     html2canvas:{scale:2,useCORS:true,allowTaint:false,scrollX:0,scrollY:0,backgroundColor:'#ffffff'},
+     jsPDF:{unit:'mm',format:'a4',orientation:'portrait',compress:true},
+     pagebreak:{mode:['css','legacy']}
+   }).from(host).toPdf();
+   const blob=await worker.outputPdf('blob');
+   if(!(blob instanceof Blob)||blob.size<500)throw new Error('تعذر إنشاء ملف PDF صالح للقرار.');
+   const head=new Uint8Array(await blob.slice(0,5).arrayBuffer());
+   if(String.fromCharCode(...head)!=='%PDF-')throw new Error('مخرج القرار ليس ملف PDF صالحًا.');
+   const safeTitle=String(record.assignmentTitle||record.displayName||'قرار تكليف').replace(/[\\/:*?"<>|]+/g,'_').slice(0,80);
+   const safeNo=String(record.decisionNo||record.id||Date.now()).replace(/[^0-9A-Za-z_-]+/g,'_').slice(0,50);
+   return new File([blob],safeTitle+'_'+safeNo+'.pdf',{type:'application/pdf'});
+ }finally{host.remove()}
+}
+async function uploadDecisionPdfForMessage(record){
+ if(!window.CloudFileEngine)throw new Error('محرك الملفات السحابي غير متاح.');
+ if(window.PlatformCloudSession?.ensure)await window.PlatformCloudSession.ensure();
+ const pdfFile=await buildDecisionPdfFile(record);
+ const up=await CloudFileEngine.upload({
+   file:pdfFile,ownershipScope:'school',moduleKey:'internal_messages',
+   recordType:'decision_assignment_pdf',recordId:String(record.id),relationType:'message_source',
+   displayName:pdfFile.name,
+   metadata:{source:'decisions_assignments',decisionId:String(record.id),archiveFolder:'القرارات والتكليفات',generatedFrom:'officialHtml',printEquivalent:true}
+ });
+ const fileId=String(up?.file?.id||'');
+ if(!fileId)throw new Error('لم يرجع الحفظ السحابي معرفًا لملف PDF.');
+ // تحقق فعلي من الملف بعد الرفع قبل السماح بإرسال الرسالة.
+ const blob=await CloudFileEngine.getBlob(fileId);
+ const head=new Uint8Array(await blob.slice(0,5).arrayBuffer());
+ if(blob.size<500||String.fromCharCode(...head)!=='%PDF-'){
+   try{await CloudFileEngine.trash(fileId)}catch(_){ }
+   throw new Error('فشل التحقق من نسخة PDF بعد رفعها إلى السحابة.');
+ }
+ return {fileId,fileName:pdfFile.name,fileSize:blob.size};
+}
+async function verifyMessagePdfAttachment(messageId,fileId){
+ const persisted=await InternalMessaging.call('read',{messageId:String(messageId)});
+ const rows=Array.isArray(persisted?.attachments)?persisted.attachments:[];
+ return rows.some(a=>String(a.file_id||a.fileId||'')===String(fileId)&&String(a.mime_type||'').toLowerCase()==='application/pdf');
+}
 async function sendSavedAssignmentToAssignee(){
  if(!currentArchiveRecordId){alert('احفظ قرار التكليف أولًا قبل إرساله للمكلف.');return false}
  let record=findArchivedDecision(currentArchiveRecordId);
  if(!record||!record.cloudSynced){alert('يجب أن يكون قرار التكليف محفوظًا ومؤكدًا سحابيًا قبل الإرسال.');return false}
  if(!window.InternalMessaging||typeof InternalMessaging.call!=='function'){alert('نظام المراسلات الداخلي غير متاح. أعد تحميل الصفحة ثم حاول مرة أخرى.');return false}
  const btn=$('sendAssignmentBtn');if(btn)btn.disabled=true;
+ let pdfUpload=null;
  try{
    const cloudCopy=await verifyCloudDecisionRecord(record);
    if(!cloudCopy)throw new Error('تعذر التحقق من القرار السحابي قبل الإرسال');
    record=Object.assign({},record,cloudCopy,{cloudSynced:true});
    const user=await resolveSavedAssignmentRecipient(record);
    if(record.sentMessageId && !confirm('سبق إرسال هذا القرار للمكلف. هل تريد إعادة إرساله؟'))return false;
-   const tmp=document.createElement('div');tmp.innerHTML=record.officialHtml||'';
-   const officialText=String(tmp.innerText||tmp.textContent||'').replace(/\n{3,}/g,'\n\n').trim();
-   const header=[
-    'صدر لك قرار تكليف من إدارة المدرسة.',
-    '',
-    'نوع التكليف: '+(record.assignmentTitle||''),
-    'رقم القرار: '+(record.decisionNo||'—'),
-    'اسم المكلف: '+(record.assigneeName||''),
-    '',
-    'نص القرار:'
+   // دورة القرار الرسمية: السجل السحابي -> نفس النسخة الرسمية للطباعة -> PDF -> مرفق مراسلات.
+   pdfUpload=await uploadDecisionPdfForMessage(record);
+   const body=[
+     'صدر لك قرار تكليف من إدارة المدرسة.',
+     '',
+     'نوع التكليف: '+(record.assignmentTitle||''),
+     'رقم القرار: '+(record.decisionNo||'—'),
+     'اسم المكلف: '+(record.assigneeName||''),
+     '',
+     'مرفق بهذه الرسالة نسخة PDF الرسمية من قرار التكليف، مطابقة لنسخة القرار المعدّة للطباعة.',
+     'يرجى فتح المرفق والاطلاع على القرار.'
    ].join('\n');
-   const footer='\n\nتم إرسال هذا القرار من نظام القرارات والتكليفات في منصة الإدارة المدرسية.';
-   const maxOfficial=Math.max(0,19800-header.length-footer.length);
-   const body=header+'\n'+officialText.slice(0,maxOfficial)+footer;
    const r=await InternalMessaging.call('send',{
-     recipientIds:[String(user.id||user.user_id)],
-     recipientRoles:[],allSchool:false,
+     recipientIds:[String(user.id||user.user_id)],recipientRoles:[],allSchool:false,
      subject:'قرار تكليف — '+(record.assignmentTitle||record.displayName||'تكليف إداري'),
      body,priority:'important',messageType:'official',acknowledgementMode:'read_receipt',
-     attachments:[],
+     attachments:[{fileId:pdfUpload.fileId,name:pdfUpload.fileName,source:'device'}],
      linked:{module:'manager_decisions_assignments',recordType:'decision_assignment',recordId:String(record.id),title:'قرار تكليف — '+(record.assignmentTitle||record.displayName||'تكليف إداري')},
-     metadata:{source:'decisions_assignments',decisionId:String(record.id),assigneeUserId:String(user.id||user.user_id||'')}
+     metadata:{source:'decisions_assignments',decisionId:String(record.id),assigneeUserId:String(user.id||user.user_id||''),pdfFileId:pdfUpload.fileId}
    });
    if(!r||!r.ok||!r.messageId)throw new Error('لم يرجع نظام المراسلات تأكيدًا صالحًا للإرسال');
+   const attachmentOk=await verifyMessagePdfAttachment(r.messageId,pdfUpload.fileId);
+   if(!attachmentOk)throw new Error('تم إنشاء الرسالة لكن لم يتم تأكيد ارتباط ملف PDF بها.');
    const updated=Object.assign({},record,{
-     sentToAssigneeAt:new Date().toISOString(),
-     sentMessageId:String(r.messageId),
-     sentToUserId:String(user.id||user.user_id),
-     assigneeUserId:String(user.id||user.user_id),
-     assigneeEmail:String(user.email||user.user_email||record.assigneeEmail||'').trim().toLowerCase(),
-     updatedAt:new Date().toISOString()
+     sentToAssigneeAt:new Date().toISOString(),sentMessageId:String(r.messageId),sentPdfFileId:pdfUpload.fileId,sentPdfFileName:pdfUpload.fileName,
+     sentToUserId:String(user.id||user.user_id),assigneeUserId:String(user.id||user.user_id),
+     assigneeEmail:String(user.email||user.user_email||record.assigneeEmail||'').trim().toLowerCase(),updatedAt:new Date().toISOString()
    });
-   const fid=await uploadDecisionRecordToCloud(updated,updated.cloudFileId||'');
-   updated.cloudFileId=String(fid||updated.cloudFileId||'');
-   const verified=await verifyCloudDecisionRecord(updated);
-   if(!verified)throw new Error('تم إرسال الرسالة، لكن تعذر تأكيد تحديث حالة الإرسال في أرشيف القرار');
-   updated.cloudSynced=true;
-   const rows=archiveRead().filter(x=>String(x.id)!==String(updated.id));rows.unshift(updated);
-   archiveWrite(rows);
-   alert('تم إرسال قرار التكليف إلى '+updated.assigneeName+' عبر نظام المراسلات الداخلي، وتم تسجيل حالة الإرسال في الأرشيف ✅');
-   return true;
- }catch(e){alert('تعذر إرسال قرار التكليف: '+(e?.message||e));return false}
- finally{if(btn)btn.disabled=false}
+   const fid=await uploadDecisionRecordToCloud(updated,updated.cloudFileId||'');updated.cloudFileId=String(fid||updated.cloudFileId||'');
+   const verified=await verifyCloudDecisionRecord(updated);if(!verified)throw new Error('تم إرسال القرار وPDF، لكن تعذر تأكيد تحديث حالة الإرسال في أرشيف القرار');
+   updated.cloudSynced=true;const rows=archiveRead().filter(x=>String(x.id)!==String(updated.id));rows.unshift(updated);archiveWrite(rows);
+   alert('تم إرسال قرار التكليف إلى '+updated.assigneeName+' كمرفق PDF رسمي، وتم تأكيد المرفق وتسجيل الإرسال في الأرشيف ✅');return true;
+ }catch(e){
+   // إذا فشل الإرسال قبل إنشاء رسالة مؤكدة، لا نترك PDF يتيمًا في التخزين.
+   if(pdfUpload?.fileId){try{await CloudFileEngine.trash(pdfUpload.fileId)}catch(_){ }}
+   console.error('[decision pdf messaging]',e);alert(e?.message||'تعذر إرسال قرار التكليف كمرفق PDF.');return false;
+ }finally{if(btn)btn.disabled=false}
 }
-
 function startNewAssignment(){
  if(currentArchiveRecordId){
    if(!confirm('سيتم فتح نموذج تكليف جديد. القرار المحفوظ سيبقى في الأرشيف السحابي دون تغيير. هل تريد المتابعة؟')) return;

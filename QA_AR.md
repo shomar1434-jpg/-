@@ -1,8 +1,11 @@
-# QA — عزل روابط المدارس المستقلة
-تم تصحيح أولوية هوية المدرسة: الرابط والجلسة السحابية قبل localStorage.
-تم منع استخدام رابط دخول/تسجيل مخزن قديم عند عرض المدارس.
-تم منع إنشاء رمز تسجيل محلي عشوائي من manager.html.
-تم جعل school-login يحل المدرسة من id/code الصريحين فقط ثم fallback محلي مطابق حرفيًا.
-تم جعل register يرفض أي تعارض بين schoolId وschoolCode وregistrationCode.
-تم تحديث روابط جميع المدارس في Supabase لتكون Canonical مستقلة لكل مدرسة.
-فحص JavaScript: PASS بدون أخطاء syntax.
+# فحص تصحيح إرسال قرار التكليف PDF
+
+- no_official_html_in_message_body: PASS
+- pdf_attachment_sent: PASS
+- pdf_signature_verified: PASS
+- cloud_readback_before_send: PASS
+- message_attachment_readback: PASS
+- archive_tracks_pdf: PASS
+- html2pdf_loaded: PASS
+- syntax_errors: PASS
+- syntax details: []

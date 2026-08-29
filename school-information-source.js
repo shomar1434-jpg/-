@@ -8,14 +8,17 @@ const CFG={
 };
 const SECTION_MAP={'1':'أ','2':'ب','3':'ج','4':'د','5':'هـ','6':'و','7':'ز','8':'ح','9':'ط','10':'ي','11':'ك','12':'ل'};
 const ROLE_AR={manager:'مدير/ة المدرسة',school_manager:'مدير/ة المدرسة',agent:'وكيل/ة',deputy:'وكيل/ة',teacher:'معلم/ة',student_advisor:'موجه/موجهة طلابية',counselor:'موجه/موجهة طلابية',activity_leader:'رائد/ة النشاط',admin_employee:'موظف/ة إداري/ة',administrative_employee:'موظف/ة إداري/ة',employee:'موظف/ة',health_advisor:'الموجه الصحي',kindergarten_teacher:'معلمة رياض الأطفال',principal:'مدير/ة المدرسة'};
-const state={students:[],staff:[],administrativeStaff:[],loaded:false,loading:null,schoolId:'',year:'',updatedAt:'',version:'2.3.0-deputy-teacher-source'};
+const state={students:[],staff:[],administrativeStaff:[],loaded:false,loading:null,schoolId:'',year:'',updatedAt:'',version:'2.4.0-secure-school-information'};
 const safe=v=>String(v==null?'':v).trim();
 const norm=v=>safe(v).replace(/[إأآا]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/[ـ\u064B-\u0652]/g,'').replace(/\s+/g,' ').toLowerCase();
 const readJson=k=>{try{return JSON.parse(localStorage.getItem(k)||sessionStorage.getItem(k)||'null')}catch(_){return null}};
 const infoChannel=(()=>{try{return new BroadcastChannel('smart-school-information')}catch(_){return null}})();
 function schoolId(){
-  const q=new URLSearchParams(location.search),u=readJson('currentSchoolUser')||readJson('currentUser')||readJson('loggedUser')||{},s=readJson('smartSchool.currentSchool')||readJson('active_school')||readJson('activeSchool')||{};
-  return safe(q.get('schoolId')||q.get('school_id')||localStorage.getItem('active_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||localStorage.getItem('smart_school_id')||s.id||s.school_id||u.school_id||u.schoolId||'');
+  // SECURITY V1: never trust query-string or generic localStorage for tenant identity.
+  try{
+    const sid=window.PlatformCloudSession && PlatformCloudSession.schoolId ? PlatformCloudSession.schoolId() : '';
+    return safe(sid);
+  }catch(_){return ''}
 }
 function year(){return safe(localStorage.getItem('school_info_academic_year')||localStorage.getItem('academic_year')||localStorage.getItem('current_academic_year')||'1448')}
 function noorSection(v){
@@ -30,7 +33,7 @@ function studentLocal(){
   [...new Set(keys)].forEach(k=>{try{const d=JSON.parse(localStorage.getItem(k)||'null'),rows=Array.isArray(d)?d:(d&&Array.isArray(d.students)?d.students:d&&Array.isArray(d.rows)?d.rows:[]);out.push(...rows)}catch(_){}});
   return out;
 }
-function sameSchool(u){const sid=schoolId(),us=safe(u.school_id||u.schoolId||u.current_school_id||u.active_school_id||u.school||'');return !sid||!us||sid===us}
+function sameSchool(u){const sid=schoolId(),us=safe(u.school_id||u.schoolId||u.current_school_id||u.active_school_id||u.school||'');return !!sid&&!!us&&sid===us}
 function staffLocal(){
   const keys=['smartSchoolUnifiedOpsV2_users','offline_users_backup','smart_school_users','users','school_users','smartSchoolUsers'],out=[];
   keys.forEach(k=>{try{const d=JSON.parse(localStorage.getItem(k)||sessionStorage.getItem(k)||'null'),rows=Array.isArray(d)?d:(d&&Array.isArray(d.users)?d.users:[]);out.push(...rows)}catch(_){}});
@@ -40,37 +43,17 @@ function mapStudent(r){return {id:safe(r.id||r.student_id||r.student_number||r.n
 function roleOf(u){return safe(u.role||u.user_role||u.type||u.account_type||u.section||'')}
 function mapStaff(u){const role=roleOf(u);return {id:safe(u.id||u.user_id||u.uid||u.email||u.name),name:safe(u.name||u.full_name||u.display_name||u.username||u.teacher_name||u.email),role,role_label:safe(u.role_label||u.job_title||u.position||ROLE_AR[role]||role||'مستخدم'),email:safe(u.email||u.user_email||''),status:safe(u.status||u.user_status||''),school_id:safe(u.school_id||u.schoolId||'')};}
 function dedupe(rows,keyFn){const m=new Map();rows.forEach(r=>{const k=keyFn(r);if(k&&!m.has(k))m.set(k,r)});return [...m.values()]}
-async function rest(path){const res=await fetch(CFG.url()+'/rest/v1/'+path,{headers:{apikey:CFG.anon(),Authorization:'Bearer '+CFG.anon(),Accept:'application/json'}});if(!res.ok)throw new Error('HTTP '+res.status);return res.json()}
-async function cloudStudents(){const sid=schoolId();if(!sid)return[];try{return await rest('students?select=*&school_id=eq.'+encodeURIComponent(sid)+'&student_status=neq.%D9%85%D8%AD%D8%B0%D9%88%D9%81&limit=5000')}catch(_){return[]}}
-async function cloudStaff(){
-  const sid=schoolId();if(!sid)return[];
-  // المدارس المستقلة ومتعددة المدارس: school_members هو المرجع الصحيح للعضوية.
-  // لا نُرجع listUsersBySchool مباشرة لأنها قد تكون نسخة وسيطة/محدودة؛
-  // نقرأ عضويات المدرسة كاملة أولاً ثم ندمج أي مصدر مساعد لاحقاً.
-  // وليس users.school_id فقط، لأن المستخدم قد يعمل في أكثر من مدرسة بنفس الحساب.
-  try{
-    const members=await rest('school_members?select=*&school_id=eq.'+encodeURIComponent(sid)+'&status=neq.deleted&limit=3000');
-    const ids=[...new Set((members||[]).map(m=>safe(m.user_id)).filter(Boolean))];
-    let identities=[];
-    if(ids.length){
-      const chunks=[]; for(let i=0;i<ids.length;i+=100)chunks.push(ids.slice(i,i+100));
-      for(const chunk of chunks){
-        const filter='('+chunk.map(x=>x.replace(/[^a-zA-Z0-9_-]/g,'')).filter(Boolean).join(',')+')';
-        if(filter!=='()'){try{identities.push(...await rest('users?select=*&id=in.'+encodeURIComponent(filter)+'&limit=500'))}catch(_){}}
-      }
-    }
-    const by=new Map((identities||[]).map(u=>[safe(u.id),u]));
-    const fromMembers=(members||[]).map(m=>{
-      const u=by.get(safe(m.user_id))||{};
-      return Object.assign({},u,{id:m.user_id||u.id,email:m.email||u.email,school_id:sid,role:m.role||u.role,role_label:m.role_label||u.role_label,status:m.status||u.status||'active'});
-    }).filter(x=>safe(x.id||x.email||x.name));
-    let direct=[]; try{direct=await rest('users?select=*&school_id=eq.'+encodeURIComponent(sid)+'&status=neq.deleted&limit=2000')}catch(_){}
-    let bridge=[]; try{if(window.SmartSchoolSupabase&&typeof SmartSchoolSupabase.listUsersBySchool==='function')bridge=await SmartSchoolSupabase.listUsersBySchool(sid)||[]}catch(_){}
-    return dedupe([...fromMembers,...direct,...bridge],x=>safe(x.id)||norm(x.email)||norm(x.name)+'|'+norm(x.role));
-  }catch(_){}
-  try{return await rest('users?select=*&school_id=eq.'+encodeURIComponent(sid)+'&status=neq.deleted&limit=2000')}catch(_){return[]}
+async function secureCall(action,body={}){
+  if(!window.PlatformCloudSession||!PlatformCloudSession.valid()) throw new Error('SESSION_REQUIRED');
+  const res=await fetch(CFG.url()+'/functions/v1/school-information',{method:'POST',headers:{'content-type':'application/json','apikey':CFG.anon(),'x-platform-session':PlatformCloudSession.token()},body:JSON.stringify(Object.assign({},body,{action}))});
+  const data=await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(data.error||('HTTP '+res.status));
+  const sid=schoolId(); if(data.schoolId&&sid&&String(data.schoolId)!==String(sid)) throw new Error('SCHOOL_SCOPE_MISMATCH');
+  return data;
 }
-async function cloudAdministrativeStaff(){const sid=schoolId();if(!sid)return[];try{if(window.SmartSchoolSupabase&&typeof SmartSchoolSupabase.listAdministrativeEmployeesBySchool==='function')return await SmartSchoolSupabase.listAdministrativeEmployeesBySchool(sid)}catch(_){}return[]}
+async function cloudStudents(){const sid=schoolId();if(!sid)return[];try{const q=await secureCall('students-list',{academicYear:year()});return q.students||[]}catch(_){return[]}}
+async function cloudStaff(){const sid=schoolId();if(!sid)return[];try{const q=await secureCall('staff-list');return q.staff||[]}catch(_){return[]}}
+async function cloudAdministrativeStaff(){const rows=await cloudStaff();return (rows||[]).filter(x=>['admin_employee','administrative_employee'].includes(norm(roleOf(x))))}
 async function load(force){
   const sid=schoolId(),yr=year(); if(state.loaded&&!force&&state.schoolId===sid&&state.year===yr)return state;if(state.loading&&!force)return state.loading;
   state.loading=(async()=>{

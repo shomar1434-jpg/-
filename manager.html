@@ -24,8 +24,10 @@
 })();
 </script>
 <style id="platform-verified-welcome-style">
-html[data-platform-access="verified"] #welcome-gate{visibility:visible!important;opacity:1!important;pointer-events:auto!important}
-html[data-platform-access="verified"] #welcome-gate > *{visibility:visible!important;opacity:1!important}
+html[data-platform-access="verified"]:not([data-platform-entered="1"]) #welcome-gate{visibility:visible!important;opacity:1!important;pointer-events:auto!important}
+html[data-platform-access="verified"]:not([data-platform-entered="1"]) #welcome-gate > *{visibility:visible!important;opacity:1!important}
+html[data-platform-access="verified"][data-platform-entered="1"] #welcome-gate{display:none!important;visibility:hidden!important;opacity:0!important;pointer-events:none!important}
+html[data-platform-access="verified"][data-platform-entered="1"] #welcome-dashboard{display:block!important;visibility:visible!important;opacity:1!important;pointer-events:auto!important}
 </style>
 <script id="platform-verified-welcome-bridge">
 (function(){
@@ -35,6 +37,7 @@ html[data-platform-access="verified"] #welcome-gate > *{visibility:visible!impor
   const originalEnterName='enterApp';
   function renderVerifiedWelcome(){
     if(entered) return;
+    document.documentElement.removeAttribute('data-platform-entered');
     const activation=document.getElementById('activation-overlay');
     const gate=document.getElementById('welcome-gate');
     const dash=document.getElementById('welcome-dashboard');
@@ -56,7 +59,29 @@ html[data-platform-access="verified"] #welcome-gate > *{visibility:visible!impor
   function bindEnterTracking(){
     const current=window[originalEnterName];
     if(typeof current==='function' && !current.__platformVerifiedWrapped){
-      const wrapped=function(){entered=true;return current.apply(this,arguments)};
+      const wrapped=function(){
+        entered=true;
+        document.documentElement.setAttribute('data-platform-entered','1');
+        const gate=document.getElementById('welcome-gate');
+        const dash=document.getElementById('welcome-dashboard');
+        if(gate){
+          gate.style.setProperty('display','none','important');
+          gate.style.setProperty('visibility','hidden','important');
+          gate.style.setProperty('opacity','0','important');
+          gate.style.setProperty('pointer-events','none','important');
+        }
+        const result=current.apply(this,arguments);
+        if(dash){
+          dash.removeAttribute('hidden');
+          dash.classList.remove('hidden');
+          dash.style.setProperty('display','block','important');
+          dash.style.setProperty('visibility','visible','important');
+          dash.style.setProperty('opacity','1','important');
+          dash.style.setProperty('pointer-events','auto','important');
+          try{dash.scrollTop=0;}catch(_){}
+        }
+        return result;
+      };
       wrapped.__platformVerifiedWrapped=true;
       window[originalEnterName]=wrapped;
     }

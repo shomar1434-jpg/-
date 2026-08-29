@@ -512,7 +512,7 @@
     </form>
   </main>
 
-<script src="platform-cloud-session.js?v=20260828-session-continuity-v2"></script>
+<script src="platform-cloud-session.js?v=20260829-manager-verify-access-v4"></script>
 <script id="school-logout-scope-cleanup-v1">
 (function(){
   try{
@@ -537,6 +537,16 @@
   }catch(e){}
 
   const params = new URLSearchParams(location.search || '');
+  // رابط المدرسة المستقلة يبدأ سياق مدرسة جديدًا حتى لو فُتح من تبويب مدير النظام.
+  // نمسح أعلام السياق فقط ولا نسجل خروج مدير النظام من Supabase.
+  try{
+    const hasIndependentSchoolRef=!!(params.get('schoolId')||params.get('school_id')||params.get('id')||params.get('sid')||params.get('schoolCode')||params.get('school_code'));
+    if(hasIndependentSchoolRef){
+      ['system_admin_context','system_admin_verified','system_admin_session','systemAdmin','system_admin_mode'].forEach(k=>sessionStorage.removeItem(k));
+      sessionStorage.removeItem('systemAdminSession');
+      document.documentElement.removeAttribute('data-system-admin-context');
+    }
+  }catch(_){ }
   function pathSchoolRef(){
     const parts = location.pathname.split('/').filter(Boolean);
     const last = parts[parts.length-1] || '';

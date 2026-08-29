@@ -115,8 +115,10 @@ button{border:0;border-radius:9px;padding:10px 13px;font:700 12px 'Alyamama';cur
 @media(max-width:1000px){.manager-return-btn{top:8px;left:8px;width:38px;height:38px;font-size:22px}}
 </style>
 <script src="school-information-source.js?v=20260824-decisions-assignees-1"></script>
-<script src="platform-cloud-session.js?v=20260818-session-v12"></script>
+<script src="platform-cloud-session.js?v=20260829-manager-verify-access-v4"></script>
 <script src="cloud-file-engine.js"></script>
+<script src="internal-messaging.js?v=20260829-decisions-send-v2"></script>
+<meta name="decisions-assignments-version" content="2026.08.29-cloud-archive-messaging-v2">
 </head>
 <body>
 <a class="manager-return-btn" href="manager.html?return_to=sections" aria-label="العودة إلى واجهة الأقسام الرئيسية للمدير" title="العودة للأقسام الرئيسية">←</a>
@@ -173,9 +175,9 @@ button{border:0;border-radius:9px;padding:10px 13px;font:700 12px 'Alyamama';cur
 
  <div class="actions">
   <button class="primary" onclick="preparePrint()">إصدار PDF / طباعة</button>
-  <button class="secondary" onclick="saveData()">حفظ في أرشيف السجلات</button>
+  <button class="secondary" onclick="saveData()">حفظ في أرشيف القرارات والتكليفات</button>
   <button class="secondary" id="newAssignmentBtn" onclick="startNewAssignment()">＋ تكليف جديد</button>
-  <button class="secondary" id="sendAssignmentBtn" onclick="sendSavedAssignmentToAssignee()">✉ إرسال للمكلف</button>
+  <button class="secondary" id="sendAssignmentBtn" onclick="sendSavedAssignmentToAssignee()">✉ إرسال القرار للمكلف</button>
   <button class="ghost" onclick="clearData()">مسح</button>
  </div>
  <div class="note" style="border-right:4px solid #0a7978;background:#f0fdfa">مكان الحفظ: <b>أرشيف السجلات ← القرارات والتكليفات</b>. يتم التحقق من وجود السجل بعد كل عملية حفظ قبل إظهار رسالة النجاح. يمكن تعديل القرار أو حذفه لاحقًا من الأرشيف. ويُرقّم تلقائيًا عند تكرار اسم المكلف.</div><div class="note">الصفحة الأولى: القرار بتنسيق الخطاب الرسمي المعتمد. الصفحة الثانية: المهام والمسؤوليات المرتبطة بالتكليف في عمودين. ويمكن اختيار «أخرى» لإنشاء تكليف مخصص باسم ومهمة ومسؤوليات يحددها مدير المدرسة، مع بقاء المخرج في صفحتين A4.</div>
@@ -605,7 +607,9 @@ async function loadAssigneeNames(selectedValue){
  const selected=normalizePersonName(selectedValue||sel.value);
  sel.innerHTML='<option value="">اختر المعلم/المعلمة</option>'+teachers.map(t=>{
    const n=normalizePersonName(t.name||t.full_name||t.teacher_name);
-   return '<option value="'+esc(n)+'">'+esc(n)+'</option>';
+   const uid=String(t.id||t.user_id||'').trim();
+   const email=String(t.email||t.user_email||t.microsoft_email||'').trim();
+   return '<option value="'+esc(n)+'" data-user-id="'+esc(uid)+'" data-email="'+esc(email)+'">'+esc(n)+'</option>';
  }).join('');
  if(selected){
    if(![...sel.options].some(o=>o.value===selected)){
@@ -616,6 +620,30 @@ async function loadAssigneeNames(selectedValue){
  if(hint)hint.textContent=teachers.length
    ? 'المصدر: نظام المدرسة — '+teachers.length+' معلم/معلمة.'
    : 'تعذر تحميل أسماء المعلمين حاليًا. أعد فتح الصفحة بعد التأكد من جلسة المدرسة.';
+}
+function selectedAssigneeIdentity(){
+ const sel=$('name');
+ const opt=sel&&sel.options&&sel.selectedIndex>=0?sel.options[sel.selectedIndex]:null;
+ return {
+   userId:String(opt?.dataset?.userId||'').trim(),
+   email:String(opt?.dataset?.email||'').trim().toLowerCase(),
+   name:normalizePersonName(sel?.value||'')
+ };
+}
+async function verifyCloudDecisionRecord(record){
+ const f=await findCloudDecision(record?.id||'');
+ if(!f)return null;
+ const rec=await readCloudDecisionRecord(f);
+ if(!rec)return null;
+ const sameId=String(rec.id||'')===String(record.id||'');
+ const sameType=String(rec.recordType||'')==='decision_assignment';
+ const sameFolder=String(rec.folderId||DECISIONS_FOLDER_ID)===DECISIONS_FOLDER_ID;
+ const sameAssignee=normalizePersonName(rec.assigneeName||'')===normalizePersonName(record.assigneeName||'');
+ const sameVersion=String(rec.updatedAt||'')===String(record.updatedAt||'');
+ if(!sameId||!sameType||!sameFolder||!sameAssignee||!sameVersion)return null;
+ rec.cloudFileId=String(f.id||rec.cloudFileId||'');
+ rec.cloudSynced=true;
+ return rec;
 }
 function findArchivedDecision(id){
  return archiveRead().find(r=>String(r.id)===String(id)&&r.recordType==='decision_assignment')||null;
@@ -721,6 +749,7 @@ async function saveData(){
  const now=new Date().toISOString();
  const d=decisions[+$('type').value||0];
  const role=isCustomDecision()?safe($('customTitle').value,'تكليف مخصص'):cleanRole(d.title);
+ const assigneeIdentity=selectedAssigneeIdentity();
  const record={
    id,
    recordType:'decision_assignment',
@@ -730,6 +759,8 @@ async function saveData(){
    title:assignee+' - '+sequence,
    displayName:assignee+' - '+sequence,
    assigneeName:assignee,
+   assigneeUserId:assigneeIdentity.userId||old?.assigneeUserId||'',
+   assigneeEmail:assigneeIdentity.email||old?.assigneeEmail||'',
    sequence,
    assignmentTitle:role,
    decisionNo:o.decisionNo||'',
@@ -753,14 +784,16 @@ async function saveData(){
    record.cloudFileId=String(fid);
    record.cloudSynced=true;
 
-   // Cache محلي بعد نجاح الحفظ السحابي فقط.
+   // تحقق سحابي حقيقي بقراءة السجل نفسه قبل تحديث أي Cache محلي.
+   const verifiedRecord=await verifyCloudDecisionRecord(record);
+   if(!verifiedRecord)throw new Error('تعذر التحقق من تطابق القرار المحفوظ سحابيًا مع النسخة الحالية');
+   record.cloudFileId=String(verifiedRecord.cloudFileId||fid);
+   record.cloudSynced=true;
+
+   // Cache محلي بعد اكتمال التحقق السحابي فقط.
    const next=rows.filter(r=>String(r.id)!==String(id));
    next.unshift(record);
-   if(!archiveWrite(next))console.warn('تعذر تحديث Cache المحلي، لكن السجل محفوظ سحابيًا.');
-
-   // تحقق سحابي حقيقي بعد الحفظ.
-   const verify=await findCloudDecision(id);
-   if(!verify)throw new Error('تعذر التحقق من وجود القرار في الأرشيف السحابي بعد الحفظ');
+   if(!archiveWrite(next))console.warn('تعذر تحديث Cache المحلي، لكن السجل تم التحقق منه سحابيًا.');
 
    currentArchiveRecordId=id;
    try{localStorage.setItem('takleef1448_approved',JSON.stringify(o))}catch(e){}
@@ -780,46 +813,75 @@ function normalizeAssigneeIdentity(v){
 }
 async function resolveSavedAssignmentRecipient(record){
  if(!window.SchoolInformationSource||typeof SchoolInformationSource.getStaff!=='function')throw new Error('مصدر مستخدمي المدرسة غير متاح');
- const staff=await SchoolInformationSource.getStaff(),wanted=normalizeAssigneeIdentity(record?.assigneeName);
+ const staff=await SchoolInformationSource.getStaff();
+ const savedId=String(record?.assigneeUserId||'').trim();
+ const savedEmail=String(record?.assigneeEmail||'').trim().toLowerCase();
+ if(savedId){
+   const byId=(staff||[]).find(u=>String(u.id||u.user_id||'').trim()===savedId);
+   if(byId)return byId;
+ }
+ if(savedEmail){
+   const byEmail=(staff||[]).filter(u=>String(u.email||u.user_email||u.microsoft_email||'').trim().toLowerCase()===savedEmail && (u.id||u.user_id));
+   if(byEmail.length===1)return byEmail[0];
+ }
+ const wanted=normalizeAssigneeIdentity(record?.assigneeName);
  const matches=(staff||[]).filter(u=>normalizeAssigneeIdentity(u.name||u.full_name)===wanted && (u.id||u.user_id));
  if(matches.length===1)return matches[0];
- if(matches.length>1)throw new Error('يوجد أكثر من حساب مطابق لاسم المكلف؛ يرجى التأكد من بيانات المستخدم في مركز المعلومات');
+ if(matches.length>1)throw new Error('يوجد أكثر من حساب مطابق لاسم المكلف؛ افتح القرار واختر المكلف مجددًا لتثبيت الحساب الصحيح');
  throw new Error('لم يتم العثور على حساب مستخدم مطابق للمكلف داخل المدرسة');
 }
 async function sendSavedAssignmentToAssignee(){
  if(!currentArchiveRecordId){alert('احفظ قرار التكليف أولًا قبل إرساله للمكلف.');return false}
- const record=findArchivedDecision(currentArchiveRecordId);
+ let record=findArchivedDecision(currentArchiveRecordId);
  if(!record||!record.cloudSynced){alert('يجب أن يكون قرار التكليف محفوظًا ومؤكدًا سحابيًا قبل الإرسال.');return false}
- if(!window.InternalMessaging||typeof InternalMessaging.call!=='function'){alert('نظام المراسلات الداخلي غير متاح.');return false}
+ if(!window.InternalMessaging||typeof InternalMessaging.call!=='function'){alert('نظام المراسلات الداخلي غير متاح. أعد تحميل الصفحة ثم حاول مرة أخرى.');return false}
  const btn=$('sendAssignmentBtn');if(btn)btn.disabled=true;
  try{
+   const cloudCopy=await verifyCloudDecisionRecord(record);
+   if(!cloudCopy)throw new Error('تعذر التحقق من القرار السحابي قبل الإرسال');
+   record=Object.assign({},record,cloudCopy,{cloudSynced:true});
    const user=await resolveSavedAssignmentRecipient(record);
    if(record.sentMessageId && !confirm('سبق إرسال هذا القرار للمكلف. هل تريد إعادة إرساله؟'))return false;
    const tmp=document.createElement('div');tmp.innerHTML=record.officialHtml||'';
    const officialText=String(tmp.innerText||tmp.textContent||'').replace(/\n{3,}/g,'\n\n').trim();
-   const body=[
+   const header=[
     'صدر لك قرار تكليف من إدارة المدرسة.',
     '',
     'نوع التكليف: '+(record.assignmentTitle||''),
     'رقم القرار: '+(record.decisionNo||'—'),
     'اسم المكلف: '+(record.assigneeName||''),
-    officialText?'\nنص القرار:\n'+officialText:'',
     '',
-    'تم إرسال هذا القرار من نظام القرارات والتكليفات في منصة الإدارة المدرسية.'
-   ].filter(Boolean).join('\n');
+    'نص القرار:'
+   ].join('\n');
+   const footer='\n\nتم إرسال هذا القرار من نظام القرارات والتكليفات في منصة الإدارة المدرسية.';
+   const maxOfficial=Math.max(0,19800-header.length-footer.length);
+   const body=header+'\n'+officialText.slice(0,maxOfficial)+footer;
    const r=await InternalMessaging.call('send',{
      recipientIds:[String(user.id||user.user_id)],
      recipientRoles:[],allSchool:false,
      subject:'قرار تكليف — '+(record.assignmentTitle||record.displayName||'تكليف إداري'),
-     body,priority:'important',messageType:'official',acknowledgementMode:'none',
+     body,priority:'important',messageType:'official',acknowledgementMode:'read_receipt',
      attachments:[],
-     linked:{module:'manager_decisions_assignments',recordType:'decision_assignment',recordId:String(record.id),title:'قرار تكليف — '+(record.assignmentTitle||record.displayName||'تكليف إداري')}
+     linked:{module:'manager_decisions_assignments',recordType:'decision_assignment',recordId:String(record.id),title:'قرار تكليف — '+(record.assignmentTitle||record.displayName||'تكليف إداري')},
+     metadata:{source:'decisions_assignments',decisionId:String(record.id),assigneeUserId:String(user.id||user.user_id||'')}
    });
    if(!r||!r.ok||!r.messageId)throw new Error('لم يرجع نظام المراسلات تأكيدًا صالحًا للإرسال');
-   record.sentToAssigneeAt=new Date().toISOString();record.sentMessageId=String(r.messageId);record.sentToUserId=String(user.id||user.user_id);
-   const rows=archiveRead().filter(x=>String(x.id)!==String(record.id));rows.unshift(record);archiveWrite(rows);
-   try{await uploadDecisionRecordToCloud(record,record.cloudFileId||'')}catch(e){console.warn('[assignment sent metadata]',e)}
-   alert('تم إرسال قرار التكليف إلى '+record.assigneeName+' عبر نظام المراسلات الداخلي ✅');
+   const updated=Object.assign({},record,{
+     sentToAssigneeAt:new Date().toISOString(),
+     sentMessageId:String(r.messageId),
+     sentToUserId:String(user.id||user.user_id),
+     assigneeUserId:String(user.id||user.user_id),
+     assigneeEmail:String(user.email||user.user_email||record.assigneeEmail||'').trim().toLowerCase(),
+     updatedAt:new Date().toISOString()
+   });
+   const fid=await uploadDecisionRecordToCloud(updated,updated.cloudFileId||'');
+   updated.cloudFileId=String(fid||updated.cloudFileId||'');
+   const verified=await verifyCloudDecisionRecord(updated);
+   if(!verified)throw new Error('تم إرسال الرسالة، لكن تعذر تأكيد تحديث حالة الإرسال في أرشيف القرار');
+   updated.cloudSynced=true;
+   const rows=archiveRead().filter(x=>String(x.id)!==String(updated.id));rows.unshift(updated);
+   archiveWrite(rows);
+   alert('تم إرسال قرار التكليف إلى '+updated.assigneeName+' عبر نظام المراسلات الداخلي، وتم تسجيل حالة الإرسال في الأرشيف ✅');
    return true;
  }catch(e){alert('تعذر إرسال قرار التكليف: '+(e?.message||e));return false}
  finally{if(btn)btn.disabled=false}

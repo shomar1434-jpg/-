@@ -286,6 +286,58 @@
     return recover();
   }
 
+
+  async function verifyAccess(requiredRoles = []) {
+    if (isSystemAdminContext()) {
+      const error = new Error('التحقق من عضوية المدرسة غير متاح داخل سياق مدير النظام.');
+      error.code = 'SYSTEM_ADMIN_SCHOOL_VERIFY_BLOCKED';
+      throw error;
+    }
+    const payload = await memberships();
+    const current = payload && payload.current ? payload.current : {};
+    const sid = String(current.schoolId || '').trim();
+    const uid = String(current.userId || '').trim();
+    const rr = String(current.role || '').trim();
+    if (!sid || !uid || !rr) {
+      const error = new Error('الجلسة لا تحتوي على مدرسة ومستخدم ودور موثقين.');
+      error.code = 'VERIFIED_CONTEXT_INCOMPLETE';
+      throw error;
+    }
+    const membershipsList = Array.isArray(payload.memberships) ? payload.memberships : [];
+    const normalizeRole = (v) => String(v || '').trim().toLowerCase();
+    const aliases = {
+      manager: ['manager','principal','school_manager','leadership','مدير','مديرة','مدير المدرسة','مديرة المدرسة'],
+      agent: ['agent','deputy','vice','wakil','agency','وكيل','وكيلة'],
+      teacher: ['teacher','performance','معلم','معلمة'],
+      student_advisor: ['student_advisor','advisor','counselor','مرشد','موجه'],
+      health_advisor: ['health_advisor','health-advisor','موجه صحي','الموجه الصحي'],
+      activity_leader: ['activity_leader','activity-leader','activity','رائد النشاط','رائدة النشاط'],
+      kindergarten_teacher: ['kindergarten_teacher','kindergarten-teacher','معلمة رياض الأطفال']
+    };
+    const allowed = (requiredRoles || []).flatMap((role) => aliases[normalizeRole(role)] || [normalizeRole(role)]);
+    const member = membershipsList.find((m) =>
+      String(m.schoolId || '') === sid &&
+      String(m.userId || '') === uid &&
+      (!rr || normalizeRole(m.role) === normalizeRole(rr))
+    ) || membershipsList.find((m) => String(m.schoolId || '') === sid && String(m.userId || '') === uid);
+    if (!member) {
+      const error = new Error('المستخدم غير مرتبط بالمدرسة الحالية بعضوية فعالة.');
+      error.code = 'VERIFIED_MEMBERSHIP_MISSING';
+      throw error;
+    }
+    if (allowed.length && !allowed.includes(normalizeRole(rr)) && !allowed.includes(normalizeRole(member.role))) {
+      const error = new Error('الدور الحالي غير مخول بفتح هذه الصفحة.');
+      error.code = 'VERIFIED_ROLE_DENIED';
+      throw error;
+    }
+    // Compatibility keys are reconciled only after a server-verified membership response.
+    ['active_school_id','current_school_id','school_id','smart_school_id'].forEach((k) => localStorage.setItem(k, sid));
+    sessionStorage.setItem(TAB_SCHOOL_KEY, sid);
+    sessionStorage.setItem(TAB_USER_KEY, uid);
+    sessionStorage.setItem(TAB_ROLE_KEY, rr || String(member.role || ''));
+    return { schoolId: sid, userId: uid, role: rr || String(member.role || ''), membership: member };
+  }
+
   function clear() {
     const tabToken=sessionStorage.getItem(TAB_TOKEN_KEY)||'';const sharedToken=localStorage.getItem(TOKEN_KEY)||'';
     [TAB_TOKEN_KEY,TAB_EXPIRES_KEY,TAB_USER_KEY,TAB_SCHOOL_KEY,TAB_ROLE_KEY].forEach(k=>sessionStorage.removeItem(k));
@@ -299,7 +351,7 @@
     } catch (_) {}
   }
 
-  const SESSION_VERSION='2026.08.29-system-admin-school-isolation-v3';
+  const SESSION_VERSION='2026.08.29-manager-verify-access-v4';
 
   window.PlatformCloudSession = {
     VERSION:SESSION_VERSION,
@@ -315,6 +367,7 @@
     ensure,
     recover,
     restoreFromKnownContext,
+    verifyAccess,
     clear,
   };
 

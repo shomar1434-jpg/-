@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-if(window.__SCHOOL_NAVIGATION_GUARD_V3__)return;window.__SCHOOL_NAVIGATION_GUARD_V3__=true;
+if(window.__SCHOOL_NAVIGATION_GUARD_V4__)return;window.__SCHOOL_NAVIGATION_GUARD_V4__=true;
 
 function isSystemAdminContext(){
  try{
@@ -100,44 +100,59 @@ document.addEventListener('click',function(e){
 window.SchoolNavigationGuard={roleRoot,logout,isSystemAdminContext,ownerHome};
 })();
 
+
 /* =========================================================
-   Independent School Role Flow V1
-   - يحافظ على جلسة المدرسة الحالية ولا ينشئ جلسة جديدة.
-   - يفتح واجهة الأقسام مباشرة عند العودة من صفحة داخلية.
-   - يمنع بقاء طبقة الترحيب/التنشيط فوق بطاقات الأقسام.
-   - لا يفرض دورًا جديدًا حتى لا يكسر نظام التفويض والتكليف.
+   Independent School Role Flow V2
+   State contract:
+   1) first role entry => preserve original welcome gate;
+   2) enterApp() => original page opens role sections;
+   3) internal Back => ?sectionHome=1 => sections home directly.
+   School/session validation NEVER chooses the visual stage.
    ========================================================= */
 (function(){
 'use strict';
-if(window.__INDEPENDENT_SCHOOL_ROLE_FLOW_V1__) return;
-window.__INDEPENDENT_SCHOOL_ROLE_FLOW_V1__=true;
+if(window.__INDEPENDENT_SCHOOL_ROLE_FLOW_V2__) return;
+window.__INDEPENDENT_SCHOOL_ROLE_FLOW_V2__=true;
 const ROOTS=new Set(['manager.html','agent.html','teacher.html','student_advisor.html','health_advisor.html','kindergarten_teacher.html','activity_leader.html','administrative_employee_portal.html']);
 function file(){return (location.pathname.split('/').pop()||'').toLowerCase()}
 function wantsSectionHome(){try{return new URLSearchParams(location.search||'').get('sectionHome')==='1'}catch(_){return false}}
 function hasSchoolContext(){try{return !!(sessionStorage.getItem('platform_tab_session_token_v1')||localStorage.getItem('platform_session_token_v1')||sessionStorage.getItem('smart_school_tab_school_v1')||localStorage.getItem('active_school_id')||localStorage.getItem('smart_school_current_session'))}catch(_){return false}}
-function revealSectionsHome(){
+function clearTransientLayers(){
   const activation=document.getElementById('activation-overlay');
   if(activation){activation.style.setProperty('display','none','important');activation.style.setProperty('visibility','hidden','important');activation.style.setProperty('pointer-events','none','important')}
+  try{document.documentElement.removeAttribute('data-role-entry-blocked')}catch(_){}
+}
+function showSectionsHome(){
+  clearTransientLayers();
   const gate=document.getElementById('welcome-gate');
   if(gate){gate.style.setProperty('display','none','important');gate.style.setProperty('visibility','hidden','important');gate.style.setProperty('pointer-events','none','important')}
   const dash=document.getElementById('welcome-dashboard');
   if(dash){dash.classList.remove('hidden');dash.style.setProperty('display','block','important');dash.style.setProperty('visibility','visible','important');dash.style.setProperty('opacity','1','important');dash.style.setProperty('pointer-events','auto','important')}
-  try{document.documentElement.removeAttribute('data-role-entry-blocked')}catch(_){}
+}
+function preserveOriginalEntry(){
+  clearTransientLayers();
+  // Important: do NOT force gate/dashboard state here. The role page's original
+  // activation/welcome boot and enterApp() own the initial visual transition.
 }
 async function boot(){
   if(!ROOTS.has(file())||isSystemAdminContext()) return;
-  if(!hasSchoolContext()&&!wantsSectionHome()) return; // يحافظ على الاستخدام القديم خارج المدرسة المستقلة
+  const directHome=wantsSectionHome();
+  if(!hasSchoolContext()&&!directHome) return;
   try{
     if(window.PlatformCloudSession&&typeof PlatformCloudSession.ensure==='function') await PlatformCloudSession.ensure();
-    // manager.html لديه حارس أمني مستقل؛ لا نتجاوزه، بل نصلح حالة الواجهة فقط بعد وجود الجلسة.
-    revealSectionsHome();
-    requestAnimationFrame(revealSectionsHome);
-    setTimeout(revealSectionsHome,120);
+    if(directHome){
+      showSectionsHome();
+      requestAnimationFrame(showSectionsHome);
+      setTimeout(showSectionsHome,80);
+    }else{
+      preserveOriginalEntry();
+    }
   }catch(e){
-    console.warn('[independent-school-role-flow] session not ready',e);
-    // لا نمسح الجلسة ولا نعيد توجيه المستخدم من هنا؛ الحارس الأمني المختص يتولى ذلك.
+    console.warn('[independent-school-role-flow-v2] session not ready',e);
+    // Fail closed is handled by each page's dedicated auth/session guard.
+    // This UI helper never clears session and never redirects.
   }
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
-window.addEventListener('pageshow',function(){if(ROOTS.has(file())&&(wantsSectionHome()||hasSchoolContext()))boot()});
+window.addEventListener('pageshow',function(){if(ROOTS.has(file())&&wantsSectionHome())boot()});
 })();

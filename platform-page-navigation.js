@@ -1,7 +1,7 @@
 (function(){
 'use strict';
-if(window.__PLATFORM_PAGE_NAVIGATION_V2__) return;
-window.__PLATFORM_PAGE_NAVIGATION_V2__=true;
+if(window.__PLATFORM_PAGE_NAVIGATION_V3__) return;
+window.__PLATFORM_PAGE_NAVIGATION_V3__=true;
 
 const ROOT_PAGES=new Set([
   'index.html','manager.html','agent.html','student_advisor.html','health_advisor.html',

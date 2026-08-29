@@ -2668,30 +2668,52 @@ h1{font-size:18px;margin:0;color:#0f3f75;font-weight:900}
                 };
                 return map[mode][kind];
             },
-            buildArchivePrintSnapshot(title){
+            buildArchivePrintSnapshot(title,type){
                 try{
-                    const source=document.querySelector('#app main');
+                    const activeRoot=Array.from(document.querySelectorAll('#app main &gt; .flex-1 &gt; div, #app main &gt; div.flex-1 &gt; div, #app main .max-w-7xl &gt; div')).find(el=&gt;{
+                        const st=getComputedStyle(el);return st.display!=='none' &amp;&amp; st.visibility!=='hidden';
+                    });
+                    let source=null;
+                    if(type==='school_reality') source=document.querySelector('.actual-reality-sheet');
+                    else if(type==='formation_decision') source=document.querySelector('.committee-print-sheet');
+                    else if(type==='formation_meetings') source=document.querySelector('.committee-print-root .print-card');
+                    else if(activeRoot) source=activeRoot.querySelector('.print-card')||activeRoot;
+                    if(!source) source=document.querySelector('#app main .print-card')||document.querySelector('#app main');
                     if(!source)return '';
+
                     const clone=source.cloneNode(true);
                     const srcControls=source.querySelectorAll('input, textarea, select');
                     const dstControls=clone.querySelectorAll('input, textarea, select');
                     srcControls.forEach((control,index)=&gt;{
                         const c=dstControls[index];if(!c)return;
                         const d=document.createElement('div');
-                        d.className=(c.className||'')+' archived-control-value';
+                        d.className=(c.className||'')+' archived-control-value print-control-value';
                         if(control.tagName==='SELECT')d.textContent=control.options[control.selectedIndex]?.text||'';
                         else if(control.type==='radio'||control.type==='checkbox')d.textContent=control.checked?'☑':'☐';
                         else d.textContent=control.value||'';
                         c.replaceWith(d);
                     });
-                    clone.querySelectorAll('.no-print,button,input[type=file]').forEach(el=&gt;el.remove());
+                    clone.querySelectorAll('.no-print,.noPrint,button,input[type=file]').forEach(el=&gt;el.remove());
                     clone.querySelectorAll('[hidden]').forEach(el=&gt;el.remove());
-                    const styles=Array.from(document.querySelectorAll('head style')).map(s=&gt;s.textContent||'').join('\n');
-                    return `&lt;!DOCTYPE html&gt;&lt;html lang=&quot;ar&quot; dir=&quot;rtl&quot;&gt;&lt;head&gt;&lt;meta charset=&quot;UTF-8&quot;&gt;&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width,initial-scale=1&quot;&gt;&lt;title&gt;${String(title||'ملف التقويم الذاتي').replace(/[&lt;&gt;]/g,'')}&lt;/title&gt;&lt;script src=&quot;https://cdn.tailwindcss.com&quot;&gt;&lt;\/script&gt;&lt;link href=&quot;https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&amp;display=swap&quot; rel=&quot;stylesheet&quot;&gt;&lt;style&gt;${styles}
-@page{size:A4 portrait;margin:8mm}html,body{margin:0!important;padding:0!important;background:#fff!important;overflow:visible!important}.archive-print-sheet{width:100%!important;max-width:210mm!important;margin:0 auto!important;background:#fff!important;padding:5mm!important}.archive-print-sheet,.archive-print-sheet *{max-height:none!important;overflow:visible!important}.archived-control-value{white-space:pre-wrap!important;overflow-wrap:anywhere!important;min-height:5mm;padding:.8mm 1mm;border:1px solid #d7dee8;border-radius:4px;background:#fff}@media screen{body{background:#e5e7eb!important;padding:12px!important}.archive-print-sheet{box-shadow:0 8px 30px #0002}}@media print{.archive-print-sheet{max-width:none!important;padding:0!important;box-shadow:none!important}}&lt;/style&gt;&lt;/head&gt;&lt;body&gt;&lt;div class=&quot;archive-print-sheet&quot;&gt;${clone.outerHTML}&lt;/div&gt;&lt;/body&gt;&lt;/html&gt;`;
-                }catch(e){console.error('[self evaluation snapshot]',e);return ''}
-            },
-            restoreArchiveEditContext(){
+                    clone.classList.remove('shadow-sm','shadow','shadow-lg','rounded-xl','overflow-hidden');
+                    clone.classList.add('archive-print-source');
+
+                    const normalCss=[]; const printCss=[];
+                    Array.from(document.styleSheets).forEach(sheet=&gt;{
+                        let rules;try{rules=sheet.cssRules}catch(_){return}
+                        Array.from(rules||[]).forEach(rule=&gt;{
+                            if(rule.type===CSSRule.MEDIA_RULE &amp;&amp; /print/i.test(rule.conditionText||rule.media?.mediaText||'')){
+                                Array.from(rule.cssRules||[]).forEach(r=&gt;printCss.push(r.cssText));
+                            }else if(rule.type===CSSRule.PAGE_RULE){printCss.push(rule.cssText);}
+                            else if(rule.type!==CSSRule.IMPORT_RULE){normalCss.push(rule.cssText);}
+                        });
+                    });
+                    const bodyClass=type==='operational_plan'?'print-plan':'';
+                    const safeTitle=String(title||'ملف التقويم الذاتي').replace(/[&lt;&gt;]/g,'');
+                    return `&lt;!DOCTYPE html&gt;&lt;html lang="ar" dir="rtl"&gt;&lt;head&gt;&lt;meta charset="UTF-8"&gt;&lt;meta name="viewport" content="width=device-width,initial-scale=1"&gt;&lt;title&gt;${safeTitle}&lt;/title&gt;&lt;script src="https://cdn.tailwindcss.com"&gt;&lt;\/script&gt;&lt;link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&amp;display=swap" rel="stylesheet"&gt;&lt;style&gt;${normalCss.join('\n')}\n${printCss.join('\n')}
+@page{size:A4 portrait;margin:8mm}*{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}html,body{margin:0!important;padding:0!important;background:#fff!important;overflow:visible!important}.archive-print-sheet{width:100%!important;max-width:210mm!important;margin:0 auto!important;background:#fff!important;padding:0!important}.archive-print-sheet,.archive-print-sheet *{max-height:none!important;overflow:visible!important}.archive-print-source{width:100%!important;max-width:none!important;margin:0!important;box-shadow:none!important}.archived-control-value{white-space:pre-wrap!important;overflow-wrap:anywhere!important;min-height:5mm}.print-only{display:block!important}.no-print,.noPrint{display:none!important}@media screen{body{background:#e5e7eb!important;padding:12px!important}.archive-print-sheet{background:#fff!important;box-shadow:0 8px 30px #0002;padding:8mm!important}}@media print{body{padding:0!important}.archive-print-sheet{max-width:none!important;padding:0!important;box-shadow:none!important}}&lt;/style&gt;&lt;/head&gt;&lt;body class="${bodyClass}"&gt;&lt;div class="archive-print-sheet"&gt;${clone.outerHTML}&lt;/div&gt;&lt;/body&gt;&lt;/html&gt;`;
+                }catch(e){console.error('[self evaluation print-exact snapshot]',e);return ''}
+            },            restoreArchiveEditContext(){
                 try{
                     const qs=new URLSearchParams(window.parent&amp;&amp;window.parent!==window?window.parent.location.search:window.location.search);
                     const editId=qs.get('editArchive')||sessionStorage.getItem('self_evaluation_edit_id_v1')||'';
@@ -2743,8 +2765,8 @@ h1{font-size:18px;margin:0;color:#0f3f75;font-weight:900}
                     const id=editId||`${type}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
                     const oldRow=this._archiveEditRow||{};
                     await this.$nextTick();
-                    const htmlContent=this.buildArchivePrintSnapshot(title);
-                    const row={...oldRow,id,folderId,folderName,recordName:folderName,title,type,source:&#x27;قسم التقويم الذاتي&#x27;,savedAt:oldRow.savedAt||now,updatedAt:now,schoolName:this.schoolInfo?.name||&#x27;&#x27;,academicYear:this.schoolInfo?.hijriYear||&#x27;&#x27;,data:JSON.parse(JSON.stringify(payload||{})),htmlContent,archiveFormat:&#x27;print-snapshot-v2&#x27;,sourceFile:&#x27;self_evaluation_records.html&#x27;};
+                    const htmlContent=this.buildArchivePrintSnapshot(title,type);
+                    const row={...oldRow,id,folderId,folderName,recordName:folderName,title,type,source:&#x27;قسم التقويم الذاتي&#x27;,savedAt:oldRow.savedAt||now,updatedAt:now,schoolName:this.schoolInfo?.name||&#x27;&#x27;,academicYear:this.schoolInfo?.hijriYear||&#x27;&#x27;,data:JSON.parse(JSON.stringify(payload||{})),htmlContent,archiveFormat:&#x27;print-snapshot-v3-exact&#x27;,sourceFile:&#x27;self_evaluation_records.html&#x27;};
                     folder.items.unshift(row);folder.updatedAt=now;
                     localStorage.setItem(objectKey,JSON.stringify(archive));
 
@@ -3873,7 +3895,7 @@ function archiveRead(){try{return JSON.parse(localStorage.getItem(&#x27;self_eva
 function archiveWrite(archive){localStorage.setItem(&#x27;self_evaluation_archive_v1&#x27;,JSON.stringify(archive))}
 const SELF_EVAL_FOLDER_IDS={&quot;تشكيل فريق التقويم الذاتي&quot;: &quot;selfEval_01&quot;, &quot;نشر ثقافة التقويم الذاتي&quot;: &quot;selfEval_02&quot;, &quot;الخطة الإجرائية للتقويم الذاتي&quot;: &quot;selfEval_03&quot;, &quot;محاضر اجتماعات فريق التقويم&quot;: &quot;selfEval_04&quot;, &quot;توزيع مهام أعضاء الفريق&quot;: &quot;selfEval_05&quot;, &quot;بيانات عامة عن المدرسة&quot;: &quot;selfEval_06&quot;, &quot;سجل مؤشرات الأداء المدرسي&quot;: &quot;selfEval_07&quot;, &quot;الخطة التشغيلية ومتابعة التنفيذ&quot;: &quot;selfEval_08&quot;, &quot;الشراكات المجتمعية&quot;: &quot;selfEval_09&quot;, &quot;التطوير المهني&quot;: &quot;selfEval_10&quot;, &quot;حقوق المتعلم وحمايته&quot;: &quot;selfEval_11&quot;, &quot;التقرير الختامي للتقويم الذاتي&quot;: &quot;selfEval_12&quot;, &quot;خطة التحسين ومتابعة التنفيذ&quot;: &quot;selfEval_13&quot;, &quot;الزيارات الصفية&quot;: &quot;selfEval_14&quot;, &quot;تحليل الممارسات الصفية&quot;: &quot;selfEval_15&quot;, &quot;متابعة تنفيذ المنهج&quot;: &quot;selfEval_16&quot;, &quot;التخطيط للدروس ونواتج التعلم&quot;: &quot;selfEval_17&quot;, &quot;أدوات التقويم المتنوعة&quot;: &quot;selfEval_18&quot;, &quot;تحليل نتائج التقويم الصفي&quot;: &quot;selfEval_19&quot;, &quot;البرامج العلاجية&quot;: &quot;selfEval_20&quot;, &quot;البرامج الإثرائية&quot;: &quot;selfEval_21&quot;, &quot;دعم الفروق الفردية&quot;: &quot;selfEval_22&quot;, &quot;المجتمعات المهنية التعليمية&quot;: &quot;selfEval_23&quot;, &quot;توظيف التقنية والتعلم الإلكتروني&quot;: &quot;selfEval_24&quot;, &quot;مقابلات المعلمين والمتعلمين&quot;: &quot;selfEval_25&quot;, &quot;الشواهد الصفية الرقمية&quot;: &quot;selfEval_26&quot;, &quot;التحصيل الدراسي العام&quot;: &quot;selfEval_27&quot;, &quot;تحليل نتائج الاختبارات&quot;: &quot;selfEval_28&quot;, &quot;نتائج نافس والاختبارات الوطنية&quot;: &quot;selfEval_29&quot;, &quot;القدرات والتحصيلي للمرحلة الثانوية&quot;: &quot;selfEval_30&quot;, &quot;المهارات الأساسية&quot;: &quot;selfEval_31&quot;, &quot;الطلاب المتفوقون&quot;: &quot;selfEval_32&quot;, &quot;الطلاب المتعثرون وخطط الدعم&quot;: &quot;selfEval_33&quot;, &quot;الانضباط والمواظبة&quot;: &quot;selfEval_34&quot;, &quot;السلوك والقيم والمواطنة&quot;: &quot;selfEval_35&quot;, &quot;الصحة المدرسية والنمو الشخصي&quot;: &quot;selfEval_36&quot;, &quot;المشاركات والإنجازات الطلابية&quot;: &quot;selfEval_37&quot;, &quot;قياس أثر البرامج العلاجية والإثرائية&quot;: &quot;selfEval_38&quot;, &quot;مقارنة التحسن بين الفترات&quot;: &quot;selfEval_39&quot;, &quot;بيانات البيئة المدرسية&quot;: &quot;selfEval_40&quot;, &quot;جاهزية المبنى والفصول&quot;: &quot;selfEval_41&quot;, &quot;الأمن والسلامة&quot;: &quot;selfEval_42&quot;, &quot;خطط الإخلاء والطوارئ&quot;: &quot;selfEval_43&quot;, &quot;تنفيذ فرضيات الإخلاء&quot;: &quot;selfEval_44&quot;, &quot;الصيانة والبلاغات&quot;: &quot;selfEval_45&quot;, &quot;المختبرات ومصادر التعلم&quot;: &quot;selfEval_46&quot;, &quot;التجهيزات والتقنيات&quot;: &quot;selfEval_47&quot;, &quot;النظافة والبيئة الجاذبة&quot;: &quot;selfEval_48&quot;, &quot;الصحة المدرسية&quot;: &quot;selfEval_49&quot;, &quot;المقصف المدرسي&quot;: &quot;selfEval_50&quot;, &quot;المخاطر ومعالجتها&quot;: &quot;selfEval_51&quot;, &quot;رضا المستفيدين عن البيئة المدرسية&quot;: &quot;selfEval_52&quot;, &quot;الخطة التشغيلية&quot;: &quot;selfEval_53&quot;, &quot;قرارات اللجان&quot;: &quot;selfEval_54&quot;, &quot;اجتماعات اللجان&quot;: &quot;selfEval_55&quot;, &quot;قرارات الفرق&quot;: &quot;selfEval_56&quot;, &quot;اجتماعات الفرق&quot;: &quot;selfEval_57&quot;, &quot;قرارات المجالس&quot;: &quot;selfEval_58&quot;, &quot;اجتماعات المجالس&quot;: &quot;selfEval_59&quot;, &quot;بيانات المدرسة للتقويم الذاتي&quot;: &quot;selfEval_60&quot;, &quot;واقع المدرسة الفعلي&quot;: &quot;selfEval_61&quot;, &quot;بوابة التميز والمؤشرات&quot;: &quot;selfEval_62&quot;, &quot;سجلات التقويم الذاتي والمؤشرات&quot;: &quot;selfEval_63&quot;};
 function selfEvalFolderId(name){return SELF_EVAL_FOLDER_IDS[name]||&#x27;&#x27;}
-async function archiveSaveVerified(folderName,title,type,payload){
+async function archiveSaveVerified(folderName,title,type,payload,htmlContent=''){
   const objectKey=&#x27;self_evaluation_archive_v1&#x27;,flatKey=&#x27;manager_self_evaluation_archive_v1&#x27;;
   const beforeObject=localStorage.getItem(objectKey),beforeFlat=localStorage.getItem(flatKey),beforeState=localStorage.getItem(STORAGE);
   const now=new Date().toISOString(),folderId=selfEvalFolderId(folderName)||&#x27;selfEval_63&#x27;;
@@ -3882,7 +3904,7 @@ async function archiveSaveVerified(folderName,title,type,payload){
     const archive=archiveRead();if(!archive.folders)archive.folders={};
     if(!archive.folders[folderName])archive.folders[folderName]={name:folderName,folderId,createdAt:now,items:[]};
     archive.folders[folderName].folderId=folderId;
-    const row={id:`${type}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,folderId,folderName,recordName:folderName,title,type,source:&#x27;سجلات التقويم الذاتي والمؤشرات&#x27;,savedAt:now,schoolName:state.settings.school||&#x27;&#x27;,academicYear:state.settings.academicYear||&#x27;&#x27;,data:JSON.parse(JSON.stringify(payload||{}))};
+    const row={id:`${type}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,folderId,folderName,recordName:folderName,title,type,source:&#x27;سجلات التقويم الذاتي والمؤشرات&#x27;,savedAt:now,schoolName:state.settings.school||&#x27;&#x27;,academicYear:state.settings.academicYear||&#x27;&#x27;,data:JSON.parse(JSON.stringify(payload||{})),htmlContent:htmlContent||&#x27;&#x27;,archiveFormat:htmlContent?&#x27;print-snapshot-v3-exact&#x27;:&#x27;data-only&#x27;,sourceFile:&#x27;self_evaluation_records.html&#x27;};
     archive.folders[folderName].items.unshift(row);archive.folders[folderName].updatedAt=now;archiveWrite(archive);
 
     let flat=[];try{flat=JSON.parse(localStorage.getItem(flatKey)||&#x27;[]&#x27;);if(!Array.isArray(flat))flat=[]}catch(e){flat=[]}
@@ -3907,10 +3929,25 @@ function recordPayload(di,ri){
   const tasks=r.tasks.map((task,ti)=&gt;({task,...(state.items[k(di,ri,ti)]||defaultItem())}));
   return {domain:d.name,recordName:r.name,tasks,settings:state.settings,score:recordScore(di,ri)};
 }
+function buildCurrentRecordPrintSnapshot(title){
+  try{
+    const source=document.querySelector('#recordView .recordShell.officialRecord');
+    if(!source)return '';
+    const clone=source.cloneNode(true);
+    const src=source.querySelectorAll('input,textarea,select');
+    const dst=clone.querySelectorAll('input,textarea,select');
+    src.forEach((control,i)=&gt;{const c=dst[i];if(!c)return;const d=document.createElement('div');d.className=(c.className||'')+' archived-control-value';if(control.tagName==='SELECT')d.textContent=control.options[control.selectedIndex]?.text||'';else d.textContent=control.value||'';c.replaceWith(d)});
+    clone.querySelectorAll('.no-print,.noPrint,button,input[type=file]').forEach(x=&gt;x.remove());
+    const normal=[],printed=[];
+    Array.from(document.styleSheets).forEach(sheet=&gt;{let rules;try{rules=sheet.cssRules}catch(_){return}Array.from(rules||[]).forEach(rule=&gt;{if(rule.type===CSSRule.MEDIA_RULE&&/print/i.test(rule.conditionText||rule.media?.mediaText||''))Array.from(rule.cssRules||[]).forEach(r=&gt;printed.push(r.cssText));else if(rule.type===CSSRule.PAGE_RULE)printed.push(rule.cssText);else if(rule.type!==CSSRule.IMPORT_RULE)normal.push(rule.cssText)})});
+    const safe=String(title||'سجل التقويم الذاتي').replace(/[&lt;&gt;]/g,'');
+    return `&lt;!doctype html&gt;&lt;html lang="ar" dir="rtl"&gt;&lt;head&gt;&lt;meta charset="utf-8"&gt;&lt;meta name="viewport" content="width=device-width,initial-scale=1"&gt;&lt;title&gt;${safe}&lt;/title&gt;&lt;style&gt;${normal.join('\n')}\n${printed.join('\n')}\n@page{size:A4 portrait;margin:8mm}html,body{margin:0!important;padding:0!important;background:#fff!important}.archive-print-sheet{width:100%;max-width:210mm;margin:0 auto;background:#fff}.archive-print-sheet .recordShell{max-width:none!important;width:100%!important;margin:0!important;box-shadow:none!important}.archived-control-value{white-space:pre-wrap!important;overflow-wrap:anywhere!important}.no-print,.noPrint{display:none!important}@media screen{body{background:#e5e7eb!important;padding:12px!important}.archive-print-sheet{padding:8mm!important;box-shadow:0 8px 30px #0002}}@media print{.archive-print-sheet{padding:0!important;box-shadow:none!important}}&lt;/style&gt;&lt;/head&gt;&lt;body class="print-current"&gt;&lt;div class="archive-print-sheet"&gt;${clone.outerHTML}&lt;/div&gt;&lt;/body&gt;&lt;/html&gt;`;
+  }catch(e){console.error('[self evaluation record exact snapshot]',e);return ''}
+}
 async function saveCurrentRecordToArchive(){
   if(activeRecordIndex){
     const {di,ri}=activeRecordIndex,folderName=domains[di].records[ri].name;
-    try{await archiveSaveVerified(folderName,`${folderName} - ${new Date().toLocaleDateString(&#x27;ar-SA&#x27;)}`,&#x27;self_evaluation_record&#x27;,recordPayload(di,ri));toast(`تم الحفظ والتحقق في أرشيف التقويم الذاتي / ${folderName}`);return true}
+    try{const title=`${folderName} - ${new Date().toLocaleDateString(&#x27;ar-SA&#x27;)}`;const htmlContent=buildCurrentRecordPrintSnapshot(title);await archiveSaveVerified(folderName,title,&#x27;self_evaluation_record&#x27;,recordPayload(di,ri),htmlContent);toast(`تم الحفظ والتحقق في أرشيف التقويم الذاتي / ${folderName}`);return true}
     catch(e){toast(&#x27;تعذر تأكيد حفظ السجل في أرشيف التقويم الذاتي.&#x27;);return false}
   }
   try{await archiveSaveVerified(&#x27;سجلات التقويم الذاتي والمؤشرات&#x27;,&#x27;نسخة عامة من سجلات التقويم الذاتي&#x27;,&#x27;self_evaluation_bundle&#x27;,state);toast(&#x27;تم الحفظ والتحقق في أرشيف التقويم الذاتي / سجلات التقويم الذاتي والمؤشرات&#x27;);return true}

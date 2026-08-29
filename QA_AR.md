@@ -1,26 +1,15 @@
-# فحص نهائي لتدفق واجهات الأدوار V2
+# فحص إصلاح أرشيف التقويم الذاتي V3
 
-## التصحيح المركزي
-- جلسة المدرسة لا تتجاوز شاشة الترحيب تلقائيًا.
-- الدخول الأول يحتفظ بمنطق الصفحة الأصلي: الترحيب ثم enterApp ثم واجهة الأقسام.
-- العودة من صفحة داخلية وحدها تستخدم sectionHome=1 لفتح واجهة الأقسام مباشرة.
-- حارس الواجهة لا يمسح الجلسة ولا يعيد التوجيه.
-- إزالة بقايا Base64 غير الصالحة التي سببت تضخم teacher.html و health_advisor.html في حزمة V1.
+- wrapper_iframes: **PASS**
+- exact_preview_runtime: **PASS**
+- edit_modal_reset: **PASS**
+- manager_preview_routes_runtime: **PASS**
+- manager_edit_explicit: **PASS**
+- inner_js_1_blocks_no_syntax_errors: **PASS**
+- manager_js_27_blocks_no_syntax_errors: **PASS**
 
-## المراجعة الشاملة للأدوار
-تمت مراجعة بنية الانتقال في المدير، الوكيل، المعلم، الموجه الطلابي، الموجه الصحي، معلمة رياض الأطفال، ورائد النشاط. الموظف الإداري لا يستخدم welcome-gate/enterApp بنفس البنية، لذلك لم نفرض عليه هذا المنطق.
+أخطاء iframe: []
 
-## نتائج الفحص
-- school_navigation_guard.js: **PASS** 
-- platform-page-navigation.js: **PASS** 
-- teacher.html:malformed_base64: **PASS** 
-- teacher.html:enterApp: **PASS** 
-- health_advisor.html:malformed_base64: **PASS** 
-- health_advisor.html:enterApp: **PASS** 
-- manager.html:transition_structure: **PASS** 
-- agent.html:transition_structure: **PASS** 
-- teacher.html:transition_structure: **PASS** 
-- student_advisor.html:transition_structure: **PASS** 
-- health_advisor.html:transition_structure: **PASS** 
-- kindergarten_teacher.html:transition_structure: **PASS** 
-- activity_leader.html:transition_structure: **PASS** 
+أخطاء manager: []
+
+المبدأ: المعاينة لم تعد تقرأ htmlContent القديم؛ بل تعيد تحميل السجل في مولد التقويم وتستخدم نفس مسار الطباعة وقت المعاينة. التعديل يغلق جميع النوافذ المنبثقة ويعيد التبويب الأصلي حسب type.

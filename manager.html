@@ -2782,18 +2782,18 @@ body{overflow-x:hidden}
 
 function managerPerformanceReportsView(){
     try{
-      if(typeof ManagerPerformanceArchiveCleanV2!=='undefined' && typeof ManagerPerformanceArchiveCleanV2.getView==='function') return ManagerPerformanceArchiveCleanV2.getView();
+      if(window.PerformanceArchiveCleanV3) return PerformanceArchiveCleanV3.getView();
     }catch(_){ }
     return Array.isArray(window.__managerPerformanceArchiveView)?window.__managerPerformanceArchiveView:[];
 }
 
-async function openArchiveView() {
+async function legacyPerformanceArchiveOpen_DISABLED() {
     document.getElementById('welcome-dashboard').style.display='none';
     document.getElementById('archive-view').style.display='block';
     document.getElementById('archiveSearchInput').value="";
     showToast('جاري تحميل أرشيف الأداء الوظيفي للمدرسة...');
     try{
-      await ManagerPerformanceArchiveCleanV2.hydrate();
+      await PerformanceArchiveCleanV3.hydrateLegacy(false);
       renderArchiveFolders();
     }catch(e){
       console.error('[ManagerPerformanceArchiveCleanV2 open]',e);
@@ -2877,7 +2877,7 @@ async function openArchiveView() {
         }
 
         async function deleteReport(id) {
-            const report=ManagerPerformanceArchiveCleanV2.findInView(id);
+            const report=PerformanceArchiveCleanV3.find(id);
             if(!report){ showToast('تعذر العثور على التقرير.'); return; }
             if(report.__archiveSource==='legacy'){
                 showToast('هذا تقرير تاريخي محفوظ في المسار القديم؛ تم إبقاؤه للقراءة حمايةً لبيانات المدارس.');
@@ -2950,7 +2950,7 @@ async function openArchiveView() {
 /* === PERFORMANCE ARCHIVE CLEAN REBUILD V2 / MANAGER PILOT ===
    New writes use ONE isolated school-scoped state key only.
    Legacy keys are READ-ONLY and never overwritten/deleted by this engine. */
-const ManagerPerformanceArchiveCleanV2=(function(){
+const LegacyManagerPerformanceArchiveCleanV2=(function(){
   'use strict';
   const MODULE='manager';
   const KEY='manager_performance_reports_clean_v2';
@@ -3036,7 +3036,7 @@ const ManagerPerformanceArchiveCleanV2=(function(){
   return {KEY,LEGACY_KEYS,hydrate,upsert,remove,importRows,findInView,getView:()=>view.slice()};
 })();
 
-async function saveReportToArchive() {
+async function legacyPerformanceSave_DISABLED() {
     const selected=selectedPerformanceArchiveDomain();
     const cat=String(selected.id||'').trim();
     if(!cat){showToast('يرجى اختيار مجال البرنامج');return false;}
@@ -3046,7 +3046,7 @@ async function saveReportToArchive() {
       document.querySelectorAll('#report-content-container select').forEach(sel=>{Array.from(sel.options).forEach(opt=>opt.removeAttribute('selected'));if(sel.selectedIndex>=0&&sel.options[sel.selectedIndex])sel.options[sel.selectedIndex].setAttribute('selected','selected');sel.setAttribute('data-saved-value',sel.value||'')});
       document.querySelectorAll('#report-content-container input').forEach(inp=>{if(inp.type==='checkbox'||inp.type==='radio'){if(inp.checked)inp.setAttribute('checked','checked');else inp.removeAttribute('checked')}else if(inp.type!=='file')inp.setAttribute('value',inp.value||'')});
       document.querySelectorAll('#report-content-container textarea').forEach(t=>{t.textContent=t.value||''});
-      const existing=currentEditingId?ManagerPerformanceArchiveCleanV2.findInView(currentEditingId):null;
+      const existing=currentEditingId?PerformanceArchiveCleanV3.find(currentEditingId):null;
       if(existing&&existing.__archiveSource==='legacy') currentEditingId=null; // legacy stays untouched; edit becomes a new clean copy.
       const data={
         id:currentEditingId||Date.now(),
@@ -5775,8 +5775,37 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
 })();
 </script>
 
-<script id="PERFORMANCE_ARCHIVE_CLEAN_REBUILD_V2_MARKER">
-window.__PERFORMANCE_ARCHIVE_CLEAN_REBUILD_V2__={role:'manager',key:'manager_performance_reports_clean_v2',legacyReadOnly:true,cloudOnly:true,localSchoolReportsWrite:false};
+
+<script id="PERFORMANCE_ARCHIVE_CLEAN_V3_ENGINE">
+(function(){
+'use strict';
+const MODULE="manager", KEY="manager_performance_reports_clean_v3", LEGACY_KEYS=["school_reports", "performance_reports_archive_v2"];
+let clean=[], legacyRows=[], view=[], cleanLoaded=false, legacyLoaded=false;
+const arr=v=>{try{const x=typeof v==='string'?JSON.parse(v):v;return Array.isArray(x)?x:[]}catch(_){return []}}, idOf=x=>String(x?.id??''), catOf=x=>String(x?.category||x?.archiveFolderId||'');
+const strip=x=>{const y={...x};delete y.__archiveSource;delete y.__legacyKey;delete y.readOnly;return y};
+async function guard(){const G=window.PlatformPersistenceGuard;if(!G||typeof G.readExactValues!=='function'||typeof G.writeExactValues!=='function')throw new Error('محرك الحفظ السحابي غير متاح');if(window.PlatformCloudSession&&typeof PlatformCloudSession.ensure==='function')await PlatformCloudSession.ensure();if(window.PlatformStateEngine&&typeof PlatformStateEngine.health==='function'){const h=await PlatformStateEngine.health();if(!h||!h.schoolId)throw new Error('تعذر تأكيد المدرسة من الخادم')}return G}
+async function read(keys){const G=await guard(),r=await G.readExactValues({moduleKey:MODULE,scope:'school',keys});if(!r||r.ok===false)throw new Error(r?.error||'تعذر قراءة الأرشيف السحابي');return r.values||{}}
+async function write(rows){const G=await guard(),raw=JSON.stringify(rows.map(strip)),w=await G.writeExactValues({moduleKey:MODULE,scope:'school',values:{[KEY]:raw}});if(!w||w.ok===false)throw new Error(w?.error||'تعذر كتابة الأرشيف السحابي')}
+function publish(){const fresh=clean.map(x=>({...x,__archiveSource:'clean'})),seen=new Set(fresh.map(idOf).filter(Boolean)),old=[];for(const x of legacyRows){const id=idOf(x);if(!id||seen.has(id))continue;seen.add(id);old.push({...x,readOnly:true,__archiveSource:'legacy'})}view=[...fresh,...old];window.__performanceArchiveCleanV3View=view;return view}
+async function ensureClean(force=false){if(cleanLoaded&&!force)return clean;const v=await read([KEY]);clean=arr(v[KEY]);cleanLoaded=true;publish();return clean}
+async function hydrateLegacy(force=false){if(legacyLoaded&&!force){await ensureClean(false);return publish()}const v=await read([KEY,...LEGACY_KEYS]);clean=arr(v[KEY]);cleanLoaded=true;legacyRows=[];for(const k of LEGACY_KEYS)for(const x of arr(v[k]))legacyRows.push({...x,__legacyKey:k});legacyLoaded=true;return publish()}
+async function upsert(report){await ensureClean(false);const next=clean.slice(),i=next.findIndex(x=>idOf(x)===idOf(report));if(i>=0)next[i]=strip(report);else next.push(strip(report));await write(next);const v=await read([KEY]),cloud=arr(v[KEY]),found=cloud.find(x=>idOf(x)===idOf(report)&&catOf(x)===catOf(report));if(!found)throw new Error('لم يظهر التقرير في الأرشيف السحابي بعد التحقق');clean=cloud;cleanLoaded=true;publish();return found}
+async function remove(id){const e=view.find(x=>idOf(x)===String(id));if(e&&e.__archiveSource==='legacy')throw new Error('التقرير التاريخي للقراءة فقط');await ensureClean(false);const next=clean.filter(x=>idOf(x)!==String(id));await write(next);const v=await read([KEY]),cloud=arr(v[KEY]);if(cloud.some(x=>idOf(x)===String(id)))throw new Error('لم يكتمل الحذف السحابي');clean=cloud;cleanLoaded=true;publish();return true}
+async function importRows(rows){await ensureClean(false);const map=new Map(clean.map(x=>[idOf(x),x]));for(const x of rows||[])if(x&&idOf(x)&&catOf(x))map.set(idOf(x),strip(x));await write([...map.values()]);const v=await read([KEY]);clean=arr(v[KEY]);cleanLoaded=true;publish();return true}
+window.PerformanceArchiveCleanV3={MODULE,KEY,LEGACY_KEYS,ensureClean,hydrateLegacy,upsert,remove,importRows,getView:()=>view.slice(),find:id=>view.find(x=>idOf(x)===String(id))||null};
+window.performanceArchiveCleanView=()=>window.PerformanceArchiveCleanV3.getView();
+window.__PERFORMANCE_ARCHIVE_CLEAN_V3__={role:MODULE,key:KEY,cloudOnly:true,fastPath:true,legacyReadOnly:true};
+})();
+</script>
+<script id="PERFORMANCE_ARCHIVE_CLEAN_V3_OVERRIDES">
+(function(){
+window.saveReportToArchive=async function(){const selected=selectedPerformanceArchiveDomain(),cat=String(selected.id||'').trim();if(!cat){showToast('اختر المجال أولاً ⚠️');return false}const folderName=String(selected.name||(typeof performanceArchiveFolderName==='function'?performanceArchiveFolderName(cat):cat)||cat).trim();showToast('جاري حفظ التقرير في «'+folderName+'»...');try{if(typeof freezeReportDOMForArchive==='function')freezeReportDOMForArchive();const existing=currentEditingId?PerformanceArchiveCleanV3.find(currentEditingId):null;if(existing&&existing.__archiveSource==='legacy')currentEditingId=null;const data={id:currentEditingId||Date.now(),title:(document.getElementById('field_prog_name')?.innerText||'تقرير جديد').trim(),category:cat,categoryName:folderName,archiveFolderId:cat,archiveFolderName:folderName,archiveRole:"manager",archiveType:'performanceReport',createdAt:(existing&&existing.__archiveSource==='clean'?existing.createdAt:null)||new Date().toLocaleDateString('ar-SA-u-ca-islamic-uma'),content:document.getElementById('report-content-container').innerHTML,updatedAt:new Date().toISOString(),storageEngine:'PerformanceArchiveCleanV3',persistenceMode:'cloud-only',legacyWriteDisabled:true};const saved=await PerformanceArchiveCleanV3.upsert(data);currentEditingId=saved.id;showToast('تم الحفظ وظهر التقرير في مجلد «'+folderName+'» ✅');return true}catch(e){console.error('[PerformanceArchiveCleanV3 save]',e);showToast('تعذر حفظ التقرير: '+String(e?.message||e));return false}};
+window.openArchiveView=async function(){const w=document.getElementById('welcome-dashboard');if(w)w.style.display='none';const a=document.getElementById('archive-view');if(a)a.style.display='block';try{await PerformanceArchiveCleanV3.hydrateLegacy(false)}catch(e){console.error(e);showToast('تعذر تحديث الأرشيف: '+String(e?.message||e))}if(typeof renderArchiveFolders==='function')renderArchiveFolders()};
+if(typeof window.requestDeleteReport==='function'||typeof requestDeleteReport==='function')window.requestDeleteReport=async function(id){if(!confirm('هل تريد حذف هذا التقرير؟'))return;try{await PerformanceArchiveCleanV3.remove(id);showToast('تم حذف التقرير والتحقق سحابيًا 🗑️');if(typeof renderArchiveFolders==='function')renderArchiveFolders()}catch(e){showToast('تعذر حذف التقرير: '+String(e?.message||e))}};
+if(typeof window.deleteReport==='function'||typeof deleteReport==='function')window.deleteReport=async function(id,catId){if(!confirm('هل تريد حذف هذا التقرير؟'))return;try{await PerformanceArchiveCleanV3.remove(id);showToast('تم حذف التقرير والتحقق سحابيًا 🗑️');if(catId&&typeof openArchiveFolder==='function')openArchiveFolder(catId);else if(typeof renderArchiveFolders==='function')renderArchiveFolders()}catch(e){showToast('تعذر حذف التقرير: '+String(e?.message||e))}};
+window.exportArchive=function(){const blob=new Blob([JSON.stringify(PerformanceArchiveCleanV3.getView(),null,2)],{type:'application/json'}),u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download="manager"+'_performance_archive.json';a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)};
+window.importArchive=function(event){const file=event?.target?.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=async e=>{try{const rows=JSON.parse(e.target.result);if(!Array.isArray(rows))throw new Error('صيغة الأرشيف غير صحيحة');await PerformanceArchiveCleanV3.importRows(rows);showToast('تم استيراد الأرشيف والتحقق سحابيًا ✅');if(typeof renderArchiveFolders==='function')renderArchiveFolders()}catch(err){showToast('تعذر استيراد الأرشيف: '+String(err?.message||err))}};reader.readAsText(file)};
+})();
 </script>
 </body>
 </html>

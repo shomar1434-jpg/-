@@ -351,7 +351,7 @@
     } catch (_) {}
   }
 
-  const SESSION_VERSION='2026.08.29-manager-verify-access-v4';
+  const SESSION_VERSION='2026.08.29-clean-independent-school-v5';
 
   window.PlatformCloudSession = {
     VERSION:SESSION_VERSION,

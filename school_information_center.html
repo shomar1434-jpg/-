@@ -2,21 +2,35 @@
 <html lang="ar" dir="rtl">
 <head>
 <style id="platform-protected-page-gate">html{visibility:hidden!important}</style>
-<script src="platform-cloud-session.js?v=20260829-security-isolation-v1"></script>
-<script id="platform-manager-access-gate">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="platform-cloud-session.js?v=20260829-security-isolation-final"></script>
+<script id="platform-manager-access-gate-final">
 (function(){
-  window.__PLATFORM_ACCESS_READY__ = (async function(){
+  const SUPABASE_URL=(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'');
+  const SUPABASE_KEY=localStorage.getItem('smartSchoolSupabaseAnonKey')||'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
+  function isSystemAdminContext(){try{const q=new URLSearchParams(location.search||'');return q.get('systemAdmin')==='1'||q.get('systemAdminReturn')==='1'||sessionStorage.getItem('system_admin_context')==='1'||sessionStorage.getItem('system_admin_verified')==='true';}catch(_){return false}}
+  function release(){const gate=document.getElementById('platform-protected-page-gate');if(gate)gate.remove();document.documentElement.style.removeProperty('visibility')}
+  async function verifySystemAdmin(){
+    if(!window.supabase||typeof window.supabase.createClient!=='function')throw new Error('SYSTEM_ADMIN_AUTH_LIBRARY_MISSING');
+    const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+    const sr=await sb.auth.getSession();const session=sr&&sr.data&&sr.data.session;if(!session||!session.access_token)throw new Error('SYSTEM_ADMIN_SESSION_MISSING');
+    const r=await fetch(SUPABASE_URL+'/functions/v1/system-admin',{method:'POST',headers:{'content-type':'application/json','apikey':SUPABASE_KEY,'authorization':'Bearer '+session.access_token},body:JSON.stringify({action:'verify'})});
+    const data=await r.json().catch(()=>({}));if(!r.ok||data.ok!==true)throw new Error(data.error||'SYSTEM_ADMIN_NOT_AUTHORIZED');
+    const ctx={type:'system_admin',role:'system_admin',verified:true,user:data.user||null,supabase:sb,accessToken:session.access_token};
+    window.__VERIFIED_SYSTEM_ADMIN_CONTEXT__=ctx;window.__SCHOOL_INFO_ADMIN_SB__=sb;
+    sessionStorage.setItem('system_admin_context','1');sessionStorage.setItem('system_admin_verified','true');document.documentElement.setAttribute('data-system-admin-context','1');
+    return ctx;
+  }
+  window.__PLATFORM_ACCESS_READY__=(async function(){
+    const adminRequested=isSystemAdminContext();
     try{
-      if(!window.PlatformCloudSession || typeof PlatformCloudSession.verifyAccess!=='function') throw new Error('SECURITY_GATE_MISSING');
-      const ctx=await PlatformCloudSession.verifyAccess(['manager']);
-      window.__VERIFIED_SCHOOL_CONTEXT__=ctx;
-      const gate=document.getElementById('platform-protected-page-gate');
-      if(gate) gate.remove();
-      document.documentElement.style.removeProperty('visibility');
-      return ctx;
+      if(adminRequested){const ctx=await verifySystemAdmin();release();return ctx;}
+      if(!window.PlatformCloudSession||typeof PlatformCloudSession.verifyAccess!=='function')throw new Error('SECURITY_GATE_MISSING');
+      if(typeof PlatformCloudSession.ensure==='function')await PlatformCloudSession.ensure();
+      const ctx=await PlatformCloudSession.verifyAccess(['manager']);window.__VERIFIED_SCHOOL_CONTEXT__=ctx;release();return ctx;
     }catch(e){
-      try{ window.PlatformCloudSession && PlatformCloudSession.clear(); }catch(_){ }
-      location.replace('school-login.html?reason=school_access_denied');
+      if(adminRequested){location.replace('index.html?systemAdminReturn=1&reason=system_admin_access_denied');}
+      else{location.replace('school-login.html?reason=school_access_denied');}
       throw e;
     }
   })();
@@ -37,7 +51,6 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>مركز المعلومات المدرسية</title>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
     :root{--teal:#0f766e;--slate:#0f172a;--muted:#64748b;--bg:#f1f5f9;--card:#ffffff;--border:#e2e8f0;--danger:#dc2626;--amber:#d97706;--indigo:#4f46e5;--emerald:#059669}
@@ -84,7 +97,7 @@
       <div><div class="title">مركز المعلومات المدرسية</div><div class="sub" id="schoolLabel">جارٍ تحديد المدرسة النشطة...</div></div>
     </div>
     <div class="actions">
-      <button class="btn secondary" onclick="location.href='manager.html'">العودة لقسم المدير</button>
+      <button class="btn secondary" onclick="returnToParentContext()">العودة</button>
       <button class="btn" onclick="refreshActiveInfoTab()">تحديث البيانات</button>
     </div>
   </header>
@@ -222,30 +235,65 @@
   function html(v){return safe(v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
   function readJson(k){try{return JSON.parse(localStorage.getItem(k)||sessionStorage.getItem(k)||'null')}catch(e){return null}}
   function query(){return new URLSearchParams(location.search)}
+  function isVerifiedSystemAdmin(){return !!(window.__VERIFIED_SYSTEM_ADMIN_CONTEXT__&&window.__VERIFIED_SYSTEM_ADMIN_CONTEXT__.verified===true)}
+  async function adminAuthSession(){
+    const sb=window.__SCHOOL_INFO_ADMIN_SB__;if(!sb||!sb.auth)throw new Error('جلسة مدير النظام غير متاحة.');
+    const sr=await sb.auth.getSession();const session=sr&&sr.data&&sr.data.session;if(!session||!session.access_token)throw new Error('انتهت جلسة مدير النظام.');
+    return session;
+  }
+  async function secureAdminCall(action,body={}){
+    if(!isVerifiedSystemAdmin())throw new Error('يتطلب هذا المسار صلاحية مدير النظام.');
+    const session=await adminAuthSession();
+    const response=await fetch(SUPABASE_URL+'/functions/v1/system-admin',{method:'POST',headers:{'content-type':'application/json','apikey':SUPABASE_KEY,'authorization':'Bearer '+session.access_token},body:JSON.stringify(Object.assign({},body,{action}))});
+    const payload=await response.json().catch(()=>({}));if(!response.ok)throw new Error(payload.error||payload.details||'رفض مدير النظام العملية.');return payload;
+  }
   async function secureSchoolInfo(action, body={}){
     await window.__PLATFORM_ACCESS_READY__;
-    if(!window.PlatformCloudSession || !PlatformCloudSession.valid()) throw new Error('جلسة المدرسة غير صالحة. أعد تسجيل الدخول.');
-    const response=await fetch(SUPABASE_URL+'/functions/v1/school-information',{method:'POST',headers:{'content-type':'application/json','apikey':SUPABASE_KEY,'x-platform-session':PlatformCloudSession.token()},body:JSON.stringify(Object.assign({},body,{action}))});
+    let headers={'content-type':'application/json','apikey':SUPABASE_KEY};
+    let requestBody=Object.assign({},body,{action});
+    if(isVerifiedSystemAdmin()){
+      if(!currentSchool.id)throw new Error('اختر المدرسة أولاً.');
+      const session=await adminAuthSession();headers.authorization='Bearer '+session.access_token;requestBody.schoolId=currentSchool.id;requestBody.accessMode='system_admin';
+    }else{
+      if(!window.PlatformCloudSession||!PlatformCloudSession.valid())throw new Error('جلسة المدرسة غير صالحة. أعد تسجيل الدخول.');
+      headers['x-platform-session']=PlatformCloudSession.token();
+      delete requestBody.schoolId;delete requestBody.accessMode;
+    }
+    const response=await fetch(SUPABASE_URL+'/functions/v1/school-information',{method:'POST',headers,body:JSON.stringify(requestBody)});
     const payload=await response.json().catch(()=>({}));
     if(!response.ok){const err=new Error(payload.error||'تعذر الوصول الآمن إلى مركز المعلومات');err.code=payload.code||('HTTP_'+response.status);throw err;}
-    if(payload.schoolId && currentSchool.id && String(payload.schoolId)!==String(currentSchool.id)) throw new Error('تم رفض استجابة من سياق مدرسة مختلف.');
+    if(payload.schoolId&&currentSchool.id&&String(payload.schoolId)!==String(currentSchool.id))throw new Error('تم رفض استجابة من سياق مدرسة مختلف.');
     return payload;
   }
   function getClient(){ throw new Error('تم تعطيل الاتصال المباشر بقاعدة البيانات في مركز المعلومات.'); }
   function setStatus(msg,type){$('statusBox').className= type==='bad'?'bad':type==='ok'?'ok':'note'; $('statusBox').textContent=msg;}
   function setSchoolLabel(){
-    if(currentSchool.id){$('schoolLabel').textContent=(devMode?'وضع تجربة محلي — ':'')+'المدرسة النشطة: '+(currentSchool.name||currentSchool.id)}
+    if(currentSchool.id){$('schoolLabel').textContent=(isVerifiedSystemAdmin()?'مدير النظام — ':'')+'المدرسة النشطة: '+(currentSchool.name||currentSchool.id)}
     else {$('schoolLabel').textContent='لم يتم العثور على مدرسة نشطة. يمكن تفعيل وضع التجربة المحلية.'}
   }
-  async function detectSchool(){
-    const ctx = window.__VERIFIED_SCHOOL_CONTEXT__ || await window.__PLATFORM_ACCESS_READY__;
-    const member = ctx && ctx.membership ? ctx.membership : {};
-    currentSchool={id:safe(ctx && ctx.schoolId),name:safe(member.schoolName||member.school_name||'')};
-    devMode=false;
-    if(!currentSchool.id) throw new Error('لم يتم التحقق من مدرسة المستخدم.');
-    setSchoolLabel();
-    return currentSchool;
+  async function chooseSystemAdminSchool(){
+    const data=await secureAdminCall('list_schools');const schools=(data.schools||[]).filter(s=>safe(s.id));
+    if(!schools.length)throw new Error('لا توجد مدارس متاحة في حساب مدير النظام.');
+    const q=query();const requested=safe(q.get('schoolId')||sessionStorage.getItem('system_admin_school_info_target_v1'));
+    const found=schools.find(s=>String(s.id)===requested);
+    if(found){currentSchool={id:safe(found.id),name:safe(found.school_name||found.schoolName||found.name)};sessionStorage.setItem('system_admin_school_info_target_v1',currentSchool.id);return currentSchool;}
+    return await new Promise((resolve,reject)=>{
+      const overlay=document.createElement('div');overlay.id='system-admin-school-picker';overlay.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,.58);display:flex;align-items:center;justify-content:center;padding:20px';
+      const opts=schools.map(s=>'<option value="'+html(s.id)+'">'+html(s.school_name||s.schoolName||s.name||s.school_code||s.id)+'</option>').join('');
+      overlay.innerHTML='<div style="width:min(620px,96vw);background:#fff;border-radius:26px;padding:24px;box-shadow:0 28px 70px rgba(15,23,42,.28)"><h2 style="margin:0 0 8px">اختيار المدرسة</h2><p style="color:#64748b;font-weight:700;line-height:1.8">أنت داخل مركز المعلومات بصلاحية مدير النظام. اختر المدرسة التي تريد إدارتها. هذا الاختيار لا يحول جلستك إلى جلسة مدير مدرسة.</p><select id="system-admin-school-select" style="margin:14px 0">'+opts+'</select><div style="display:flex;gap:10px;justify-content:flex-end"><button id="system-admin-school-cancel" class="btn secondary">العودة لمدير النظام</button><button id="system-admin-school-open" class="btn">فتح المدرسة</button></div></div>';
+      document.body.appendChild(overlay);
+      overlay.querySelector('#system-admin-school-cancel').onclick=()=>{overlay.remove();location.href='index.html?systemAdminReturn=1';reject(new Error('SYSTEM_ADMIN_SCHOOL_SELECTION_CANCELLED'))};
+      overlay.querySelector('#system-admin-school-open').onclick=()=>{const id=safe(overlay.querySelector('#system-admin-school-select').value);const school=schools.find(s=>String(s.id)===id);if(!school)return;currentSchool={id:safe(school.id),name:safe(school.school_name||school.schoolName||school.name)};sessionStorage.setItem('system_admin_school_info_target_v1',currentSchool.id);overlay.remove();resolve(currentSchool)};
+    });
   }
+  async function detectSchool(){
+    const ctx=await window.__PLATFORM_ACCESS_READY__;devMode=false;
+    if(isVerifiedSystemAdmin()||ctx&&ctx.type==='system_admin'){await chooseSystemAdminSchool();document.documentElement.setAttribute('data-system-admin-context','1');setSchoolLabel();return currentSchool;}
+    const schoolCtx=window.__VERIFIED_SCHOOL_CONTEXT__||ctx;const member=schoolCtx&&schoolCtx.membership?schoolCtx.membership:{};
+    currentSchool={id:safe(schoolCtx&&schoolCtx.schoolId),name:safe(member.schoolName||member.school_name||'')};
+    if(!currentSchool.id)throw new Error('لم يتم التحقق من مدرسة المستخدم.');setSchoolLabel();return currentSchool;
+  }
+  window.returnToParentContext=function(){location.href=isVerifiedSystemAdmin()?'index.html?systemAdminReturn=1':'manager.html'};
   async function showDevMode(){ throw new Error('تم تعطيل اختيار المدارس ووضع التجربة في النسخة السحابية الآمنة.'); }
   window.activateDevSchool=function(){
     throw new Error('لا يمكن تغيير المدرسة من مركز المعلومات. المدرسة تحدد من الجلسة الموثقة فقط.');

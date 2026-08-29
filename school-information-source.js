@@ -11,13 +11,13 @@ const ROLE_AR={manager:'مدير/ة المدرسة',school_manager:'مدير/ة 
 const state={students:[],staff:[],administrativeStaff:[],loaded:false,loading:null,schoolId:'',year:'',updatedAt:'',version:'2.4.0-secure-school-information'};
 const safe=v=>String(v==null?'':v).trim();
 const norm=v=>safe(v).replace(/[إأآا]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/[ـ\u064B-\u0652]/g,'').replace(/\s+/g,' ').toLowerCase();
+function isSystemAdmin(){try{return !!(window.__VERIFIED_SYSTEM_ADMIN_CONTEXT__&&window.__VERIFIED_SYSTEM_ADMIN_CONTEXT__.verified===true)||(sessionStorage.getItem('system_admin_context')==='1'&&sessionStorage.getItem('system_admin_verified')==='true')}catch(_){return false}}
 const readJson=k=>{try{return JSON.parse(localStorage.getItem(k)||sessionStorage.getItem(k)||'null')}catch(_){return null}};
 const infoChannel=(()=>{try{return new BroadcastChannel('smart-school-information')}catch(_){return null}})();
 function schoolId(){
-  // SECURITY V1: never trust query-string or generic localStorage for tenant identity.
   try{
-    const sid=window.PlatformCloudSession && PlatformCloudSession.schoolId ? PlatformCloudSession.schoolId() : '';
-    return safe(sid);
+    if(isSystemAdmin()) return safe(sessionStorage.getItem('system_admin_school_info_target_v1'));
+    const sid=window.PlatformCloudSession&&PlatformCloudSession.schoolId?PlatformCloudSession.schoolId():'';return safe(sid);
   }catch(_){return ''}
 }
 function year(){return safe(localStorage.getItem('school_info_academic_year')||localStorage.getItem('academic_year')||localStorage.getItem('current_academic_year')||'1448')}
@@ -27,6 +27,7 @@ function noorSection(v){
   return SECTION_MAP[v]||v||'غير محدد';
 }
 function studentLocal(){
+  if(isSystemAdmin())return [];
   const sid=schoolId(), yr=year(), out=[];
   const preferred=['schoolInformationCenter:'+sid+':'+yr,'school_information_center:'+sid+':'+yr,'sic_students:'+sid+':'+yr,'school_information_center_students'];
   const keys=[...preferred,...Object.keys(localStorage).filter(k=>/schoolInformationCenter:|school_information_center:|sic_students:/i.test(k)&&(!sid||k.includes(sid)))];
@@ -35,6 +36,7 @@ function studentLocal(){
 }
 function sameSchool(u){const sid=schoolId(),us=safe(u.school_id||u.schoolId||u.current_school_id||u.active_school_id||u.school||'');return !!sid&&!!us&&sid===us}
 function staffLocal(){
+  if(isSystemAdmin())return [];
   const keys=['smartSchoolUnifiedOpsV2_users','offline_users_backup','smart_school_users','users','school_users','smartSchoolUsers'],out=[];
   keys.forEach(k=>{try{const d=JSON.parse(localStorage.getItem(k)||sessionStorage.getItem(k)||'null'),rows=Array.isArray(d)?d:(d&&Array.isArray(d.users)?d.users:[]);out.push(...rows)}catch(_){}});
   return out.filter(x=>x&&sameSchool(x)&&!/deleted|محذوف/.test(norm(x.status||x.user_status||'')));
@@ -44,12 +46,16 @@ function roleOf(u){return safe(u.role||u.user_role||u.type||u.account_type||u.se
 function mapStaff(u){const role=roleOf(u);return {id:safe(u.id||u.user_id||u.uid||u.email||u.name),name:safe(u.name||u.full_name||u.display_name||u.username||u.teacher_name||u.email),role,role_label:safe(u.role_label||u.job_title||u.position||ROLE_AR[role]||role||'مستخدم'),email:safe(u.email||u.user_email||''),status:safe(u.status||u.user_status||''),school_id:safe(u.school_id||u.schoolId||'')};}
 function dedupe(rows,keyFn){const m=new Map();rows.forEach(r=>{const k=keyFn(r);if(k&&!m.has(k))m.set(k,r)});return [...m.values()]}
 async function secureCall(action,body={}){
-  if(!window.PlatformCloudSession||!PlatformCloudSession.valid()) throw new Error('SESSION_REQUIRED');
-  const res=await fetch(CFG.url()+'/functions/v1/school-information',{method:'POST',headers:{'content-type':'application/json','apikey':CFG.anon(),'x-platform-session':PlatformCloudSession.token()},body:JSON.stringify(Object.assign({},body,{action}))});
-  const data=await res.json().catch(()=>({}));
-  if(!res.ok) throw new Error(data.error||('HTTP '+res.status));
-  const sid=schoolId(); if(data.schoolId&&sid&&String(data.schoolId)!==String(sid)) throw new Error('SCHOOL_SCOPE_MISMATCH');
-  return data;
+  const sid=schoolId();let headers={'content-type':'application/json','apikey':CFG.anon()},payload=Object.assign({},body,{action});
+  if(isSystemAdmin()){
+    const sb=window.__SCHOOL_INFO_ADMIN_SB__;if(!sb||!sid)throw new Error('SYSTEM_ADMIN_SCHOOL_CONTEXT_REQUIRED');
+    const sr=await sb.auth.getSession();const session=sr&&sr.data&&sr.data.session;if(!session||!session.access_token)throw new Error('SYSTEM_ADMIN_SESSION_REQUIRED');
+    headers.authorization='Bearer '+session.access_token;payload.schoolId=sid;payload.accessMode='system_admin';
+  }else{
+    if(!window.PlatformCloudSession||!PlatformCloudSession.valid())throw new Error('SESSION_REQUIRED');headers['x-platform-session']=PlatformCloudSession.token();
+  }
+  const res=await fetch(CFG.url()+'/functions/v1/school-information',{method:'POST',headers,body:JSON.stringify(payload)});
+  const data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(data.error||('HTTP '+res.status));if(data.schoolId&&sid&&String(data.schoolId)!==String(sid))throw new Error('SCHOOL_SCOPE_MISMATCH');return data;
 }
 async function cloudStudents(){const sid=schoolId();if(!sid)return[];try{const q=await secureCall('students-list',{academicYear:year()});return q.students||[]}catch(_){return[]}}
 async function cloudStaff(){const sid=schoolId();if(!sid)return[];try{const q=await secureCall('staff-list');return q.staff||[]}catch(_){return[]}}

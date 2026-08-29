@@ -5862,5 +5862,123 @@ window.requestDeleteReport=async function(id){if(!confirm('هل تريد حذف 
 window.deleteReport=window.requestDeleteReport;
 })();
 </script>
+
+<script id="PERFORMANCE_ARCHIVE_CLEAN_V5_2_EDITOR_RESTORE">
+(function(){
+'use strict';
+function escHtml(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+function jsId(v){return String(v??'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");}
+
+// V5.2 is the only archive view source. Never fall back to V3/V2 views.
+window.managerPerformanceReportsView=function(){
+  try{return window.PerformanceArchiveCleanV5?PerformanceArchiveCleanV5.getView():[];}catch(_){return [];}
+};
+
+function actionButtons(r){
+  const id=jsId(r?.id);
+  if(String(r?.archiveType||'')==='meetingMinutes'){
+    return `<button onclick="previewArchivedReadOnly('${id}')" class="bg-teal-50 text-teal-600 px-4 py-2 rounded-xl font-bold text-[10px]">معاينة</button><button onclick="deleteReport('${id}')" class="bg-red-50 text-red-500 px-4 py-2 rounded-xl font-bold text-[10px]">حذف</button>`;
+  }
+  return `<button onclick="loadReport('${id}')" class="bg-amber-50 text-amber-700 px-4 py-2 rounded-xl font-bold text-[10px]">تعديل</button><button onclick="previewArchivedReadOnly('${id}')" class="bg-teal-50 text-teal-600 px-4 py-2 rounded-xl font-bold text-[10px]">معاينة</button><button onclick="deleteReport('${id}')" class="bg-red-50 text-red-500 px-4 py-2 rounded-xl font-bold text-[10px]">حذف</button>`;
+}
+function reportCard(r){
+  const title=escHtml(r?.programName||r?.title||'تقرير');
+  const cat=String(r?.category||r?.archiveFolderId||'');
+  const folder=escHtml(r?.archiveFolderName||r?.categoryName||((window.CATEGORY_DATA&&CATEGORY_DATA[cat])?CATEGORY_DATA[cat].name:'غير مصنف'));
+  const date=escHtml(r?.createdAt||'---');
+  return `<div class="bg-white p-5 mb-4 rounded-3xl border border-slate-100 flex justify-between items-center shadow-sm"><div class="flex-grow"><div class="text-xs font-bold text-slate-800">${title}</div><div class="flex gap-2 items-center mt-1"><div class="text-[9px] text-slate-400 font-bold">المجال: ${folder}</div><div class="text-[9px] text-teal-600 font-bold border-r pr-2 border-slate-200">تاريخ الإعداد: ${date}</div></div></div><div class="flex gap-2 flex-shrink-0">${actionButtons(r)}</div></div>`;
+}
+window.openArchiveFolder=function(catId){
+  currentArchiveFolder=String(catId||'');
+  const inp=document.getElementById('archiveSearchInput');
+  const q=String(inp?.value||'').trim().toLowerCase();
+  let rows=managerPerformanceReportsView().filter(r=>String(r?.archiveFolderId||r?.category||'')===currentArchiveFolder);
+  if(q)rows=rows.filter(r=>String(r?.programName||r?.title||'').toLowerCase().includes(q));
+  const c=document.getElementById('archive-content');
+  document.getElementById('back-to-folders')?.classList.remove('hidden');
+  if(c)c.innerHTML=rows.length?rows.map(reportCard).join(''):`<div class="text-center py-20 bg-white/50 rounded-[40px] border-2 border-dashed border-slate-200"><p class="text-slate-400 font-bold text-sm">المجلد فارغ</p></div>`;
+};
+window.handleArchiveSearch=function(){
+  const q=String(document.getElementById('archiveSearchInput')?.value||'').trim().toLowerCase();
+  if(!q){if(currentArchiveFolder)return openArchiveFolder(currentArchiveFolder);return renderArchiveFolders();}
+  const rows=managerPerformanceReportsView().filter(r=>String(r?.programName||r?.title||'').toLowerCase().includes(q));
+  const c=document.getElementById('archive-content');
+  document.getElementById('back-to-folders')?.classList.remove('hidden');
+  if(c)c.innerHTML=rows.length?rows.map(reportCard).join(''):`<div class="text-center py-20 bg-white/50 rounded-[40px] border-2 border-dashed border-slate-200"><p class="text-slate-400 font-bold text-sm">لم يتم العثور على نتائج بحث</p></div>`;
+};
+
+function restoreInteractiveState(root){
+  if(!root)return;
+  root.querySelectorAll('select[data-saved-value]').forEach(sel=>{const v=sel.getAttribute('data-saved-value');if(v!=null&&Array.from(sel.options).some(o=>String(o.value)===String(v)))sel.value=v;});
+  root.querySelectorAll('input[data-saved-value]').forEach(el=>{el.value=el.getAttribute('data-saved-value')||'';});
+  root.querySelectorAll('textarea[data-saved-value]').forEach(el=>{el.value=el.getAttribute('data-saved-value')||'';});
+}
+function snapshotInteractiveState(root){
+  if(!root)return;
+  root.querySelectorAll('select').forEach(el=>el.setAttribute('data-saved-value',String(el.value??'')));
+  root.querySelectorAll('input').forEach(el=>{if(['button','file','submit','reset'].includes(String(el.type||'').toLowerCase()))return;el.setAttribute('data-saved-value',String(el.value??''));if(el.type==='checkbox'||el.type==='radio'){if(el.checked)el.setAttribute('checked','checked');else el.removeAttribute('checked');}});
+  root.querySelectorAll('textarea').forEach(el=>el.setAttribute('data-saved-value',String(el.value??'')));
+}
+window.__snapshotPerformanceReportInteractiveState=snapshotInteractiveState;
+
+window.loadReport=async function(id){
+  try{
+    const r=await PerformanceArchiveCleanV5.fetchReport(String(id));
+    if(!r){showToast('تعذر العثور على التقرير');return false;}
+    const root=document.getElementById('report-content-container');
+    if(!root)throw new Error('واجهة تقرير الأداء غير متاحة');
+    if(!r.content)throw new Error('التقرير المؤرشف لا يحتوي نسخة قابلة للتحرير');
+    root.innerHTML=r.content;
+    restoreInteractiveState(root);
+    currentEditingId=String(r.id);
+    window.__performanceExplicitEditId=String(r.id);
+    window.__performanceEditingLegacy=(r.__archiveSource==='legacy');
+    window.__performanceEditingOriginalCreatedAt=r.createdAt||'';
+    const a=document.getElementById('archive-view');if(a)a.style.display='none';
+    const w=document.getElementById('welcome-dashboard');if(w)w.style.display='none';
+    document.getElementById('main-report-app')?.classList.remove('hidden');
+    if(typeof updateReportProgress==='function')updateReportProgress();
+    showToast((r.__archiveSource==='legacy'?'تم استعادة التقرير التاريخي':'تم فتح التقرير')+' داخل محرر الأداء للتعديل ✏️');
+    return true;
+  }catch(e){console.error('[Performance V5.2 edit restore]',e);showToast('تعذر فتح التقرير للتعديل: '+String(e?.message||e));return false;}
+};
+
+const previousSave=window.saveReportToArchive;
+window.saveReportToArchive=async function(){
+  try{snapshotInteractiveState(document.getElementById('report-content-container'));}catch(_){}
+  // For a legacy report being edited, keep its original ID. The clean record then shadows
+  // the legacy copy in the archive view without deleting historical data.
+  if(window.__performanceEditingLegacy&&window.__performanceExplicitEditId){
+    const legacyId=String(window.__performanceExplicitEditId);
+    const originalFind=PerformanceArchiveCleanV5.find;
+    const legacy=originalFind(legacyId);
+    if(legacy&&legacy.__archiveSource==='legacy'){
+      const selected=selectedPerformanceArchiveDomain(),cat=String(selected.id||'').trim();
+      if(!cat){showToast('اختر المجال أولاً ⚠️');return false;}
+      const name=String(document.getElementById('field_prog_name')?.innerText||'').trim();
+      if(!name){showToast('أدخل اسم البرنامج قبل الحفظ ⚠️');return false;}
+      const folderName=String(selected.name||(typeof performanceArchiveFolderName==='function'?performanceArchiveFolderName(cat):cat)||cat).trim();
+      showToast('جاري تحديث «'+name+'» داخل محرر الأداء...');
+      try{
+        const data={id:legacyId,programName:name,title:name,category:cat,categoryName:folderName,archiveFolderId:cat,archiveFolderName:folderName,archiveRole:'manager',archiveType:'performanceReport',createdAt:window.__performanceEditingOriginalCreatedAt||legacy.createdAt||new Date().toLocaleDateString('ar-SA-u-ca-islamic-uma'),content:document.getElementById('report-content-container').innerHTML,updatedAt:new Date().toISOString()};
+        const result=await PerformanceArchiveCleanV5.saveFast(data);
+        currentEditingId=null;window.__performanceExplicitEditId=null;window.__performanceEditingLegacy=false;window.__performanceEditingOriginalCreatedAt='';
+        showToast('تم تحديث «'+name+'» في الأرشيف ✅');
+        result.verification.catch(e=>{console.error('[Performance V5.2 legacy verify]',e);showToast('تم التحديث، لكن تعذر التحقق السحابي النهائي: '+String(e?.message||e));});
+        return true;
+      }catch(e){showToast('تعذر تحديث التقرير: '+String(e?.message||e));return false;}
+    }
+  }
+  const ok=await previousSave.apply(this,arguments);
+  if(ok){window.__performanceEditingLegacy=false;window.__performanceEditingOriginalCreatedAt='';}
+  return ok;
+};
+
+const oldStartNew=window.startNewReport;
+window.startNewReport=function(){window.__performanceExplicitEditId=null;window.__performanceEditingLegacy=false;window.__performanceEditingOriginalCreatedAt='';currentEditingId=null;return typeof oldStartNew==='function'?oldStartNew.apply(this,arguments):undefined;};
+window.__PERFORMANCE_ARCHIVE_CLEAN_V5_2__={archiveViewSource:'V5-only',editRestoresSameEditor:true,legacyEditableViaCleanShadow:true,previewSeparate:true,stringIdsSafe:true};
+})();
+</script>
+
 </body>
 </html>

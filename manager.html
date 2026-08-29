@@ -5735,21 +5735,65 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
 
 <!-- Unified Comprehensive Cloud Storage -->
 <script src="platform-cloud-session.js?v=20260829-security-isolation-v5-clean"></script>
-<script id="platform-manager-access-gate-clean-v5">
+<script id="platform-manager-access-gate-clean-v5-2">
 (function(){
-  window.__PLATFORM_ACCESS_READY__=(async function(){
+  function requestedSystemAdminContext(){
     try{
+      var q=new URLSearchParams(location.search||'');
+      return q.get('systemAdmin')==='1' ||
+        sessionStorage.getItem('system_admin_context')==='1' ||
+        sessionStorage.getItem('system_admin_verified')==='true';
+    }catch(_){ return false; }
+  }
+  function releaseProtectedPage(){
+    var gate=document.getElementById('platform-protected-page-gate');
+    if(gate) gate.remove();
+    document.documentElement.style.removeProperty('visibility');
+  }
+  async function verifySystemAdminAccess(){
+    var bridge=window.SmartSchoolSupabase;
+    var sb=bridge&&typeof bridge.getClient==='function' ? bridge.getClient() : null;
+    if(!sb||!sb.auth||!sb.functions) throw new Error('SYSTEM_ADMIN_AUTH_UNAVAILABLE');
+    var sessionResult=await sb.auth.getSession();
+    var session=sessionResult&&sessionResult.data&&sessionResult.data.session;
+    if(!session||!session.access_token) throw new Error('SYSTEM_ADMIN_SESSION_MISSING');
+    var result=await sb.functions.invoke('system-admin',{body:{action:'verify'}});
+    if(result.error||!result.data||result.data.ok!==true)
+      throw new Error((result.error&&result.error.message)||'SYSTEM_ADMIN_NOT_AUTHORIZED');
+    var ctx={type:'system_admin',role:'system_admin',user:result.data.user||null,verified:true};
+    window.__VERIFIED_SYSTEM_ADMIN_CONTEXT__=ctx;
+    try{
+      sessionStorage.setItem('system_admin_context','1');
+      sessionStorage.setItem('system_admin_verified','true');
+      document.documentElement.setAttribute('data-system-admin-context','1');
+    }catch(_){}
+    return ctx;
+  }
+  window.__PLATFORM_ACCESS_READY__=(async function(){
+    var systemAdminRequested=requestedSystemAdminContext();
+    try{
+      if(systemAdminRequested){
+        var adminCtx=await verifySystemAdminAccess();
+        releaseProtectedPage();
+        return adminCtx;
+      }
       if(!window.PlatformCloudSession||typeof window.PlatformCloudSession.verifyAccess!=='function')
         throw new Error('SECURITY_GATE_MISSING');
       var ctx=await window.PlatformCloudSession.verifyAccess(['manager']);
       window.__VERIFIED_SCHOOL_CONTEXT__=ctx;
-      var gate=document.getElementById('platform-protected-page-gate');
-      if(gate) gate.remove();
-      document.documentElement.style.removeProperty('visibility');
+      releaseProtectedPage();
       return ctx;
     }catch(e){
-      try{window.PlatformCloudSession&&window.PlatformCloudSession.clear();}catch(_){}
-      location.replace('school-login.html?reason=school_access_denied');
+      if(systemAdminRequested){
+        try{
+          sessionStorage.removeItem('system_admin_context');
+          sessionStorage.removeItem('system_admin_verified');
+        }catch(_){}
+        location.replace('index.html?systemAdminReturn=1&reason=system_admin_access_denied');
+      }else{
+        try{window.PlatformCloudSession&&window.PlatformCloudSession.clear();}catch(_){}
+        location.replace('school-login.html?reason=school_access_denied');
+      }
       throw e;
     }
   })();

@@ -1,7 +1,7 @@
 (function(){
 'use strict';
-if(window.__PLATFORM_PAGE_NAVIGATION_V1__) return;
-window.__PLATFORM_PAGE_NAVIGATION_V1__=true;
+if(window.__PLATFORM_PAGE_NAVIGATION_V2__) return;
+window.__PLATFORM_PAGE_NAVIGATION_V2__=true;
 
 const ROOT_PAGES=new Set([
   'index.html','manager.html','agent.html','student_advisor.html','health_advisor.html',
@@ -65,9 +65,9 @@ function addBack(){
   b.addEventListener('click',function(){
     try{
       const ref=document.referrer?new URL(document.referrer):null;
-      if(ref&&ref.origin===location.origin&&history.length>1){history.back();return}
+      if(ref&&ref.origin===location.origin){ location.href=roleRoot() + (roleRoot().includes('?')?'&':'?') + 'sectionHome=1'; return }
     }catch(_){ }
-    location.href=roleRoot();
+    location.href=roleRoot() + (roleRoot().includes('?')?'&':'?') + 'sectionHome=1';
   });
   document.body.appendChild(b);
 }

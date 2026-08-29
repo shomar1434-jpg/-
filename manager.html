@@ -5915,9 +5915,51 @@ function restoreInteractiveState(root){
 }
 function snapshotInteractiveState(root){
   if(!root)return;
+  document.getElementById('performance-domain-unlock-btn')?.remove();
   root.querySelectorAll('select').forEach(el=>el.setAttribute('data-saved-value',String(el.value??'')));
   root.querySelectorAll('input').forEach(el=>{if(['button','file','submit','reset'].includes(String(el.type||'').toLowerCase()))return;el.setAttribute('data-saved-value',String(el.value??''));if(el.type==='checkbox'||el.type==='radio'){if(el.checked)el.setAttribute('checked','checked');else el.removeAttribute('checked');}});
   root.querySelectorAll('textarea').forEach(el=>el.setAttribute('data-saved-value',String(el.value??'')));
+}
+
+function setEditingDomainLock(report){
+  const sel=document.getElementById('categorySelect');
+  if(!sel)return;
+  const cat=String(report?.category||report?.archiveFolderId||'').trim();
+  if(cat){
+    const has=Array.from(sel.options||[]).some(o=>String(o.value)===cat);
+    if(!has){
+      const label=String(report?.categoryName||report?.archiveFolderName||cat).trim();
+      sel.add(new Option(label,cat));
+    }
+    sel.value=cat;
+    sel.setAttribute('data-saved-value',cat);
+  }
+  sel.disabled=true;
+  sel.dataset.editLocked='1';
+  sel.title='المجال محفوظ مع هذا التقرير ومثبت أثناء التعديل';
+  let btn=document.getElementById('performance-domain-unlock-btn');
+  if(!btn){
+    btn=document.createElement('button');
+    btn.type='button';
+    btn.id='performance-domain-unlock-btn';
+    btn.textContent='🔒 المجال مثبت — تغيير المجال';
+    btn.className='no-print';
+    btn.style.cssText='margin-top:6px;padding:5px 10px;border:1px solid #0f8b83;border-radius:10px;background:#f0fdfa;color:#0f766e;font-size:10px;font-weight:800;cursor:pointer;width:100%';
+    sel.parentElement?.appendChild(btn);
+  }
+  btn.onclick=function(){
+    if(!confirm('هل تريد تغيير مجال هذا التقرير؟ سيُنقل التقرير إلى مجلد المجال الجديد عند الحفظ.'))return;
+    sel.disabled=false;
+    sel.dataset.editLocked='0';
+    btn.textContent='🔓 تغيير المجال مفعّل';
+    btn.style.background='#fff7ed';btn.style.color='#9a3412';btn.style.borderColor='#fb923c';
+    sel.focus();
+  };
+}
+function clearEditingDomainLock(){
+  const sel=document.getElementById('categorySelect');
+  if(sel){sel.disabled=false;delete sel.dataset.editLocked;sel.title='';}
+  document.getElementById('performance-domain-unlock-btn')?.remove();
 }
 window.__snapshotPerformanceReportInteractiveState=snapshotInteractiveState;
 
@@ -5930,6 +5972,9 @@ window.loadReport=async function(id){
     if(!r.content)throw new Error('التقرير المؤرشف لا يحتوي نسخة قابلة للتحرير');
     root.innerHTML=r.content;
     restoreInteractiveState(root);
+    // The archive metadata is authoritative for the saved folder/domain. Older
+    // report HTML may not contain data-saved-value on categorySelect.
+    setEditingDomainLock(r);
     currentEditingId=String(r.id);
     window.__performanceExplicitEditId=String(r.id);
     window.__performanceEditingLegacy=(r.__archiveSource==='legacy');
@@ -5975,7 +6020,7 @@ window.saveReportToArchive=async function(){
 };
 
 const oldStartNew=window.startNewReport;
-window.startNewReport=function(){window.__performanceExplicitEditId=null;window.__performanceEditingLegacy=false;window.__performanceEditingOriginalCreatedAt='';currentEditingId=null;return typeof oldStartNew==='function'?oldStartNew.apply(this,arguments):undefined;};
+window.startNewReport=function(){clearEditingDomainLock();window.__performanceExplicitEditId=null;window.__performanceEditingLegacy=false;window.__performanceEditingOriginalCreatedAt='';currentEditingId=null;return typeof oldStartNew==='function'?oldStartNew.apply(this,arguments):undefined;};
 window.__PERFORMANCE_ARCHIVE_CLEAN_V5_2__={archiveViewSource:'V5-only',editRestoresSameEditor:true,legacyEditableViaCleanShadow:true,previewSeparate:true,stringIdsSafe:true};
 })();
 </script>

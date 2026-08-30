@@ -2278,15 +2278,32 @@ bootstrapWakilRecordsV7();
     });
     return clone;
   }
+  function archiveDisplayClone(){
+    const clone=cloneCurrentFormWithLiveValues();
+    if(!clone)return null;
+    clone.querySelectorAll('input,textarea,select').forEach(el=>{
+      let value='';
+      if(el.tagName==='SELECT') value=el.options&&el.selectedIndex>=0?(el.options[el.selectedIndex].textContent||el.value||''):(el.value||'');
+      else if(el.type==='checkbox'||el.type==='radio') value=el.checked?'✓':'';
+      else value=el.value||el.getAttribute('value')||el.textContent||'';
+      const box=document.createElement(el.tagName==='TEXTAREA'?'div':'span');
+      box.className=(el.className?el.className+' ':'')+'wakil-archived-static-value';
+      box.textContent=value;
+      box.setAttribute('data-archived-field',el.dataset.field||el.dataset.table||'');
+      box.style.cssText='display:block;width:100%;min-height:24px;padding:5px 6px;box-sizing:border-box;color:#11221d;white-space:pre-wrap;text-align:inherit;background:#fff;';
+      el.replaceWith(box);
+    });
+    return clone;
+  }
 
   window.getCurrentFormHTMLForRecordsArchive=function(){
-    const clone=cloneCurrentFormWithLiveValues();
+    const clone=archiveDisplayClone();
     return clone ? clone.innerHTML : '';
   };
 
   window.getCurrentRecordPrintableDocumentForArchive=function(){
     const styles=Array.from(document.querySelectorAll('style')).map(s=>s.outerHTML).join('\n');
-    const clone=cloneCurrentFormWithLiveValues();
+    const clone=archiveDisplayClone();
     const title=(typeof current!=='undefined'&&current&&current.title)?current.title:'سجل الوكيل';
     const content=clone?clone.outerHTML:'';
     return '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>'+title+'</title>'
@@ -2317,15 +2334,22 @@ bootstrapWakilRecordsV7();
   async function loadRoster(force){
     if(roster.loading) return roster.loading;
     roster.loading=(async()=>{
-      if(!window.SchoolInformationSource||typeof SchoolInformationSource.getSnapshot!=='function') return false;
-      const snap=await SchoolInformationSource.getSnapshot(!!force);
-      const sid=safe(snap?.schoolId||SchoolInformationSource.context?.().schoolId||'');
+      if(!window.SchoolInformationSource) return false;
+      /* نفس مسار قسم الأعمال الأسبوعية: تحديث المصدر ثم القراءة المباشرة حسب النوع. */
+      if(force && typeof SchoolInformationSource.refresh==='function') await SchoolInformationSource.refresh();
+      const [studentsRaw,staffRaw,teachersRaw]=await Promise.all([
+        typeof SchoolInformationSource.getStudents==='function'?SchoolInformationSource.getStudents(!!force):[],
+        typeof SchoolInformationSource.getStaff==='function'?SchoolInformationSource.getStaff(false):[],
+        typeof SchoolInformationSource.getTeachers==='function'?SchoolInformationSource.getTeachers(false):[]
+      ]);
+      const ctx=typeof SchoolInformationSource.context==='function'?SchoolInformationSource.context():{};
+      const sid=safe(ctx?.schoolId||'');
       const active=activeSchoolId();
       if(active&&sid&&active!==sid) throw new Error('WAKIL_ROSTER_SCHOOL_SCOPE_MISMATCH');
       roster.schoolId=sid||active;
-      roster.students=(Array.isArray(snap?.students)?snap.students:[]).map(normalizeStudent).filter(x=>x.name);
-      roster.staff=(Array.isArray(snap?.staff)?snap.staff:[]).map(normalizeStaff).filter(x=>x.name);
-      roster.teachers=(Array.isArray(snap?.teachers)?snap.teachers:[]).map(normalizeStaff).filter(x=>x.name);
+      roster.students=(Array.isArray(studentsRaw)?studentsRaw:[]).filter(x=>!roster.schoolId||!x?.school_id||safe(x.school_id)===roster.schoolId).map(normalizeStudent).filter(x=>x.name);
+      roster.staff=(Array.isArray(staffRaw)?staffRaw:[]).filter(x=>!roster.schoolId||!x?.school_id||safe(x.school_id)===roster.schoolId).map(normalizeStaff).filter(x=>x.name);
+      roster.teachers=(Array.isArray(teachersRaw)?teachersRaw:[]).filter(x=>!roster.schoolId||!x?.school_id||safe(x.school_id)===roster.schoolId).map(normalizeStaff).filter(x=>x.name);
       roster.studentByName=new Map(); roster.staffByName=new Map(); roster.teacherByName=new Map();
       roster.students.forEach(x=>putMap(roster.studentByName,x)); roster.staff.forEach(x=>putMap(roster.staffByName,x)); roster.teachers.forEach(x=>putMap(roster.teacherByName,x));
       roster.loaded=true;
@@ -2380,10 +2404,30 @@ bootstrapWakilRecordsV7();
     else if(kind==='staff'){const x=roster.staffByName.get(name);if(x)applyStaff(x);}
     else if(kind==='mixed'){const s=roster.studentByName.get(name);if(s)applyStudent(s);else{const x=roster.staffByName.get(name);if(x)applyStaff(x);}}
   }
+  function rosterRows(kind){
+    if(kind==='student')return roster.students;
+    if(kind==='teacher')return roster.teachers.length?roster.teachers:roster.staff;
+    if(kind==='staff')return roster.staff;
+    return [...roster.students,...roster.staff].filter((x,i,a)=>a.findIndex(y=>y.name===x.name)===i);
+  }
+  function replaceNameInputWithSelect(el,kind){
+    if(!el||el.tagName!=='INPUT'||el.type==='hidden')return el;
+    const rows=rosterRows(kind); if(!rows.length)return el;
+    const sel=document.createElement('select');
+    Array.from(el.attributes).forEach(a=>{if(a.name!=='list'&&a.name!=='type'&&a.name!=='value')sel.setAttribute(a.name,a.value)});
+    sel.dataset.wakilRosterKind=kind;
+    const currentValue=safe(el.value);
+    sel.innerHTML='<option value="">اختر من مركز المعلومات</option>'+rows.map(x=>'<option value="'+safe(x.name).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')+'">'+safe(x.name).replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</option>').join('');
+    if(currentValue&&!rows.some(x=>x.name===currentValue)){
+      const opt=document.createElement('option');opt.value=currentValue;opt.textContent=currentValue;sel.appendChild(opt);
+    }
+    sel.value=currentValue;
+    el.replaceWith(sel);
+    return sel;
+  }
   function bindOne(el,label){
     if(!el||!('value' in el))return; const kind=rosterKind(label); if(!kind)return;
-    const listId=kind==='student'?'wakil-school-students-list':kind==='teacher'?'wakil-school-teachers-list':kind==='staff'?'wakil-school-staff-list':'wakil-school-people-list';
-    if(el.tagName==='INPUT')el.setAttribute('list',listId);
+    el=replaceNameInputWithSelect(el,kind)||el;
     el.dataset.wakilRosterKind=kind;
     if(el.dataset.wakilRosterBound==='1')return; el.dataset.wakilRosterBound='1';
     el.addEventListener('change',()=>onRosterPick(el,kind));

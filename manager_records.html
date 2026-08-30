@@ -847,11 +847,30 @@ function renderNav(){
     items.forEach(r=>{
       const b=document.createElement('button');
       b.textContent=r.title;
+      b.dataset.recordId=r.id;
       b.className=r.id===current.id?"active":"";
-      b.onclick=()=>{current=r;renderAll();};
+      b.onclick=()=>selectRecord(r);
       nav.appendChild(b);
     });
   });
+}
+function updateNavActiveState(){
+  document.querySelectorAll('#nav button[data-record-id]').forEach(btn=>{
+    btn.classList.toggle('active',btn.dataset.recordId===current.id);
+  });
+}
+function renderRecordContent(){
+  document.getElementById('pageTitle').textContent=current.title;
+  document.getElementById('pageDesc').textContent=current.desc;
+  document.getElementById('paper').innerHTML=headerHtml()+formByType(current.type)+footerHtml();
+  loadDraft();loadFooterPanel();syncHeaderFooter();
+  document.querySelectorAll('[data-k]').forEach(el=>el.addEventListener('input',autoDraft));
+  updateNavActiveState();
+}
+function selectRecord(record){
+  if(!record||record.id===current.id){updateNavActiveState();return;}
+  current=record;
+  renderRecordContent();
 }
 function headerHtml(){
 return `<div class="officialHeader">
@@ -1104,11 +1123,8 @@ function renderAll(){
    const requested=records.find(r=>r.id===delegatedRecordKey);
    if(requested) current=requested;
  }
- document.getElementById('pageTitle').textContent=current.title;
- document.getElementById('pageDesc').textContent=current.desc;
- document.getElementById('paper').innerHTML=headerHtml()+formByType(current.type)+footerHtml();
- renderNav(); loadDraft(); loadFooterPanel(); syncHeaderFooter();
- document.querySelectorAll('[data-k]').forEach(el=>el.addEventListener('input',autoDraft));
+ renderNav();
+ renderRecordContent();
 }
 function key(){return "managerSchoolRecord_"+current.id}
 

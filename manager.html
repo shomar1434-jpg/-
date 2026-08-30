@@ -5728,6 +5728,18 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
     if(autoPrint) html=html.replace(/<\/body>/i,ps+'</body>');
     return html;
   }
+  function openManagerRecordPrintEditor(r){
+    var html=safeDoc(r,false);
+    var blob=new Blob([html],{type:'text/html;charset=utf-8'});
+    var blobUrl=URL.createObjectURL(blob);
+    var w=window.open('','_blank');
+    if(!w){URL.revokeObjectURL(blobUrl);alert('يرجى السماح بالنوافذ المنبثقة.');return;}
+    var title=esc(r&&r.displayName||r&&r.title||r&&r.recordName||'سجل المدير');
+    var editor='<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>محرر الطباعة — '+title+'</title><style>'+
+      '*{box-sizing:border-box}body{margin:0;background:#e5e7eb;font-family:Tajawal,Arial,sans-serif;color:#0f172a}.bar{position:sticky;top:0;z-index:10;background:#fff;border-bottom:1px solid #cbd5e1;padding:12px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 2px 12px #0001}.bar h1{font-size:15px;margin:0}.actions{display:flex;gap:8px}.btn{border:0;border-radius:10px;padding:9px 16px;font-weight:800;cursor:pointer}.print{background:#0f766e;color:#fff}.close{background:#e2e8f0;color:#334155}.hint{font-size:11px;color:#64748b}.stage{padding:22px;display:flex;justify-content:center}.paper{width:210mm;min-height:297mm;background:#fff;box-shadow:0 10px 35px #0003}.paper iframe{display:block;width:210mm;min-height:297mm;height:calc(100vh - 95px);border:0;background:#fff}@media(max-width:900px){.paper,.paper iframe{width:100%;min-height:75vh}.stage{padding:8px}.hint{display:none}}@media print{.bar{display:none}.stage{padding:0}.paper{box-shadow:none;width:100%}}'+
+      '</style></head><body><div class="bar"><div><h1>محرر الطباعة — '+title+'</h1><div class="hint">راجع الورقة ثم اضغط «طباعة الآن» لفتح إعدادات الطباعة.</div></div><div class="actions"><button class="btn close" onclick="window.close()">إغلاق</button><button class="btn print" id="printNow">طباعة الآن</button></div></div><div class="stage"><div class="paper"><iframe id="printFrame" src="'+blobUrl.replace(/"/g,'%22')+'"></iframe></div></div><script>document.getElementById("printNow").onclick=function(){var f=document.getElementById("printFrame");if(f&&f.contentWindow){f.contentWindow.focus();f.contentWindow.print();}};window.addEventListener("beforeunload",function(){try{URL.revokeObjectURL("'+blobUrl.replace(/"/g,'')+'")}catch(e){}});<\/script></body></html>';
+    w.document.open();w.document.write(editor);w.document.close();
+  }
   function previewItem(kind,id,autoPrint){
     var r=findItem(kind,id); if(!r){alert('تعذر العثور على السجل.');return;}
     if(kind==='self'){
@@ -5739,7 +5751,8 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
       var pw=window.open(u.toString(),'_blank');if(!pw)alert('يرجى السماح بالنوافذ المنبثقة.');
       return;
     }
-    var w=window.open('','_blank'); if(!w){alert('يرجى السماح بالنوافذ المنبثقة.');return;} w.document.open(); w.document.write(safeDoc(r,autoPrint)); w.document.close();
+    if(autoPrint){openManagerRecordPrintEditor(r);return;}
+    var w=window.open('','_blank'); if(!w){alert('يرجى السماح بالنوافذ المنبثقة.');return;} w.document.open(); w.document.write(safeDoc(r,false)); w.document.close();
   }
   async function deleteItem(kind,id){
     if(!confirm('هل تريد حذف هذا السجل؟'))return;

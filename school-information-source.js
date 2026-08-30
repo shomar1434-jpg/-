@@ -217,7 +217,7 @@ function boot(){
   document.addEventListener('focusin',e=>{const el=e.target;if(el&&/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)){enhance(el);if(el.dataset.sicKind)scheduleBackgroundLoad(false)}},true);
   document.addEventListener('change',e=>{const el=e.target;if(el&&/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)){if(!el.dataset.sicEnhanced)enhance(el);const k=el.dataset.sicKind;if(k)autofill(el,k)}},true);
   // أول مزامنة تتم بعد إتاحة الفرصة للمتصفح لرسم الواجهة.
-  setTimeout(()=>scheduleBackgroundLoad(false),0);
+  if(typeof requestIdleCallback==='function')requestIdleCallback(()=>scheduleBackgroundLoad(false),{timeout:4000});else setTimeout(()=>scheduleBackgroundLoad(false),2500);
   if(infoChannel)infoChannel.onmessage=e=>{if(e.data&&e.data.type==='updated'){state.loaded=false;scheduleBackgroundLoad(true)}};
   window.addEventListener('storage',e=>{if(/schoolInformationCenter|school_information_center|sic_students|users|school_users/i.test(e.key||'')){state.loaded=false;scheduleBackgroundLoad(true)}});
   window.addEventListener('school-information-updated',()=>{state.loaded=false;scheduleBackgroundLoad(true)});

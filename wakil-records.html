@@ -1527,21 +1527,52 @@ function getIdentityValue(data=null){
 }
 function collectSafe(){let d={};qsa('[data-field], [data-table]',qs('#formPage')).forEach(el=>{d[el.dataset.field||el.dataset.table]=el.value||''});return d}
 const WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY='agent_records_archive_v4';
-async function hydrateWakilCanonicalV6(){const g=window.PlatformPersistenceGuard;if(!g||typeof g.readExactValues!=='function')return;let r=await g.readExactValues({moduleKey:'agent',scope:'school',keys:[WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY]});let raw=r.ok?r.values[WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY]:undefined;if(raw===undefined){const old=await g.readExactValues({moduleKey:'agent',scope:'school',keys:['wakil_records_pdf_archive_v3']});raw=old.ok&&old.values.wakil_records_pdf_archive_v3!==undefined?old.values.wakil_records_pdf_archive_v3:'[]';if(raw!=='[]')await g.writeExactValues({moduleKey:'agent',scope:'school',values:{[WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY]:raw}});}g.setLocalSilently(WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY,raw||'[]');}
+let wakilRecordEditingId=null;
 
+function wakilArchiveMode(form){
+  const repeatable=new Set(['student','permission','notice','decision','inquiry']);
+  return repeatable.has(String(form?.kind||'')) ? 'repeatable_form' : 'continuous_period';
+}
+function wakilAcademicYear(){
+  const s=settings();
+  return String(s.year||qs('[data-setting="year"]',qs('#formPage'))?.value||'').trim()||'غير محدد';
+}
+function wakilSemester(){
+  const s=settings();
+  return String(s.semester||qs('[data-setting="semester"]',qs('#formPage'))?.value||'الأول').trim()||'الأول';
+}
+function wakilPeriodRecordId(form){
+  return ['period',String(form.id),wakilAcademicYear(),wakilSemester()].join(':');
+}
+function nextWakilFolderSequence(archive,folderId){
+  let max=0;
+  (archive||[]).forEach(r=>{
+    if(String(r.folderId||r.formId||'')!==String(folderId))return;
+    const n=Number(r.duplicateNo||r.sequenceNo||0);if(Number.isFinite(n))max=Math.max(max,n);
+  });
+  return max+1;
+}
+async function hydrateWakilCanonicalV7(){
+  const g=window.PlatformPersistenceGuard;
+  if(!g||typeof g.readExactValues!=='function')throw new Error('طبقة الاستمرارية السحابية غير متاحة');
+  const r=await g.readExactValues({moduleKey:'agent',scope:'school',keys:[WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY]});
+  if(!r||r.ok===false)throw new Error(r?.error||'تعذر قراءة أرشيف سجلات الوكيل');
+  const raw=r.values&&r.values[WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY]!==undefined?r.values[WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY]:'[]';
+  g.setLocalSilently(WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY,raw||'[]');
+  return readWakilCentralArchive();
+}
 function archiveKey(){return 'wakil_archive_v5_'+current.id}
-async function verifyWakilRecordArchiveCloud(){return true;}
 function readWakilCentralArchive(){try{const a=JSON.parse(localStorage.getItem(WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY)||'[]');return Array.isArray(a)?a:[]}catch(e){return[]}}
 function archiveSection(){return `<div class="section" id="archiveSection"><h3>أرشفة السجل والمرات السابقة حسب السجل المدني</h3><div class="fields"><div class="field"><div class="label">السجل المدني / الهوية للأرشفة</div><div><input data-field="السجل المدني" placeholder="يُستخدم لعرض المرات السابقة تلقائيًا"></div></div><div class="field"><div class="label">آخر حفظ</div><div><input data-field="آخر حفظ" readonly></div></div></div><div id="archiveRows"></div></div>`}
 function readArchive(){try{return JSON.parse(localStorage.getItem(archiveKey())||'[]')}catch(e){return []}}
-function writeArchive(arr){localStorage.setItem(archiveKey(),JSON.stringify(arr.slice(0,80)))}
+function writeArchive(arr){localStorage.setItem(archiveKey(),JSON.stringify((arr||[]).slice(0,80)))}
 function renderArchiveRows(){const box=qs('#archiveRows'); if(!box) return; const id=getIdentityValue(); const rows=readArchive().filter(r=>!id||r.identity===id).slice(0,10); if(!rows.length){box.innerHTML='<div style="padding:8px;color:#667085;font-weight:700">لا توجد مرات سابقة لهذا السجل المدني بعد.</div>';return} box.innerHTML=`<table class="archive-table"><thead><tr><th>م</th><th>تاريخ الحفظ</th><th>رقم السجل</th><th>اسم الطالب/الموظف</th><th>ملاحظة مختصرة</th><th class="no-print">استرجاع</th></tr></thead><tbody>${rows.map((r,i)=>`<tr><td>${i+1}</td><td>${r.savedAt||''}</td><td>${r.recordNo||''}</td><td>${r.person||''}</td><td>${r.note||''}</td><td class="no-print"><button class="btn gray" style="padding:5px 10px" onclick="restoreArchive('${r.id}')">استرجاع</button></td></tr>`).join('')}</tbody></table>`}
-function addArchiveSnapshot(data){
+function addArchiveSnapshot(data,sourceRecordId){
  const identity=getIdentityValue(data),arr=readArchive(),now=new Date();
- const rec={id:String(Date.now())+'-'+Math.random().toString(36).slice(2,7),identity:identity||'',savedAt:now.toLocaleString('ar-SA'),recordNo:data['رقم السجل']||'',person:data['اسم الطالب']||data['اسم الموظف']||data['الاسم']||'',note:(data['سبب التحويل']||data['الإجراءات والتوصيات النهائية']||data['ملاحظات']||'').slice(0,90),data:JSON.parse(JSON.stringify(data||{}))};
- arr.unshift(rec);writeArchive(arr);return rec;
+ const rec={id:String(sourceRecordId||Date.now()),identity:identity||'',savedAt:now.toLocaleString('ar-SA'),recordNo:data['رقم السجل']||'',person:data['اسم الطالب']||data['اسم الموظف']||data['الاسم']||'',note:(data['سبب التحويل']||data['الإجراءات والتوصيات النهائية']||data['ملاحظات']||'').slice(0,90),data:JSON.parse(JSON.stringify(data||{}))};
+ const ix=arr.findIndex(x=>String(x.id)===String(rec.id)); if(ix>=0)arr[ix]=rec;else arr.unshift(rec);writeArchive(arr);return rec;
 }
-function restoreArchive(id){const rec=readArchive().find(r=>r.id===id); if(!rec) return; qsa('[data-field], [data-table]',qs('#formPage')).forEach(el=>{const k=el.dataset.field||el.dataset.table;if(rec.data[k]!==undefined)el.value=rec.data[k]});setDefaults();renderArchiveRows();autoGrowAll(qs('#formPage'));alert('تم استرجاع بيانات الأرشيف إلى النموذج.');}
+function restoreArchive(id){const rec=readArchive().find(r=>String(r.id)===String(id)); if(!rec) return; qsa('[data-field], [data-table]',qs('#formPage')).forEach(el=>{const k=el.dataset.field||el.dataset.table;if(rec.data[k]!==undefined)el.value=rec.data[k]});setDefaults();renderArchiveRows();autoGrowAll(qs('#formPage'));alert('تم استرجاع بيانات الأرشيف إلى النموذج.');}
 function syncDayFromDate(dateValue){
   const day=qs('[data-field="اليوم"]',qs('#formPage'));
   if(!day||!dateValue) return;
@@ -1651,40 +1682,77 @@ function getCurrentRecordPrintableDocumentForArchive(){
 }
 
 
+
 function saveCurrentLocalOnly(){
-  const data = collect();
-  data['آخر حفظ'] = new Date().toLocaleString('ar-SA');
-  localStorage.setItem(formKey(), JSON.stringify(data));
-  return data;
+  const data=collect();data['آخر حفظ']=new Date().toLocaleString('ar-SA');localStorage.setItem(formKey(),JSON.stringify(data));return data;
 }
-
+function guessWakilPersonNameForRecordsArchive(data){
+  const keys=['اسم الطالب','اسم الموظف','اسم الطالب / الموظف','اسم المعلم/ة','المعلم الغائب','المعلم المنفذ','اسم المحول','المستلم'];
+  for(const k of keys){if(data[k])return data[k]}return '';
+}
+function getCurrentFormHTMLForRecordsArchive(){const page=document.getElementById('formPage');return page?page.innerHTML:''}
+function getCurrentRecordPrintableDocumentForArchive(){
+  const styles=Array.from(document.querySelectorAll('style')).map(s=>s.outerHTML).join('\n');
+  const page=document.getElementById('formPage'),title=current?.title||'سجل الوكيل',content=page?page.outerHTML:'';
+  return '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>'+title+'</title>'+styles+'<style>@page{size:A4 portrait;margin:0!important}html,body{margin:0!important;padding:0!important;background:#fff!important}.sidebar,.toolbar,.no-print,.ai-panel,.modal{display:none!important}</style></head><body><main class="main">'+content+'</main></body></html>';
+}
+async function verifyWakilCentralReadback(recordId,folderId){
+  const g=window.PlatformPersistenceGuard;
+  const r=await g.readExactValues({moduleKey:'agent',scope:'school',keys:[WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY]});
+  if(!r||r.ok===false)throw new Error(r?.error||'تعذر إعادة قراءة الأرشيف بعد الحفظ');
+  let rows=[];try{rows=JSON.parse(r.values?.[WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY]||'[]');if(!Array.isArray(rows))rows=[]}catch(_){rows=[]}
+  const found=rows.find(x=>String(x.id)===String(recordId));
+  if(!found||String(found.folderId||found.formId)!==String(folderId))throw new Error('فشل التحقق السحابي من السجل داخل مجلده الصحيح');
+  g.setLocalSilently(WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY,JSON.stringify(rows));
+  return found;
+}
 async function saveCurrent(){
- const data=collect();data['آخر حفظ']=new Date().toLocaleString('ar-SA');
- const formStorageKey=formKey(),historyKey=archiveKey(),centralKey=WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY;
- const beforeForm=localStorage.getItem(formStorageKey),beforeHistory=localStorage.getItem(historyKey),beforeCentral=localStorage.getItem(centralKey);
- try{
-  if(window.PlatformCloudSession&&typeof window.PlatformCloudSession.ensure==='function') await window.PlatformCloudSession.ensure();
-  localStorage.setItem(formStorageKey,JSON.stringify(data));
-  const historyRec=addArchiveSnapshot(data);
-  const archive=readWakilCentralArchive(),folderId=String(current.id),folderName=String(current.title||'سجل');
-  const personName=guessWakilPersonNameForRecordsArchive(data)||'بدون اسم';
-  const duplicateNo=archive.filter(r=>String(r.folderId)===folderId&&String(r.personName||'').trim()===String(personName).trim()).length+1;
-  window.__wakilRecordArchiveSeq=(window.__wakilRecordArchiveSeq||0)+1;const centralRec={id:(Date.now()*1000)+(window.__wakilRecordArchiveSeq%1000),sourceHistoryId:historyRec.id,formId:folderId,folderId,folderName,recordName:folderName,category:current.category||'shared',categoryLabel:wakilCategoryLabel(current.category||'shared'),title:folderName,personName,personType:current.kind&&String(current.kind).includes('staff')?'employee':(String(current.title||'').includes('موظ')||String(current.title||'').includes('معلم')?'employee':'student'),displayName:duplicateNo>1?personName+' ('+duplicateNo+')':personName,duplicateNo,summary:Object.entries(data).map(([k,v])=>k+': '+v).join('\n'),htmlContent:getCurrentFormHTMLForRecordsArchive(),printableHTML:getCurrentRecordPrintableDocumentForArchive(),createdAt:new Date().toLocaleString('ar-SA'),updatedAt:new Date().toISOString()};
-  const st=settings();centralRec.academicYear=st.year||data['العام الدراسي']||'1448';centralRec.semester=st.semester||'الأول';centralRec.__recordEngineV2=true;
-  if(window.PlatformRecordSaveEngine&&!PlatformRecordSaveEngine.isSystemAdminContext())await PlatformRecordSaveEngine.save({moduleKey:'agent_records_items',recordType:'agent_record',recordId:String(centralRec.id),academicYear:centralRec.academicYear,semester:centralRec.semester,scope:'school',folderId:folderId,title:folderName,entityId:getIdentityValue(data),entityType:centralRec.personType,data:centralRec,createdAt:centralRec.updatedAt});
-  archive.push(centralRec);localStorage.setItem(centralKey,JSON.stringify(archive));
-  await verifyWakilRecordArchiveCloud([formStorageKey,historyKey,centralKey]);
-  const verified=readWakilCentralArchive().find(r=>String(r.id)===String(centralRec.id));
-  if(!verified||String(verified.folderId)!==folderId||String(verified.folderName)!==folderName)throw new Error('تعذر التحقق من وجود السجل داخل مجلد السجل الصحيح في الأرشيف');
-  renderArchiveRows();alert('تم حفظ سجل الوكيل والتحقق منه سحابيًا داخل مجلد «'+folderName+'» في أرشيف السجلات ✅');return true;
- }catch(e){
-  if(beforeForm===null)localStorage.removeItem(formStorageKey);else localStorage.setItem(formStorageKey,beforeForm);
-  if(beforeHistory===null)localStorage.removeItem(historyKey);else localStorage.setItem(historyKey,beforeHistory);
-  if(beforeCentral===null)localStorage.removeItem(centralKey);else localStorage.setItem(centralKey,beforeCentral);
-  alert('تعذر تأكيد حفظ السجل في أرشيف السجلات: '+String(e?.message||e||'خطأ غير معروف')+'؛ تمت استعادة البيانات السابقة.');console.error('[wakil record archive save]',e);return false;
- }
+  try{if(window.PlatformCloudSession&&typeof PlatformCloudSession.ensure==='function')await PlatformCloudSession.ensure();}catch(e){alert('تعذر تهيئة جلسة المدرسة السحابية.');return false}
+  try{await hydrateWakilCanonicalV7();}catch(e){alert('تعذر قراءة أرشيف الوكيل قبل الحفظ: '+String(e?.message||e));return false}
+  const data=collect();data['آخر حفظ']=new Date().toLocaleString('ar-SA');
+  const formStorageKey=formKey(),historyKey=archiveKey(),centralKey=WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY;
+  const beforeForm=localStorage.getItem(formStorageKey),beforeHistory=localStorage.getItem(historyKey),beforeCentral=localStorage.getItem(centralKey);
+  try{
+    const archive=readWakilCentralArchive(),folderId=String(current.id),folderName=String(current.title||'سجل');
+    const mode=wakilArchiveMode(current),nowIso=new Date().toISOString(),personName=guessWakilPersonNameForRecordsArchive(data)||folderName;
+    let recordId,idx=-1,sequenceNo=1,createdAt=new Date().toLocaleString('ar-SA'),displayName=folderName;
+    if(mode==='continuous_period'){
+      recordId=wakilPeriodRecordId(current);idx=archive.findIndex(r=>String(r.id)===String(recordId));
+      if(idx>=0){createdAt=archive[idx].createdAt||createdAt;sequenceNo=archive[idx].duplicateNo||1;displayName=archive[idx].displayName||folderName;}
+      else displayName=folderName+' — '+wakilSemester()+' '+wakilAcademicYear();
+    }else if(wakilRecordEditingId){
+      recordId=String(wakilRecordEditingId);idx=archive.findIndex(r=>String(r.id)===recordId);
+      if(idx<0)throw new Error('تعذر العثور على النسخة المطلوب تعديلها');
+      sequenceNo=Number(archive[idx].duplicateNo||1);createdAt=archive[idx].createdAt||createdAt;displayName=archive[idx].displayName||personName;
+    }else{
+      recordId='rec:'+folderId+':'+Date.now()+':'+Math.random().toString(36).slice(2,7);
+      sequenceNo=nextWakilFolderSequence(archive,folderId);displayName=sequenceNo>1?personName+' ('+sequenceNo+')':personName;
+    }
+    const centralRec={id:recordId,sourceRecordId:recordId,formId:folderId,folderId,folderName,recordName:folderName,category:current.category||'shared',categoryLabel:wakilCategoryLabel(current.category||'shared'),title:folderName,personName,personType:current.kind&&String(current.kind).includes('staff')?'employee':(String(current.title||'').includes('موظ')||String(current.title||'').includes('معلم')?'employee':'student'),displayName,duplicateNo:sequenceNo,saveMode:mode,academicYear:wakilAcademicYear(),semester:wakilSemester(),values:JSON.parse(JSON.stringify(data)),data:JSON.parse(JSON.stringify(data)),summary:Object.entries(data).map(([k,v])=>k+': '+v).join('\n'),htmlContent:getCurrentFormHTMLForRecordsArchive(),printableHTML:getCurrentRecordPrintableDocumentForArchive(),createdAt,updatedAt:nowIso};
+    if(idx>=0)archive[idx]=centralRec;else archive.push(centralRec);
+    localStorage.setItem(formStorageKey,JSON.stringify(data));
+    addArchiveSnapshot(data,recordId);
+    localStorage.setItem(centralKey,JSON.stringify(archive));
+    if(!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.writeExactValues!=='function')throw new Error('طبقة الاستمرارية السحابية غير متاحة');
+    const w=await PlatformPersistenceGuard.writeExactValues({moduleKey:'agent',scope:'school',values:{[centralKey]:JSON.stringify(archive),[formStorageKey]:JSON.stringify(data),[historyKey]:localStorage.getItem(historyKey)||'[]'}});
+    if(!w||w.ok===false)throw new Error(w?.error||'تعذر تأكيد الحفظ السحابي');
+    await verifyWakilCentralReadback(recordId,folderId);
+    wakilRecordEditingId=null;renderArchiveRows();
+    alert(mode==='continuous_period'?'تم تحديث سجل الوكيل للفترة الحالية والتحقق منه سحابيًا ✅':'تم حفظ نسخة سجل الوكيل والتحقق منها سحابيًا داخل مجلد «'+folderName+'» ✅');return true;
+  }catch(e){
+    if(beforeForm===null)localStorage.removeItem(formStorageKey);else localStorage.setItem(formStorageKey,beforeForm);
+    if(beforeHistory===null)localStorage.removeItem(historyKey);else localStorage.setItem(historyKey,beforeHistory);
+    if(beforeCentral===null)localStorage.removeItem(centralKey);else localStorage.setItem(centralKey,beforeCentral);
+    alert('تعذر تأكيد حفظ السجل: '+String(e?.message||e)+'؛ تمت استعادة البيانات السابقة.');console.error('[wakil record save V7]',e);return false;
+  }
 }
-
+async function loadCentralArchiveForEdit(editId){
+  if(!editId)return false;
+  const rows=await hydrateWakilCanonicalV7(),rec=rows.find(r=>String(r.id)===String(editId));if(!rec)return false;
+  const fid=String(rec.folderId||rec.formId||'');const target=visibleForms().find(f=>String(f.id)===fid);if(target&&target.id!==current.id){current=target;renderNav();renderForm();}
+  const values=rec.values||rec.data||{};qsa('[data-field], [data-table]',qs('#formPage')).forEach(el=>{const k=el.dataset.field||el.dataset.table;if(values[k]!==undefined)el.value=values[k]});
+  setDefaults();renderArchiveRows();autoGrowAll(qs('#formPage'));wakilRecordEditingId=String(rec.id);return true;
+}
 function clearCurrent(){if(confirm('هل تريد تفريغ هذا النموذج؟')){localStorage.removeItem(formKey());renderForm();loadCurrent()}}
 
 function updateSettingFromInput(el){let st=settings();st[el.dataset.setting]=el.value||'';localStorage.setItem('wakil_settings',JSON.stringify(st));}
@@ -2050,12 +2118,13 @@ aiComplete = async function(){
   await requestStructuredAI('', 'جاري توليد مقترحات مهيكلة للتعبئة...');
 };
 
-const delegatedRecordKey=new URLSearchParams(location.search).get('record');
-if(delegatedRecordKey){
-  const requested=visibleForms().find(f=>f.id===delegatedRecordKey);
-  if(requested) current=requested;
+async function bootstrapWakilRecordsV7(){
+ const params=new URLSearchParams(location.search),delegatedRecordKey=params.get('record'),editArchiveId=params.get('editArchiveId');
+ if(delegatedRecordKey){const requested=visibleForms().find(f=>f.id===delegatedRecordKey);if(requested)current=requested;}
+ renderNav();renderForm();loadCurrent();bindAutoGrow(qs('#formPage'));autoGrowAll(qs('#formPage'));
+ if(editArchiveId){try{const ok=await loadCentralArchiveForEdit(editArchiveId);if(!ok)alert('تعذر العثور على السجل المؤرشف المطلوب تعديله.');}catch(e){alert('تعذر تحميل السجل للتعديل: '+String(e?.message||e));}}
 }
-renderNav();renderForm();loadCurrent();bindAutoGrow(qs('#formPage'));autoGrowAll(qs('#formPage'));
+bootstrapWakilRecordsV7();
 </script>
 <script id="V39_GITHUB_PAGES_WAKIL_FIX">
 (function(){
@@ -2109,7 +2178,7 @@ renderNav();renderForm();loadCurrent();bindAutoGrow(qs('#formPage'));autoGrowAll
 <script src="school-activity-engine.js"></script>
   <script src="evidence-library-source.js"></script>
 
-<script src="school-information-source.js?v=20260830-records-final-v4"></script>
+<script src="school-information-source.js"></script>
 <script src="internal-messaging.js"></script>
 
 <script defer src="unified_workspace.js"></script>
@@ -2122,6 +2191,4 @@ renderNav();renderForm();loadCurrent();bindAutoGrow(qs('#formPage'));autoGrowAll
 <script src="openai-engine.js"></script>
 <script src="top-ai-center.js"></script>
 <script src="platform-page-navigation.js?v=20260818-nav1"></script>
-
-<script src="platform-record-save-engine.js?v=20260830-records-final-v3"></script>
 </body></html>

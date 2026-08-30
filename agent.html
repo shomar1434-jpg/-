@@ -2,7 +2,21 @@
 
 <html dir="rtl" lang="ar">
 <head>
-<style id="platform-first-paint-guard">#elsPicker{display:none!important;visibility:hidden!important}html[data-system-admin-context="1"] #activeSchoolLabel{display:none!important;visibility:hidden!important}</style>
+<style id="platform-first-paint-guard">
+#elsPicker{display:none!important;visibility:hidden!important}
+html[data-system-admin-context="1"] #activeSchoolLabel{display:none!important;visibility:hidden!important}
+/* AGENT_FIX_2026_08_31: منع الومضة قبل اكتمال أول تهيئة */
+html:not([data-agent-ui-ready="1"]) body{visibility:hidden!important;opacity:0!important}
+html[data-agent-ui-ready="1"] body{visibility:visible!important;opacity:1!important}
+</style>
+<script id="agent-first-paint-ready-fix">
+(function(){
+  function ready(){
+    requestAnimationFrame(function(){requestAnimationFrame(function(){document.documentElement.setAttribute('data-agent-ui-ready','1');});});
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',ready,{once:true}); else ready();
+})();
+</script>
 <script src="system-admin-context.js"></script>
 <style id="evidence-picker-prehide">#elsPicker[hidden],#elsPicker[style*="display:none"]{display:none!important;visibility:hidden!important}</style>
 <!-- SAFE_PATCH: bypass activation without touching archived data -->
@@ -188,7 +202,7 @@
         }
 
         #welcome-dashboard, #archive-view, #stats-view, #portfolio-view, #main-report-app, #welcome-gate, #activation-overlay {
-            animation: sectionAppear 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            animation: none !important; /* AGENT_FIX_2026_08_31: منع وميض الانتقال بين واجهات الوكيل */
         }
 
         @keyframes sectionAppear {
@@ -2733,7 +2747,7 @@ async function legacyPerformanceArchiveOpen_DISABLED() {
             const reports = performanceArchiveCleanView(); 
             const r = reports.find(i => i.id == id); 
             if(r) { 
-                document.getElementById('report-content-container').innerHTML = r.content; 
+                document.getElementById('report-content-container').innerHTML = r.content; try{ if(typeof window.restoreAgentArchivedFormState==='function') window.restoreAgentArchivedFormState(document.getElementById('report-content-container')); }catch(_){ } 
                 currentEditingId = id; 
                 document.getElementById('archive-view').style.display='none'; 
                 document.getElementById('main-report-app').classList.remove('hidden'); 
@@ -6426,6 +6440,43 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&overlay?.classList.
 window.__PERFORMANCE_ARCHIVE_CLEAN_V5_4__={pdfLikeReadonlyPreview:true,usesPrintLayout:true,editingSeparated:true};
 })();
 </script>
+<script id="AGENT_ARCHIVE_FORM_STATE_SERIALIZER_V3">
+(function(){
+'use strict';
+if(window.__AGENT_ARCHIVE_FORM_STATE_SERIALIZER_V3__) return;
+window.__AGENT_ARCHIVE_FORM_STATE_SERIALIZER_V3__=true;
+window.serializeAgentReportForArchive=function(root){
+  if(!root) throw new Error('واجهة التقرير غير متاحة');
+  const clone=root.cloneNode(true);
+  const src=root.querySelectorAll('input,textarea,select,[contenteditable]');
+  const dst=clone.querySelectorAll('input,textarea,select,[contenteditable]');
+  src.forEach((el,i)=>{
+    const c=dst[i]; if(!c) return;
+    const tag=el.tagName;
+    if(tag==='INPUT'){
+      const type=String(el.type||'text').toLowerCase();
+      if(type==='checkbox'||type==='radio'){ if(el.checked)c.setAttribute('checked','checked');else c.removeAttribute('checked'); }
+      else if(type!=='file') c.setAttribute('value',el.value||'');
+    }else if(tag==='TEXTAREA'){
+      c.textContent=el.value||''; c.setAttribute('data-saved-value',el.value||'');
+    }else if(tag==='SELECT'){
+      Array.from(c.options||[]).forEach(o=>o.removeAttribute('selected'));
+      const selected=Array.from(el.options||[]).map((o,idx)=>o.selected?idx:-1).filter(idx=>idx>=0);
+      selected.forEach(idx=>{if(c.options[idx])c.options[idx].setAttribute('selected','selected')});
+      c.setAttribute('data-saved-value',el.value||'');
+    }else if(el.isContentEditable||el.getAttribute('contenteditable')!==null){
+      c.innerHTML=el.innerHTML;
+    }
+  });
+  return clone.innerHTML;
+};
+window.restoreAgentArchivedFormState=function(root){
+  if(!root) return;
+  root.querySelectorAll('textarea[data-saved-value]').forEach(el=>{el.value=el.getAttribute('data-saved-value')||el.textContent||''});
+  root.querySelectorAll('select[data-saved-value]').forEach(el=>{const v=el.getAttribute('data-saved-value');if(v!==null)el.value=v});
+};
+})();
+</script>
 <script id="AGENT_PERFORMANCE_ARCHIVE_VERIFIED_FOLDER_SAVE_V2">
 
 (function(){
@@ -6521,7 +6572,7 @@ window.saveReportToArchive=async function(){
       archiveRole:'agent',
       archiveType:'performanceReport',
       createdAt,
-      content:root.innerHTML,
+      content:(typeof window.serializeAgentReportForArchive==='function'?window.serializeAgentReportForArchive(root):root.innerHTML),
       updatedAt:new Date().toISOString()
     };
     const result=await PerformanceArchiveCleanV5.saveFast(data);

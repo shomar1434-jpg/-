@@ -1231,8 +1231,13 @@ async function saveArchive(){
        htmlContent:'<!DOCTYPE html>'+document.documentElement.outerHTML,createdAt,updatedAt:nowIso,academicYear:ay,semester:sem,__recordEngineV2:true};
    }
 
-   await PlatformRecordSaveEngine.save({moduleKey:'manager_records_items',recordType:'manager_record',recordId:String(recordId),academicYear:ay,semester:sem,
-     scope:'school',folderId,title:row.displayName,data:row,createdAt,expectedSchoolId});
+   const cloudSave=await PlatformRecordSaveEngine.save({
+     moduleKey:'manager_records_items',recordType:'manager_record',recordId:String(recordId),
+     academicYear:ay,semester:sem,scope:'school',folderId,title:row.displayName,
+     data:row,createdAt,expectedSchoolId
+   });
+   row.verificationStatus='pending';
+   row.cloudAcceptedAt=new Date().toISOString();
 
    if(mode==='repeatable_form'){
      if(managerRecordEditingIndex!==null&&list[managerRecordEditingIndex])list[managerRecordEditingIndex]=row;else list.unshift(row);
@@ -1248,11 +1253,43 @@ async function saveArchive(){
    if(mode==='cumulative_rows')clearCurrentTableRows();
    if(window.parent&&window.parent!==window){try{window.parent.postMessage({type:'MANAGER_RECORD_SAVED',payload:row},'*')}catch(_){}}
    renderArchive();
-   alert(mode==='cumulative_rows'
-     ? 'تمت إضافة الصفوف المكتملة إلى السجل التراكمي وحفظه في مجلده داخل أرشيف السجلات.'
-     : mode==='continuous_period'
-       ? 'تم تحديث السجل المستمر للفترة وحفظه داخل مجلده في أرشيف السجلات.'
-       : 'تم حفظ '+row.displayName+' داخل المجلد المطابق في أرشيف السجلات.');
+
+   // لا نحجز المستخدم حتى يكتمل pull. نعرض حالة وسيطة فقط، والنجاح النهائي بعد التحقق.
+   alert('تم إرسال السجل إلى السحابة وإضافته إلى الأرشيف.\nجارٍ التحقق السحابي في الخلفية.');
+
+   Promise.resolve(cloudSave.verification).then(()=>{
+     try{
+       const lk=key()+'_archive';
+       let arr=JSON.parse(localStorage.getItem(lk)||'[]');
+       if(Array.isArray(arr)){
+         arr=arr.map(x=>String(x.id||x.archiveId)===String(recordId)
+           ? {...x,verificationStatus:'verified',cloudVerifiedAt:new Date().toISOString()}
+           : x);
+         localStorage.setItem(lk,JSON.stringify(arr));
+       }
+       let pa=JSON.parse(localStorage.getItem(platformKey)||'[]');
+       if(Array.isArray(pa)){
+         pa=pa.map(x=>String(x.sourceRecordId||x.id)===String(recordId)
+           ? {...x,verificationStatus:'verified',cloudVerifiedAt:new Date().toISOString()}
+           : x);
+         localStorage.setItem(platformKey,JSON.stringify(pa));
+       }
+       renderArchive();
+     }catch(_){}
+   }).catch(err=>{
+     console.warn('[manager record background verify]',err);
+     try{
+       const lk=key()+'_archive';
+       let arr=JSON.parse(localStorage.getItem(lk)||'[]');
+       if(Array.isArray(arr)){
+         arr=arr.map(x=>String(x.id||x.archiveId)===String(recordId)
+           ? {...x,verificationStatus:'pending',verificationError:String(err&&err.message||err||'')}
+           : x);
+         localStorage.setItem(lk,JSON.stringify(arr));
+       }
+       renderArchive();
+     }catch(_){}
+   });
    return true;
  }catch(e){
    if(beforeLocal===null)localStorage.removeItem(localKey);else localStorage.setItem(localKey,beforeLocal);
@@ -1269,7 +1306,8 @@ function renderArchive(){
  box.innerHTML = list.length ? "" : "<p class='small'>لا توجد سجلات مؤرشفة لهذا النموذج.</p>";
  list.forEach((item,i)=>{
    const d=document.createElement('div');d.className="archiveItem";
-   d.innerHTML=`<div><b>${item.displayName||item.title}</b><div class="small">${item.updatedAt||item.savedAt||''}${item.archiveMode==='cumulative_rows'?' — عدد العمليات: '+(item.entryCount||0):''}</div></div>
+   const verifyLabel=item.verificationStatus==='verified'?' — تم التحقق سحابيًا':(item.verificationStatus==='pending'?' — جارٍ التحقق':'');
+   d.innerHTML=`<div><b>${item.displayName||item.title}</b><div class="small">${item.updatedAt||item.savedAt||''}${item.archiveMode==='cumulative_rows'?' — عدد العمليات: '+(item.entryCount||0):''}${verifyLabel}</div></div>
    <div><button class="btn light" onclick="editArchive(${i})">تعديل</button>
    <button class="btn light" onclick="restoreArchive(${i})">استرجاع للمعاينة</button>
    <button class="btn danger" onclick="deleteArchive(${i})">حذف</button></div>`;
@@ -1296,7 +1334,14 @@ async function deleteArchive(i){
  try{
   if(!window.PlatformRecordSaveEngine||PlatformRecordSaveEngine.isSystemAdminContext())throw new Error('محرك الحذف السحابي غير متاح');
   const expectedSchoolId=String((window.PlatformCloudSession&&typeof PlatformCloudSession.schoolId==='function'&&PlatformCloudSession.schoolId())||sessionStorage.getItem('smart_school_tab_school_v1')||sessionStorage.getItem('current_school_id')||'');
-  await PlatformRecordSaveEngine.remove({moduleKey:'manager_records_items',recordType:'manager_record',recordId:String(item.id||item.archiveId),academicYear:item.academicYear||item.values?.year||undefined,semester:item.semester||item.values?.semester||item.values?.term||undefined,scope:'school',expectedSchoolId});
+  const cloudDelete=await PlatformRecordSaveEngine.remove({
+    moduleKey:'manager_records_items',recordType:'manager_record',
+    recordId:String(item.id||item.archiveId),
+    academicYear:item.academicYear||item.values?.year||undefined,
+    semester:item.semester||item.values?.semester||item.values?.term||undefined,
+    scope:'school',expectedSchoolId
+  });
+  Promise.resolve(cloudDelete.verification).catch(e=>console.warn('[manager record delete verify]',e));
   list.splice(i,1);localStorage.setItem(localKey,JSON.stringify(list));let pa=[];try{pa=JSON.parse(beforePlatform||'[]')}catch(_){pa=[]}pa=pa.filter(x=>String(x.sourceRecordId||x.id)!==String(item.id||item.archiveId));localStorage.setItem(platformKey,JSON.stringify(pa));if(managerRecordEditingIndex===i)managerRecordEditingIndex=null;renderArchive();
  }catch(e){if(beforeLocal===null)localStorage.removeItem(localKey);else localStorage.setItem(localKey,beforeLocal);if(beforePlatform===null)localStorage.removeItem(platformKey);else localStorage.setItem(platformKey,beforePlatform);console.error('[manager record delete]',e);alert('تعذر تأكيد الحذف سحابيًا؛ بقي السجل دون حذف.');renderArchive();}
 }

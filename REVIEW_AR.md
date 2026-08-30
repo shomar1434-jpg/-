@@ -1,31 +1,18 @@
-# مراجعة أنماط حفظ سجلات المدير
+# تصحيح سرعة حفظ سجلات المدير V4
 
-## التصنيف
-- تراكمي صفّي: 27 سجلًا.
-- مستمر للفترة: 3 سجلات.
-- نموذج متكرر كامل: 1 سجل.
+تمت مقارنة الحفظ مع معمارية Performance Archive Clean V5 الناجحة.
 
-### المستمر للفترة
-schoolProfile, operationalPlan, orgStructure
+## الفرق الذي تم إصلاحه
+المحرك السابق كان ينفذ:
+1) pull للفهرس
+2) bulk-upsert للحفظ
+3) pull للتحقق
+وكلها كانت حاجبة للمستخدم.
 
-### المتكرر الكامل
-meetings
+المحرك الجديد ينفذ:
+1) bulk-upsert واحد فقط: السجل الكامل + metadata خفيفة مستقلة.
+2) يعيد التحكم للواجهة بعد قبول الكتابة.
+3) يبدأ read-back verification في الخلفية.
+4) لا تعرض الواجهة نجاحًا نهائيًا قبل التحقق؛ تعرض «جارٍ التحقق» ثم «تم التحقق سحابيًا».
 
-### التراكمي الصفّي
-correspondence, committees, announcements, assignmentsJobDescriptions, powers, operatingBudget, teachingDevelopment, staffFollowup, teacherPerformance, supportSupervisor, excellence, documentControl, internalAudit, riskGovernance, partnerships, learnerAttitude, internationalTests, achievement, kpis, improvementPlan, classVisits, curriculum, remedialEnrichment, specialGifted, safety, maintenance, digital
-
-## QA
-{
-  "31_records_classified": true,
-  "cumulative_rows": 27,
-  "continuous_period": 3,
-  "repeatable_form": 1,
-  "cumulative_uses_single_period_record": true,
-  "cumulative_adds_only_completed_rows": true,
-  "cumulative_sequence_internal": true,
-  "repeatable_fixed_sequence": true,
-  "continuous_updates_same_period_record": true,
-  "archive_folder_name_preserved": true,
-  "cloud_readback_engine_used": true,
-  "syntax_ok": true
-}
+لا يتم رفع مصفوفة الأرشيف كاملة إلى السحابة.

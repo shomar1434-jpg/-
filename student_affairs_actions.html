@@ -183,7 +183,8 @@ input::placeholder,textarea::placeholder{
 
 </style>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="school-information-source.js?v=20260830-records-final-v4"></script>
+<script src="school-information-source.js"></script>
+<script src="platform-page-navigation.js?v=20260830-nav2" defer></script>
 </head>
 <body>
 <button id="studentAffairsBack" type="button" onclick="history.length>1?history.back():(location.href='agent.html')" style="position:fixed;top:14px;left:16px;z-index:9999;border:1px solid #d8e5e9;background:#fff;color:#15445A;border-radius:12px;padding:9px 14px;font-weight:900;box-shadow:0 8px 24px rgba(21,68,90,.14)">← العودة لقسم الوكيل</button>
@@ -747,15 +748,21 @@ function openWhatsApp(){
  window.open('https://web.whatsapp.com/send?phone='+encodeURIComponent(phoneIntl($('#guardianPhone').value))+'&text='+encodeURIComponent(msg),'_blank','noopener');
 }
 $('#sendWhatsApp').addEventListener('click',openWhatsApp);
-async function saveTransaction(archiveIt){
- const id=$('#txNo').textContent,oldTx=transactions.find(x=>x.id===id),beforeTx=oldTx?JSON.parse(JSON.stringify(oldTx)):null,beforeArchive=archive.slice(),beforeSeq=txSeq,status=archiveIt?'مكتمل ومؤرشف':'مسودة محفوظة',link=guardianPublicUrl({id}),st=studentById($('#studentSelect').value),data={id,student:$('#studentSelect').value,studentId:st?.id||'',national_id:st?.national_id||'',stage:st?.stage||'',grade:st?.grade||'',classroom:st?.classroom||'',guardian:$('#guardianName').value,guardian_relation:st?.guardian_relation||'',phone:$('#guardianPhone').value,title:templates[currentForm].title,date:selectedHijri(),status,link,signed:false,archived:!!archiveIt,kind:'معاملة',body:bodyFromForm(),academicYear:$('#hYear')?.value||localStorage.getItem('school_info_academic_year')||'1448',semester:localStorage.getItem('semester')||localStorage.getItem('current_semester')||'سنوي',updatedAt:new Date().toISOString(),__recordEngineV2:true};
- try{
-   if(!window.PlatformRecordSaveEngine||PlatformRecordSaveEngine.isSystemAdminContext())throw new Error('محرك حفظ معاملات شؤون الطلاب غير متاح');
-   await PlatformRecordSaveEngine.save({moduleKey:'student_affairs_actions',recordType:'student_affairs_transaction',recordId:String(id),academicYear:data.academicYear,semester:data.semester,scope:'school',folderId:archiveIt?'transactions':'drafts',title:data.title||'إجراء شؤون طلاب',entityId:data.studentId||data.national_id||'',entityType:'student',data});
-   if(oldTx)Object.assign(oldTx,data);else transactions.push(data);
-   if(archiveIt){if(!archive.some(a=>a.id===id))archive.push({id,date:data.date,student:data.student,type:'معاملة',title:data.title,status:data.status,details:data.body,academicYear:data.academicYear,semester:data.semester,__recordEngineV2:true});txSeq++;$('#txNo').textContent=`SA-${$('#hYear').value}-${String(txSeq).padStart(4,'0')}`;}
-   $('#txStatus').innerHTML=`<span class="success">${status} — تم التحقق السحابي</span>`;renderAll();return true;
- }catch(e){if(beforeTx&&oldTx)Object.assign(oldTx,beforeTx);else if(!beforeTx)transactions=transactions.filter(x=>x.id!==id);archive=beforeArchive;txSeq=beforeSeq;console.error('[student affairs cloud save]',e);$('#txStatus').innerHTML='<span class="error">تعذر تأكيد الحفظ السحابي؛ لم يتم اعتماد المعاملة.</span>';renderAll();return false;}
+function saveTransaction(archiveIt){
+ const id=$('#txNo').textContent;
+ let tx=transactions.find(x=>x.id===id);
+ const status=archiveIt?'مكتمل ومؤرشف':'مسودة محفوظة';
+ const link=guardianPublicUrl({id});
+ const st=studentById($('#studentSelect').value);
+ const data={id,student:$('#studentSelect').value,national_id:st?.national_id||'',stage:st?.stage||'',grade:st?.grade||'',classroom:st?.classroom||'',guardian:$('#guardianName').value,guardian_relation:st?.guardian_relation||'',phone:$('#guardianPhone').value,title:templates[currentForm].title,date:selectedHijri(),status,link,signed:false,archived:archiveIt,kind:'معاملة',body:bodyFromForm()};
+ if(tx) Object.assign(tx,data); else transactions.push(data);
+ if(archiveIt){
+   if(!archive.some(a=>a.id===id)) archive.push({id,date:data.date,student:data.student,type:'معاملة',title:data.title,status:data.status,details:data.body});
+   txSeq++;
+   $('#txNo').textContent=`SA-${$('#hYear').value}-${String(txSeq).padStart(4,'0')}`;
+ }
+ $('#txStatus').innerHTML=`<span class="success">${status}</span>`;
+ renderAll();
 }
 $('#saveDraftBtn').addEventListener('click',()=>saveTransaction(false));
 $('#archiveBtn').addEventListener('click',()=>saveTransaction(true));
@@ -1048,17 +1055,8 @@ function syncFromWakilStudentRecords(){
  });
 }
 function safeStudentRecordName(v){v=String(v||'').trim();return v==='بدون اسم'?'':v}
-async function hydrateStudentAffairsFromCloud(){
- try{if(window.PlatformRecordSaveEngine&&!PlatformRecordSaveEngine.isSystemAdminContext()){const rows=await PlatformRecordSaveEngine.listAll({moduleKey:'student_affairs_actions',recordType:'student_affairs_transaction',scope:'school'});(rows||[]).forEach(x=>{const d=x.data||{};if(!d.id)return;const i=transactions.findIndex(t=>String(t.id)===String(d.id));if(i>=0)transactions[i]=Object.assign({},transactions[i],d);else transactions.push(d);if(d.archived&&!archive.some(a=>String(a.id)===String(d.id)))archive.push({id:d.id,date:d.date,student:d.student,type:'معاملة',title:d.title,status:d.status,details:d.body,academicYear:x.meta?.academicYear,semester:x.meta?.semester,__recordEngineV2:true});});}}
- catch(e){console.warn('[student affairs hydrate]',e)}
-}
-async function syncStudentAffairsStudentsFromCenter(){
- try{if(!window.SchoolInformationSource||typeof SchoolInformationSource.getStudents!=='function')return;const rows=await SchoolInformationSource.getStudents();(rows||[]).forEach((r,i)=>{const id=String(r.id||r.student_number||r.national_id||('SIC'+i)),existing=students.find(s=>String(s.id)===id||((r.national_id||r.student_number)&&String(s.national_id||'')===String(r.national_id||r.student_number)));const patch={id,name:r.name||r.student_name||'',national_id:r.national_id||r.student_number||'',stage:r.stage||'',grade:r.grade||'',classroom:r.section||r.section_name||'',class:`${r.grade||''}/${r.section||r.section_name||''}`,source:'مركز المعلومات'};if(existing)Object.assign(existing,patch);else students.push(patch);});refreshStudentSelectors();}
- catch(e){console.warn('[student affairs center]',e)}
-}
 syncFromWakilStudentRecords();
-Promise.all([hydrateStudentAffairsFromCloud(),syncStudentAffairsStudentsFromCenter()]).then(()=>renderAll());
-window.addEventListener('school-information-updated',()=>syncStudentAffairsStudentsFromCenter().then(()=>renderAll()));
+renderAll();
 })();
 </script>
 
@@ -1366,9 +1364,5 @@ resizeGuardianCanvas();
 })();
 </script>
 
-
-<script src="platform-cloud-session.js"></script>
-<script src="platform-state-engine.js"></script>
-<script src="platform-record-save-engine.js?v=20260830-records-final-v3"></script>
 </body>
 </html>

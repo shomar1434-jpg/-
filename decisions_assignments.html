@@ -120,6 +120,7 @@ button{border:0;border-radius:9px;padding:10px 13px;font:700 12px 'Alyamama';cur
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js?v=20260830"></script>
 <script src="internal-messaging.js?v=20260829-decisions-send-v2"></script>
 <meta name="decisions-assignments-version" content="2026.08.30-no-auto-restore-v5">
+<script src="platform-page-navigation.js?v=20260830-nav2" defer></script>
 </head>
 <body>
 <a class="manager-return-btn" href="manager.html?return_to=sections" aria-label="العودة إلى واجهة الأقسام الرئيسية للمدير" title="العودة للأقسام الرئيسية">←</a>
@@ -594,29 +595,39 @@ function buildArchivedOfficialHtml(){
 async function loadAssigneeNames(selectedValue){
  const sel=$('name'),hint=$('assigneeSourceHint');
  if(!sel)return;
- let teachers=[];
+ let staff=[];
  try{
-   if(!window.SchoolInformationSource||typeof SchoolInformationSource.getTeachers!=='function')throw new Error('مصدر المنسوبين الحي غير متاح');
-   teachers=await SchoolInformationSource.getTeachers(true);
- }catch(e){console.warn('assignee live teachers',e)}
+   if(!window.SchoolInformationSource||typeof SchoolInformationSource.getStaff!=='function')throw new Error('مصدر المنسوبين الحي غير متاح');
+   staff=await SchoolInformationSource.getStaff(true);
+ }catch(e){console.warn('assignee live staff',e)}
+ const allowedRoles=new Set(['teacher','kindergarten_teacher','administrative_employee','admin_employee']);
+ const roleLabel=(r)=>{
+   r=String(r||'').trim().toLowerCase();
+   if(r==='teacher')return 'معلم/ة';
+   if(r==='kindergarten_teacher')return 'معلمة رياض أطفال';
+   if(r==='administrative_employee'||r==='admin_employee')return 'موظف/ة إداري/ة';
+   return 'منسوب/ة';
+ };
  const seen=new Set();
- teachers=(Array.isArray(teachers)?teachers:[]).filter(x=>{
-   const status=String(x?.status||'').trim().toLowerCase();
-   if(status!=='active')return false;
+ staff=(Array.isArray(staff)?staff:[]).filter(x=>{
+   const status=String(x?.status||x?.user_status||'').trim().toLowerCase();
+   const active=(x?.active===true||x?.isActive===true||x?.is_active===true);
+   if(status!=='active'||!active)return false;
    const role=String(x?.role||x?.user_role||'').trim().toLowerCase();
-   if(role&&!['teacher','kindergarten_teacher'].includes(role))return false;
+   if(!allowedRoles.has(role))return false;
    const uid=String(x?.id||x?.user_id||'').trim();
-   const name=normalizePersonName(x?.name||x?.full_name||x?.teacher_name);
+   const name=normalizePersonName(x?.name||x?.full_name||x?.teacher_name||x?.display_name);
    if(!uid||!name||seen.has(uid))return false;seen.add(uid);return true;
- }).sort((a,b)=>normalizePersonName(a.name||a.full_name).localeCompare(normalizePersonName(b.name||b.full_name),'ar'));
+ }).sort((a,b)=>normalizePersonName(a.name||a.full_name||a.display_name).localeCompare(normalizePersonName(b.name||b.full_name||b.display_name),'ar'));
  const selected=normalizePersonName(selectedValue||'');
- sel.innerHTML='<option value="">اختر المعلم/المعلمة</option>'+teachers.map(t=>{
-   const n=normalizePersonName(t.name||t.full_name||t.teacher_name);
+ sel.innerHTML='<option value="">اختر المكلف/ة</option>'+staff.map(t=>{
+   const n=normalizePersonName(t.name||t.full_name||t.teacher_name||t.display_name);
    const uid=String(t.id||t.user_id||'').trim();
    const email=String(t.email||t.user_email||t.microsoft_email||'').trim().toLowerCase();
-   return '<option value="'+esc(n)+'" data-user-id="'+esc(uid)+'" data-email="'+esc(email)+'">'+esc(n)+'</option>';
+   const role=String(t.role||t.user_role||'').trim().toLowerCase();
+   return '<option value="'+esc(n)+'" data-user-id="'+esc(uid)+'" data-email="'+esc(email)+'" data-role="'+esc(role)+'">'+esc(n)+' — '+esc(roleLabel(role))+'</option>';
  }).join('');
- // الاسم التاريخي لا يعاد إلى القائمة كمستخدم حالي. يظهر فقط عند تعديل قرار محفوظ، وبحالة غير نشطة.
+ // الاسم التاريخي لا يعاد إلى القائمة كمستخدم حالي.
  if(selected){
    const found=[...sel.options].find(o=>o.value===selected);
    if(found)sel.value=selected;
@@ -627,9 +638,11 @@ async function loadAssigneeNames(selectedValue){
      sel.selectedIndex=sel.options.length-1;
    }
  }
- if(hint)hint.textContent=teachers.length
-   ? 'المصدر الحي: المنسوبون النشطون في المدرسة الحالية — '+teachers.length+' معلم/معلمة.'
-   : 'لا توجد أسماء معلمين نشطين في المدرسة الحالية أو تعذر تحميل المصدر الحي.';
+ const admins=staff.filter(x=>['administrative_employee','admin_employee'].includes(String(x?.role||x?.user_role||'').trim().toLowerCase())).length;
+ const teachers=staff.length-admins;
+ if(hint)hint.textContent=staff.length
+   ? 'المصدر الحي: المنسوبون النشطون في المدرسة الحالية — '+teachers+' معلم/ة، '+admins+' إداري/ة.'
+   : 'لا توجد أسماء منسوبين نشطين متاحين للتكليف أو تعذر تحميل المصدر الحي.';
 }
 function selectedAssigneeIdentity(){
  const sel=$('name');

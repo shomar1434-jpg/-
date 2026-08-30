@@ -113,6 +113,25 @@
     const stream=new Blob([arr]).stream().pipeThrough(new DecompressionStream('gzip'));
     return await new Response(stream).text();
   }
+
+  function safeNativeLocalSet(key,value){
+    try{nativeSet.call(localStorage,String(key),String(value));return true;}
+    catch(e){
+      if(e&&((e.name==='QuotaExceededError')||/quota|exceeded/i.test(String(e.message||e)))){
+        console.warn('[PersistenceGuard] localStorage quota reached; canonical cloud value remains available',String(key));
+        return false;
+      }
+      throw e;
+    }
+  }
+  function isCloudOnlyLocalKey(key){
+    return /^agent_records_archive_v4$/i.test(String(key||''));
+  }
+  function clearCloudOnlyLocalKey(key){
+    if(!isCloudOnlyLocalKey(key))return false;
+    try{nativeRemove.call(localStorage,String(key));}catch(_){}
+    return true;
+  }
   async function flush(keepalive=false){
     clearTimeout(flushTimer);flushTimer=0;
     if(!window.PlatformStateEngine) return;
@@ -174,7 +193,10 @@
         }
         const cloudVal=r.payload&&Object.prototype.hasOwnProperty.call(r.payload,'value')?String(r.payload.value):null;
         const val=cloudVal===null?null:await decodeCloudValue(cloudVal);
-        if(val!==null&&before!==val){nativeSet.call(localStorage,k,val);changed=true;changedKeys.push({key:k,oldValue:before,newValue:val});}
+        if(val!==null&&before!==val){
+          if(isCloudOnlyLocalKey(k)){clearCloudOnlyLocalKey(k);}
+          else if(safeNativeLocalSet(k,val)){changed=true;changedKeys.push({key:k,oldValue:before,newValue:val});}
+        }
       }
       if(changedKeys.length){
         queueMicrotask(()=>changedKeys.forEach(x=>{
@@ -299,7 +321,10 @@
           const raw=row.payload&&Object.prototype.hasOwnProperty.call(row.payload,'value')?String(row.payload.value):Object.prototype.hasOwnProperty.call(row,'value')?String(row.value):null;
           if(raw===null) continue;
           const val=await decodeCloudValue(raw);
-          if(before!==val){nativeSet.call(localStorage,k,val);changed.push({key:k,oldValue:before,newValue:val});}
+          if(before!==val){
+            if(isCloudOnlyLocalKey(k)){clearCloudOnlyLocalKey(k);}
+            else if(safeNativeLocalSet(k,val))changed.push({key:k,oldValue:before,newValue:val});
+          }
         }
       }finally{applying=false;}
       changed.forEach(x=>{try{window.dispatchEvent(new StorageEvent('storage',{key:x.key,oldValue:x.oldValue,newValue:x.newValue,storageArea:localStorage,url:location.href}));}catch(_){}});
@@ -365,8 +390,15 @@
   // so legacy page writers and intercepted storage events cannot overwrite canonical archives.
   function setLocalSilently(key,value){
     applying=true;
-    try{ if(value===null||value===undefined) nativeRemove.call(localStorage,String(key)); else nativeSet.call(localStorage,String(key),String(value)); }
-    finally{ applying=false; }
+    try{
+      if(isCloudOnlyLocalKey(key)){
+        clearCloudOnlyLocalKey(key);
+        return true;
+      }
+      if(value===null||value===undefined) nativeRemove.call(localStorage,String(key));
+      else return safeNativeLocalSet(String(key),String(value));
+      return true;
+    }finally{ applying=false; }
   }
   async function readExactValues(options){
     options=options||{};

@@ -1528,6 +1528,43 @@ function getIdentityValue(data=null){
 function collectSafe(){let d={};qsa('[data-field], [data-table]',qs('#formPage')).forEach(el=>{d[el.dataset.field||el.dataset.table]=el.value||''});return d}
 const WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY='agent_records_archive_v4';
 let wakilRecordEditingId=null;
+let wakilCentralArchiveMemory=[];
+
+function slimWakilCentralArchive(rows){
+  return (Array.isArray(rows)?rows:[]).map(function(r){
+    if(!r||typeof r!=='object')return r;
+    const x={};
+    ['id','sourceRecordId','formId','folderId','folderName','recordName','category','categoryLabel','title','personName','personType','displayName','duplicateNo','saveMode','academicYear','semester','createdAt','updatedAt'].forEach(function(k){
+      if(Object.prototype.hasOwnProperty.call(r,k))x[k]=r[k];
+    });
+    return x;
+  });
+}
+function wakilArchiveSchoolId(){
+  try{
+    const cloudId=(window.PlatformCloudSession&&typeof PlatformCloudSession.schoolId==='function')?PlatformCloudSession.schoolId():'';
+    return String(cloudId||localStorage.getItem('active_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||localStorage.getItem('smart_school_id')||'').trim();
+  }catch(_){return '';}
+}
+function wakilArchiveLocalCacheKey(){
+  const sid=wakilArchiveSchoolId();
+  return sid ? (WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY+'__school__'+encodeURIComponent(sid)) : '';
+}
+function cacheWakilCentralArchiveLocally(rows){
+  const localKey=wakilArchiveLocalCacheKey();
+  if(!localKey)return false;
+  const slim=JSON.stringify(slimWakilCentralArchive(rows));
+  const g=window.PlatformPersistenceGuard;
+  try{
+    localStorage.setItem(localKey,slim);
+    if(g&&typeof g.setLocalSilently==='function')g.setLocalSilently(WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY,null);
+    return true;
+  }catch(e){
+    try{localStorage.removeItem(localKey);}catch(_){}
+    console.warn('[wakil archive] school-scoped local lightweight cache skipped',e?.message||e);
+    return false;
+  }
+}
 
 function wakilArchiveMode(form){
   const repeatable=new Set(['student','permission','notice','decision','inquiry']);
@@ -1558,11 +1595,17 @@ async function hydrateWakilCanonicalV7(){
   const r=await g.readExactValues({moduleKey:'agent',scope:'school',keys:[WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY]});
   if(!r||r.ok===false)throw new Error(r?.error||'تعذر قراءة أرشيف سجلات الوكيل');
   const raw=r.values&&r.values[WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY]!==undefined?r.values[WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY]:'[]';
-  g.setLocalSilently(WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY,raw||'[]');
-  return readWakilCentralArchive();
+  let rows=[];try{rows=JSON.parse(raw||'[]');if(!Array.isArray(rows))rows=[]}catch(_){rows=[]}
+  wakilCentralArchiveMemory=rows;
+  cacheWakilCentralArchiveLocally(rows);
+  return rows;
 }
 function archiveKey(){return 'wakil_archive_v5_'+current.id}
-function readWakilCentralArchive(){try{const a=JSON.parse(localStorage.getItem(WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY)||'[]');return Array.isArray(a)?a:[]}catch(e){return[]}}
+function readWakilCentralArchive(){
+  if(Array.isArray(wakilCentralArchiveMemory)&&wakilCentralArchiveMemory.length)return wakilCentralArchiveMemory;
+  const localKey=wakilArchiveLocalCacheKey();
+  try{const a=localKey?JSON.parse(localStorage.getItem(localKey)||'[]'):[];return Array.isArray(a)?a:[]}catch(e){return[]}
+}
 function archiveSection(){return `<div class="section" id="archiveSection"><h3>أرشفة السجل والمرات السابقة حسب السجل المدني</h3><div class="fields"><div class="field"><div class="label">السجل المدني / الهوية للأرشفة</div><div><input data-field="السجل المدني" placeholder="يُستخدم لعرض المرات السابقة تلقائيًا"></div></div><div class="field"><div class="label">آخر حفظ</div><div><input data-field="آخر حفظ" readonly></div></div></div><div id="archiveRows"></div></div>`}
 function readArchive(){try{return JSON.parse(localStorage.getItem(archiveKey())||'[]')}catch(e){return []}}
 function writeArchive(arr){localStorage.setItem(archiveKey(),JSON.stringify((arr||[]).slice(0,80)))}
@@ -1703,7 +1746,8 @@ async function verifyWakilCentralReadback(recordId,folderId){
   let rows=[];try{rows=JSON.parse(r.values?.[WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY]||'[]');if(!Array.isArray(rows))rows=[]}catch(_){rows=[]}
   const found=rows.find(x=>String(x.id)===String(recordId));
   if(!found||String(found.folderId||found.formId)!==String(folderId))throw new Error('فشل التحقق السحابي من السجل داخل مجلده الصحيح');
-  g.setLocalSilently(WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY,JSON.stringify(rows));
+  wakilCentralArchiveMemory=rows;
+  cacheWakilCentralArchiveLocally(rows);
   return found;
 }
 async function saveCurrent(){
@@ -1711,7 +1755,7 @@ async function saveCurrent(){
   try{await hydrateWakilCanonicalV7();}catch(e){alert('تعذر قراءة أرشيف الوكيل قبل الحفظ: '+String(e?.message||e));return false}
   const data=collect();data['آخر حفظ']=new Date().toLocaleString('ar-SA');
   const formStorageKey=formKey(),historyKey=archiveKey(),centralKey=WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY;
-  const beforeForm=localStorage.getItem(formStorageKey),beforeHistory=localStorage.getItem(historyKey),beforeCentral=localStorage.getItem(centralKey);
+  const beforeForm=localStorage.getItem(formStorageKey),beforeHistory=localStorage.getItem(historyKey),beforeCentralMemory=Array.isArray(wakilCentralArchiveMemory)?wakilCentralArchiveMemory.slice():[];
   try{
     const archive=readWakilCentralArchive(),folderId=String(current.id),folderName=String(current.title||'سجل');
     const mode=wakilArchiveMode(current),nowIso=new Date().toISOString(),personName=guessWakilPersonNameForRecordsArchive(data)||folderName;
@@ -1732,7 +1776,8 @@ async function saveCurrent(){
     if(idx>=0)archive[idx]=centralRec;else archive.push(centralRec);
     localStorage.setItem(formStorageKey,JSON.stringify(data));
     addArchiveSnapshot(data,recordId);
-    localStorage.setItem(centralKey,JSON.stringify(archive));
+    wakilCentralArchiveMemory=archive;
+    cacheWakilCentralArchiveLocally(archive);
     if(!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.writeExactValues!=='function')throw new Error('طبقة الاستمرارية السحابية غير متاحة');
     const w=await PlatformPersistenceGuard.writeExactValues({moduleKey:'agent',scope:'school',values:{[centralKey]:JSON.stringify(archive),[formStorageKey]:JSON.stringify(data),[historyKey]:localStorage.getItem(historyKey)||'[]'}});
     if(!w||w.ok===false)throw new Error(w?.error||'تعذر تأكيد الحفظ السحابي');
@@ -1742,7 +1787,8 @@ async function saveCurrent(){
   }catch(e){
     if(beforeForm===null)localStorage.removeItem(formStorageKey);else localStorage.setItem(formStorageKey,beforeForm);
     if(beforeHistory===null)localStorage.removeItem(historyKey);else localStorage.setItem(historyKey,beforeHistory);
-    if(beforeCentral===null)localStorage.removeItem(centralKey);else localStorage.setItem(centralKey,beforeCentral);
+    wakilCentralArchiveMemory=beforeCentralMemory;
+    cacheWakilCentralArchiveLocally(beforeCentralMemory);
     alert('تعذر تأكيد حفظ السجل: '+String(e?.message||e)+'؛ تمت استعادة البيانات السابقة.');console.error('[wakil record save V7]',e);return false;
   }
 }

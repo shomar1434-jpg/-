@@ -2236,6 +2236,172 @@ bootstrapWakilRecordsV7();
   <script src="evidence-library-source.js"></script>
 
 <script src="school-information-source.js"></script>
+<script id="WAKIL_RECORD_ARCHIVE_AND_SCHOOL_INFO_BRIDGE_20260831">
+(function(){
+  'use strict';
+  if(window.__WAKIL_RECORD_ARCHIVE_AND_SCHOOL_INFO_BRIDGE_20260831__) return;
+  window.__WAKIL_RECORD_ARCHIVE_AND_SCHOOL_INFO_BRIDGE_20260831__=true;
+
+  function safe(v){return String(v==null?'':v).trim();}
+  function first(obj,keys){for(const k of keys){const v=obj&&obj[k];if(v!==undefined&&v!==null&&safe(v)!=='')return v;}return '';}
+
+  /* Preserve the live values in the archived HTML without mutating the form shown to the user. */
+  function cloneCurrentFormWithLiveValues(){
+    const page=document.getElementById('formPage');
+    if(!page) return null;
+    const clone=page.cloneNode(true);
+    const selector='input,textarea,select,[contenteditable="true"]';
+    const live=Array.from(page.querySelectorAll(selector));
+    const copied=Array.from(clone.querySelectorAll(selector));
+    live.forEach((srcEl,i)=>{
+      const dst=copied[i]; if(!dst) return;
+      const tag=srcEl.tagName;
+      if(tag==='INPUT'){
+        if(srcEl.type==='checkbox'||srcEl.type==='radio'){
+          if(srcEl.checked) dst.setAttribute('checked','checked'); else dst.removeAttribute('checked');
+          dst.checked=!!srcEl.checked;
+        }else{
+          dst.value=srcEl.value||'';
+          dst.setAttribute('value',srcEl.value||'');
+        }
+      }else if(tag==='TEXTAREA'){
+        dst.value=srcEl.value||'';
+        dst.textContent=srcEl.value||'';
+      }else if(tag==='SELECT'){
+        dst.value=srcEl.value||'';
+        Array.from(dst.options||[]).forEach(o=>o.removeAttribute('selected'));
+        const idx=srcEl.selectedIndex;
+        if(idx>=0&&dst.options&&dst.options[idx]) dst.options[idx].setAttribute('selected','selected');
+      }else if(srcEl.isContentEditable){
+        dst.innerHTML=srcEl.innerHTML;
+      }
+    });
+    return clone;
+  }
+
+  window.getCurrentFormHTMLForRecordsArchive=function(){
+    const clone=cloneCurrentFormWithLiveValues();
+    return clone ? clone.innerHTML : '';
+  };
+
+  window.getCurrentRecordPrintableDocumentForArchive=function(){
+    const styles=Array.from(document.querySelectorAll('style')).map(s=>s.outerHTML).join('\n');
+    const clone=cloneCurrentFormWithLiveValues();
+    const title=(typeof current!=='undefined'&&current&&current.title)?current.title:'سجل الوكيل';
+    const content=clone?clone.outerHTML:'';
+    return '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>'+title+'</title>'
+      +styles
+      +'<style>@page{size:A4 portrait;margin:0!important}html,body{margin:0!important;padding:0!important;background:#fff!important}.sidebar,.toolbar,.no-print,.ai-panel,.modal{display:none!important}input,select,textarea{color:#11221d!important;-webkit-text-fill-color:#11221d!important}</style>'
+      +'</head><body><main class="main">'+content+'</main></body></html>';
+  };
+
+  const roster={schoolId:'',students:[],staff:[],teachers:[],studentByName:new Map(),staffByName:new Map(),teacherByName:new Map(),loaded:false,loading:null};
+  function activeSchoolId(){
+    try{return safe(window.PlatformCloudSession?.schoolId?.()||sessionStorage.getItem('smart_school_tab_school_v1')||sessionStorage.getItem('current_school_id')||'');}catch(_){return '';}
+  }
+  function normalizeStudent(r){return {
+    raw:r||{}, name:safe(first(r,['name','student_name','full_name','display_name','اسم الطالب','الاسم'])),
+    nationalId:safe(first(r,['national_id','student_national_id','nationalId','identity','civil_id','id_number','السجل المدني','رقم الهوية'])),
+    stage:safe(first(r,['stage','stage_name','المرحلة'])), grade:safe(first(r,['grade','grade_name','class','الصف'])),
+    section:safe(first(r,['section','section_name','classroom','division','الفصل','الشعبة'])),
+    guardianName:safe(first(r,['guardian_name','parent_name','ولي الأمر'])),
+    guardianPhone:safe(first(r,['guardian_phone','parent_phone','mobile','phone','رقم التواصل']))
+  };}
+  function normalizeStaff(r){return {
+    raw:r||{}, name:safe(first(r,['name','full_name','display_name','teacher_name','username','اسم الموظف','الاسم'])),
+    nationalId:safe(first(r,['national_id','identity','civil_id','id_number','رقم الهوية','السجل المدني'])),
+    jobTitle:safe(first(r,['job_title','jobTitle','position','roleLabel','role_label','title','المسمى الوظيفي','الوظيفة'])),
+    specialty:safe(first(r,['specialty','specialization','subject','المادة','التخصص']))
+  };}
+  function putMap(map,row){if(row&&row.name&&!map.has(row.name))map.set(row.name,row);}
+  async function loadRoster(force){
+    if(roster.loading) return roster.loading;
+    roster.loading=(async()=>{
+      if(!window.SchoolInformationSource||typeof SchoolInformationSource.getSnapshot!=='function') return false;
+      const snap=await SchoolInformationSource.getSnapshot(!!force);
+      const sid=safe(snap?.schoolId||SchoolInformationSource.context?.().schoolId||'');
+      const active=activeSchoolId();
+      if(active&&sid&&active!==sid) throw new Error('WAKIL_ROSTER_SCHOOL_SCOPE_MISMATCH');
+      roster.schoolId=sid||active;
+      roster.students=(Array.isArray(snap?.students)?snap.students:[]).map(normalizeStudent).filter(x=>x.name);
+      roster.staff=(Array.isArray(snap?.staff)?snap.staff:[]).map(normalizeStaff).filter(x=>x.name);
+      roster.teachers=(Array.isArray(snap?.teachers)?snap.teachers:[]).map(normalizeStaff).filter(x=>x.name);
+      roster.studentByName=new Map(); roster.staffByName=new Map(); roster.teacherByName=new Map();
+      roster.students.forEach(x=>putMap(roster.studentByName,x)); roster.staff.forEach(x=>putMap(roster.staffByName,x)); roster.teachers.forEach(x=>putMap(roster.teacherByName,x));
+      roster.loaded=true;
+      buildRosterDatalists(); bindRosterFields();
+      return true;
+    })().catch(e=>{console.warn('[wakil school information bridge]',e);return false;}).finally(()=>{roster.loading=null;});
+    return roster.loading;
+  }
+  function datalist(id,rows){
+    let dl=document.getElementById(id); if(!dl){dl=document.createElement('datalist');dl.id=id;document.body.appendChild(dl);}
+    dl.innerHTML=rows.map(x=>'<option value="'+safe(x.name).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')+'"></option>').join('');
+  }
+  function buildRosterDatalists(){
+    datalist('wakil-school-students-list',roster.students);
+    datalist('wakil-school-staff-list',roster.staff);
+    datalist('wakil-school-teachers-list',roster.teachers);
+    const mixed=[...roster.students,...roster.staff].filter((x,i,a)=>a.findIndex(y=>y.name===x.name)===i);
+    datalist('wakil-school-people-list',mixed);
+  }
+  function rosterKind(label){
+    const s=safe(label);
+    if(/اسم الطالب\s*\/\s*الموظف/.test(s)) return 'mixed';
+    if(/اسم الطالب|الطالب$/.test(s)) return 'student';
+    if(/اسم المعلم|المعلم الغائب|المعلم المنفذ/.test(s)) return 'teacher';
+    if(/اسم الموظف|اسم المحول|المناوب|مشرف الانصراف/.test(s)) return 'staff';
+    return '';
+  }
+  function tableHeaderFor(el){
+    const td=el.closest('td'),table=el.closest('table'); if(!td||!table)return '';
+    const th=table.querySelectorAll('thead th')[td.cellIndex]; return safe(th?.textContent||'');
+  }
+  function fillField(name,value,overwrite){
+    if(!safe(value))return;
+    const el=Array.from(document.querySelectorAll('#formPage [data-field]')).find(x=>safe(x.dataset.field)===name);
+    if(!el)return; if(!overwrite&&safe(el.value))return; el.value=safe(value); el.dispatchEvent(new Event('input',{bubbles:true}));
+  }
+  function applyStudent(x){
+    fillField('السجل المدني',x.nationalId,false); fillField('رقم الهوية',x.nationalId,false);
+    fillField('المرحلة',x.stage,false); fillField('الصف',x.grade,false); fillField('الفصل',x.section,false);
+    fillField('ولي الأمر',x.guardianName,false); fillField('رقم التواصل',x.guardianPhone,false);
+  }
+  function applyStaff(x){
+    fillField('رقم الهوية',x.nationalId,false); fillField('السجل المدني',x.nationalId,false);
+    fillField('المسمى الوظيفي',x.jobTitle,false);
+    fillField('المسمى / التخصص',[x.jobTitle,x.specialty].filter(Boolean).join(' / '),false);
+    fillField('الصف / العمل',x.jobTitle||x.specialty,false); fillField('المادة',x.specialty,false);
+  }
+  function onRosterPick(el,kind){
+    const name=safe(el.value); if(!name)return;
+    if(kind==='student'){const x=roster.studentByName.get(name);if(x)applyStudent(x);}
+    else if(kind==='teacher'){const x=roster.teacherByName.get(name)||roster.staffByName.get(name);if(x)applyStaff(x);}
+    else if(kind==='staff'){const x=roster.staffByName.get(name);if(x)applyStaff(x);}
+    else if(kind==='mixed'){const s=roster.studentByName.get(name);if(s)applyStudent(s);else{const x=roster.staffByName.get(name);if(x)applyStaff(x);}}
+  }
+  function bindOne(el,label){
+    if(!el||!('value' in el))return; const kind=rosterKind(label); if(!kind)return;
+    const listId=kind==='student'?'wakil-school-students-list':kind==='teacher'?'wakil-school-teachers-list':kind==='staff'?'wakil-school-staff-list':'wakil-school-people-list';
+    if(el.tagName==='INPUT')el.setAttribute('list',listId);
+    el.dataset.wakilRosterKind=kind;
+    if(el.dataset.wakilRosterBound==='1')return; el.dataset.wakilRosterBound='1';
+    el.addEventListener('change',()=>onRosterPick(el,kind));
+  }
+  function bindRosterFields(){
+    const page=document.getElementById('formPage'); if(!page)return;
+    page.querySelectorAll('[data-field]').forEach(el=>bindOne(el,el.dataset.field));
+    page.querySelectorAll('[data-table]').forEach(el=>bindOne(el,tableHeaderFor(el)));
+  }
+
+  const originalRenderForm=window.renderForm;
+  if(typeof originalRenderForm==='function'){
+    window.renderForm=function(){const r=originalRenderForm.apply(this,arguments);setTimeout(()=>{bindRosterFields();if(!roster.loaded)loadRoster(false);},0);return r;};
+  }
+  setTimeout(()=>loadRoster(false),0);
+  window.addEventListener('school-information-source-invalidated',()=>loadRoster(true));
+})();
+</script>
 <script src="internal-messaging.js"></script>
 
 <script defer src="unified_workspace.js"></script>

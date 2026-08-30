@@ -114,7 +114,7 @@ button{border:0;border-radius:9px;padding:10px 13px;font:700 12px 'Alyamama';cur
 @media print{.manager-return-btn{display:none!important}}
 @media(max-width:1000px){.manager-return-btn{top:8px;left:8px;width:38px;height:38px;font-size:22px}}
 </style>
-<script src="school-information-source.js?v=20260824-decisions-assignees-1"></script>
+<script src="school-information-source.js?v=20260830-live-roster-v5"></script>
 <script src="platform-cloud-session.js?v=20260829-manager-verify-access-v4"></script>
 <script src="cloud-file-engine.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js?v=20260830"></script>
@@ -596,34 +596,40 @@ async function loadAssigneeNames(selectedValue){
  if(!sel)return;
  let teachers=[];
  try{
-   if(window.SchoolInformationSource){
-     if(typeof SchoolInformationSource.refresh==='function') await SchoolInformationSource.refresh();
-     if(typeof SchoolInformationSource.getTeachers==='function') teachers=await SchoolInformationSource.getTeachers();
-   }
- }catch(e){console.warn('assignee teachers',e)}
+   if(!window.SchoolInformationSource||typeof SchoolInformationSource.getTeachers!=='function')throw new Error('مصدر المنسوبين الحي غير متاح');
+   teachers=await SchoolInformationSource.getTeachers(true);
+ }catch(e){console.warn('assignee live teachers',e)}
  const seen=new Set();
  teachers=(Array.isArray(teachers)?teachers:[]).filter(x=>{
+   const status=String(x?.status||'').trim().toLowerCase();
+   if(status!=='active')return false;
    const role=String(x?.role||x?.user_role||'').trim().toLowerCase();
-   if(role && !['teacher','kindergarten_teacher'].includes(role)) return false;
+   if(role&&!['teacher','kindergarten_teacher'].includes(role))return false;
+   const uid=String(x?.id||x?.user_id||'').trim();
    const name=normalizePersonName(x?.name||x?.full_name||x?.teacher_name);
-   if(!name||seen.has(name))return false;seen.add(name);return true;
+   if(!uid||!name||seen.has(uid))return false;seen.add(uid);return true;
  }).sort((a,b)=>normalizePersonName(a.name||a.full_name).localeCompare(normalizePersonName(b.name||b.full_name),'ar'));
- const selected=normalizePersonName(selectedValue||sel.value);
+ const selected=normalizePersonName(selectedValue||'');
  sel.innerHTML='<option value="">اختر المعلم/المعلمة</option>'+teachers.map(t=>{
    const n=normalizePersonName(t.name||t.full_name||t.teacher_name);
    const uid=String(t.id||t.user_id||'').trim();
-   const email=String(t.email||t.user_email||t.microsoft_email||'').trim();
+   const email=String(t.email||t.user_email||t.microsoft_email||'').trim().toLowerCase();
    return '<option value="'+esc(n)+'" data-user-id="'+esc(uid)+'" data-email="'+esc(email)+'">'+esc(n)+'</option>';
  }).join('');
+ // الاسم التاريخي لا يعاد إلى القائمة كمستخدم حالي. يظهر فقط عند تعديل قرار محفوظ، وبحالة غير نشطة.
  if(selected){
-   if(![...sel.options].some(o=>o.value===selected)){
-     const o=document.createElement('option');o.value=selected;o.textContent=selected+' (سجل محفوظ سابقًا)';sel.appendChild(o);
+   const found=[...sel.options].find(o=>o.value===selected);
+   if(found)sel.value=selected;
+   else if(currentArchiveRecordId){
+     const o=document.createElement('option');
+     o.value=selected;o.textContent=selected+' (محفوظ تاريخيًا — غير موجود حاليًا)';o.disabled=true;o.dataset.historical='1';
+     sel.appendChild(o);
+     sel.selectedIndex=sel.options.length-1;
    }
-   sel.value=selected;
  }
  if(hint)hint.textContent=teachers.length
-   ? 'المصدر: نظام المدرسة — '+teachers.length+' معلم/معلمة.'
-   : 'تعذر تحميل أسماء المعلمين حاليًا. أعد فتح الصفحة بعد التأكد من جلسة المدرسة.';
+   ? 'المصدر الحي: المنسوبون النشطون في المدرسة الحالية — '+teachers.length+' معلم/معلمة.'
+   : 'لا توجد أسماء معلمين نشطين في المدرسة الحالية أو تعذر تحميل المصدر الحي.';
 }
 function selectedAssigneeIdentity(){
  const sel=$('name');
@@ -684,9 +690,10 @@ async function init(){
  $('signatureFile').addEventListener('change',e=>readAsset(e,'signature'));
  $('stampFile').addEventListener('change',e=>readAsset(e,'stamp'));
  loadData();
- // V5: لا استعادة ولا ترحيل تلقائي من أي Snapshot/مفتاح قديم عند فتح القسم.
- // السجلات القديمة تبقى في التخزين دون حذف، ولا تنتقل إلى الأرشيف إلا بإجراء صريح من المستخدم.
- await loadAssigneeNames($('name').value);
+ // لا نعيد اسم مكلف من Snapshot قديم إلى قرار جديد؛ الأسماء الحالية تأتي من المصدر الحي فقط.
+ if($('name'))$('name').value='';
+ // V6: لا استعادة تلقائية للأسماء المحذوفة أو قوائم المستخدمين القديمة.
+ await loadAssigneeNames('');
  const editing=await loadArchiveRecordForEdit();
  if(!editing)render();
 }
@@ -747,6 +754,10 @@ async function saveData(){
  const d=decisions[+$('type').value||0];
  const role=isCustomDecision()?safe($('customTitle').value,'تكليف مخصص'):cleanRole(d.title);
  const assigneeIdentity=selectedAssigneeIdentity();
+ if(!currentArchiveRecordId&&!assigneeIdentity.userId){
+   alert('اختر مكلفًا نشطًا من القائمة الحالية للمدرسة. لا يمكن إنشاء قرار جديد باسم مستخدم محذوف أو غير نشط.');
+   return false;
+ }
  const record={
    id,
    recordType:'decision_assignment',

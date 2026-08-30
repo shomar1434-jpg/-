@@ -1,6 +1,42 @@
 <!doctype html>
 <html lang="ar" dir="rtl">
 <head>
+<style id="platform-protected-page-gate">html{visibility:hidden!important}</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="platform-cloud-session.js?v=20260829-security-isolation-final"></script>
+<script id="platform-manager-access-gate-final">
+(function(){
+  const SUPABASE_URL=(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'');
+  const SUPABASE_KEY=localStorage.getItem('smartSchoolSupabaseAnonKey')||'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
+  function isSystemAdminContext(){try{const q=new URLSearchParams(location.search||'');return q.get('systemAdmin')==='1'||q.get('systemAdminReturn')==='1'||sessionStorage.getItem('system_admin_context')==='1'||sessionStorage.getItem('system_admin_verified')==='true';}catch(_){return false}}
+  function release(){const gate=document.getElementById('platform-protected-page-gate');if(gate)gate.remove();document.documentElement.style.removeProperty('visibility')}
+  async function verifySystemAdmin(){
+    if(!window.supabase||typeof window.supabase.createClient!=='function')throw new Error('SYSTEM_ADMIN_AUTH_LIBRARY_MISSING');
+    const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+    const sr=await sb.auth.getSession();const session=sr&&sr.data&&sr.data.session;if(!session||!session.access_token)throw new Error('SYSTEM_ADMIN_SESSION_MISSING');
+    const r=await fetch(SUPABASE_URL+'/functions/v1/system-admin',{method:'POST',headers:{'content-type':'application/json','apikey':SUPABASE_KEY,'authorization':'Bearer '+session.access_token},body:JSON.stringify({action:'verify'})});
+    const data=await r.json().catch(()=>({}));if(!r.ok||data.ok!==true)throw new Error(data.error||'SYSTEM_ADMIN_NOT_AUTHORIZED');
+    const ctx={type:'system_admin',role:'system_admin',verified:true,user:data.user||null,supabase:sb,accessToken:session.access_token};
+    window.__VERIFIED_SYSTEM_ADMIN_CONTEXT__=ctx;window.__SCHOOL_INFO_ADMIN_SB__=sb;
+    sessionStorage.setItem('system_admin_context','1');sessionStorage.setItem('system_admin_verified','true');document.documentElement.setAttribute('data-system-admin-context','1');
+    return ctx;
+  }
+  window.__PLATFORM_ACCESS_READY__=(async function(){
+    const adminRequested=isSystemAdminContext();
+    try{
+      if(adminRequested){const ctx=await verifySystemAdmin();release();return ctx;}
+      if(!window.PlatformCloudSession||typeof PlatformCloudSession.verifyAccess!=='function')throw new Error('SECURITY_GATE_MISSING');
+      if(typeof PlatformCloudSession.ensure==='function')await PlatformCloudSession.ensure();
+      const ctx=await PlatformCloudSession.verifyAccess(['manager']);window.__VERIFIED_SCHOOL_CONTEXT__=ctx;release();return ctx;
+    }catch(e){
+      if(adminRequested){location.replace('index.html?systemAdminReturn=1&reason=system_admin_access_denied');}
+      else{location.replace('school-login.html?reason=school_access_denied');}
+      throw e;
+    }
+  })();
+})();
+</script>
+
 <style id="platform-first-paint-guard">#elsPicker{display:none!important;visibility:hidden!important}html[data-system-admin-context="1"] #activeSchoolLabel{display:none!important;visibility:hidden!important}
 .integrationStatusCard{margin:16px 0 0;background:linear-gradient(135deg,#0f172a,#0f766e);color:#fff;border-radius:26px;padding:18px 20px;box-shadow:0 18px 38px rgba(15,23,42,.15)}
 .integrationStatusHead{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
@@ -15,7 +51,6 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>مركز المعلومات المدرسية</title>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
     :root{--teal:#0f766e;--slate:#0f172a;--muted:#64748b;--bg:#f1f5f9;--card:#ffffff;--border:#e2e8f0;--danger:#dc2626;--amber:#d97706;--indigo:#4f46e5;--emerald:#059669}
@@ -62,13 +97,13 @@
       <div><div class="title">مركز المعلومات المدرسية</div><div class="sub" id="schoolLabel">جارٍ تحديد المدرسة النشطة...</div></div>
     </div>
     <div class="actions">
-      <button class="btn secondary" onclick="location.href='manager.html'">العودة لقسم المدير</button>
+      <button class="btn secondary" onclick="returnToParentContext()">العودة</button>
       <button class="btn" onclick="refreshActiveInfoTab()">تحديث البيانات</button>
     </div>
   </header>
 
   <main class="wrap">
-    <div id="statusBox" class="note">يعرض هذا المركز بيانات المدرسة النشطة فقط حسب school_id. عند التجربة محليًا يمكن تفعيل وضع التطوير المحلي دون رفع GitHub.</div>
+    <div id="statusBox" class="note">يعرض هذا المركز بيانات المدرسة المرتبطة بالجلسة الموثقة فقط، ولا يسمح باختيار مدرسة أخرى أو تمرير school_id يدويًا.</div>
 <section id="centralIntegrationStatus" class="integrationStatusCard noPrint">
   <div class="integrationStatusHead">
     <div>
@@ -88,17 +123,6 @@
   <div class="integrationFlow">آخر تحديث: <strong id="cipUpdatedAt">لم يتم بعد</strong></div>
 </section>
 
-
-    <section id="devModeBox" class="devbox hidden noPrint">
-      <h3>وضع التجربة المحلية</h3>
-      <p class="muted">لم يتم العثور على مدرسة نشطة من الجلسة. اختر مدرسة من Supabase أو أدخل school_id يدويًا لتجربة الاستيراد والحفظ محليًا.</p>
-      <div class="row">
-        <div><label>اختيار مدرسة من Supabase</label><select id="devSchoolSelect"><option value="">تحميل المدارس...</option></select></div>
-        <div><label>أو إدخال school_id يدويًا</label><input id="devSchoolId" placeholder="مثال: DEV_SCHOOL أو UUID المدرسة"></div>
-        <div><label>اسم المدرسة التجريبية</label><input id="devSchoolName" placeholder="مدرسة تجريبية"></div>
-        <div style="align-self:end"><button class="btn amber" onclick="activateDevSchool()">تفعيل التجربة المحلية</button></div>
-      </div>
-    </section>
 
     <nav class="tabs noPrint" aria-label="تبويبات مركز المعلومات">
       <button id="studentsTabBtn" class="tabBtn active" onclick="switchInfoTab('students')">👥 بيانات الطلاب</button>
@@ -211,53 +235,68 @@
   function html(v){return safe(v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
   function readJson(k){try{return JSON.parse(localStorage.getItem(k)||sessionStorage.getItem(k)||'null')}catch(e){return null}}
   function query(){return new URLSearchParams(location.search)}
-  function getClient(){
-    if(sb) return sb;
-    if(!window.supabase || !window.supabase.createClient) throw new Error('مكتبة Supabase لم تُحمّل. تحقق من الاتصال بالإنترنت.');
-    if(!SUPABASE_KEY) throw new Error('مفتاح Supabase غير موجود.');
-    sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY); return sb;
+  function isVerifiedSystemAdmin(){return !!(window.__VERIFIED_SYSTEM_ADMIN_CONTEXT__&&window.__VERIFIED_SYSTEM_ADMIN_CONTEXT__.verified===true)}
+  async function adminAuthSession(){
+    const sb=window.__SCHOOL_INFO_ADMIN_SB__;if(!sb||!sb.auth)throw new Error('جلسة مدير النظام غير متاحة.');
+    const sr=await sb.auth.getSession();const session=sr&&sr.data&&sr.data.session;if(!session||!session.access_token)throw new Error('انتهت جلسة مدير النظام.');
+    return session;
   }
+  async function secureAdminCall(action,body={}){
+    if(!isVerifiedSystemAdmin())throw new Error('يتطلب هذا المسار صلاحية مدير النظام.');
+    const session=await adminAuthSession();
+    const response=await fetch(SUPABASE_URL+'/functions/v1/system-admin',{method:'POST',headers:{'content-type':'application/json','apikey':SUPABASE_KEY,'authorization':'Bearer '+session.access_token},body:JSON.stringify(Object.assign({},body,{action}))});
+    const payload=await response.json().catch(()=>({}));if(!response.ok)throw new Error(payload.error||payload.details||'رفض مدير النظام العملية.');return payload;
+  }
+  async function secureSchoolInfo(action, body={}){
+    await window.__PLATFORM_ACCESS_READY__;
+    let headers={'content-type':'application/json','apikey':SUPABASE_KEY};
+    let requestBody=Object.assign({},body,{action});
+    if(isVerifiedSystemAdmin()){
+      if(!currentSchool.id)throw new Error('اختر المدرسة أولاً.');
+      const session=await adminAuthSession();headers.authorization='Bearer '+session.access_token;requestBody.schoolId=currentSchool.id;requestBody.accessMode='system_admin';
+    }else{
+      if(!window.PlatformCloudSession||!PlatformCloudSession.valid())throw new Error('جلسة المدرسة غير صالحة. أعد تسجيل الدخول.');
+      headers['x-platform-session']=PlatformCloudSession.token();
+      delete requestBody.schoolId;delete requestBody.accessMode;
+    }
+    const response=await fetch(SUPABASE_URL+'/functions/v1/school-information',{method:'POST',headers,body:JSON.stringify(requestBody)});
+    const payload=await response.json().catch(()=>({}));
+    if(!response.ok){const err=new Error(payload.error||'تعذر الوصول الآمن إلى مركز المعلومات');err.code=payload.code||('HTTP_'+response.status);throw err;}
+    if(payload.schoolId&&currentSchool.id&&String(payload.schoolId)!==String(currentSchool.id))throw new Error('تم رفض استجابة من سياق مدرسة مختلف.');
+    return payload;
+  }
+  function getClient(){ throw new Error('تم تعطيل الاتصال المباشر بقاعدة البيانات في مركز المعلومات.'); }
   function setStatus(msg,type){$('statusBox').className= type==='bad'?'bad':type==='ok'?'ok':'note'; $('statusBox').textContent=msg;}
   function setSchoolLabel(){
-    if(currentSchool.id){$('schoolLabel').textContent=(devMode?'وضع تجربة محلي — ':'')+'المدرسة النشطة: '+(currentSchool.name||currentSchool.id)}
+    if(currentSchool.id){$('schoolLabel').textContent=(isVerifiedSystemAdmin()?'مدير النظام — ':'')+'المدرسة النشطة: '+(currentSchool.name||currentSchool.id)}
     else {$('schoolLabel').textContent='لم يتم العثور على مدرسة نشطة. يمكن تفعيل وضع التجربة المحلية.'}
   }
-  function detectSchool(){
-    const q=query(), user=readJson('currentSchoolUser')||readJson('currentUser')||readJson('loggedUser')||{}, school=readJson('smartSchool.currentSchool')||readJson('active_school')||readJson('activeSchool')||{};
-    const id = q.get('schoolId') || q.get('school_id') || localStorage.getItem('active_school_id') || localStorage.getItem('current_school_id') || localStorage.getItem('school_id') || localStorage.getItem('smart_school_id') || school.id || school.school_id || user.school_id || user.schoolId || '';
-    const name = q.get('schoolName') || q.get('school_name') || school.school_name || school.name || user.school_name || user.schoolName || '';
-    currentSchool={id:safe(id),name:safe(name)};
-    if(currentSchool.id){['active_school_id','current_school_id','school_id','smart_school_id'].forEach(k=>localStorage.setItem(k,currentSchool.id));}
-    setSchoolLabel();
-    if(!currentSchool.id){ showDevMode(); }
-    else { $('devModeBox').classList.add('hidden'); }
-    return currentSchool;
+  async function chooseSystemAdminSchool(){
+    const data=await secureAdminCall('list_schools');const schools=(data.schools||[]).filter(s=>safe(s.id));
+    if(!schools.length)throw new Error('لا توجد مدارس متاحة في حساب مدير النظام.');
+    const q=query();const requested=safe(q.get('schoolId')||sessionStorage.getItem('system_admin_school_info_target_v1'));
+    const found=schools.find(s=>String(s.id)===requested);
+    if(found){currentSchool={id:safe(found.id),name:safe(found.school_name||found.schoolName||found.name)};sessionStorage.setItem('system_admin_school_info_target_v1',currentSchool.id);return currentSchool;}
+    return await new Promise((resolve,reject)=>{
+      const overlay=document.createElement('div');overlay.id='system-admin-school-picker';overlay.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,.58);display:flex;align-items:center;justify-content:center;padding:20px';
+      const opts=schools.map(s=>'<option value="'+html(s.id)+'">'+html(s.school_name||s.schoolName||s.name||s.school_code||s.id)+'</option>').join('');
+      overlay.innerHTML='<div style="width:min(620px,96vw);background:#fff;border-radius:26px;padding:24px;box-shadow:0 28px 70px rgba(15,23,42,.28)"><h2 style="margin:0 0 8px">اختيار المدرسة</h2><p style="color:#64748b;font-weight:700;line-height:1.8">أنت داخل مركز المعلومات بصلاحية مدير النظام. اختر المدرسة التي تريد إدارتها. هذا الاختيار لا يحول جلستك إلى جلسة مدير مدرسة.</p><select id="system-admin-school-select" style="margin:14px 0">'+opts+'</select><div style="display:flex;gap:10px;justify-content:flex-end"><button id="system-admin-school-cancel" class="btn secondary">العودة لمدير النظام</button><button id="system-admin-school-open" class="btn">فتح المدرسة</button></div></div>';
+      document.body.appendChild(overlay);
+      overlay.querySelector('#system-admin-school-cancel').onclick=()=>{overlay.remove();location.href='index.html?systemAdminReturn=1';reject(new Error('SYSTEM_ADMIN_SCHOOL_SELECTION_CANCELLED'))};
+      overlay.querySelector('#system-admin-school-open').onclick=()=>{const id=safe(overlay.querySelector('#system-admin-school-select').value);const school=schools.find(s=>String(s.id)===id);if(!school)return;currentSchool={id:safe(school.id),name:safe(school.school_name||school.schoolName||school.name)};sessionStorage.setItem('system_admin_school_info_target_v1',currentSchool.id);overlay.remove();resolve(currentSchool)};
+    });
   }
-  async function showDevMode(){
-    $('devModeBox').classList.remove('hidden');
-    setStatus('لم يتم العثور على مدرسة نشطة. يمكنك تفعيل وضع التجربة المحلية لاختبار مركز المعلومات دون رفع GitHub.','note');
-    try{
-      const client=getClient();
-      const q=await client.from('schools').select('id,school_name,school_code').order('school_name',{ascending:true}).limit(200);
-      if(q.error) throw q.error;
-      const rows=q.data||[];
-      $('devSchoolSelect').innerHTML='<option value="">اختر مدرسة...</option>'+rows.map(r=>`<option value="${html(r.id)}" data-name="${html(r.school_name||r.school_code||r.id)}">${html(r.school_name||r.school_code||r.id)}</option>`).join('');
-    }catch(e){
-      $('devSchoolSelect').innerHTML='<option value="">تعذر تحميل المدارس</option>';
-    }
+  async function detectSchool(){
+    const ctx=await window.__PLATFORM_ACCESS_READY__;devMode=false;
+    if(isVerifiedSystemAdmin()||ctx&&ctx.type==='system_admin'){await chooseSystemAdminSchool();document.documentElement.setAttribute('data-system-admin-context','1');setSchoolLabel();return currentSchool;}
+    const schoolCtx=window.__VERIFIED_SCHOOL_CONTEXT__||ctx;const member=schoolCtx&&schoolCtx.membership?schoolCtx.membership:{};
+    currentSchool={id:safe(schoolCtx&&schoolCtx.schoolId),name:safe(member.schoolName||member.school_name||'')};
+    if(!currentSchool.id)throw new Error('لم يتم التحقق من مدرسة المستخدم.');setSchoolLabel();return currentSchool;
   }
+  window.returnToParentContext=function(){location.href=isVerifiedSystemAdmin()?'index.html?systemAdminReturn=1':'manager.html'};
+  async function showDevMode(){ throw new Error('تم تعطيل اختيار المدارس ووضع التجربة في النسخة السحابية الآمنة.'); }
   window.activateDevSchool=function(){
-    const sel=$('devSchoolSelect');
-    const selected=sel.options[sel.selectedIndex];
-    const manual=safe($('devSchoolId').value);
-    const id=manual || safe(sel.value) || 'DEV_SCHOOL';
-    const name=safe($('devSchoolName').value) || (selected && selected.dataset ? selected.dataset.name : '') || 'مدرسة تجربة محلية';
-    devMode=true; currentSchool={id:id,name:name};
-    localStorage.setItem('active_school_id',id); localStorage.setItem('current_school_id',id); localStorage.setItem('school_id',id);
-    localStorage.setItem('smartSchool.currentSchool',JSON.stringify({id:id,school_name:name,name:name,dev:true}));
-    setSchoolLabel(); $('devModeBox').classList.add('hidden');
-    setStatus('تم تفعيل وضع التجربة المحلي للمدرسة: '+name+' — يمكن الآن قراءة الملف والحفظ والعرض.','ok');
-    loadStudents();
+    throw new Error('لا يمكن تغيير المدرسة من مركز المعلومات. المدرسة تحدد من الجلسة الموثقة فقط.');
   }
   function noorToSection(v){
     v=toWesternDigits(safe(v)); if(!v) return 'غير محدد';
@@ -376,12 +415,6 @@
       return cleanRows.length;
     }catch(e){console.warn('تعذر حفظ نسخة مركز المعلومات المحلية',e);return 0;}
   }
-  function notifyCentralInformationChanged(kind){
-    const detail={source:'school_information_center',kind:kind||'all',schoolId:currentSchool.id||'',academicYear:safe($('academicYear')?.value)||'1447',at:new Date().toISOString()};
-    try{window.SchoolInformationSource&&SchoolInformationSource.notifyUpdated&&SchoolInformationSource.notifyUpdated()}catch(_){}
-    try{window.dispatchEvent(new CustomEvent('school-information-updated',{detail}))}catch(_){}
-    try{const ch=new BroadcastChannel('smart-school-information');ch.postMessage({type:'updated',schoolId:detail.schoolId,academicYear:detail.academicYear,kind:detail.kind,at:detail.at});ch.close()}catch(_){}
-  }
   function readLocalCenterMirror(year){
     try{
       year=safe(year)||safe($('academicYear').value)||'1447';
@@ -426,93 +459,34 @@
   }
   window.savePreview = async function(){
     try{
-      if(!currentSchool.id) detectSchool();
-      if(!currentSchool.id) throw new Error('لا توجد مدرسة نشطة أو وضع تجربة محلي مفعل.');
+      if(!currentSchool.id) await detectSchool();
+      if(!currentSchool.id) throw new Error('لا توجد مدرسة موثقة في الجلسة.');
       if(!previewRows.length) throw new Error('لا توجد بيانات للمعاينة.');
-      const mode=$('saveMode').value;
-      const year=safe($('academicYear').value)||'1447';
-      let client;
-      try{ client=getClient(); }catch(localOnlyError){ client=null; }
-      const clean=previewRows.map(r=>cleanStudent(r)).map(r=>({
-        school_id:currentSchool.id,
-        student_name:r.student_name,
-        student_number:r.student_number||null,
-        stage:r.stage||'غير محدد',
-        grade:r.grade||'غير محدد',
-        track_name:r.track_name||'',
-        noor_section_code:r.noor_section_code||'',
-        section_name:r.section_name||'غير محدد',
-        national_id:r.national_id||null,
-        student_status:'نشط',
-        academic_year:year
-      }));
-      const localSaved=saveLocalCenterMirror(clean, year, 'saved');
-      if(!client){
-        allStudents=clean; rebuildFilters(true); renderTree(); renderStats(); renderStudents();
-        previewRows=[]; $('savePreviewBtn').classList.add('hidden'); $('previewCount').textContent='تم الحفظ محليًا';
-        setStatus('تم حفظ '+localSaved+' طالبًا في مركز المعلومات محليًا. يمكن الآن الاستيراد من قسم أعمال الاختبارات.','ok');
-        notifyCentralInformationChanged('students');
-        return;
-      }
-      if(mode==='replace'){
-        setStatus('جارٍ تنظيف بيانات العام الحالي من السحابة ثم حفظ الملف الجديد...','note');
-        const del=await client.from('students').delete().eq('school_id',currentSchool.id).eq('academic_year',year);
-        if(del.error) throw del.error;
-      }
-      let existingKeys=new Set();
-      if(mode!=='replace'){
-        const existingQ=await client.from('students').select('id,student_name,student_number,national_id,stage,grade,track_name,section_name,academic_year').eq('school_id',currentSchool.id).eq('academic_year',year).neq('student_status','محذوف');
-        if(existingQ.error) throw existingQ.error;
-        existingKeys=new Set((existingQ.data||[]).map(dedupeKey));
-      }
-      const seen=new Set(); let skippedExisting=0, skippedPreview=0;
-      const toInsert=[];
-      clean.forEach(r=>{
-        const k=dedupeKey(r);
-        if(seen.has(k)){skippedPreview++; return;}
-        seen.add(k);
-        if(mode!=='replace' && existingKeys.has(k)){skippedExisting++; return;}
-        toInsert.push(r);
-      });
-      let saved=0;
-      for(let i=0;i<toInsert.length;i+=250){
-        const chunk=toInsert.slice(i,i+250);
-        const ins=await client.from('students').insert(chunk);
-        if(ins.error) throw ins.error;
-        saved += chunk.length;
-      }
-      previewRows=[];
-      $('savePreviewBtn').classList.add('hidden');
-      $('previewCount').textContent='تم الحفظ والتحديث';
-      await loadStudents();
-      setStatus('تم تحديث مركز المعلومات: تم حفظ '+saved+' طالبًا. تم تجاهل '+skippedExisting+' طالب موجود مسبقًا و '+skippedPreview+' تكرار داخل الملف.','ok');
-      notifyCentralInformationChanged('students');
+      const mode=$('saveMode').value, year=safe($('academicYear').value)||'1447';
+      const clean=previewRows.map(r=>cleanStudent(r)).map(r=>({student_name:r.student_name,student_number:r.student_number||null,stage:r.stage||'غير محدد',grade:r.grade||'غير محدد',track_name:r.track_name||'',noor_section_code:r.noor_section_code||'',section_name:r.section_name||'غير محدد',national_id:r.national_id||null}));
+      saveLocalCenterMirror(clean.map(r=>Object.assign({school_id:currentSchool.id,student_status:'نشط',academic_year:year},r)),year,'saved');
+      setStatus('جارٍ الحفظ الآمن في مدرسة الجلسة...','note');
+      const result=await secureSchoolInfo('students-import',{academicYear:year,mode,students:clean});
+      previewRows=[];$('savePreviewBtn').classList.add('hidden');$('previewCount').textContent='تم الحفظ والتحديث';await loadStudents();
+      setStatus('تم تحديث مركز المعلومات: تم حفظ '+Number(result.saved||0)+' طالبًا. تم تجاهل '+Number(result.skippedExisting||0)+' طالب موجود مسبقًا و '+Number(result.skippedPreview||0)+' تكرار داخل الملف.','ok');
     }catch(e){setStatus('تعذر الحفظ: '+(e.message||e),'bad')}
   }
   window.cleanCurrentYearFromCloud = async function(){
     try{
-      if(!currentSchool.id) detectSchool();
-      if(!currentSchool.id) throw new Error('لا توجد مدرسة نشطة أو وضع تجربة محلي مفعل.');
+      if(!currentSchool.id) await detectSchool();
       const year=safe($('academicYear').value)||'1447';
-      if(!confirm('سيتم حذف بيانات الطلاب للعام '+year+' من السحابة للمدرسة النشطة فقط، ثم تصفير لوحة مركز المعلومات. هل تريد المتابعة؟')) return;
-      const client=getClient();
-      const del=await client.from('students').delete().eq('school_id',currentSchool.id).eq('academic_year',year);
-      if(del.error) throw del.error;
-      allStudents=[]; previewRows=[];
-      rebuildFilters(true); renderTree(); renderStats(); renderStudents();
-      $('previewCount').textContent='تم تنظيف بيانات العام الحالي';
-      $('savePreviewBtn').classList.add('hidden');
-      setStatus('تم تنظيف بيانات العام الحالي من السحابة لهذه المدرسة فقط.','ok');
-      notifyCentralInformationChanged('students');
+      if(!confirm('سيتم حذف بيانات الطلاب للعام '+year+' من السحابة للمدرسة الحالية فقط. هل تريد المتابعة؟')) return;
+      await secureSchoolInfo('students-clear-year',{academicYear:year});
+      allStudents=[];previewRows=[];rebuildFilters(true);renderTree();renderStats();renderStudents();$('previewCount').textContent='تم تنظيف بيانات العام الحالي';$('savePreviewBtn').classList.add('hidden');setStatus('تم تنظيف بيانات العام الحالي من السحابة لهذه المدرسة فقط.','ok');
     }catch(e){setStatus('تعذر التنظيف: '+(e.message||e),'bad')}
   }
   window.loadStudents = async function(){
     try{
-      if(!currentSchool.id) detectSchool(); if(!currentSchool.id){ return; }
-      const client=getClient(); const year=safe($('academicYear').value)||'1447'; const q=await client.from('students').select('*').eq('school_id',currentSchool.id).eq('academic_year',year).neq('student_status','محذوف').order('stage',{ascending:true}).order('grade',{ascending:true}).order('track_name',{ascending:true}).order('section_name',{ascending:true}).order('student_name',{ascending:true});
-      if(q.error) throw q.error; allStudents=(q.data||[]).map(r=>cleanStudent(r)); saveLocalCenterMirror(allStudents, year, 'cloud_load'); rebuildFilters(true); renderTree(); renderStats(); renderStudents();
-      setStatus('تم تحميل بيانات المدرسة النشطة: '+allStudents.length+' طالبًا.','ok');
-    }catch(e){const localRows=readLocalCenterMirror(safe($('academicYear').value)||'1447'); if(localRows.length){allStudents=localRows; rebuildFilters(true); renderTree(); renderStats(); renderStudents(); setStatus('تم تحميل '+localRows.length+' طالبًا من النسخة المحلية لمركز المعلومات.','ok');}else{setStatus('تعذر تحميل الطلاب: '+(e.message||e),'bad')}}
+      if(!currentSchool.id) await detectSchool();
+      const year=safe($('academicYear').value)||'1447';
+      const q=await secureSchoolInfo('students-list',{academicYear:year});
+      allStudents=(q.students||[]).map(r=>cleanStudent(r));saveLocalCenterMirror(allStudents,year,'cloud_load');rebuildFilters(true);renderTree();renderStats();renderStudents();setStatus('تم تحميل بيانات المدرسة النشطة: '+allStudents.length+' طالبًا.','ok');
+    }catch(e){const localRows=readLocalCenterMirror(safe($('academicYear').value)||'1447');if(localRows.length){allStudents=localRows;rebuildFilters(true);renderTree();renderStats();renderStudents();setStatus('تم تحميل '+localRows.length+' طالبًا من النسخة المحلية الخاصة بهذه المدرسة.','ok');}else{setStatus('تعذر تحميل الطلاب: '+(e.message||e),'bad')}}
   }
   function unique(arr){return [...new Set(arr.map(safe).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ar'))}
   function fill(sel,vals,keep){const old=keep?sel.value:''; sel.innerHTML='<option value="">الكل</option>'+vals.map(v=>`<option>${html(v)}</option>`).join(''); if(old && vals.includes(old)) sel.value=old;}
@@ -549,11 +523,11 @@
     $('studentsBody').innerHTML=rows.map((r,i)=>`<tr><td>${i+1}</td><td><input value="${html(r.student_name)}" id="name_${r.id}"></td><td><input value="${html(r.student_number||'')}" id="snum_${r.id}"></td><td><input value="${html(r.stage)}" id="stage_${r.id}"></td><td><input value="${html(r.grade)}" id="grade_${r.id}"></td><td><input value="${html(r.track_name||'')}" id="track_${r.id}"></td><td><input value="${html(r.section_name)}" id="section_${r.id}"></td><td><input value="${html(r.noor_section_code||'')}" id="code_${r.id}"></td><td><input value="${html(r.national_id||'')}" id="nid_${r.id}"></td><td class="noPrint"><div class="actions"><button class="btn small" onclick="updateStudent('${r.id}')">حفظ/نقل</button><button class="btn small indigo" onclick="studentCard('${r.id}')">بطاقة</button><button class="btn small danger" onclick="deleteStudent('${r.id}')">حذف</button></div></td></tr>`).join('') || '<tr><td colspan="10" class="muted">لا توجد بيانات مطابقة.</td></tr>';
   }
   window.updateStudent=async function(id){
-    try{const client=getClient(); const row={student_name:safe($('name_'+id).value),student_number:safe($('snum_'+id).value)||null,stage:safe($('stage_'+id).value)||'غير محدد',grade:safe($('grade_'+id).value)||'غير محدد',track_name:safe($('track_'+id).value)||'',section_name:safe($('section_'+id).value)||'غير محدد',noor_section_code:safe($('code_'+id).value),national_id:safe($('nid_'+id).value)||null}; const q=await client.from('students').update(row).eq('id',id).eq('school_id',currentSchool.id); if(q.error) throw q.error; setStatus('تم تحديث بيانات الطالب ونقله حسب المرحلة/الصف/المسار/الشعبة الجديدة.','ok'); await loadStudents();}catch(e){setStatus('تعذر التحديث: '+(e.message||e),'bad')}
+    try{const row={student_name:safe($('name_'+id).value),student_number:safe($('snum_'+id).value)||null,stage:safe($('stage_'+id).value)||'غير محدد',grade:safe($('grade_'+id).value)||'غير محدد',track_name:safe($('track_'+id).value)||'',section_name:safe($('section_'+id).value)||'غير محدد',noor_section_code:safe($('code_'+id).value),national_id:safe($('nid_'+id).value)||null};await secureSchoolInfo('student-update',{id,student:row});setStatus('تم تحديث بيانات الطالب داخل المدرسة الحالية.','ok');await loadStudents();}catch(e){setStatus('تعذر التحديث: '+(e.message||e),'bad')}
   }
   window.deleteStudent=async function(id){
-    if(!confirm('حذف الطالب من العرض؟ سيتم الحذف بشكل منطقي ويمكن الاستفادة من السجلات المرتبطة لاحقًا.')) return;
-    try{const client=getClient(); const q=await client.from('students').update({student_status:'محذوف'}).eq('id',id).eq('school_id',currentSchool.id); if(q.error) throw q.error; setStatus('تم حذف الطالب من العرض بشكل آمن.','ok'); await loadStudents();}catch(e){setStatus('تعذر الحذف: '+(e.message||e),'bad')}
+    if(!confirm('حذف الطالب من العرض؟ سيتم الحذف بشكل منطقي داخل المدرسة الحالية فقط.')) return;
+    try{await secureSchoolInfo('student-delete',{id});setStatus('تم حذف الطالب من العرض بشكل آمن.','ok');await loadStudents();}catch(e){setStatus('تعذر الحذف: '+(e.message||e),'bad')}
   }
   window.studentCard=function(id){
     const r=allStudents.find(x=>String(x.id)===String(id)); if(!r) return;
@@ -575,7 +549,7 @@
   function normalizeRole(v){return normText(v||'').toLowerCase()}
   function isTeacherUser(u){const r=normalizeRole(u.role||u.user_role||u.type||u.account_type||u.section||''); return r==='teacher'||/teacher|معلم|معلمه|معلم\/ه|معلم ة/.test(r)}
   function isActiveUser(u){const st=normalizeRole(u.status||u.user_status||u.active_status||'active'); if(u.active===false||u.is_active===false||u.enabled===false) return false; return !/pending|بانتظار|معلق|معطل|disabled|inactive|محذوف/.test(st)}
-  function sameSchoolUser(u){const sid=safe(currentSchool.id); if(!sid) return true; const usid=safe(u.school_id||u.schoolId||u.active_school_id||u.current_school_id||u.school||''); return !usid || usid===sid}
+  function sameSchoolUser(u){const sid=safe(currentSchool.id); const usid=safe(u.school_id||u.schoolId||u.active_school_id||u.current_school_id||u.school||''); return !!sid && !!usid && usid===sid}
   function readLocalUsers(){
     const keys=['smartSchoolUnifiedOpsV2_users','offline_users_backup','smart_school_users','users','school_users','smartSchoolUsers'];
     let rows=[];
@@ -586,34 +560,19 @@
   }
   async function readCloudUsers(){
     try{
-      const client=getClient();
-      const tables=['users','school_users','profiles'];
-      for(const table of tables){
-        const q=await client.from(table).select('*').limit(500);
-        if(q.error) continue;
-        const rows=(q.data||[]).filter(u=>isTeacherUser(u)&&isActiveUser(u)&&sameSchoolUser(u)).map(u=>({id:safe(u.id||u.user_id||u.uid||u.email||u.name),user_id:safe(u.user_id||u.id||u.uid||u.email||u.name),name:safe(u.name||u.full_name||u.display_name||u.username||u.email||'معلم'),email:safe(u.email||u.user_email||''),school_id:currentSchool.id,source:table}));
-        if(rows.length) return rows;
-      }
-    }catch(e){}
-    return [];
+      const q=await secureSchoolInfo('staff-list');
+      return (q.staff||[]).filter(u=>{
+        const st=normalizeRole(u.status||u.user_status||'');
+        return isTeacherUser(u)&&st==='active'&&sameSchoolUser(u);
+      }).map(u=>({id:safe(u.id||u.user_id),user_id:safe(u.user_id||u.id),name:safe(u.name||u.full_name||u.display_name||u.username||u.email||'معلم'),email:safe(u.email||u.user_email||''),school_id:currentSchool.id,status:'active',source:'secure_school_information'}));
+    }catch(e){console.error('[school info live teachers]',e);return []}
   }
   function loadTeacherProfiles(){try{return JSON.parse(localStorage.getItem(teacherStoreKey())||'[]')}catch(e){return []}}
   async function readCloudTeacherProfiles(){
-    try{
-      const client=getClient();
-      const q=await client.from('school_teacher_profiles').select('*').eq('school_id',currentSchool.id).limit(1000);
-      if(q.error) throw q.error;
-      return (q.data||[]).map(r=>({id:safe(r.user_id||r.id),user_id:safe(r.user_id||r.id),name:safe(r.teacher_name||r.name||''),email:safe(r.email||''),subject:safe(r.subject||''),weekly_lessons:r.weekly_lessons||'',assignments:Array.isArray(r.assignments)?r.assignments:[],extra_roles:Array.isArray(r.extra_roles)?r.extra_roles:[],updated_at:r.updated_at||''}));
-    }catch(e){return []}
+    try{const q=await secureSchoolInfo('teacher-profiles-list');return (q.profiles||[]).map(r=>({id:safe(r.user_id||r.id),user_id:safe(r.user_id||r.id),name:safe(r.teacher_name||r.name||''),email:safe(r.email||''),subject:safe(r.subject||''),weekly_lessons:r.weekly_lessons||'',assignments:Array.isArray(r.assignments)?r.assignments:[],extra_roles:Array.isArray(r.extra_roles)?r.extra_roles:[],updated_at:r.updated_at||''}));}catch(e){return []}
   }
   async function saveTeacherProfileCloud(t){
-    try{
-      const client=getClient();
-      const row={school_id:currentSchool.id,user_id:t.user_id,teacher_name:t.name,email:t.email||'',subject:t.subject||'',weekly_lessons:Number(t.weekly_lessons||0),assignments:t.assignments||[],extra_roles:t.extra_roles||[],updated_at:new Date().toISOString()};
-      const q=await client.from('school_teacher_profiles').upsert(row,{onConflict:'school_id,user_id'});
-      if(q.error) throw q.error;
-      return true;
-    }catch(e){return false}
+    try{await secureSchoolInfo('teacher-profile-upsert',{profile:{user_id:t.user_id,teacher_name:t.name,email:t.email||'',subject:t.subject||'',weekly_lessons:Number(t.weekly_lessons||0),assignments:t.assignments||[],extra_roles:t.extra_roles||[]}});return true;}catch(e){return false}
   }
   function saveTeacherProfiles(rows){localStorage.setItem(teacherStoreKey(),JSON.stringify(rows||[]));}
   function teacherComplete(t){return !!(safe(t.subject)&&Number(t.weekly_lessons||0)>0&&Array.isArray(t.assignments)&&t.assignments.length)}
@@ -622,12 +581,12 @@
     return (users||[]).map(u=>Object.assign({subject:'',weekly_lessons:'',assignments:[],extra_roles:[],profile_status:'missing'}, prof.get(safe(u.user_id||u.id))||{}, u, {user_id:safe(u.user_id||u.id),school_id:currentSchool.id})).map(t=>{t.profile_status=teacherComplete(t)?'complete':'missing'; return t;});
   }
   async function loadTeachers(){
-    if(!currentSchool.id) detectSchool(); if(!currentSchool.id) return;
-    let users=readLocalUsers();
-    const cloud=await readCloudUsers();
-    if(cloud.length){const by=new Map(users.map(u=>[u.user_id,u])); cloud.forEach(u=>by.set(u.user_id,u)); users=[...by.values()];}
-    const localProfiles=loadTeacherProfiles();
-    const cloudProfiles=await readCloudTeacherProfiles();
+    if(!currentSchool.id) await detectSchool(); if(!currentSchool.id) return;
+    // المصدر الوحيد للأسماء الحالية هو قائمة المنسوبين الحية الموثقة.
+    const users=await readCloudUsers();
+    const liveIds=new Set(users.map(u=>safe(u.user_id||u.id)).filter(Boolean));
+    const localProfiles=loadTeacherProfiles().filter(x=>liveIds.has(safe(x.user_id||x.id)));
+    const cloudProfiles=(await readCloudTeacherProfiles()).filter(x=>liveIds.has(safe(x.user_id||x.id)));
     const profileMap=new Map(localProfiles.map(x=>[safe(x.user_id||x.id),x]));
     cloudProfiles.forEach(x=>profileMap.set(safe(x.user_id||x.id),Object.assign(profileMap.get(safe(x.user_id||x.id))||{},x)));
     allTeachers=mergeTeacherUsers(users,[...profileMap.values()]);
@@ -643,17 +602,7 @@
     }
   }
   async function saveDeputyExportCloud(payload){
-    try{
-      const client=getClient();
-      const q=await client.from('deputy_weekly_teacher_source').upsert({
-        school_id:payload.school_id,
-        school_name:payload.school_name||'',
-        teachers:payload.teachers||[],
-        updated_at:payload.updated_at
-      },{onConflict:'school_id'});
-      if(q.error) throw q.error;
-      return true;
-    }catch(e){return false}
+    try{await secureSchoolInfo('deputy-teacher-source-upsert',{payload});return true;}catch(e){return false}
   }
   window.exportTeachersForDeputy=async function(){
     if(!currentSchool.id) detectSchool();
@@ -768,7 +717,6 @@
     await exportTeachersForDeputy();
     renderTeachers(); closeTeacherDrawer();
     setStatus('تم حفظ بيانات المعلم وتحديث مصدر متابعة الوكيل.'+(cloudSaved?' تم الحفظ السحابي أيضًا.':''),'ok');
-    notifyCentralInformationChanged('teachers');
   }
   window.switchInfoTab=function(tab){
     const st=$('studentsTab'), tt=$('teachersTab'), sb=$('studentsTabBtn'), tb=$('teachersTabBtn');
@@ -777,14 +725,14 @@
   }
   window.refreshActiveInfoTab=function(){if($('teachersTab')&&!$('teachersTab').classList.contains('hidden')) loadTeachers(); else loadStudents();}
 
-    document.addEventListener('DOMContentLoaded',()=>{detectSchool(); if(currentSchool.id) loadStudents();});
+    document.addEventListener('DOMContentLoaded',async()=>{try{await window.__PLATFORM_ACCESS_READY__; await detectSchool(); if(currentSchool.id) await loadStudents();}catch(e){console.error('[school-info-security]',e);}});
   window.addEventListener('focus',()=>{ if(currentSchool.id) loadStudents(); });
   document.addEventListener('visibilitychange',()=>{ if(!document.hidden && currentSchool.id) loadStudents(); });
 })();
 </script>
 
 <!-- Unified Comprehensive Cloud Storage -->
-<script src="platform-cloud-session.js?v=20260818-session-v12"></script>
+
 <script src="cloud-file-engine.js"></script>
 <script src="cloud-file-bootstrap.js"></script>
 <script src="cloud-upload-hub.js"></script>
@@ -794,7 +742,7 @@
 <script src="delegated-access-guard.js"></script>
   <script src="evidence-library-source.js"></script>
 
-<script src="school-information-source.js?v=20260830-records-final-v4"></script>
+<script src="school-information-source.js?v=20260830-live-roster-v5"></script>
 <script src="internal-messaging.js"></script>
 
 <script id="central-information-provider-ui">
@@ -803,7 +751,7 @@
    const s=window.SchoolInformationSource;
    if(!s)return;
    try{
-     const snap=await s.getSnapshot();
+     const snap=await s.getSnapshot(true);
      const $=id=>document.getElementById(id);
      if($('cipStudents'))$('cipStudents').textContent=snap.counts.students;
      if($('cipStaff'))$('cipStaff').textContent=snap.counts.staff;

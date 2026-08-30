@@ -1384,7 +1384,14 @@ function canonicalWakilAgency(v){
     'student_affairs':'student_affairs','deputy_students':'student_affairs','students':'student_affairs',
     'وكيل شؤون الطلاب':'student_affairs','وكيل الشؤون الطلابية':'student_affairs','وكيل/وكيلة شؤون الطلاب':'student_affairs','وكيلة شؤون الطلاب':'student_affairs'
   };
-  return aliases[x]||x;
+  // لا يجوز اعتبار المسمى العام للدور (وكيل/وكيلة/agent/agency/deputy) تصنيف وكالة.
+  // نقبل فقط التصنيفات الثلاثة المعروفة أو مسمياتها الصريحة؛ أي قيمة أخرى تعني عدم وجود تصنيف محدد.
+  var genericRoleLabels={
+    'وكيل':1,'وكيلة':1,'الوكيل':1,'الوكيلة':1,
+    'agent':1,'agency':1,'deputy':1,'vice principal':1,'vice_principal':1
+  };
+  if(genericRoleLabels[x.toLowerCase ? x.toLowerCase() : x] || genericRoleLabels[x]) return '';
+  return aliases[x]||'';
 }
 function normalizeAgencyList(v){
   if(Array.isArray(v)) return Array.from(new Set(v.map(canonicalWakilAgency).filter(Boolean).filter(function(x){return x!=='general';})));

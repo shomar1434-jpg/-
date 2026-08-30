@@ -67,24 +67,20 @@
 
   function normalizeSchool(row){
     if(!row) return null;
+    const links=buildSchoolLinks(row);
     return {
-      id: row.id,
-      schoolId: row.id,
-      schoolCode: row.school_code || row.id,
-      schoolName: row.school_name || '',
-      managerName: row.manager_name || '',
-      managerEmail: row.manager_email || '',
-      managerDisplayEmail: row.school_email || row.manager_email || '',
-      status: row.status || 'pending',
-      registrationCode: row.registration_code || '',
-      registrationLink: buildSchoolLinks(row).registrationLink,
-      loginLink: buildSchoolLinks(row).loginLink,
-      createdAt: row.created_at || '',
-      roleLabel: publicRoleLabel,
-      role_label: publicRoleLabel,
-      rawRoleLabel: rawRoleLabel,
-      adminSupervisor: adminSupervisor,
-      admin_supervisor: adminSupervisor
+      id: String(row.id||''),
+      schoolId: String(row.id||''),
+      schoolCode: String(row.school_code||row.id||''),
+      schoolName: String(row.school_name||''),
+      managerName: String(row.manager_name||''),
+      managerEmail: String(row.manager_email||''),
+      managerDisplayEmail: String(row.school_email||row.manager_email||''),
+      status: String(row.status||'pending'),
+      registrationCode: String(row.registration_code||''),
+      registrationLink: links.registrationLink,
+      loginLink: links.loginLink,
+      createdAt: row.created_at||''
     };
   }
 
@@ -304,23 +300,34 @@
   async function registerSchoolUser(payload){
     const sb = getClient();
     if(!sb) throw new Error('Supabase غير جاهز');
-    let school = null;
-    let schoolId = payload.schoolId || '';
+    const expectedId=String(payload.schoolId||'').trim();
+    const expectedCode=String(payload.schoolCode||'').trim();
+    const expectedReg=String(payload.registrationCode||'').trim();
+    if(!expectedId && !expectedCode && !expectedReg) throw new Error('رابط التسجيل غير مرتبط بمدرسة.');
 
-    if(schoolId){
-      const {data} = await sb.from('schools').select('*').eq('id',schoolId).maybeSingle();
-      if(data) school = data;
+    let school=null;
+    if(expectedId){
+      const q=await sb.from('schools').select('*').eq('id',expectedId).maybeSingle();
+      if(q.error) throw explainSupabaseError(q.error);
+      school=q.data||null;
+    }else if(expectedReg){
+      const q=await sb.from('schools').select('*').eq('registration_code',expectedReg).limit(2);
+      if(q.error) throw explainSupabaseError(q.error);
+      if((q.data||[]).length===1) school=q.data[0];
+    }else if(expectedCode){
+      const q=await sb.from('schools').select('*').eq('school_code',expectedCode).limit(2);
+      if(q.error) throw explainSupabaseError(q.error);
+      if((q.data||[]).length===1) school=q.data[0];
     }
-    if(!school && payload.schoolCode){
-      const {data} = await sb.from('schools').select('*').eq('school_code',payload.schoolCode).maybeSingle();
-      if(data){ school = data; schoolId = data.id; }
-    }
-    if(!school && payload.registrationCode){
-      const {data} = await sb.from('schools').select('*').eq('registration_code',payload.registrationCode).maybeSingle();
-      if(data){ school = data; schoolId = data.id; }
-    }
+    if(!school) throw new Error('رابط التسجيل لا يطابق مدرسة فعالة. اطلب رابطًا جديدًا من مدير المدرسة.');
+    if(['disabled','inactive','suspended','deleted'].includes(String(school.status||'active').toLowerCase())) throw new Error('هذه المدرسة غير مفعلة حاليًا.');
 
-    if(!schoolId) throw new Error('الرابط غير مرتبط بمدرسة صحيحة');
+    const schoolId=String(school.id||'');
+    const schoolCode=String(school.school_code||'');
+    const registrationCode=String(school.registration_code||'');
+    if(expectedId && expectedId!==schoolId) throw new Error('معرف المدرسة في رابط التسجيل غير مطابق.');
+    if(expectedCode && expectedCode!==schoolCode) throw new Error('رمز المدرسة في رابط التسجيل غير مطابق.');
+    if(expectedReg && expectedReg!==registrationCode) throw new Error('رمز التسجيل في الرابط غير مطابق للمدرسة.');
     const dbRole=appRoleToDb(payload.role);
     const isAdministrativeEmployee=dbRole==='administrative_employee'||dbRole==='admin_employee';
     const supervisor=(String(payload.adminSupervisor||payload.supervisor||'').toLowerCase()==='agent')?'agent':'manager';

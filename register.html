@@ -253,34 +253,57 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
   }
   configureRoleFromInvite();
   async function resolveInviteSchool(){
-    let school=null;
+    let raw=null;
     try{
-      if(window.SmartSchoolSupabase){
-        const sb=window.SmartSchoolSupabase.getClient();
-        if(sb){
-          if(invite.schoolId){const q=await sb.from('schools').select('*').eq('id',invite.schoolId).maybeSingle();if(q&&!q.error&&q.data)school=window.SmartSchoolSupabase.normalizeSchool(q.data);}
-          if(!school&&invite.schoolCode){const q=await sb.from('schools').select('*').eq('school_code',invite.schoolCode).maybeSingle();if(q&&!q.error&&q.data)school=window.SmartSchoolSupabase.normalizeSchool(q.data);}
-          if(!school&&invite.token){const q=await sb.from('schools').select('*').eq('registration_code',invite.token).maybeSingle();if(q&&!q.error&&q.data)school=window.SmartSchoolSupabase.normalizeSchool(q.data);}
-        }
+      if(!window.SmartSchoolSupabase) throw new Error('مصدر المدارس غير متاح');
+      const sb=window.SmartSchoolSupabase.getClient();
+      if(!sb) throw new Error('تعذر الاتصال بقاعدة المدارس');
+
+      // schoolId هو المرجع الأعلى. لا نبحث عن مدرسة بديلة إذا كان موجودًا.
+      if(invite.schoolId){
+        const q=await sb.from('schools').select('*').eq('id',invite.schoolId).maybeSingle();
+        if(q.error) throw q.error;
+        raw=q.data||null;
+      }else if(invite.token){
+        const q=await sb.from('schools').select('*').eq('registration_code',invite.token).limit(2);
+        if(q.error) throw q.error;
+        if((q.data||[]).length===1)raw=q.data[0];
+      }else if(invite.schoolCode){
+        const q=await sb.from('schools').select('*').eq('school_code',invite.schoolCode).limit(2);
+        if(q.error) throw q.error;
+        if((q.data||[]).length===1)raw=q.data[0];
       }
-    }catch(e){console.warn('تعذر تحديد المدرسة من Supabase',e)}
-    if(school){
-      const sid=String(school.schoolId||school.id||''), scode=String(school.schoolCode||''), reg=String(school.registrationCode||'');
-      if(invite.schoolId&&sid&&String(invite.schoolId)!==sid)return null;
-      if(invite.schoolCode&&scode&&String(invite.schoolCode)!==scode)return null;
-      if(invite.token&&reg&&String(invite.token)!==reg)return null;
-      invite.schoolId=sid;invite.schoolName=school.schoolName||'';invite.schoolCode=scode;invite.token=reg;
+      if(!raw)return null;
+      if(['disabled','inactive','suspended','deleted'].includes(String(raw.status||'active').toLowerCase()))return null;
+
+      const sid=String(raw.id||'');
+      const scode=String(raw.school_code||'');
+      const reg=String(raw.registration_code||'');
+      if(invite.schoolId&&String(invite.schoolId)!==sid)return null;
+      if(invite.schoolCode&&String(invite.schoolCode)!==scode)return null;
+      if(invite.token&&String(invite.token)!==reg)return null;
+
+      // لا تعتمد صحة الرابط على normalizeSchool حتى لو حدث خلل في طبقة العرض.
+      const school=(typeof window.SmartSchoolSupabase.normalizeSchool==='function')
+        ? (window.SmartSchoolSupabase.normalizeSchool(raw)||{}) : {};
+      invite.schoolId=sid;
+      invite.schoolCode=scode;
+      invite.token=reg;
+      invite.schoolName=String(raw.school_name||school.schoolName||'');
+      const title=document.getElementById('school-title');
+      if(title)title.textContent='رابط تسجيل خاص بمدرسة: '+(invite.schoolName||'المدرسة');
+      return {raw,school,schoolId:sid,schoolCode:scode,registrationCode:reg};
+    }catch(e){
+      console.warn('[registration-school-contract]',e);
+      return null;
     }
-    const title=document.getElementById('school-title');
-    title.textContent=school&&invite.schoolName?('رابط تسجيل خاص بمدرسة: '+invite.schoolName):'رابط تسجيل مرتبط بالمدرسة';
-    return school;
   }
   resolveInviteSchool();
   document.getElementById('reg-form').addEventListener('submit',async function(e){
     e.preventDefault();
     const msg=document.getElementById('msg'); msg.textContent=''; msg.className='text-center text-xs font-bold err';
     const verifiedSchool=await resolveInviteSchool();
-    if(!verifiedSchool || !invite.schoolId || !invite.token){ msg.textContent='رابط التسجيل غير صالح أو لا يطابق مدرسة واحدة بشكل صريح. اطلب رابطًا جديدًا من مدير المدرسة.'; return; }
+    if(!verifiedSchool || !invite.schoolId || !invite.schoolCode || !invite.token){ msg.textContent='رابط التسجيل غير صالح أو لا يطابق مدرسة واحدة بشكل صريح. اطلب رابطًا جديدًا من مدير المدرسة.'; return; }
     const name=document.getElementById('name').value.trim();
     const email=document.getElementById('email').value.trim().toLowerCase();
     const password=document.getElementById('password').value.trim();

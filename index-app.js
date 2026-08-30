@@ -1814,8 +1814,10 @@ const launchApp = (appId) => {
                     return;
                 }
                 tbody.innerHTML = schools.map(s => {
-                    const reg = s.registrationLink || '';
-                    const login = s.loginLink || '';
+                    // الروابط تُبنى دائمًا من هوية صف المدرسة الحالي، ولا نثق بأي رابط مخزن قديم.
+                    const basePath = location.href.split('/').slice(0,-1).join('/');
+                    const reg = `${basePath}/register.html?schoolId=${encodeURIComponent(s.id||'')}&school=${encodeURIComponent(s.schoolCode||'')}&schoolCode=${encodeURIComponent(s.schoolCode||'')}&reg=${encodeURIComponent(s.registrationCode||'')}&token=${encodeURIComponent(s.registrationCode||'')}&source=supabase_school_registration&scope=school`;
+                    const login = `${basePath}/school-login.html?schoolId=${encodeURIComponent(s.id||'')}&school=${encodeURIComponent(s.schoolCode||'')}&schoolCode=${encodeURIComponent(s.schoolCode||'')}&source=supabase_school_login&scope=school`;
                     const statusLabel = s.status === 'active'
                         ? '<span class="text-green-700 font-bold">مفعلة</span>'
                         : '<span class="text-amber-700 font-bold">'+(s.status||'pending')+'</span>';

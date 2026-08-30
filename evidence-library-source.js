@@ -133,7 +133,22 @@
   function addSourceToSelectionModal(modal){
     if(!modal||modal.dataset.elsReady==='1')return;const title=(modal.querySelector('h1,h2,h3,h4')?.textContent||'').trim();if(!/إضافة\s*شاهد|شاهد\s*جديد/.test(title))return;const content=modal.querySelector('.modal-content')||modal.firstElementChild||modal;const grid=[...content.querySelectorAll('div')].find(d=>/grid/.test(d.className||'')&&d.querySelectorAll('button').length>=2);if(!grid)return;const b=document.createElement('button');b.type='button';const sample=grid.querySelector('button');b.className=(sample?.className||'')+' els-library-choice';b.innerHTML='📚 <span>مكتبة القسم</span>';b.onclick=e=>{e.preventDefault();e.stopPropagation();open('report-slot',{slot:g('currentUploadId')||g('boxId')||1})};grid.appendChild(b);modal.dataset.elsReady='1';
   }
-  function addReadinessButtons(root=document){root.querySelectorAll?.('input.evidence-input').forEach(inp=>{if(inp.dataset.evidenceLibrary==='off'||inp.dataset.elsReady==='1')return;const b=document.createElement('button');b.type='button';b.className='els-source-btn no-print';b.innerHTML='📚 من مكتبة القسم';b.onclick=()=>open('readiness',inp);inp.insertAdjacentElement('afterend',b);inp.dataset.elsReady='1'})}
+  function elsInputKey(inp){if(!inp.dataset.elsInputKey)inp.dataset.elsInputKey='els_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8);return inp.dataset.elsInputKey}
+  function cleanupInjectedButtons(root=document){
+    const scope=root?.querySelectorAll?root:document;
+    scope.querySelectorAll?.('.els-source-btn[data-els-for]').forEach(b=>{
+      const key=b.dataset.elsFor; const input=document.querySelector('input[type="file"][data-els-input-key="'+CSS.escape(key)+'"]');
+      if(!input||!input.isConnected){b.remove();return}
+      const siblings=Array.from(input.parentElement?.querySelectorAll?.('.els-source-btn[data-els-for="'+CSS.escape(key)+'"]')||[]);
+      siblings.slice(1).forEach(x=>x.remove());
+    });
+  }
+  function addReadinessButtons(root=document){root.querySelectorAll?.('input.evidence-input').forEach(inp=>{
+    if(inp.dataset.evidenceLibrary==='off')return;const key=elsInputKey(inp);
+    const existing=document.querySelector('.els-source-btn[data-els-for="'+CSS.escape(key)+'"]');
+    if(existing){inp.dataset.elsReady='1';return}
+    const b=document.createElement('button');b.type='button';b.className='els-source-btn no-print';b.dataset.elsFor=key;b.innerHTML='📚 من مكتبة القسم';b.onclick=()=>open('readiness',inp);inp.insertAdjacentElement('afterend',b);inp.dataset.elsReady='1'
+  });cleanupInjectedButtons(document)}
   function isActuallyVisible(el){
     if(!el || !el.isConnected) return false;
     try{
@@ -153,13 +168,16 @@
       // الحقول المخفية التي تستخدمها أزرار رفع مخصصة لا يجوز أن تنشئ زرًا عائمًا في أعلى الصفحة.
       // ستتم إعادة فحصها عند ظهور نافذة/قسم الشاهد فعليًا.
       if(!isActuallyVisible(inp) && inp.dataset.evidenceLibrary!=='on') return;
-      const b=document.createElement('button');b.type='button';b.className='els-source-btn no-print els-generic-source-btn';b.innerHTML='📚 من مكتبة القسم';b.title='اختيار شاهد محفوظ مسبقًا من مكتبة القسم';
+      const key=elsInputKey(inp);
+      const existing=document.querySelector('.els-generic-source-btn[data-els-for="'+CSS.escape(key)+'"]');
+      if(existing){inp.dataset.elsGenericReady='1';return}
+      const b=document.createElement('button');b.type='button';b.className='els-source-btn no-print els-generic-source-btn';b.dataset.elsFor=key;b.innerHTML='📚 من مكتبة القسم';b.title='اختيار شاهد محفوظ مسبقًا من مكتبة القسم';
       b.onclick=e=>{e.preventDefault();e.stopPropagation();open('generic-input',{input:inp})};
       inp.insertAdjacentElement('afterend',b);inp.dataset.elsGenericReady='1';
     });
   }
   function hookImpact(){document.querySelectorAll('[onclick*="openEvidencePicker(\'section_library\')"],[onclick*="openEvidencePicker(&quot;section_library&quot;)"]').forEach(b=>{if(b.dataset.elsReady==='1')return;b.addEventListener('click',e=>{e.preventDefault();e.stopImmediatePropagation();open('impact',b)},true);b.dataset.elsReady='1'})}
-  function scan(root=document){root.querySelectorAll?.('#selection-modal').forEach(addSourceToSelectionModal);addReadinessButtons(root);hookImpact();addGenericEvidenceButtons(root)}
+  function scan(root=document){cleanupInjectedButtons(document);root.querySelectorAll?.('#selection-modal').forEach(addSourceToSelectionModal);addReadinessButtons(root);hookImpact();addGenericEvidenceButtons(root);cleanupInjectedButtons(document)}
 
   ensurePicker();if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>scan());else scan();new MutationObserver(ms=>{for(const m of ms)for(const n of m.addedNodes)if(n.nodeType===1)scan(n)}).observe(document.documentElement,{childList:true,subtree:true});
   // بعض النوافذ تغيّر display فقط دون إضافة DOM؛ افحص بعد تفاعل المستخدم.

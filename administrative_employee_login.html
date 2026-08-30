@@ -9,11 +9,129 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="supabase-bridge.js"></script><script src="platform-cloud-session.js?v=20260818-clean-session-v1"></script></head>
 <body><main class="shell"><section class="brand"><img src="https://salogos.b-cdn.net/logos/svg/1774895141785-5zgexuf8.svg" alt="شعار وزارة التعليم"><h1>بوابة الموظف الإداري</h1><p>واجهة دخول مستقلة للموظفين الإداريين المسجلين من الرابط الخاص بالمدرسة. لا تسمح هذه الواجهة بأي دور آخر.</p><span class="badge">🔐 الدخول بعد تفعيل المسؤول المباشر فقط</span></section><section class="form"><h2>تسجيل الدخول</h2><p class="sub" id="schoolTitle">أدخل بيانات الحساب الذي سجلته من رابط الموظف الإداري.</p><div id="schoolBox" class="schoolBox"><label>المدرسة</label><select id="schoolSelect" class="field"></select></div><form id="loginForm"><label>البريد الإلكتروني</label><input id="email" class="field" type="email" dir="ltr" required autocomplete="username"><label>كلمة المرور</label><input id="password" class="field" type="password" required autocomplete="current-password"><button id="loginBtn" class="btn" type="submit">دخول بوابة الموظف الإداري</button></form><div id="msg" class="msg"></div><div class="note">إذا سجلت حديثًا ولم يقم المسؤول الذي أرسل رابط التسجيل بتفعيل حسابك بعد، فلن يسمح النظام بالدخول. بعد التفعيل ستفتح بوابتك وخطة الأداء والتكليفات الإضافية الخاصة بك فقط.</div><a class="back" href="school-login.html">← العودة إلى بوابة المدرسة العامة</a></section></main>
 <script>
-(function(){'use strict';const qs=new URLSearchParams(location.search);const ADMIN_CTX_KEY='administrative_employee_tab_session_v1';let schoolId=qs.get('schoolId')||qs.get('school_id')||qs.get('school')||'';let schoolName=qs.get('schoolName')||qs.get('school_name')||'';const $=id=>document.getElementById(id);function msg(t,k='err'){$('msg').textContent=t;$('msg').className='msg '+k}function normRole(r){r=String(r||'').trim().toLowerCase();return r==='admin_employee'?'administrative_employee':r}function clearWrong(){try{window.PlatformCloudSession?.clear()}catch(_){};try{sessionStorage.removeItem(ADMIN_CTX_KEY)}catch(_){};['currentUser','currentSchoolUser','currentRole','currentUserId','currentUserEmail','currentUserName','smart_school_active_role','smart_school_current_session'].forEach(k=>localStorage.removeItem(k));}
-function saveAdministrativeContext(user,cloud,email){const ctx={version:1,userId:String(user?.id||cloud?.userId||''),email:String(user?.email||email||'').trim().toLowerCase(),name:String(user?.name||user?.fullName||''),role:'administrative_employee',schoolId:String(schoolId||cloud?.schoolId||''),schoolName:String(schoolName||user?.schoolName||''),membershipId:String(user?.__membershipId||cloud?.membershipId||''),adminSupervisor:String(user?.adminSupervisor||'manager'),status:'active',loginAt:new Date().toISOString(),token:String(cloud?.token||''),expiresAt:String(cloud?.expiresAt||'')};sessionStorage.setItem(ADMIN_CTX_KEY,JSON.stringify(ctx));return ctx;}
-async function loadSchoolLabel(){try{const sb=window.SmartSchoolSupabase?.getClient();if(!sb)return;if(schoolId){const q=await sb.from('schools').select('id,school_name').eq('id',schoolId).maybeSingle();if(q.data){schoolName=q.data.school_name||schoolName;$('schoolTitle').textContent='الدخول إلى بوابة الموظف الإداري — '+schoolName;}}}catch(e){}}
-async function discover(email){const sb=window.SmartSchoolSupabase?.getClient();if(!sb)return[];const q=await sb.from('school_members').select('school_id,email,role,status').eq('email',String(email||'').trim().toLowerCase()).in('role',['administrative_employee','admin_employee']).eq('status','active');if(q.error)throw q.error;const ids=[...new Set((q.data||[]).map(x=>x.school_id).filter(Boolean))];if(!ids.length)return[];const sq=await sb.from('schools').select('id,school_name,status').in('id',ids);if(sq.error)throw sq.error;return (sq.data||[]).filter(x=>!x.status||x.status==='active');}
-$('email').addEventListener('blur',async()=>{if(schoolId)return;try{const arr=await discover($('email').value);if(arr.length===1){schoolId=arr[0].id;schoolName=arr[0].school_name;$('schoolBox').classList.remove('show');$('schoolTitle').textContent='الدخول إلى بوابة الموظف الإداري — '+schoolName;}else if(arr.length>1){$('schoolSelect').innerHTML='<option value="">اختر المدرسة</option>'+arr.map(x=>`<option value="${x.id}">${x.school_name||x.id}</option>`).join('');$('schoolBox').classList.add('show');}}catch(e){}});$('schoolSelect').addEventListener('change',e=>{schoolId=e.target.value;schoolName=e.target.options[e.target.selectedIndex]?.textContent||''});
-$('loginForm').addEventListener('submit',async e=>{e.preventDefault();const email=$('email').value.trim().toLowerCase(),password=$('password').value.trim();if(!email||!password)return msg('أدخل البريد وكلمة المرور.');$('loginBtn').disabled=true;$('loginBtn').textContent='جارٍ التحقق...';try{if(!schoolId){const arr=await discover(email);if(arr.length===1){schoolId=arr[0].id;schoolName=arr[0].school_name}else if(arr.length>1){$('schoolSelect').innerHTML='<option value="">اختر المدرسة</option>'+arr.map(x=>`<option value="${x.id}">${x.school_name||x.id}</option>`).join('');$('schoolBox').classList.add('show');throw new Error('اختر المدرسة أولًا.')}else throw new Error('لا توجد عضوية موظف إداري مفعلة لهذا البريد.');}
-const user=await window.SmartSchoolSupabase.loginSchoolUser(email,password,schoolId);if(normRole(user.role)!=='administrative_employee'){clearWrong();throw new Error('هذا الحساب ليس موظفًا إداريًا في المدرسة المحددة.');}if(String(user.status||'active')!=='active'){clearWrong();throw new Error('حساب الموظف الإداري لم يُفعّل بعد من المسؤول المباشر.');}if(!window.PlatformCloudSession)throw new Error('محرك الجلسة السحابية غير متاح.');const cs=await window.PlatformCloudSession.open(email,password,schoolId);if(!cs?.token)throw new Error('تعذر إنشاء جلسة المدرسة السحابية.');if(normRole(cs.role||user.role)!=='administrative_employee')throw new Error('جلسة المدرسة المنشأة لا تحمل دور الموظف الإداري.');if(String(cs.schoolId||schoolId)!==String(schoolId))throw new Error('جلسة الموظف الإداري مرتبطة بمدرسة مختلفة عن المدرسة المحددة.');const id=user.id||cs.userId||'';const adminCtx=saveAdministrativeContext(user,cs,email);sessionStorage.setItem('smart_school_tab_role_v1','administrative_employee');sessionStorage.setItem('smart_school_tab_school_v1',schoolId||'');localStorage.setItem('currentRole','administrative_employee');localStorage.setItem('smart_school_active_role','administrative_employee');localStorage.setItem('currentUserId',id);localStorage.setItem('currentUserEmail',user.email||email);localStorage.setItem('currentUserName',user.name||user.fullName||'');localStorage.setItem('activeSchoolId',schoolId);localStorage.setItem('current_school_id',schoolId);localStorage.setItem('school_id',schoolId);localStorage.setItem('smart_school_id',schoolId);if(schoolName){localStorage.setItem('current_school_name',schoolName);localStorage.setItem('school_name',schoolName)};const session={id,name:user.name||user.fullName||'',email:user.email||email,role:'administrative_employee',schoolId,schoolName,loginAt:new Date().toISOString(),independentSchool:true,loginMode:'administrative_employee'};localStorage.setItem('smart_school_current_session',JSON.stringify(session));msg('تم التحقق، جارٍ فتح بوابة الموظف الإداري...','ok');setTimeout(()=>{const q=new URLSearchParams({emp:adminCtx.email,uid:adminCtx.userId,school:adminCtx.schoolId,admin_session:'1'});location.assign('administrative_employee_portal.html?'+q.toString());},120);}catch(err){console.error(err);msg(err.message||'تعذر تسجيل الدخول.');}finally{$('loginBtn').disabled=false;$('loginBtn').textContent='دخول بوابة الموظف الإداري';}});loadSchoolLabel();})();
+(function(){'use strict';
+const qs=new URLSearchParams(location.search||'');
+const ADMIN_CTX_KEY='administrative_employee_tab_session_v1';
+let schoolId=String(qs.get('schoolId')||qs.get('school_id')||'').trim();
+let schoolCode=String(qs.get('schoolCode')||qs.get('school')||'').trim();
+let schoolName=String(qs.get('schoolName')||qs.get('school_name')||'').trim();
+const $=id=>document.getElementById(id);
+let loginBusy=false;
+function msg(t,k='err'){$('msg').textContent=t;$('msg').className='msg '+k}
+function normRole(r){r=String(r||'').trim().toLowerCase();return r==='admin_employee'?'administrative_employee':r}
+function supervisorFromLabel(label){const m=String(label||'').match(/^ADMIN_EMPLOYEE_SUPERVISOR:(manager|agent)$/i);return m?m[1].toLowerCase():'manager'}
+async function verifySchoolLink(){
+  if(!schoolId)throw new Error('رابط دخول الموظف الإداري غير مرتبط بمدرسة. استخدم الرابط الصادر من المدير أو الوكيل.');
+  const sb=window.SmartSchoolSupabase?.getClient?.();
+  if(!sb)throw new Error('مصدر المدرسة غير متاح.');
+  const q=await sb.from('schools').select('id,school_name,school_code,status').eq('id',schoolId).maybeSingle();
+  if(q.error)throw q.error;
+  const row=q.data;
+  if(!row||String(row.id)!==schoolId)throw new Error('رابط الدخول لا يطابق مدرسة فعالة.');
+  if(['disabled','inactive','suspended','deleted'].includes(String(row.status||'active').toLowerCase()))throw new Error('المدرسة غير مفعلة.');
+  if(schoolCode&&String(row.school_code||'')!==schoolCode)throw new Error('رمز المدرسة في رابط الدخول غير مطابق.');
+  schoolCode=String(row.school_code||schoolCode||'');
+  schoolName=String(row.school_name||schoolName||'');
+  $('schoolTitle').textContent='الدخول إلى بوابة الموظف الإداري — '+schoolName;
+  return row;
+}
+async function activeAdministrativeMembership(email){
+  const sb=window.SmartSchoolSupabase?.getClient?.();
+  if(!sb)throw new Error('مصدر المستخدمين غير متاح.');
+  const q=await sb.from('school_members').select('id,school_id,user_id,email,role,role_label,status')
+    .eq('school_id',schoolId).eq('email',String(email||'').trim().toLowerCase())
+    .in('role',['administrative_employee','admin_employee']).limit(2);
+  if(q.error)throw q.error;
+  const rows=q.data||[];
+  const active=rows.find(x=>String(x.status||'').toLowerCase()==='active');
+  if(active)return active;
+  if(rows.some(x=>String(x.status||'').toLowerCase()==='pending'))throw new Error('حساب الموظف الإداري بانتظار التفعيل من المسؤول المباشر.');
+  if(rows.some(x=>String(x.status||'').toLowerCase()==='disabled'))throw new Error('حساب الموظف الإداري معطل من المسؤول المباشر.');
+  throw new Error('لا توجد عضوية موظف إداري لهذا البريد في المدرسة المحددة.');
+}
+function saveAdministrativeContext(member,cloud,email){
+  const ctx={
+    version:2,userId:String(member.user_id||cloud.userId||''),email:String(email||'').toLowerCase(),
+    name:'',role:'administrative_employee',schoolId:String(schoolId),schoolName:String(schoolName),
+    membershipId:String(member.id||''),adminSupervisor:supervisorFromLabel(member.role_label),
+    status:'active',loginAt:new Date().toISOString(),token:String(cloud.token||''),expiresAt:String(cloud.expiresAt||'')
+  };
+  sessionStorage.setItem(ADMIN_CTX_KEY,JSON.stringify(ctx));
+  sessionStorage.setItem('smart_school_tab_role_v1','administrative_employee');
+  sessionStorage.setItem('smart_school_tab_school_v1',schoolId);
+  sessionStorage.setItem('current_school_id',schoolId);
+  return ctx;
+}
+function writeLegacyCompatibility(ctx){
+  const u={id:ctx.userId,user_id:ctx.userId,name:ctx.name,email:ctx.email,role:'administrative_employee',
+    adminSupervisor:ctx.adminSupervisor,status:'active',schoolId:ctx.schoolId,school_id:ctx.schoolId,schoolName:ctx.schoolName};
+  try{
+    localStorage.setItem('currentUser',JSON.stringify(u));
+    localStorage.setItem('currentSchoolUser',JSON.stringify(u));
+    localStorage.setItem('currentRole','administrative_employee');
+    localStorage.setItem('smart_school_active_role','administrative_employee');
+    localStorage.setItem('currentUserId',ctx.userId);
+    localStorage.setItem('currentUserEmail',ctx.email);
+    localStorage.setItem('currentUserName',ctx.name||'');
+    localStorage.setItem('current_school_id',ctx.schoolId);
+    localStorage.setItem('school_id',ctx.schoolId);
+    localStorage.setItem('smart_school_id',ctx.schoolId);
+    localStorage.setItem('current_school_name',ctx.schoolName);
+    localStorage.setItem('school_name',ctx.schoolName);
+  }catch(_){}
+}
+async function resolveName(ctx){
+  try{
+    const sb=window.SmartSchoolSupabase?.getClient?.();if(!sb)return;
+    const q=await sb.from('users').select('id,full_name,email').eq('id',ctx.userId).maybeSingle();
+    if(!q.error&&q.data)ctx.name=String(q.data.full_name||'');
+  }catch(_){}
+}
+async function init(){
+  $('schoolBox').classList.remove('show');
+  try{await verifySchoolLink()}catch(e){msg(e.message||'تعذر التحقق من رابط الدخول.');$('loginBtn').disabled=true;}
+}
+$('loginForm').addEventListener('submit',async e=>{
+  e.preventDefault();if(loginBusy)return;
+  loginBusy=true;$('loginBtn').disabled=true;$('loginBtn').textContent='جارٍ التحقق...';
+  try{
+    await verifySchoolLink();
+    const email=$('email').value.trim().toLowerCase(),password=$('password').value.trim();
+    if(!email||!password)throw new Error('أدخل البريد وكلمة المرور.');
+    const member=await activeAdministrativeMembership(email);
+    if(!window.PlatformCloudSession||typeof PlatformCloudSession.open!=='function')throw new Error('محرك جلسة المدرسة غير متاح.');
+    const cloud=await PlatformCloudSession.open(email,password,schoolId);
+    if(!cloud?.token)throw new Error('تعذر إنشاء جلسة المدرسة السحابية.');
+    if(String(cloud.schoolId||'')!==schoolId)throw new Error('جلسة الحساب مرتبطة بمدرسة مختلفة.');
+    if(normRole(cloud.role)!=='administrative_employee')throw new Error('جلسة الحساب لا تحمل دور الموظف الإداري.');
+    const ms=await PlatformCloudSession.memberships();
+    const current=ms?.current||{};
+    const verified=(ms?.memberships||[]).find(x=>
+      String(x.schoolId||'')===schoolId &&
+      String(x.userId||'')===String(cloud.userId||'') &&
+      normRole(x.role)==='administrative_employee' &&
+      String(x.status||'').toLowerCase()==='active'
+    );
+    if(!verified||String(current.schoolId||'')!==schoolId||String(current.userId||'')!==String(cloud.userId||'')){
+      try{PlatformCloudSession.clear()}catch(_){}
+      throw new Error('تعذر تأكيد عضوية الموظف الإداري المفعلة في المدرسة.');
+    }
+    member.role_label=verified.roleLabel||member.role_label;
+    const ctx=saveAdministrativeContext(member,cloud,email);
+    await resolveName(ctx);
+    sessionStorage.setItem(ADMIN_CTX_KEY,JSON.stringify(ctx));
+    writeLegacyCompatibility(ctx);
+    msg('تم التحقق، جارٍ فتح بوابة الموظف الإداري...','ok');
+    const q=new URLSearchParams({emp:ctx.email,uid:ctx.userId,school:ctx.schoolId,schoolId:ctx.schoolId,admin_session:'1'});
+    location.assign('administrative_employee_portal.html?'+q.toString());
+  }catch(err){
+    console.error('[administrative employee login]',err);
+    msg(err?.message||'تعذر تسجيل الدخول.');
+  }finally{
+    loginBusy=false;$('loginBtn').disabled=false;$('loginBtn').textContent='دخول بوابة الموظف الإداري';
+  }
+});
+document.addEventListener('DOMContentLoaded',init);
+if(document.readyState!=='loading')init();
+})();
 </script></body></html>

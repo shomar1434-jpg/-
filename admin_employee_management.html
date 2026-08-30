@@ -134,19 +134,62 @@ function closeArchive(){archivePanel.classList.remove('show')}
 
 function currentSchoolScope(){
   try{
-    const keys=['active_school_id','activeSchoolId','selected_school_id','school_id'];
-    for(const k of keys){const v=localStorage.getItem(k); if(v) return v;}
-    const s=JSON.parse(localStorage.getItem('active_school')||localStorage.getItem('activeSchool')||'null');
-    return s&&(s.id||s.schoolId||s.code||s.name)||'';
+    const q=new URLSearchParams(location.search||'');
+    const fromUrl=q.get('schoolId')||q.get('school_id')||q.get('school')||'';
+    if(fromUrl)return String(fromUrl);
+    const tab=sessionStorage.getItem('smart_school_tab_school_v1')||sessionStorage.getItem('current_school_id')||'';
+    if(tab)return String(tab);
+    const cloud=window.PlatformCloudSession&&typeof PlatformCloudSession.schoolId==='function'?PlatformCloudSession.schoolId():'';
+    if(cloud)return String(cloud);
+    const keys=['current_school_id','active_school_id','activeSchoolId','selected_school_id','school_id','smart_school_id'];
+    for(const k of keys){const v=localStorage.getItem(k); if(v) return String(v);}
+    const x=JSON.parse(localStorage.getItem('active_school')||localStorage.getItem('activeSchool')||'null');
+    return x&&(x.id||x.schoolId)||'';
   }catch(e){return ''}
+}
+async function resolveAdministrativeEmployeeSchoolLinkContext(){
+  const schoolId=currentSchoolScope();
+  if(!schoolId)throw new Error('تعذر تحديد المدرسة من جلسة هذا التبويب.');
+  const sb=window.SmartSchoolSupabase&&SmartSchoolSupabase.getClient?SmartSchoolSupabase.getClient():null;
+  if(!sb)throw new Error('مصدر المدارس السحابي غير متاح.');
+  const q=await sb.from('schools').select('id,school_name,school_code,registration_code,status').eq('id',schoolId).maybeSingle();
+  if(q.error)throw q.error;
+  const row=q.data;
+  if(!row||String(row.id)!==String(schoolId))throw new Error('المدرسة غير موجودة في المصدر السحابي.');
+  if(['disabled','inactive','suspended','deleted'].includes(String(row.status||'active').toLowerCase()))throw new Error('المدرسة غير مفعلة.');
+  if(!row.school_code||!row.registration_code)throw new Error('بيانات رابط التسجيل للمدرسة غير مكتملة.');
+  return {schoolId:String(row.id),schoolName:String(row.school_name||''),schoolCode:String(row.school_code),registrationCode:String(row.registration_code)};
 }
 function openAdministrativeEmployeesPortal(){
   const school=currentSchoolScope();
   const url='administrative_employee_portal.html?mode=supervisor&supervisor='+encodeURIComponent(supervisor)+(school?'&school='+encodeURIComponent(school):'');
   location.href=url;
 }
-function copyAdministrativeEmployeeLoginLink(){let school=currentSchoolScope();if(!school){alert('تعذر تحديد المدرسة النشطة.');return;}let base=location.origin+location.pathname.replace(/admin_employee_management\.html.*/,'administrative_employee_login.html');let url=base+'?schoolId='+encodeURIComponent(school);try{navigator.clipboard.writeText(url)}catch(e){}alert('رابط دخول الموظف الإداري بعد التفعيل:\n'+url+'\n\nتم نسخه إن أمكن.');}
-function createRegistrationLink(){let school=currentSchoolScope();if(!school){alert('تعذر تحديد المدرسة النشطة.');return;}let base=location.origin+location.pathname.replace(/admin_employee_management\.html.*/,'register.html');let url=base+'?schoolId='+encodeURIComponent(school)+'&adminEmployee=1&role=administrative_employee&supervisor='+encodeURIComponent(supervisor)+'&source=administrative_employee_registration';try{navigator.clipboard.writeText(url)}catch(e){}alert('رابط تسجيل الموظف الإداري:\n'+url+'\n\nهذا الرابط مخصص للموظف الإداري فقط وتم نسخه إن أمكن.');}
+async function copyAdministrativeEmployeeLoginLink(){
+  try{
+    const ctx=await resolveAdministrativeEmployeeSchoolLinkContext();
+    const base=location.origin+location.pathname.replace(/admin_employee_management\.html.*/,'administrative_employee_login.html');
+    const q=new URLSearchParams({schoolId:ctx.schoolId,schoolCode:ctx.schoolCode,schoolName:ctx.schoolName,source:'administrative_employee_login',scope:'school'});
+    const url=base+'?'+q.toString();
+    try{await navigator.clipboard.writeText(url)}catch(e){}
+    alert('رابط دخول الموظف الإداري بعد التفعيل:\n'+url+'\n\nتم نسخه إن أمكن.');
+  }catch(e){alert(e.message||'تعذر إنشاء رابط دخول الموظف الإداري.');}
+}
+async function createRegistrationLink(){
+  try{
+    const ctx=await resolveAdministrativeEmployeeSchoolLinkContext();
+    const base=location.origin+location.pathname.replace(/admin_employee_management\.html.*/,'register.html');
+    const q=new URLSearchParams({
+      schoolId:ctx.schoolId,school:ctx.schoolCode,schoolCode:ctx.schoolCode,
+      reg:ctx.registrationCode,token:ctx.registrationCode,
+      schoolName:ctx.schoolName,adminEmployee:'1',role:'administrative_employee',
+      supervisor:supervisor,source:'administrative_employee_registration',scope:'school'
+    });
+    const url=base+'?'+q.toString();
+    try{await navigator.clipboard.writeText(url)}catch(e){}
+    alert('رابط تسجيل الموظف الإداري:\n'+url+'\n\nالرابط مربوط بمدرسة واحدة وبجهة الإشراف الحالية وتم نسخه إن أمكن.');
+  }catch(e){alert(e.message||'تعذر إنشاء رابط تسجيل الموظف الإداري.');}
+}
 
 async function deleteAdministrativeEmployee(userId,email){
   if(!confirm('هل تريد حذف هذا الموظف الإداري من المدرسة؟ سيختفي من بوابة الموظفين الإداريين وبطاقة التقويم.'))return;

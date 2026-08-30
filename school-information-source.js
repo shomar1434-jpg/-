@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 if(window.SchoolInformationSource&&String(window.SchoolInformationSource.VERSION||'').includes('live-roster-v5'))return;
-const VERSION='5.0.0-live-roster-v5-dual-context';
+const VERSION='6.0.0-authoritative-live-roster-no-legacy';
 const SUPABASE_URL=(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'');
 const DEFAULT_SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
 const API_KEY=localStorage.getItem('smartSchoolSupabaseAnonKey')||DEFAULT_SUPABASE_KEY;
@@ -43,7 +43,7 @@ function activeCurrentUser(u){
 function normalizeStaff(rows,sid){
  const map=new Map();
  (Array.isArray(rows)?rows:[]).forEach(u=>{
-   if(!u||!activeCurrentUser(u))return;
+   if(!u||!activeCurrentUser(u)||u.active!==true)return;
    const usid=safe(u.school_id||u.schoolId||sid);
    if(sid&&usid&&usid!==sid)return;
    const id=safe(u.user_id||u.id||'');

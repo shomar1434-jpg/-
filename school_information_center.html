@@ -98,7 +98,7 @@
     </div>
     <div class="actions">
       <button class="btn secondary" onclick="returnToParentContext()">العودة</button>
-      <button class="btn" onclick="refreshActiveInfoTab()">تحديث البيانات</button>
+      <button class="btn" id="unifiedRefreshBtn" onclick="refreshCentralInformationProvider()">↻ تحديث المعلومات الفعلية</button>
     </div>
   </header>
 
@@ -110,7 +110,6 @@
       <h3>حالة التكامل مع المنصة</h3>
       <p>مركز المعلومات هو مصدر البيانات المركزي. لا تحتاج الأقسام إلى تصدير يدوي للبيانات؛ فهي تقرأ المصدر مباشرة عند الحاجة.</p>
     </div>
-    <button class="integrationRefresh" type="button" onclick="refreshCentralInformationProvider()">↻ تحديث البيانات في المنصة</button>
   </div>
   <div class="integrationStats">
     <div class="integrationMini"><b id="cipStudents">0</b><span>الطلاب</span></div>
@@ -723,7 +722,7 @@
     if(tab==='teachers'){st.classList.add('hidden'); tt.classList.remove('hidden'); sb.classList.remove('active'); tb.classList.add('active'); loadTeachers();}
     else{tt.classList.add('hidden'); st.classList.remove('hidden'); tb.classList.remove('active'); sb.classList.add('active');}
   }
-  window.refreshActiveInfoTab=function(){if($('teachersTab')&&!$('teachersTab').classList.contains('hidden')) loadTeachers(); else loadStudents();}
+  window.refreshActiveInfoTab=function(){return refreshCentralInformationProvider()}
 
     document.addEventListener('DOMContentLoaded',async()=>{try{await window.__PLATFORM_ACCESS_READY__; await detectSchool(); if(currentSchool.id) await loadStudents();}catch(e){console.error('[school-info-security]',e);}});
   window.addEventListener('focus',()=>{ if(currentSchool.id) loadStudents(); });
@@ -742,7 +741,7 @@
 <script src="delegated-access-guard.js"></script>
   <script src="evidence-library-source.js"></script>
 
-<script src="school-information-source.js?v=20260830-live-roster-v5"></script>
+<script src="school-information-source.js?v=20260830-authoritative-v6"></script>
 <script src="internal-messaging.js"></script>
 
 <script id="central-information-provider-ui">
@@ -764,11 +763,18 @@
    }
  }
  window.refreshCentralInformationProvider=async function(){
-   if(window.SchoolInformationSource){
+   const btn=$('unifiedRefreshBtn');if(btn){btn.disabled=true;btn.textContent='جارٍ التحديث...'}
+   try{
+     if(!window.SchoolInformationSource)throw new Error('مصدر مركز المعلومات غير متاح');
      await SchoolInformationSource.refresh();
-     try{window.dispatchEvent(new CustomEvent('school-information-updated',{detail:{source:'school_information_center',at:new Date().toISOString()}}))}catch(_){}
-     await paint();
-   }
+     const snap=await SchoolInformationSource.getSnapshot(false);
+     window.__SCHOOL_INFORMATION_CENTER_SNAPSHOT__=snap;
+     if($('teachersTab')&&!$('teachersTab').classList.contains('hidden')) await loadTeachers(); else await loadStudents();
+     await paintCentralIntegration();
+     setStatus('تم تحديث المعلومات من الواقع الفعلي للحسابات والطلاب.','ok');
+     return snap;
+   }catch(e){setStatus('تعذر تحديث المعلومات الفعلية: '+(e.message||e),'bad');throw e}
+   finally{if(btn){btn.disabled=false;btn.textContent='↻ تحديث المعلومات الفعلية'}}
  };
  window.addEventListener('school-information-ready',paint);
  window.addEventListener('school-information-change',paint);

@@ -3393,31 +3393,11 @@
     el.textContent=msg;
     el.className='rounded-xl border border-dashed text-xs font-bold p-2.5 min-h-[42px] flex items-center ' + (type==='warn'?'border-amber-200 bg-amber-50 text-amber-800':type==='error'?'border-rose-200 bg-rose-50 text-rose-800':'border-emerald-200 bg-emerald-50/60 text-emerald-800');
   }
-  function activeSchoolId(){
-    try{var a=(window.ActiveSchoolScope&&window.ActiveSchoolScope.get)?window.ActiveSchoolScope.get():{}; return a.schoolId||a.id||localStorage.getItem('active_school_id')||localStorage.getItem('school_id')||'';}catch(e){return localStorage.getItem('active_school_id')||localStorage.getItem('school_id')||'';}
-  }
-  function localRows(){
-    var winSources=[window.schoolInformationCenterStudents,window.SCHOOL_INFORMATION_CENTER_STUDENTS,window.SCHOOL_CENTER_STUDENTS,window.centerStudents];
-    for(var w of winSources){ if(Array.isArray(w)&&w.length) return w; }
-    try{ if(window.parent&&window.parent!==window){
-      var ps=[window.parent.schoolInformationCenterStudents,window.parent.SCHOOL_INFORMATION_CENTER_STUDENTS,window.parent.SCHOOL_CENTER_STUDENTS,window.parent.centerStudents];
-      for(var p of ps){ if(Array.isArray(p)&&p.length) return p; }
-    }}catch(e){}
-    var sid=activeSchoolId()||'DEV_SCHOOL';
-    var yRaw=(localStorage.getItem('school_info_academic_year')||localStorage.getItem('school_academic_year')||'1447').toString();
-    var y=(yRaw.match(/\d{4}/)||[yRaw])[0];
-    var keys=[`schoolInformationCenter:${sid}:${y}`,`school_information_center:${sid}:${y}`,`sic_students:${sid}:${y}`,`school_information_center_students:${sid}`,'school_information_center_students','schoolInformationCenterStudents','school_information_students','school_center_students','sic_students_cache','students_center_cache','teacher_import_students','students'];
-    for(var key of keys){
-      try{var val=localStorage.getItem(key); if(!val) continue; var parsed=JSON.parse(val); var rows=Array.isArray(parsed)?parsed:(Array.isArray(parsed.students)?parsed.students:(Array.isArray(parsed.data)?parsed.data:[])); if(rows.length) return rows;}catch(e){}
-    }
-    return [];
-  }
+  function activeSchoolId(){try{return window.SchoolInformationSource?.getSchoolId?.()||window.PlatformCloudSession?.schoolId?.()||sessionStorage.getItem('smart_school_tab_school_v1')||''}catch(e){return ''}}
+  function localRows(){ return []; }
   async function supabaseRows(){
-    var clients=[window.supabaseClient,window.schoolSupabaseClient,window._supabaseClient,window.supabase];
-    try{ if(window.parent&&window.parent!==window) clients.push(window.parent.supabaseClient,window.parent.schoolSupabaseClient,window.parent._supabaseClient,window.parent.supabase); }catch(e){}
-    var client=clients.find(function(c){return c&&c.from;});
-    if(!client) return [];
-    try{var sid=activeSchoolId(); var q=client.from('students').select('*'); if(sid) q=q.eq('school_id',sid); var res=await q.order('student_name',{ascending:true}); if(res.error) throw res.error; return res.data||[];}catch(e){console.warn('تعذر جلب طلاب مركز المعلومات السحابي للموجه:',e); return [];}
+    try{if(window.SchoolInformationSource){const rows=await SchoolInformationSource.getStudents();return rows||[]}}catch(e){console.warn('[advisor center source]',e)}
+    return [];
   }
   function norm(v){return (v==null?'':String(v)).replace(/\s+/g,' ').trim();}
   function normalizeStudent(s,idx){
@@ -3446,7 +3426,6 @@
   window.advisorLoadInformationCenter=async function(){
     status('جاري قراءة الطلاب من مركز المعلومات...', '');
     var rows=await supabaseRows();
-    if(!rows.length) rows=localRows();
     advisorCenterRows=rows||[];
     advisorCenterGroups=groupRows(advisorCenterRows);
     if(!advisorCenterGroups.length){status('لم يتم العثور على طلاب أو صفوف في مركز المعلومات. تأكد من الاستيراد في مركز المعلومات أولاً.','error'); fillClassSelect(); return;}
@@ -3481,7 +3460,7 @@
     if(mark==='underachiever'){var y=document.querySelector('input[name="care_type_underachiever"]'); if(y) y.checked=true;}
     setTimeout(function(){var h=document.getElementById('reusable-main-header'); if(h&&h.scrollIntoView) h.scrollIntoView({behavior:'smooth',block:'start'});},80);
   };
-  document.addEventListener('DOMContentLoaded',function(){ setTimeout(function(){ var rows=localRows(); if(rows.length){advisorCenterRows=rows; advisorCenterGroups=groupRows(rows); fillClassSelect(); status('تم العثور محلياً على '+rows.length+' طالب/ـة من مركز المعلومات. يمكن اختيار الطالب مباشرة أو الضغط على الاستيراد للتحديث.','');}},200); });
+  document.addEventListener('DOMContentLoaded',function(){setTimeout(function(){window.advisorLoadInformationCenter&&window.advisorLoadInformationCenter();},200);});
 })();
 </script>
 
@@ -3538,7 +3517,7 @@
 <script src="school-activity-engine.js"></script>
   <script src="evidence-library-source.js"></script>
 
-<script src="school-information-source.js"></script>
+<script src="school-information-source.js?v=20260830-records-final-v4"></script>
 <script src="internal-messaging.js"></script>
 
 <!-- Agent Core V2: school/role/year scoped -->
@@ -3549,6 +3528,8 @@
 <script src="top-ai-center.js"></script>
 <script src="platform-page-navigation.js?v=20260818-nav1"></script>
 
+<script id="CANONICAL_RECORD_MIGRATION_V6_DISABLED">(function(){async function m(){try{const g=window.PlatformPersistenceGuard;if(!g||typeof g.readExactValues!=='function')return;let r=await g.readExactValues({moduleKey:"student_advisor",scope:'user',keys:["student_advisor_records_archive_v2"]});let raw=r.ok?r.values["student_advisor_records_archive_v2"]:undefined;if(raw===undefined){const old=await g.readExactValues({moduleKey:"student_advisor",scope:'user',keys:["advisor_records_archive_v1"]});raw=old.ok&&old.values["advisor_records_archive_v1"]!==undefined?old.values["advisor_records_archive_v1"]:'[]';if(raw!=='[]')await g.writeExactValues({moduleKey:"student_advisor",scope:'user',values:{["student_advisor_records_archive_v2"]:raw}});}g.setLocalSilently("student_advisor_records_archive_v2",raw||'[]');}catch(e){console.error('[record V6 migrate]',e)}}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',m,{once:true});else m();})();</script>
 
+<script src="platform-record-save-engine.js?v=20260830-records-final-v3"></script>
 </body>
 </html>

@@ -931,20 +931,15 @@
         function healthApplySnapshot(s){s=s||{};clinicVisits=Array.isArray(s.clinicVisits)?s.clinicVisits:[];chronicCases=Array.isArray(s.chronicCases)?s.chronicCases:[];envInspections=Array.isArray(s.envInspections)?s.envInspections:[];healthPrograms=Array.isArray(s.healthPrograms)?s.healthPrograms:[];medicalTransfers=Array.isArray(s.medicalTransfers)?s.medicalTransfers:[];const m=s.meta||{};if(m.school)document.getElementById('meta-school').value=m.school;if(m.counselor)document.getElementById('meta-counselor').value=m.counselor;if(m.year)document.getElementById('meta-year').value=m.year;if(m.semester)document.getElementById('meta-semester').value=m.semester}
         function healthReadPeriod(year,semester){try{const x=JSON.parse(localStorage.getItem(healthPeriodKey(year,semester))||'null');return x&&typeof x==='object'?x:null}catch(e){return null}}
         async function switchHealthAcademicPeriod(nextSemester,nextYear){
-            const oldYear=document.getElementById('meta-year').dataset.activeValue||document.getElementById('meta-year').value;
-            const oldSemester=document.getElementById('meta-semester').dataset.activeValue||document.getElementById('meta-semester').value;
-            const oldKey=healthPeriodKey(oldYear,oldSemester);
-            localStorage.setItem(oldKey,JSON.stringify(healthSnapshot()));
-            const targetYear=String(nextYear||oldYear||'1448').trim(),targetSemester=String(nextSemester||oldSemester||'الفصل الدراسي الأول').trim();
-            const targetKey=healthPeriodKey(targetYear,targetSemester),existing=healthReadPeriod(targetYear,targetSemester);
-            if(existing) healthApplySnapshot(existing); else {clinicVisits=[];chronicCases=[];envInspections=[];healthPrograms=[];medicalTransfers=[];document.getElementById('meta-year').value=targetYear;document.getElementById('meta-semester').value=targetSemester;localStorage.setItem(targetKey,JSON.stringify(healthSnapshot()))}
-            document.getElementById('meta-year').dataset.activeValue=targetYear;document.getElementById('meta-semester').dataset.activeValue=targetSemester;
-            localStorage.setItem('sh_meta_year',targetYear);localStorage.setItem('sh_meta_semester',targetSemester);
-            localStorage.setItem('sh_clinicVisits',JSON.stringify(clinicVisits));localStorage.setItem('sh_chronicCases',JSON.stringify(chronicCases));localStorage.setItem('sh_envInspections',JSON.stringify(envInspections));localStorage.setItem('sh_healthPrograms',JSON.stringify(healthPrograms));localStorage.setItem('sh_medicalTransfers',JSON.stringify(medicalTransfers));
-            updateDashboardStats();renderAllTables();
-            if(window.PlatformPersistenceGuard&&typeof PlatformPersistenceGuard.commit==='function'){const r=await PlatformPersistenceGuard.commit([oldKey,targetKey,'sh_clinicVisits','sh_chronicCases','sh_envInspections','sh_healthPrograms','sh_medicalTransfers','sh_meta_year','sh_meta_semester']);if(!r||r.ok===false){showToast('تعذر تأكيد تغيير الفصل/العام سحابيًا','fa-triangle-exclamation');return false}}
-            showToast(`تم فتح ${targetSemester} للعام ${targetYear} دون التأثير على الفترة السابقة`);return true;
-        }
+ const oldYear=document.getElementById('meta-year').dataset.activeValue||document.getElementById('meta-year').value,oldSemester=document.getElementById('meta-semester').dataset.activeValue||document.getElementById('meta-semester').value,oldSnapshot=healthSnapshot(),targetYear=String(nextYear||oldYear||'1448').trim(),targetSemester=String(nextSemester||oldSemester||'الفصل الدراسي الأول').trim();
+ try{
+   if(!window.PlatformRecordSaveEngine||PlatformRecordSaveEngine.isSystemAdminContext())throw new Error('محرك الفترات السحابي غير متاح');
+   await PlatformRecordSaveEngine.save({moduleKey:'school_health_records',recordType:'health_period',recordId:'main',academicYear:oldYear,semester:oldSemester,scope:'school',folderId:'health-unified',title:'السجل الصحي المدرسي الموحد',data:oldSnapshot});
+   let target=await PlatformRecordSaveEngine.load({moduleKey:'school_health_records',recordType:'health_period',recordId:'main',academicYear:targetYear,semester:targetSemester,scope:'school'});target=target&&target.data?target.data:healthReadPeriod(targetYear,targetSemester);
+   if(target)healthApplySnapshot(target);else{clinicVisits=[];chronicCases=[];envInspections=[];healthPrograms=[];medicalTransfers=[];document.getElementById('meta-year').value=targetYear;document.getElementById('meta-semester').value=targetSemester;}
+   document.getElementById('meta-year').value=targetYear;document.getElementById('meta-semester').value=targetSemester;document.getElementById('meta-year').dataset.activeValue=targetYear;document.getElementById('meta-semester').dataset.activeValue=targetSemester;localStorage.setItem('sh_meta_year',targetYear);localStorage.setItem('sh_meta_semester',targetSemester);localStorage.setItem(healthPeriodKey(targetYear,targetSemester),JSON.stringify(healthSnapshot()));localStorage.setItem('sh_clinicVisits',JSON.stringify(clinicVisits));localStorage.setItem('sh_chronicCases',JSON.stringify(chronicCases));localStorage.setItem('sh_envInspections',JSON.stringify(envInspections));localStorage.setItem('sh_healthPrograms',JSON.stringify(healthPrograms));localStorage.setItem('sh_medicalTransfers',JSON.stringify(medicalTransfers));updateDashboardStats();renderAllTables();showToast(`تم فتح ${targetSemester} للعام ${targetYear} دون التأثير على الفترة السابقة`);return true;
+ }catch(e){healthApplySnapshot(oldSnapshot);document.getElementById('meta-year').value=oldYear;document.getElementById('meta-semester').value=oldSemester;document.getElementById('meta-year').dataset.activeValue=oldYear;document.getElementById('meta-semester').dataset.activeValue=oldSemester;updateDashboardStats();renderAllTables();console.error('[health period switch]',e);showToast('تعذر تأكيد تغيير الفصل/العام سحابيًا؛ تمت استعادة الفترة السابقة','fa-triangle-exclamation');return false;}
+}
         async function migrateLegacyHealthSchoolScopeIfNeeded(){
             try{
                 let hasUserPeriod=false;
@@ -960,12 +955,16 @@
         }
         async function initSystem() {
             try {
-                await migrateLegacyHealthSchoolScopeIfNeeded();
+                // VFinal: لا استعادة تلقائية من مفاتيح قديمة عند فتح السجل.
+                // تبقى البيانات القديمة محفوظة ولا تنتقل إلا بحفظ صريح من المستخدم.
                 ['school','counselor','year','semester'].forEach(field=>{const el=document.getElementById('meta-'+field);if(!el)return;const saved=localStorage.getItem('sh_meta_'+field);if(saved)el.value=saved});
                 if(!document.getElementById('meta-semester').value)document.getElementById('meta-semester').value='الفصل الدراسي الأول';
                 const year=document.getElementById('meta-year').value||localStorage.getItem('school_academic_year')||'1448';
                 const semester=document.getElementById('meta-semester').value||'الفصل الدراسي الأول';
-                const period=healthReadPeriod(year,semester);
+                let period=healthReadPeriod(year,semester);
+                if(window.PlatformRecordSaveEngine && !PlatformRecordSaveEngine.isSystemAdminContext()){
+                    try{const c=await PlatformRecordSaveEngine.load({moduleKey:'school_health_records',recordType:'health_period',recordId:'main',academicYear:year,semester,scope:'school'});if(c&&c.data){period=c.data;localStorage.setItem(healthPeriodKey(year,semester),JSON.stringify(period));}}catch(e){console.warn('[health cloud period load]',e)}
+                }
                 if(period) healthApplySnapshot(period); else {
                     clinicVisits=JSON.parse(localStorage.getItem('sh_clinicVisits')||'[]');chronicCases=JSON.parse(localStorage.getItem('sh_chronicCases')||'[]');envInspections=JSON.parse(localStorage.getItem('sh_envInspections')||'[]');healthPrograms=JSON.parse(localStorage.getItem('sh_healthPrograms')||'[]');medicalTransfers=JSON.parse(localStorage.getItem('sh_medicalTransfers')||'[]');
                     localStorage.setItem(healthPeriodKey(year,semester),JSON.stringify(healthSnapshot()));
@@ -977,28 +976,10 @@
                 updateDashboardStats();renderAllTables();
             }catch(e){console.error('خطأ أثناء استعادة البيانات:',e);showToast('حدث خطأ عند تحميل قاعدة البيانات','fa-triangle-exclamation')}
         }
-        async function persistState(previousSnapshot=null) {
-            const beforeLocal={};['sh_clinicVisits','sh_chronicCases','sh_envInspections','sh_healthPrograms','sh_medicalTransfers'].forEach(k=>beforeLocal[k]=localStorage.getItem(k));
-            const year=document.getElementById('meta-year')?.value||'1448',semester=document.getElementById('meta-semester')?.value||'الفصل الدراسي الأول',periodKey=healthPeriodKey(year,semester),beforePeriod=localStorage.getItem(periodKey);
-            localStorage.setItem('sh_clinicVisits',JSON.stringify(clinicVisits));localStorage.setItem('sh_chronicCases',JSON.stringify(chronicCases));localStorage.setItem('sh_envInspections',JSON.stringify(envInspections));localStorage.setItem('sh_healthPrograms',JSON.stringify(healthPrograms));localStorage.setItem('sh_medicalTransfers',JSON.stringify(medicalTransfers));
-            localStorage.setItem(periodKey,JSON.stringify(healthSnapshot()));
-            updateDashboardStats();renderAllTables();
-            try{
-                if(window.PlatformPersistenceGuard&&typeof PlatformPersistenceGuard.commit==='function'){
-                    const r=await PlatformPersistenceGuard.commit([periodKey,'sh_clinicVisits','sh_chronicCases','sh_envInspections','sh_healthPrograms','sh_medicalTransfers']);
-                    if(!r||r.ok===false)throw new Error(r?.error||'تعذر تأكيد الحفظ السحابي');
-                }
-                try{window.dispatchEvent(new CustomEvent('platform:record_saved',{detail:{title:'حفظ بيانات السجل الصحي',academicYear:year,semester}}))}catch(e){}
-                return true;
-            }catch(e){
-                if(previousSnapshot) healthApplySnapshot(previousSnapshot);
-                Object.entries(beforeLocal).forEach(([k,v])=>{if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v)});
-                if(beforePeriod===null)localStorage.removeItem(periodKey);else localStorage.setItem(periodKey,beforePeriod);
-                updateDashboardStats();renderAllTables();
-                showToast('تعذر تأكيد حفظ السجل الصحي سحابيًا؛ تمت استعادة البيانات السابقة','fa-triangle-exclamation');
-                return false;
-            }
-        }
+        async function persistState(previousSnapshot=null){
+ const keys=['sh_clinicVisits','sh_chronicCases','sh_envInspections','sh_healthPrograms','sh_medicalTransfers'],before={};keys.forEach(k=>before[k]=localStorage.getItem(k));const year=document.getElementById('meta-year')?.value||'1448',semester=document.getElementById('meta-semester')?.value||'الفصل الدراسي الأول',periodKey=healthPeriodKey(year,semester),beforePeriod=localStorage.getItem(periodKey),snap=healthSnapshot();
+ try{if(!window.PlatformRecordSaveEngine||PlatformRecordSaveEngine.isSystemAdminContext())throw new Error('محرك حفظ السجل الصحي غير متاح');await PlatformRecordSaveEngine.save({moduleKey:'school_health_records',recordType:'health_period',recordId:'main',academicYear:year,semester,scope:'school',folderId:'health-unified',title:'السجل الصحي المدرسي الموحد',data:snap});localStorage.setItem('sh_clinicVisits',JSON.stringify(clinicVisits));localStorage.setItem('sh_chronicCases',JSON.stringify(chronicCases));localStorage.setItem('sh_envInspections',JSON.stringify(envInspections));localStorage.setItem('sh_healthPrograms',JSON.stringify(healthPrograms));localStorage.setItem('sh_medicalTransfers',JSON.stringify(medicalTransfers));localStorage.setItem(periodKey,JSON.stringify(snap));updateDashboardStats();renderAllTables();try{window.dispatchEvent(new CustomEvent('platform:record_saved',{detail:{title:'حفظ بيانات السجل الصحي',academicYear:year,semester}}))}catch(_){ }return true;}catch(e){if(previousSnapshot)healthApplySnapshot(previousSnapshot);Object.entries(before).forEach(([k,v])=>{if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v)});if(beforePeriod===null)localStorage.removeItem(periodKey);else localStorage.setItem(periodKey,beforePeriod);updateDashboardStats();renderAllTables();console.error('[health record save]',e);showToast('تعذر تأكيد حفظ السجل الصحي سحابيًا؛ لم يتم اعتماد التغيير','fa-triangle-exclamation');return false;}
+}
 
         function switchTab(tabId) {
             // Hide all contents
@@ -1714,7 +1695,7 @@
 <script src="delegated-access-guard.js"></script>
   <script src="evidence-library-source.js"></script>
 
-<script src="school-information-source.js"></script>
+<script src="school-information-source.js?v=20260830-records-final-v4"></script>
 <script src="internal-messaging.js"></script>
 
 <!-- Agent Core V2: school/role/year scoped -->
@@ -1724,5 +1705,7 @@
 <script src="openai-engine.js"></script>
 <script src="top-ai-center.js"></script>
 <script src="platform-page-navigation.js?v=20260818-nav1"></script>
+
+<script src="platform-record-save-engine.js?v=20260830-records-final-v3"></script>
 </body>
 </html>

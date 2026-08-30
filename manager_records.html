@@ -1126,30 +1126,39 @@ function loadDraft(){fill(JSON.parse(localStorage.getItem(key()+"_draft")||"{}")
 let managerRecordEditingIndex=null;
 async function hydrateManagerRecordCanonicalV6(){
  try{
-  const g=window.PlatformPersistenceGuard;if(!g||typeof g.readExactValues!=='function')throw new Error('محرك الأرشيف المرجعي V6 غير متاح');
-  let r=await g.readExactValues({moduleKey:'manager',scope:'school',keys:['manager_records_archive_v2']});let raw=r.ok?r.values.manager_records_archive_v2:undefined;
-  if(raw===undefined){const old=await g.readExactValues({moduleKey:'manager',scope:'school',keys:['school_manager_records_archive_v1']});raw=old.ok&&old.values.school_manager_records_archive_v1!==undefined?old.values.school_manager_records_archive_v1:'[]';try{let a=JSON.parse(raw||'[]');raw=JSON.stringify(Array.isArray(a)?a.filter(x=>!(x&&x.recordType==='decision_assignment')):[])}catch(_){raw='[]'};if(raw!=='[]'){const w=await g.writeExactValues({moduleKey:'manager',scope:'school',values:{manager_records_archive_v2:raw}});if(!w.ok)throw new Error(w.error||'تعذر ترحيل أرشيف المدير');}}
-  g.setLocalSilently('manager_records_archive_v2',raw||'[]');
-  let rows=[];try{rows=JSON.parse(raw||'[]');if(!Array.isArray(rows))rows=[]}catch(_){rows=[]}
-  const localRows=rows.filter(x=>String(x.folderId||x.recordId||'')===String(current.id)).map(x=>({id:x.sourceRecordId||x.id,title:x.title||current.title,savedAt:x.updatedAt||x.createdAt||'',updatedAt:x.updatedAt||'',createdAt:x.createdAt||'',values:x.values||{}}));
-  g.setLocalSilently(key()+'_archive',JSON.stringify(localRows));return rows;
- }catch(e){console.error('[manager record canonical hydrate V6]',e);throw e}
+  if(!window.PlatformRecordSaveEngine||PlatformRecordSaveEngine.isSystemAdminContext())return [];
+  const rows=await PlatformRecordSaveEngine.listAll({moduleKey:'manager_records_items',recordType:'manager_record',scope:'school'});
+  const mapped=(rows||[]).map(x=>Object.assign({},x.data||{},{academicYear:x.meta?.academicYear,semester:x.meta?.semester,__recordEngineV2:true}));
+  const localRows=mapped.filter(x=>String(x.folderId||x.recordId||'')===String(current.id)).map(x=>({id:x.sourceRecordId||x.id,title:x.title||current.title,savedAt:x.updatedAt||x.createdAt||'',updatedAt:x.updatedAt||'',createdAt:x.createdAt||'',values:x.values||{},academicYear:x.academicYear,semester:x.semester}));
+  localStorage.setItem(key()+'_archive',JSON.stringify(localRows));
+  const legacy=(()=>{try{return JSON.parse(localStorage.getItem('manager_records_archive_v2')||'[]').filter(x=>!x.__recordEngineV2)}catch(_){return[]}})();
+  const map=new Map();legacy.concat(mapped).forEach(x=>{if(x){const k=String(x.id||x.sourceRecordId||'')+'|'+String(x.folderId||x.recordId||'');if(k)map.set(k,x)}});
+  localStorage.setItem('manager_records_archive_v2',JSON.stringify([...map.values()]));return mapped;
+ }catch(e){console.error('[manager record independent hydrate]',e);return []}
 }
-async function legacyManagerRecordSave_DISABLED(){
- const data=collect(), localKey=key()+"_archive", platformKey="manager_records_archive_v2";
- const beforeLocal=localStorage.getItem(localKey)||"[]", beforePlatform=localStorage.getItem(platformKey)||"[]";
- let list=[],platformArchive=[];try{list=JSON.parse(beforeLocal);if(!Array.isArray(list))list=[]}catch(_){list=[]}try{platformArchive=JSON.parse(beforePlatform);if(!Array.isArray(platformArchive))platformArchive=[]}catch(_){platformArchive=[]}
- const nowIso=new Date().toISOString();let recordId=null;
- if(managerRecordEditingIndex!==null&&list[managerRecordEditingIndex]){const old=list[managerRecordEditingIndex];recordId=old.id||old.archiveId||Date.now();data.id=recordId;data.createdAt=old.createdAt||old.savedAt;data.updatedAt=nowIso;list[managerRecordEditingIndex]=data;}else{recordId=Date.now();data.id=recordId;data.updatedAt=nowIso;list.unshift(data);}
- localStorage.setItem(localKey,JSON.stringify(list));localStorage.removeItem(key()+"_draft");
- const folderId=String(current.id),folderName=String(current.title||'سجل');
- const existingIndex=platformArchive.findIndex(x=>String(x.sourceLocalKey||'')===localKey&&String(x.sourceRecordId||x.id)===String(recordId));const oldPlatform=existingIndex>=0?platformArchive[existingIndex]:null;const sameFolderCount=platformArchive.filter(x=>String(x.folderId)===folderId).length+(existingIndex>=0?0:1);
- const platformRow={id:oldPlatform?.id||recordId,sourceRecordId:recordId,sourceLocalKey:localKey,folderId,folderName,recordName:folderName,recordId:String(current.id),title:folderName,displayName:oldPlatform?.displayName||(folderName+" - نسخة "+sameFolderCount),duplicateNo:oldPlatform?.duplicateNo||sameFolderCount,values:data.values,htmlContent:"<!DOCTYPE html>"+document.documentElement.outerHTML,createdAt:oldPlatform?.createdAt||new Date().toLocaleString('ar-SA'),updatedAt:nowIso};
- if(existingIndex>=0)platformArchive[existingIndex]=platformRow;else platformArchive.push(platformRow);const raw=JSON.stringify(platformArchive);localStorage.setItem(platformKey,raw);
- try{if(window.PlatformCloudSession&&typeof PlatformCloudSession.ensure==='function')await PlatformCloudSession.ensure();const G=window.PlatformPersistenceGuard;if(!G||typeof G.writeExactValues!=='function'||typeof G.readExactValues!=='function')throw new Error('محرك الحفظ السحابي غير متاح');const w=await G.writeExactValues({moduleKey:'manager',scope:'school',values:{[platformKey]:raw}});if(!w||w.ok===false)throw new Error(w?.error||'تعذر الحفظ السحابي');const r=await G.readExactValues({moduleKey:'manager',scope:'school',keys:[platformKey]});let cloud=[];try{cloud=JSON.parse(r?.values?.[platformKey]||'[]')}catch(_){cloud=[]}const verified=cloud.find(x=>String(x.sourceRecordId||x.id)===String(recordId)&&String(x.folderId)===folderId&&String(x.folderName)===folderName);if(!verified)throw new Error('لم يظهر السجل في مجلد «'+folderName+'» بعد التحقق السحابي');G.setLocalSilently?.(platformKey,r.values[platformKey]);managerRecordEditingIndex=null;renderArchive();alert('تم حفظ سجل المدير داخل مجلد «'+folderName+'» في أرشيف السجلات ✅');return true;}catch(e){localStorage.setItem(localKey,beforeLocal);localStorage.setItem(platformKey,beforePlatform);alert('تعذر تأكيد الحفظ السحابي: '+String(e?.message||e)+'؛ تمت استعادة النسخة السابقة.');console.error('[manager record V10]',e);renderArchive();return false;}
+async function saveArchive(){
+ try{if(window.PlatformCloudSession&&typeof PlatformCloudSession.ensure==='function')await PlatformCloudSession.ensure();}catch(e){alert('تعذر تهيئة جلسة المدرسة السحابية.');return false;}
+ const data=collect(),localKey=key()+'_archive',platformKey='manager_records_archive_v2',beforeLocal=localStorage.getItem(localKey),beforePlatform=localStorage.getItem(platformKey),nowIso=new Date().toISOString();
+ let list=[];try{list=JSON.parse(beforeLocal||'[]');if(!Array.isArray(list))list=[]}catch(_){list=[]}
+ let recordId,createdAt;
+ if(managerRecordEditingIndex!==null&&list[managerRecordEditingIndex]){const old=list[managerRecordEditingIndex];recordId=old.id||old.archiveId;createdAt=old.createdAt||old.savedAt;}
+ else{recordId=(crypto.randomUUID?crypto.randomUUID():String(Date.now()));createdAt=nowIso;}
+ data.id=recordId;data.createdAt=createdAt;data.updatedAt=nowIso;
+ const folderId=String(current.id), ay=data.values.year||data.values.academicYear||localStorage.getItem('school_info_academic_year')||'1448', sem=data.values.semester||data.values.term||'سنوي';
+ const row={id:recordId,sourceRecordId:recordId,sourceLocalKey:localKey,folderId,folderName:current.title,recordName:current.title,recordId:String(current.id),title:current.title,displayName:current.title,values:data.values,htmlContent:'<!DOCTYPE html>'+document.documentElement.outerHTML,createdAt,updatedAt:nowIso,academicYear:ay,semester:sem,__recordEngineV2:true};
+ try{
+   if(!window.PlatformRecordSaveEngine||PlatformRecordSaveEngine.isSystemAdminContext())throw new Error('محرك حفظ سجلات المدرسة غير متاح في هذا السياق');
+   await PlatformRecordSaveEngine.save({moduleKey:'manager_records_items',recordType:'manager_record',recordId:String(recordId),academicYear:ay,semester:sem,scope:'school',folderId,title:current.title,data:row,createdAt});
+   if(managerRecordEditingIndex!==null&&list[managerRecordEditingIndex])list[managerRecordEditingIndex]=data;else list.unshift(data);
+   localStorage.setItem(localKey,JSON.stringify(list));localStorage.removeItem(key()+'_draft');
+   let pa=[];try{pa=JSON.parse(localStorage.getItem(platformKey)||'[]');if(!Array.isArray(pa))pa=[]}catch(_){pa=[]}
+   pa=pa.filter(x=>!(String(x.sourceRecordId||x.id)===String(recordId)&&String(x.folderId||x.recordId)===folderId));pa.unshift(row);localStorage.setItem(platformKey,JSON.stringify(pa));
+   managerRecordEditingIndex=null;if(window.parent&&window.parent!==window){try{window.parent.postMessage({type:'MANAGER_RECORD_SAVED',payload:row},'*')}catch(_){}}
+   renderArchive();alert('تم حفظ سجل المدير والتحقق منه سحابيًا داخل أرشيف السجلات.');return true;
+ }catch(e){if(beforeLocal===null)localStorage.removeItem(localKey);else localStorage.setItem(localKey,beforeLocal);if(beforePlatform===null)localStorage.removeItem(platformKey);else localStorage.setItem(platformKey,beforePlatform);console.error('[manager record save]',e);alert('تعذر تأكيد الحفظ السحابي؛ لم يتم اعتماد التغيير.');renderArchive();return false;}
 }
-async function legacyManagerRecordArchiveToggle_DISABLED(){const panel=document.getElementById('archivePanel');panel.classList.toggle('show');if(panel.classList.contains('show')){try{const g=window.PlatformPersistenceGuard;if(g&&typeof g.readExact==='function')var rr=await g.readExactValues({moduleKey:'manager',scope:'school',keys:['manager_records_archive_v2']});if(rr.ok&&rr.values.manager_records_archive_v2!==undefined)g.setLocalSilently('manager_records_archive_v2',rr.values.manager_records_archive_v2);}catch(e){console.error('[manager record archive hydrate]',e)}}renderArchive()}
-function legacyManagerRecordRender_DISABLED(){
+async function toggleArchive(){const panel=document.getElementById('archivePanel');panel.classList.toggle('show');if(panel.classList.contains('show')){try{const g=window.PlatformPersistenceGuard;if(g&&typeof g.readExact==='function')var rr=await g.readExactValues({moduleKey:'manager',scope:'school',keys:['manager_records_archive_v2']});if(rr.ok&&rr.values.manager_records_archive_v2!==undefined)g.setLocalSilently('manager_records_archive_v2',rr.values.manager_records_archive_v2);}catch(e){console.error('[manager record archive hydrate]',e)}}renderArchive()}
+function renderArchive(){
  const box=document.getElementById('archiveList');
  const list=JSON.parse(localStorage.getItem(key()+"_archive")||"[]");
  box.innerHTML = list.length ? "" : "<p class='small'>لا توجد سجلات مؤرشفة لهذا النموذج.</p>";
@@ -1162,30 +1171,22 @@ function legacyManagerRecordRender_DISABLED(){
    box.appendChild(d);
  });
 }
-function legacyManagerRecordRestore_DISABLED(i){
+function restoreArchive(i){
  const list=JSON.parse(localStorage.getItem(key()+"_archive")||"[]");
  if(!list[i])return;fill(list[i]);autoDraft();
 }
-function legacyManagerRecordEdit_DISABLED(i){
+function editArchive(i){
  const list=JSON.parse(localStorage.getItem(key()+"_archive")||"[]");
  if(!list[i])return;managerRecordEditingIndex=i;fill(list[i]);autoDraft();
  alert("تم فتح السجل للتعديل. اضغط «حفظ في الأرشيف» لتحديث نفس السجل.");
 }
-async function legacyManagerRecordDelete_DISABLED(i){
- const localKey=key()+"_archive",platformKey="manager_records_archive_v2";
- const beforeLocal=localStorage.getItem(localKey)||"[]",beforePlatform=localStorage.getItem(platformKey)||"[]";
- const list=JSON.parse(beforeLocal),item=list[i];if(!item)return;
- if(!confirm("هل تريد حذف هذا السجل من الأرشيف؟"))return;
- list.splice(i,1);localStorage.setItem(localKey,JSON.stringify(list));
- let pa=[];try{pa=JSON.parse(beforePlatform);if(!Array.isArray(pa))pa=[]}catch(e){}
- pa=pa.filter(x=>!(String(x.sourceLocalKey||'')===localKey&&String(x.sourceRecordId||x.id)===String(item.id||item.archiveId)));
- localStorage.setItem(platformKey,JSON.stringify(pa));
+async function deleteArchive(i){
+ const localKey=key()+'_archive',platformKey='manager_records_archive_v2',beforeLocal=localStorage.getItem(localKey),beforePlatform=localStorage.getItem(platformKey);let list=[];try{list=JSON.parse(beforeLocal||'[]')}catch(_){list=[]}const item=list[i];if(!item||!confirm('هل تريد حذف هذا السجل من الأرشيف؟'))return;
  try{
-   if(window.PlatformPersistenceGuard&&typeof PlatformPersistenceGuard.commit==='function'){
-     const r=await PlatformPersistenceGuard.commitExact({moduleKey:'manager',scope:'school',keys:[localKey,platformKey]});if(!r||r.ok===false)throw new Error(r?.error||'cloud');
-   }
-   if(managerRecordEditingIndex===i)managerRecordEditingIndex=null;renderArchive();
- }catch(e){localStorage.setItem(localKey,beforeLocal);localStorage.setItem(platformKey,beforePlatform);alert("تعذر تأكيد الحذف سحابيًا؛ تمت استعادة السجل.");renderArchive();}
+  if(!window.PlatformRecordSaveEngine||PlatformRecordSaveEngine.isSystemAdminContext())throw new Error('محرك الحذف السحابي غير متاح');
+  await PlatformRecordSaveEngine.remove({moduleKey:'manager_records_items',recordType:'manager_record',recordId:String(item.id||item.archiveId),academicYear:item.academicYear||item.values?.year||undefined,semester:item.semester||item.values?.semester||item.values?.term||undefined,scope:'school'});
+  list.splice(i,1);localStorage.setItem(localKey,JSON.stringify(list));let pa=[];try{pa=JSON.parse(beforePlatform||'[]')}catch(_){pa=[]}pa=pa.filter(x=>String(x.sourceRecordId||x.id)!==String(item.id||item.archiveId));localStorage.setItem(platformKey,JSON.stringify(pa));if(managerRecordEditingIndex===i)managerRecordEditingIndex=null;renderArchive();
+ }catch(e){if(beforeLocal===null)localStorage.removeItem(localKey);else localStorage.setItem(localKey,beforeLocal);if(beforePlatform===null)localStorage.removeItem(platformKey);else localStorage.setItem(platformKey,beforePlatform);console.error('[manager record delete]',e);alert('تعذر تأكيد الحذف سحابيًا؛ بقي السجل دون حذف.');renderArchive();}
 }
 function clearForm(){
  if(confirm("سيتم مسح بيانات النموذج الحالي فقط، هل أنت متأكد؟")){
@@ -1284,7 +1285,7 @@ document.addEventListener("blur", function(e){
 <script src="school-activity-engine.js"></script>
   <script src="evidence-library-source.js"></script>
 
-<script src="school-information-source.js"></script>
+<script src="school-information-source.js?v=20260830-records-final-v4"></script>
 <script src="internal-messaging.js"></script>
 
 <!-- Agent Core V2: school/role/year scoped -->
@@ -1294,49 +1295,7 @@ document.addEventListener("blur", function(e){
 <script src="openai-engine.js"></script>
 <script src="top-ai-center.js"></script>
 <script src="platform-page-navigation.js?v=20260818-nav1"></script>
-<script id="MANAGER_RECORDS_CLEAN_V1_ENGINE">
-(function(){
-'use strict';
-const MODULE='manager', KEY='manager_records_clean_v1', LEGACY_KEYS=['manager_records_archive_v2','school_manager_records_archive_v1'];
-let clean=[], legacy=[], view=[], cleanLoaded=false, legacyLoaded=false;
-const arr=v=>{try{const x=typeof v==='string'?JSON.parse(v):v;return Array.isArray(x)?x:[]}catch(_){return []}}, idOf=x=>String(x?.id??x?.sourceRecordId??''), folderOf=x=>String(x?.folderId||x?.recordId||'');
-const strip=x=>{const y={...x};delete y.__recordSource;delete y.__legacyKey;delete y.readOnly;return y};
-async function guard(){const G=window.PlatformPersistenceGuard;if(!G||typeof G.readExactValues!=='function'||typeof G.writeExactValues!=='function')throw new Error('محرك الحفظ السحابي غير متاح');if(window.PlatformCloudSession&&typeof PlatformCloudSession.ensure==='function')await PlatformCloudSession.ensure();if(window.PlatformStateEngine&&typeof PlatformStateEngine.health==='function'){const h=await PlatformStateEngine.health();if(!h||!h.schoolId)throw new Error('تعذر تأكيد المدرسة من الخادم')}return G}
-async function read(keys){const G=await guard(),r=await G.readExactValues({moduleKey:MODULE,scope:'school',keys});if(!r||r.ok===false)throw new Error(r?.error||'تعذر قراءة أرشيف السجلات');return r.values||{}}
-async function write(rows){const G=await guard(),raw=JSON.stringify(rows.map(strip)),w=await G.writeExactValues({moduleKey:MODULE,scope:'school',values:{[KEY]:raw}});if(!w||w.ok===false)throw new Error(w?.error||'تعذر كتابة أرشيف السجلات')}
-function publish(){const fresh=clean.map(x=>({...x,__recordSource:'clean'})),seen=new Set(fresh.map(idOf).filter(Boolean)),old=[];for(const x of legacy){const id=idOf(x),signature=folderOf(x)+'::'+id;if(!id||seen.has(id))continue;seen.add(id);old.push({...x,readOnly:true,__recordSource:'legacy'})}view=[...fresh,...old];window.__managerRecordsCleanV1View=view;return view}
-async function ensureClean(force=false){if(cleanLoaded&&!force)return clean;const v=await read([KEY]);clean=arr(v[KEY]);cleanLoaded=true;publish();return clean}
-async function hydrateLegacy(force=false){if(legacyLoaded&&!force){await ensureClean(false);return publish()}const v=await read([KEY,...LEGACY_KEYS]);clean=arr(v[KEY]);cleanLoaded=true;legacy=[];for(const k of LEGACY_KEYS)for(const x of arr(v[k])){if(x&&x.recordType==='decision_assignment')continue;legacy.push({...x,__legacyKey:k})}legacyLoaded=true;return publish()}
-async function upsert(row){await ensureClean(false);const next=clean.slice(),id=idOf(row),i=next.findIndex(x=>idOf(x)===id);if(i>=0)next[i]=strip(row);else next.push(strip(row));await write(next);const v=await read([KEY]),cloud=arr(v[KEY]),found=cloud.find(x=>idOf(x)===id&&folderOf(x)===folderOf(row));if(!found)throw new Error('لم يظهر السجل في مجلده بعد التحقق السحابي');clean=cloud;cleanLoaded=true;publish();return found}
-async function remove(id){const e=view.find(x=>idOf(x)===String(id));if(e&&e.__recordSource==='legacy')throw new Error('السجل التاريخي محفوظ للقراءة فقط');await ensureClean(false);const next=clean.filter(x=>idOf(x)!==String(id));await write(next);const v=await read([KEY]),cloud=arr(v[KEY]);if(cloud.some(x=>idOf(x)===String(id)))throw new Error('لم يكتمل حذف السجل سحابيًا');clean=cloud;cleanLoaded=true;publish();return true}
-window.ManagerRecordsCleanV1={KEY,LEGACY_KEYS,ensureClean,hydrateLegacy,upsert,remove,getView:()=>view.slice(),find:id=>view.find(x=>idOf(x)===String(id))||null};
-window.__MANAGER_RECORDS_CLEAN_V1__={key:KEY,cloudOnly:true,legacyReadOnly:true,fastPath:true};
-})();
-</script>
-<script id="MANAGER_RECORDS_CLEAN_V1_OVERRIDES">
-(function(){
-let archiveRows=[];
-const rowId=x=>String(x?.id??x?.sourceRecordId??'');
-window.saveArchive=async function(){
-  if(!window.current){alert('تعذر تحديد السجل الحالي');return false}
-  const data=collect(), folderId=String(current.id||''), folderName=String(current.title||'سجل');
-  if(!folderId){alert('تعذر تحديد مجلد السجل');return false}
-  alert('جاري حفظ السجل في مجلد «'+folderName+'»...');
-  try{
-    const existing=(managerRecordEditingIndex!==null&&archiveRows[managerRecordEditingIndex])?archiveRows[managerRecordEditingIndex]:null;
-    if(existing&&existing.__recordSource==='legacy')managerRecordEditingIndex=null;
-    const id=(existing&&existing.__recordSource==='clean'?rowId(existing):String(Date.now()));
-    const sameFolder=ManagerRecordsCleanV1.getView().filter(x=>String(x.folderId||x.recordId||'')===folderId&&x.__recordSource==='clean');
-    const row={id,sourceRecordId:id,folderId,folderName,recordName:folderName,recordId:folderId,title:folderName,displayName:(existing&&existing.displayName)||(folderName+' - نسخة '+(sameFolder.length+1)),duplicateNo:(existing&&existing.duplicateNo)||(sameFolder.length+1),values:data.values||{},htmlContent:'<!DOCTYPE html>'+document.documentElement.outerHTML,createdAt:(existing&&existing.createdAt)||new Date().toLocaleString('ar-SA'),updatedAt:new Date().toISOString(),storageEngine:'ManagerRecordsCleanV1',persistenceMode:'cloud-only'};
-    const saved=await ManagerRecordsCleanV1.upsert(row);managerRecordEditingIndex=null;try{localStorage.removeItem(key()+'_draft')}catch(_){};await window.renderArchive();alert('تم حفظ السجل وظهر في مجلد «'+folderName+'» ✅');return true;
-  }catch(e){console.error('[ManagerRecordsCleanV1 save]',e);alert('تعذر حفظ السجل: '+String(e?.message||e));return false}
-};
-window.toggleArchive=async function(){const panel=document.getElementById('archivePanel');if(!panel)return;panel.classList.toggle('show');if(panel.classList.contains('show')){try{await ManagerRecordsCleanV1.hydrateLegacy(false)}catch(e){alert('تعذر تحديث أرشيف السجلات: '+String(e?.message||e))}await window.renderArchive()}};
-window.renderArchive=async function(){const box=document.getElementById('archiveList');if(!box||!window.current)return;const fid=String(current.id||'');archiveRows=ManagerRecordsCleanV1.getView().filter(x=>String(x.folderId||x.recordId||'')===fid);box.innerHTML='';if(!archiveRows.length){box.innerHTML='<div class="empty">لا توجد نسخ محفوظة لهذا السجل.</div>';return}archiveRows.forEach((item,i)=>{const d=document.createElement('div');d.className='archiveItem';const ro=item.__recordSource==='legacy'||item.readOnly;d.innerHTML='<div><b>'+String(item.displayName||item.folderName||item.title||'نسخة محفوظة')+'</b><small>'+String(item.updatedAt||item.createdAt||'')+'</small></div><div class="archiveActions"><button class="btn" onclick="restoreArchive('+i+')">معاينة</button>'+(ro?'':'<button class="btn" onclick="editArchive('+i+')">تعديل</button><button class="btn danger" onclick="deleteArchive('+i+')">حذف</button>')+'</div>';box.appendChild(d)})};
-window.restoreArchive=function(i){const item=archiveRows[i];if(!item)return;if(item.htmlContent){const w=window.open('','_blank');if(w){w.document.open();w.document.write(item.htmlContent);w.document.close();return}}const w=window.open('','_blank');if(w){w.document.write('<!doctype html><html dir="rtl"><meta charset="utf-8"><title>معاينة السجل</title><body><pre style="white-space:pre-wrap;font-family:Tahoma">'+JSON.stringify(item.values||{},null,2).replace(/</g,'&lt;')+'</pre></body></html>');w.document.close()}};
-window.editArchive=function(i){const item=archiveRows[i];if(!item)return;if(item.__recordSource==='legacy'||item.readOnly){alert('السجل التاريخي للقراءة فقط. يمكن إنشاء نسخة جديدة منه دون تعديل الأصل.');return}managerRecordEditingIndex=i;fill({id:item.id,createdAt:item.createdAt,updatedAt:item.updatedAt,values:item.values||{}});autoDraft();alert('تم فتح السجل للتعديل. الحفظ سيحدّث نفس النسخة الجديدة.')};
-window.deleteArchive=async function(i){const item=archiveRows[i];if(!item)return;if(!confirm('هل تريد حذف هذه النسخة؟'))return;try{await ManagerRecordsCleanV1.remove(rowId(item));managerRecordEditingIndex=null;await window.renderArchive();alert('تم حذف السجل والتحقق سحابيًا 🗑️')}catch(e){alert('تعذر حذف السجل: '+String(e?.message||e))}};
-})();
-</script>
+
+<script src="platform-record-save-engine.js?v=20260830-records-final-v3"></script>
 </body>
 </html>

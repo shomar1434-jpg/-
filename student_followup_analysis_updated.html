@@ -217,7 +217,7 @@
   function risk(r){let score=0; if(n(r.current)<n(document.getElementById('riskThreshold').value)) score+=40; if((n(r.previous)-n(r.current))>=10) score+=20; if(n(r.absence)>=6) score+=18; if(n(r.late)>=3) score+=10; if(n(r.behavior)>0) score+=12; return Math.min(100,score);} function level(avgv){return avgv>=80?'متفوق':avgv>=60?'مستقر':avgv>=50?'مهدد بالتعثر':'متعثر';}
   function weakSubject(list){const grouped=by(list,'subject');let best='',val=101;Object.keys(grouped).forEach(s=>{let a=avg(grouped[s].map(r=>r.current));if(a<val){val=a;best=s;}});return [best,val];}
   function planFor(studentRows){const [sub,val]=weakSubject(studentRows);const ab=Math.max(...studentRows.map(r=>n(r.absence)));const late=Math.max(...studentRows.map(r=>n(r.late)));let reason=[]; if(val<60) reason.push('ضعف تحصيلي في '+sub); if(ab>=6) reason.push('غياب مؤثر'); if(late>=3) reason.push('تأخر صباحي متكرر'); if(!reason.length) reason.push('متابعة تحسين واستدامة'); return {subject:sub, reason:reason.join(' + '), action: val<50?'برنامج علاجي مكثف من 3 حصص أسبوعيًا مع قياس قصير نهاية كل أسبوع':'دعم علاجي موجه وحل واجبات مهارية قصيرة مع متابعة أسبوعية', owner:'الموجه/الموجهة الطلابية + معلم/ة المادة + ولي الأمر', duration: val<50?'4 أسابيع':'أسبوعان', indicator:'ارتفاع الدرجة إلى 70% فأكثر أو تحسن لا يقل عن 15 نقطة'};}
-  function save(){if(demoPreview)return; localStorage.setItem(storeKey,JSON.stringify(cleanRows(rows)));}
+  async function save(){if(demoPreview)return;const data=cleanRows(rows);localStorage.setItem(storeKey,JSON.stringify(data));try{if(window.PlatformRecordSaveEngine&&!PlatformRecordSaveEngine.isSystemAdminContext())await PlatformRecordSaveEngine.save({moduleKey:'student_followup_analysis',recordType:'followup_analysis',recordId:'main',academicYear:localStorage.getItem('school_info_academic_year')||'1448',semester:localStorage.getItem('semester')||'سنوي',scope:'school',folderId:'student-followup',title:'تحليل متابعة الطلاب',data:{rows:data,updatedAt:new Date().toISOString()}});}catch(e){console.error('[student followup cloud]',e)}}
   function looksLikeOldDemo(list){const demoNames=['أحمد السلمي','سلمان الحربي','محمد الزهراني','عبدالله الغامدي','خالد العتيبي','فهد المطيري','ماجد القحطاني','بندر الشهراني'];return Array.isArray(list)&&list.length===16&&list.every(r=>demoNames.includes(r.name));}
   function inferTestType(r){if(r.testType&&r.testType!=='غير محدد')return r.testType; if(n(r.pre)||n(r.post))return 'اختبار قبلي/بعدي'; if(n(r.previous)||n(r.current))return 'مقارنة سابقة/حالية'; return '';}
   function hasRealMeasurement(r){return n(r.current)>0||n(r.previous)>0||n(r.pre)>0||n(r.post)>0||n(r.masteryPercent)>0||n(r.successPercent)>0;}
@@ -284,10 +284,10 @@
 
   function activeSchoolId(){try{return (window.ActiveSchoolScope&&ActiveSchoolScope.get&&ActiveSchoolScope.get().id)||(JSON.parse(localStorage.getItem('activeSchool')||'{}').id)||localStorage.getItem('activeSchoolId')||'DEV_SCHOOL'}catch(e){return 'DEV_SCHOOL'}}
   function currentAcademicYear(){return localStorage.getItem('currentAcademicYear')||localStorage.getItem('academicYear')||'1447'}
-  function sicKeys(){const sid=activeSchoolId(),year=currentAcademicYear();return ['schoolInformationCenter:'+sid+':'+year,'school_information_center:'+sid+':'+year,'sic_students:'+sid+':'+year,'school_information_center_students:'+sid,'school_information_center_students','schoolInformationCenterStudents','school_information_students','school_center_students','sic_students_cache','students_center_cache','students'];}
+  function sicKeys(){ return []; }
   function normalizeBaseStudent(r){const name=r.student_name||r.studentName||r.name||r.full_name||r['اسم الطالب']||r['الطالب']||''; const grade=r.grade||r['الصف']||r.class_name||''; const stage=r.stage||r['المرحلة']||stageFromGrade(grade); const section=r.section_name||r.section||r['الشعبة']||r.class_section||'غير محدد'; return {name:String(name||'').trim(),student_number:r.student_number||r.studentNumber||r.national_id||r.id||'',stage:String(stage||'غير محدد').trim(),grade:String(grade||'غير محدد').trim(),section:String(section||'غير محدد').trim(),track:r.track_name||r.track||''};}
-  function readSchoolInfoStudents(){const out=[]; sicKeys().forEach(k=>{try{const raw=localStorage.getItem(k); if(!raw)return; const parsed=JSON.parse(raw); const rows=Array.isArray(parsed)?parsed:(parsed.students||parsed.rows||parsed.data||[]); rows.forEach(r=>out.push(normalizeBaseStudent(r)));}catch(e){}}); const seen=new Set(); return out.filter(s=>s.name).filter(s=>{const key=[s.name,s.grade,s.section].join('|'); if(seen.has(key))return false; seen.add(key); return true;});}
-  window.advisorImportFromSchoolInfo=function(){const list=readSchoolInfoStudents(); advisorBaseStudents=list; localStorage.setItem('advisorAnalysisBaseStudentsV1',JSON.stringify(list)); const st=uniq(list.map(s=>s.stage)).length, gr=uniq(list.map(s=>s.grade)).length, sec=uniq(list.map(s=>s.section)).length; const el=document.getElementById('advisorSchoolInfoStatus'); if(el)el.textContent=list.length?'تم الربط: '+list.length+' طالب، '+gr+' صف، '+sec+' شعبة':'لم يتم العثور على بيانات مركز المعلومات'; renderAll(); alert(list.length?'تم استيراد قاعدة الطلاب من مركز المعلومات: '+list.length+' طالب. الآن استخدم قراءة من سجلات المعلمين لإضافة مؤشرات الأداء.':'لم أجد بيانات محفوظة من مركز المعلومات في هذه الصفحة.');}
+  async function readSchoolInfoStudents(){try{if(window.SchoolInformationSource&&typeof SchoolInformationSource.getStudents==='function'){const rows=await SchoolInformationSource.getStudents();return (rows||[]).map(normalizeBaseStudent).filter(s=>s.name);}}catch(e){console.error('[advisor school information]',e)}return [];}
+  window.advisorImportFromSchoolInfo=async function(){const list=await readSchoolInfoStudents();advisorBaseStudents=list;localStorage.setItem('advisorAnalysisBaseStudentsV1',JSON.stringify(list));const gr=uniq(list.map(s=>s.grade)).length,sec=uniq(list.map(s=>s.section)).length;const el=document.getElementById('advisorSchoolInfoStatus');if(el)el.textContent=list.length?'تم الربط المباشر: '+list.length+' طالب، '+gr+' صف، '+sec+' شعبة':'لم يتم العثور على بيانات مركز المعلومات';renderAll();alert(list.length?'تم تحديث قاعدة الطلاب مباشرة من مركز المعلومات: '+list.length+' طالب.':'لا توجد بيانات طلاب متاحة في مركز المعلومات لهذه المدرسة.');return list;}
   function nv(id){return document.getElementById(id).value.trim();}
   window.downloadReport=function(){const blob=new Blob([JSON.stringify({generatedAt:new Date().toISOString(),rows},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='student-advisor-analysis.json';a.click();URL.revokeObjectURL(a.href);}
   document.getElementById('tabs').addEventListener('click',e=>{const b=e.target.closest('.tab');if(!b)return;document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');document.querySelectorAll('.section').forEach(s=>s.classList.toggle('active',s.id===b.dataset.tab));});
@@ -817,7 +817,7 @@
 <script src="delegated-access-guard.js"></script>
   <script src="evidence-library-source.js"></script>
 
-<script src="school-information-source.js"></script>
+<script src="school-information-source.js?v=20260830-records-final-v4"></script>
 <script src="internal-messaging.js"></script>
 
 <!-- Agent Core V2: school/role/year scoped -->
@@ -827,5 +827,7 @@
 <script src="openai-engine.js"></script>
 <script src="top-ai-center.js"></script>
 <script src="platform-page-navigation.js?v=20260818-nav1"></script>
+
+<script src="platform-record-save-engine.js?v=20260830-records-final-v3"></script>
 </body>
 </html>

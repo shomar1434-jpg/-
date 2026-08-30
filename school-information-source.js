@@ -8,17 +8,25 @@ const CFG={
 };
 const SECTION_MAP={'1':'أ','2':'ب','3':'ج','4':'د','5':'هـ','6':'و','7':'ز','8':'ح','9':'ط','10':'ي','11':'ك','12':'ل'};
 const ROLE_AR={manager:'مدير/ة المدرسة',school_manager:'مدير/ة المدرسة',agent:'وكيل/ة',deputy:'وكيل/ة',teacher:'معلم/ة',student_advisor:'موجه/موجهة طلابية',counselor:'موجه/موجهة طلابية',activity_leader:'رائد/ة النشاط',admin_employee:'موظف/ة إداري/ة',administrative_employee:'موظف/ة إداري/ة',employee:'موظف/ة',health_advisor:'الموجه الصحي',kindergarten_teacher:'معلمة رياض الأطفال',principal:'مدير/ة المدرسة'};
-const state={students:[],staff:[],administrativeStaff:[],loaded:false,loading:null,schoolId:'',year:'',updatedAt:'',version:'2.4.0-secure-school-information'};
+const state={students:[],staff:[],administrativeStaff:[],loaded:false,loading:null,schoolId:'',year:'',updatedAt:'',version:'3.0.0-secure-live-center'};
 const safe=v=>String(v==null?'':v).trim();
 const norm=v=>safe(v).replace(/[إأآا]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/[ـ\u064B-\u0652]/g,'').replace(/\s+/g,' ').toLowerCase();
-function isSystemAdmin(){try{return !!(window.__VERIFIED_SYSTEM_ADMIN_CONTEXT__&&window.__VERIFIED_SYSTEM_ADMIN_CONTEXT__.verified===true)||(sessionStorage.getItem('system_admin_context')==='1'&&sessionStorage.getItem('system_admin_verified')==='true')}catch(_){return false}}
 const readJson=k=>{try{return JSON.parse(localStorage.getItem(k)||sessionStorage.getItem(k)||'null')}catch(_){return null}};
 const infoChannel=(()=>{try{return new BroadcastChannel('smart-school-information')}catch(_){return null}})();
+function isSystemAdminContext(){
+  const q=new URLSearchParams(location.search||'');
+  return q.get('systemAdmin')==='1'||q.get('mode')==='system_admin'||document.documentElement?.getAttribute('data-system-admin-context')==='1';
+}
 function schoolId(){
-  try{
-    if(isSystemAdmin()) return safe(sessionStorage.getItem('system_admin_school_info_target_v1'));
-    const sid=window.PlatformCloudSession&&PlatformCloudSession.schoolId?PlatformCloudSession.schoolId():'';return safe(sid);
-  }catch(_){return ''}
+  const q=new URLSearchParams(location.search||''),u=readJson('currentSchoolUser')||readJson('currentUser')||readJson('loggedUser')||{},s=readJson('smartSchool.currentSchool')||readJson('active_school')||readJson('activeSchool')||{};
+  const explicit=safe(q.get('schoolId')||q.get('school_id')||q.get('sid')||'');
+  if(explicit)return explicit;
+  const tab=safe(sessionStorage.getItem('smart_school_tab_school_v1')||sessionStorage.getItem('current_school_id')||'');
+  if(tab)return tab;
+  if(!isSystemAdminContext()){
+    try{const cloud=safe(window.PlatformCloudSession&&typeof PlatformCloudSession.schoolId==='function'?PlatformCloudSession.schoolId():'');if(cloud)return cloud;}catch(_){}
+  }
+  return safe(localStorage.getItem('active_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||localStorage.getItem('smart_school_id')||s.id||s.school_id||u.school_id||u.schoolId||'');
 }
 function year(){return safe(localStorage.getItem('school_info_academic_year')||localStorage.getItem('academic_year')||localStorage.getItem('current_academic_year')||'1448')}
 function noorSection(v){
@@ -27,16 +35,27 @@ function noorSection(v){
   return SECTION_MAP[v]||v||'غير محدد';
 }
 function studentLocal(){
-  if(isSystemAdmin())return [];
-  const sid=schoolId(), yr=year(), out=[];
-  const preferred=['schoolInformationCenter:'+sid+':'+yr,'school_information_center:'+sid+':'+yr,'sic_students:'+sid+':'+yr,'school_information_center_students'];
-  const keys=[...preferred,...Object.keys(localStorage).filter(k=>/schoolInformationCenter:|school_information_center:|sic_students:/i.test(k)&&(!sid||k.includes(sid)))];
-  [...new Set(keys)].forEach(k=>{try{const d=JSON.parse(localStorage.getItem(k)||'null'),rows=Array.isArray(d)?d:(d&&Array.isArray(d.students)?d.students:d&&Array.isArray(d.rows)?d.rows:[]);out.push(...rows)}catch(_){}});
+  const sid=schoolId(),yr=year(),out=[];
+  if(!sid)return out;
+  const scoped=[
+    'schoolInformationCenter:'+sid+':'+yr,
+    'school_information_center:'+sid+':'+yr,
+    'sic_students:'+sid+':'+yr,
+    'school_information_center_students:'+sid
+  ];
+  // توافق آمن مع المفتاح القديم العام: لا يُقرأ إلا إذا كان payload يحمل نفس school_id.
+  const legacy=['school_information_center_students'];
+  [...scoped,...legacy].forEach(k=>{try{
+    const d=JSON.parse(localStorage.getItem(k)||'null');
+    if(!d)return;
+    if(legacy.includes(k) && safe(d.school_id||d.schoolId)!==sid)return;
+    const rows=Array.isArray(d)?d:(Array.isArray(d.students)?d.students:Array.isArray(d.rows)?d.rows:[]);
+    out.push(...rows);
+  }catch(_){}});
   return out;
 }
-function sameSchool(u){const sid=schoolId(),us=safe(u.school_id||u.schoolId||u.current_school_id||u.active_school_id||u.school||'');return !!sid&&!!us&&sid===us}
+function sameSchool(u){const sid=schoolId(),us=safe(u.school_id||u.schoolId||u.current_school_id||u.active_school_id||u.school||'');return !sid?false:(!!us&&sid===us)}
 function staffLocal(){
-  if(isSystemAdmin())return [];
   const keys=['smartSchoolUnifiedOpsV2_users','offline_users_backup','smart_school_users','users','school_users','smartSchoolUsers'],out=[];
   keys.forEach(k=>{try{const d=JSON.parse(localStorage.getItem(k)||sessionStorage.getItem(k)||'null'),rows=Array.isArray(d)?d:(d&&Array.isArray(d.users)?d.users:[]);out.push(...rows)}catch(_){}});
   return out.filter(x=>x&&sameSchool(x)&&!/deleted|محذوف/.test(norm(x.status||x.user_status||'')));
@@ -45,27 +64,52 @@ function mapStudent(r){return {id:safe(r.id||r.student_id||r.student_number||r.n
 function roleOf(u){return safe(u.role||u.user_role||u.type||u.account_type||u.section||'')}
 function mapStaff(u){const role=roleOf(u);return {id:safe(u.id||u.user_id||u.uid||u.email||u.name),name:safe(u.name||u.full_name||u.display_name||u.username||u.teacher_name||u.email),role,role_label:safe(u.role_label||u.job_title||u.position||ROLE_AR[role]||role||'مستخدم'),email:safe(u.email||u.user_email||''),status:safe(u.status||u.user_status||''),school_id:safe(u.school_id||u.schoolId||'')};}
 function dedupe(rows,keyFn){const m=new Map();rows.forEach(r=>{const k=keyFn(r);if(k&&!m.has(k))m.set(k,r)});return [...m.values()]}
-async function secureCall(action,body={}){
-  const sid=schoolId();let headers={'content-type':'application/json','apikey':CFG.anon()},payload=Object.assign({},body,{action});
-  if(isSystemAdmin()){
-    const sb=window.__SCHOOL_INFO_ADMIN_SB__;if(!sb||!sid)throw new Error('SYSTEM_ADMIN_SCHOOL_CONTEXT_REQUIRED');
-    const sr=await sb.auth.getSession();const session=sr&&sr.data&&sr.data.session;if(!session||!session.access_token)throw new Error('SYSTEM_ADMIN_SESSION_REQUIRED');
-    headers.authorization='Bearer '+session.access_token;payload.schoolId=sid;payload.accessMode='system_admin';
-  }else{
-    if(!window.PlatformCloudSession||!PlatformCloudSession.valid())throw new Error('SESSION_REQUIRED');headers['x-platform-session']=PlatformCloudSession.token();
-  }
-  const res=await fetch(CFG.url()+'/functions/v1/school-information',{method:'POST',headers,body:JSON.stringify(payload)});
-  const data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(data.error||('HTTP '+res.status));if(data.schoolId&&sid&&String(data.schoolId)!==String(sid))throw new Error('SCHOOL_SCOPE_MISMATCH');return data;
+async function systemAdminBearer(){
+  if(!isSystemAdminContext())return '';
+  try{
+    const sb=window.SmartSchoolSupabase&&typeof SmartSchoolSupabase.getClient==='function'?SmartSchoolSupabase.getClient():null;
+    if(!sb||!sb.auth)return '';
+    const r=await sb.auth.getSession();return safe(r?.data?.session?.access_token||'');
+  }catch(_){return ''}
 }
-async function cloudStudents(){const sid=schoolId();if(!sid)return[];try{const q=await secureCall('students-list',{academicYear:year()});return q.students||[]}catch(_){return[]}}
-async function cloudStaff(){const sid=schoolId();if(!sid)return[];try{const q=await secureCall('staff-list');return q.staff||[]}catch(_){return[]}}
-async function cloudAdministrativeStaff(){const rows=await cloudStaff();return (rows||[]).filter(x=>['admin_employee','administrative_employee'].includes(norm(roleOf(x))))}
+async function callSchoolInformation(action,extra={}){
+  const sid=schoolId();if(!sid)throw new Error('SCHOOL_CONTEXT_REQUIRED');
+  const url=CFG.url().replace(/\/$/,'')+'/functions/v1/school-information';
+  const headers={apikey:CFG.anon(),'content-type':'application/json'};
+  const body=Object.assign({action,academicYear:year()},extra||{});
+  if(isSystemAdminContext()){
+    const bearer=await systemAdminBearer();if(!bearer)throw new Error('SYSTEM_ADMIN_SESSION_REQUIRED');
+    headers.Authorization='Bearer '+bearer;body.schoolId=sid;
+  }else{
+    try{if(window.PlatformCloudSession&&typeof PlatformCloudSession.ensure==='function')await PlatformCloudSession.ensure();}catch(_){}
+    const token=safe(window.PlatformCloudSession&&typeof PlatformCloudSession.token==='function'?PlatformCloudSession.token():'')||safe(sessionStorage.getItem('platform_tab_session_token_v1'));
+    if(!token)throw new Error('PLATFORM_SESSION_REQUIRED');
+    headers['x-platform-session']=token;
+  }
+  const r=await fetch(url,{method:'POST',headers,body:JSON.stringify(body),cache:'no-store'});
+  const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||j.code||('HTTP '+r.status));return j;
+}
+async function cloudBootstrap(){
+  const sid=schoolId();if(!sid)return {students:[],staff:[]};
+  try{
+    const r=await callSchoolInformation('bootstrap');
+    if(safe(r.schoolId)!==sid)throw new Error('SCHOOL_INFORMATION_SCOPE_MISMATCH');
+    return {students:Array.isArray(r.students)?r.students:[],staff:Array.isArray(r.staff)?r.staff:[]};
+  }catch(e){console.warn('[SchoolInformationSource] secure bootstrap unavailable',e?.message||e);return {students:[],staff:[]}}
+}
+async function cloudAdministrativeStaff(){
+  const sid=schoolId();if(!sid)return[];
+  // المصدر الآمن الأساسي هو staff القادم من school-information؛ هذا المصدر الإضافي توافق فقط.
+  try{if(window.SmartSchoolSupabase&&typeof SmartSchoolSupabase.listAdministrativeEmployeesBySchool==='function')return await SmartSchoolSupabase.listAdministrativeEmployeesBySchool(sid)}catch(_){}return[];
+}
 async function load(force){
-  const sid=schoolId(),yr=year(); if(state.loaded&&!force&&state.schoolId===sid&&state.year===yr)return state;if(state.loading&&!force)return state.loading;
+  const sid=schoolId(),yr=year(); if(!sid){state.students=[];state.staff=[];state.administrativeStaff=[];state.loaded=true;state.schoolId='';state.year=yr;return state}
+  if(state.loaded&&!force&&state.schoolId===sid&&state.year===yr)return state;if(state.loading&&!force)return state.loading;
   state.loading=(async()=>{
     state.schoolId=sid;state.year=yr;
-    const [cs,cu,ca]=await Promise.all([cloudStudents(),cloudStaff(),cloudAdministrativeStaff()]);
-    state.students=dedupe([...studentLocal(),...cs].map(mapStudent).filter(x=>x.name&&!/محذوف/.test(norm(x.status))),x=>safe(x.student_number||x.national_id)||norm(x.name)+'|'+norm(x.grade)+'|'+norm(x.section));
+    const [boot,ca]=await Promise.all([cloudBootstrap(),cloudAdministrativeStaff()]);
+    const cs=boot.students||[],cu=boot.staff||[];
+    state.students=dedupe([...studentLocal(),...cs].map(mapStudent).filter(x=>x.name&&!/محذوف/.test(norm(x.status))),x=>safe(x.id||x.student_number||x.national_id)||norm(x.name)+'|'+norm(x.grade)+'|'+norm(x.section));
     state.staff=dedupe([...staffLocal(),...cu].map(mapStaff).filter(x=>x.name),x=>safe(x.id)||norm(x.email)||norm(x.name)+'|'+norm(x.role));
     state.administrativeStaff=dedupe((ca||[]).map(mapStaff).filter(x=>x.name&&['admin_employee','administrative_employee'].includes(norm(x.role))),x=>safe(x.id)||norm(x.email)||norm(x.name));
     state.loaded=true;state.loading=null;state.updatedAt=new Date().toISOString();refreshLists();emit('school-information-ready',snapshot());emit('school-information-change',snapshot());return state;
@@ -158,7 +202,7 @@ function enhance(el){
 }
 function scan(root){if(!root)return;if(root.matches&&root.matches('input,select,textarea'))enhance(root);root.querySelectorAll&&root.querySelectorAll('input,select,textarea').forEach(enhance)}
 function boot(){ensureDatalist('sicStudentsList');ensureDatalist('sicTeachersList');ensureDatalist('sicAdministrativeEmployeesList');ensureDatalist('sicStaffList');scan(document);load(false);
-if(infoChannel)infoChannel.onmessage=e=>{if(e.data&&e.data.type==='updated'){state.loaded=false;load(true)}};new MutationObserver(ms=>ms.forEach(m=>m.addedNodes.forEach(n=>{if(n.nodeType===1)scan(n)}))).observe(document.documentElement,{childList:true,subtree:true});window.addEventListener('storage',e=>{if(/schoolInformationCenter|school_information_center|sic_students|users|school_users/i.test(e.key||''))load(true)});window.addEventListener('school-information-updated',()=>{state.loaded=false;load(true)});}
+if(infoChannel)infoChannel.onmessage=e=>{if(e.data&&e.data.type==='updated'){state.loaded=false;load(true)}};new MutationObserver(ms=>ms.forEach(m=>m.addedNodes.forEach(n=>{if(n.nodeType===1)scan(n)}))).observe(document.documentElement,{childList:true,subtree:true});window.addEventListener('storage',e=>{if(/schoolInformationCenter|school_information_center|sic_students|users|school_users/i.test(e.key||''))load(true)});window.addEventListener('school-information-updated',()=>{state.loaded=false;load(true)});window.addEventListener('focus',()=>{if(state.schoolId)load(true)});document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.schoolId)load(true)});}
 window.SchoolInformationSource={
   load,
   getStudents:async()=>{await load(false);return state.students.slice()},
@@ -174,7 +218,7 @@ window.SchoolInformationSource={
   refresh:async()=>{const s=await load(true);emit('school-information-updated',snapshot());return s},
   notifyUpdated:()=>{state.loaded=false;emit('school-information-updated',snapshot());return load(true)},
   state,
-  version:'2.4.0-teacher-force-refresh'
+  version:'3.0.0-secure-live-center'
 };
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })();

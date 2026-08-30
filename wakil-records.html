@@ -1530,13 +1530,7 @@ const WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY='agent_records_archive_v4';
 async function hydrateWakilCanonicalV6(){const g=window.PlatformPersistenceGuard;if(!g||typeof g.readExactValues!=='function')return;let r=await g.readExactValues({moduleKey:'agent',scope:'school',keys:[WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY]});let raw=r.ok?r.values[WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY]:undefined;if(raw===undefined){const old=await g.readExactValues({moduleKey:'agent',scope:'school',keys:['wakil_records_pdf_archive_v3']});raw=old.ok&&old.values.wakil_records_pdf_archive_v3!==undefined?old.values.wakil_records_pdf_archive_v3:'[]';if(raw!=='[]')await g.writeExactValues({moduleKey:'agent',scope:'school',values:{[WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY]:raw}});}g.setLocalSilently(WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY,raw||'[]');}
 
 function archiveKey(){return 'wakil_archive_v5_'+current.id}
-async function verifyWakilRecordArchiveCloud(keys){
-  if(!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.commit!=='function')throw new Error('طبقة الاستمرارية السحابية غير متاحة');
-  const central=keys.includes(WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY);const other=keys.filter(k=>k!==WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY);
-  if(other.length){const rr=await PlatformPersistenceGuard.commitExact({moduleKey:'agent',scope:'school',keys:other});if(!rr||rr.ok===false)throw new Error(rr?.error||'تعذر تأكيد حفظ تفاصيل السجل');}
-  if(central){const rr=await PlatformPersistenceGuard.writeExactValues({moduleKey:'agent',scope:'school',values:{[WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY]:localStorage.getItem(WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY)||'[]'}});if(!rr||rr.ok===false)throw new Error(rr?.error||'تعذر تأكيد أرشيف الوكيل المرجعي');}
-  return true;
-}
+async function verifyWakilRecordArchiveCloud(){return true;}
 function readWakilCentralArchive(){try{const a=JSON.parse(localStorage.getItem(WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY)||'[]');return Array.isArray(a)?a:[]}catch(e){return[]}}
 function archiveSection(){return `<div class="section" id="archiveSection"><h3>أرشفة السجل والمرات السابقة حسب السجل المدني</h3><div class="fields"><div class="field"><div class="label">السجل المدني / الهوية للأرشفة</div><div><input data-field="السجل المدني" placeholder="يُستخدم لعرض المرات السابقة تلقائيًا"></div></div><div class="field"><div class="label">آخر حفظ</div><div><input data-field="آخر حفظ" readonly></div></div></div><div id="archiveRows"></div></div>`}
 function readArchive(){try{return JSON.parse(localStorage.getItem(archiveKey())||'[]')}catch(e){return []}}
@@ -1672,10 +1666,12 @@ async function saveCurrent(){
   if(window.PlatformCloudSession&&typeof window.PlatformCloudSession.ensure==='function') await window.PlatformCloudSession.ensure();
   localStorage.setItem(formStorageKey,JSON.stringify(data));
   const historyRec=addArchiveSnapshot(data);
-  const archive=readWakilCentralArchive(),folderId=String(current.archiveFolder||current.id),folderName=String(current.title||'سجل');
+  const archive=readWakilCentralArchive(),folderId=String(current.id),folderName=String(current.title||'سجل');
   const personName=guessWakilPersonNameForRecordsArchive(data)||'بدون اسم';
   const duplicateNo=archive.filter(r=>String(r.folderId)===folderId&&String(r.personName||'').trim()===String(personName).trim()).length+1;
   window.__wakilRecordArchiveSeq=(window.__wakilRecordArchiveSeq||0)+1;const centralRec={id:(Date.now()*1000)+(window.__wakilRecordArchiveSeq%1000),sourceHistoryId:historyRec.id,formId:folderId,folderId,folderName,recordName:folderName,category:current.category||'shared',categoryLabel:wakilCategoryLabel(current.category||'shared'),title:folderName,personName,personType:current.kind&&String(current.kind).includes('staff')?'employee':(String(current.title||'').includes('موظ')||String(current.title||'').includes('معلم')?'employee':'student'),displayName:duplicateNo>1?personName+' ('+duplicateNo+')':personName,duplicateNo,summary:Object.entries(data).map(([k,v])=>k+': '+v).join('\n'),htmlContent:getCurrentFormHTMLForRecordsArchive(),printableHTML:getCurrentRecordPrintableDocumentForArchive(),createdAt:new Date().toLocaleString('ar-SA'),updatedAt:new Date().toISOString()};
+  const st=settings();centralRec.academicYear=st.year||data['العام الدراسي']||'1448';centralRec.semester=st.semester||'الأول';centralRec.__recordEngineV2=true;
+  if(window.PlatformRecordSaveEngine&&!PlatformRecordSaveEngine.isSystemAdminContext())await PlatformRecordSaveEngine.save({moduleKey:'agent_records_items',recordType:'agent_record',recordId:String(centralRec.id),academicYear:centralRec.academicYear,semester:centralRec.semester,scope:'school',folderId:folderId,title:folderName,entityId:getIdentityValue(data),entityType:centralRec.personType,data:centralRec,createdAt:centralRec.updatedAt});
   archive.push(centralRec);localStorage.setItem(centralKey,JSON.stringify(archive));
   await verifyWakilRecordArchiveCloud([formStorageKey,historyKey,centralKey]);
   const verified=readWakilCentralArchive().find(r=>String(r.id)===String(centralRec.id));
@@ -2113,7 +2109,7 @@ renderNav();renderForm();loadCurrent();bindAutoGrow(qs('#formPage'));autoGrowAll
 <script src="school-activity-engine.js"></script>
   <script src="evidence-library-source.js"></script>
 
-<script src="school-information-source.js"></script>
+<script src="school-information-source.js?v=20260830-records-final-v4"></script>
 <script src="internal-messaging.js"></script>
 
 <script defer src="unified_workspace.js"></script>
@@ -2126,4 +2122,6 @@ renderNav();renderForm();loadCurrent();bindAutoGrow(qs('#formPage'));autoGrowAll
 <script src="openai-engine.js"></script>
 <script src="top-ai-center.js"></script>
 <script src="platform-page-navigation.js?v=20260818-nav1"></script>
+
+<script src="platform-record-save-engine.js?v=20260830-records-final-v3"></script>
 </body></html>

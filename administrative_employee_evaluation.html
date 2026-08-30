@@ -722,12 +722,10 @@ function currentEvaluationSchoolId(){
 function currentEvaluationSupervisor(){const q=new URLSearchParams(location.search);return String(q.get('supervisor')||'').toLowerCase()==='agent'?'agent':'manager'}
 function employeeNameLabel(i){const p=employeeProfiles[i]||{};return (p.name&&p.name.trim())?p.name.trim():'موظف إداري'}
 function profileKey(p){return String(p&& (p.email||p.id||p.name)||'').toLowerCase()}
-function saveCurrentEmployee(silent=false){
-  if(!employeeProfiles.length){if(!silent)alert('لا يوجد موظف إداري مسجل لاستخدام بطاقة التقويم.');return;}
-  const current=employeeProfiles[currentEmployeeIndex]||{};
-  const name=document.getElementById('v_name')?.value?.trim()||current.name||'موظف إداري';
-  employeeProfiles[currentEmployeeIndex]=Object.assign({},current,{name,data:collectFormData(),updatedAt:new Date().toISOString()});
-  localStorage.setItem('adminEmployeeEvalProfiles',JSON.stringify(employeeProfiles));renderEmployeeSelector();if(!silent)alert('تم حفظ بيانات تقييم الموظف الحالي.');
+async function saveCurrentEmployee(silent=false){
+  if(!employeeProfiles.length){if(!silent)alert('لا يوجد موظف إداري مسجل لاستخدام بطاقة التقويم.');return false;}
+  const before=JSON.stringify(employeeProfiles),current=employeeProfiles[currentEmployeeIndex]||{},name=document.getElementById('v_name')?.value?.trim()||current.name||'موظف إداري',next=Object.assign({},current,{name,data:collectFormData(),updatedAt:new Date().toISOString()}),id=current.id||current.user_id||current.email||String(currentEmployeeIndex),ay=next.year||localStorage.getItem('school_info_academic_year')||'1448',sem=next.semester||'سنوي';
+  try{if(!window.PlatformRecordSaveEngine||PlatformRecordSaveEngine.isSystemAdminContext())throw new Error('محرك حفظ تقييمات المدرسة غير متاح');await PlatformRecordSaveEngine.save({moduleKey:'admin_employee_evaluations',recordType:'admin_evaluation',recordId:String(id),academicYear:ay,semester:sem,scope:'school',folderId:'admin_evaluation',title:'تقييم الموظف الإداري',entityId:String(id),entityType:'administrative_employee',data:next});employeeProfiles[currentEmployeeIndex]=next;localStorage.setItem('adminEmployeeEvalProfiles',JSON.stringify(employeeProfiles));renderEmployeeSelector();if(!silent)alert('تم حفظ بيانات تقييم الموظف الحالي والتحقق سحابيًا.');return true;}catch(e){try{employeeProfiles=JSON.parse(before)}catch(_){ }localStorage.setItem('adminEmployeeEvalProfiles',before);renderEmployeeSelector();console.error('[admin evaluation cloud]',e);if(!silent)alert('تعذر تأكيد حفظ التقييم سحابيًا؛ لم يتم اعتماد التغيير.');return false;}
 }
 function renderEmployeeSelector(){
   const sel=document.getElementById('employeeSelector');if(!sel)return;sel.innerHTML='';
@@ -737,7 +735,7 @@ function renderEmployeeSelector(){
 function switchEmployee(v){if(employeeProfiles.length)saveCurrentEmployee(true);currentEmployeeIndex=parseInt(v,10)||0;applyFormData(employeeProfiles[currentEmployeeIndex]?.data||[]);const p=employeeProfiles[currentEmployeeIndex];if(p){const n=document.getElementById('v_name');if(n)n.value=p.name||'';}renderEmployeeSelector();}
 async function fetchRegisteredAdministrativeEmployees(){
   const sid=currentEvaluationSchoolId(),sup=currentEvaluationSupervisor();if(!sid)return[];
-  try{if(window.SmartSchoolSupabase?.listAdministrativeEmployeesBySchool)return await window.SmartSchoolSupabase.listAdministrativeEmployeesBySchool(sid,sup)||[];}catch(e){console.warn('تعذر جلب الموظفين الإداريين',e)}
+  try{if(window.SchoolInformationSource?.getAdministrativeEmployees)return await window.SchoolInformationSource.getAdministrativeEmployees()||[];}catch(e){console.warn('تعذر جلب الموظفين الإداريين من مركز المعلومات',e)}
   return[];
 }
 async function initEmployees(){
@@ -1297,7 +1295,7 @@ window.addEventListener('load',function(){setTimeout(renderAdminEvalPanel,400)})
 <script src="delegated-access-guard.js"></script>
 <script src="school-activity-engine.js"></script>
 
-<script src="school-information-source.js"></script>
+<script src="school-information-source.js?v=20260830-records-final-v4"></script>
 <script src="internal-messaging.js"></script>
 
 <script defer src="unified_workspace.js"></script>
@@ -1310,5 +1308,8 @@ window.addEventListener('load',function(){setTimeout(renderAdminEvalPanel,400)})
 <script src="openai-engine.js"></script>
 <script src="top-ai-center.js"></script>
 <script src="platform-page-navigation.js?v=20260818-nav1"></script>
+
+<script src="platform-cloud-session.js"></script>
+<script src="platform-record-save-engine.js?v=20260830-records-final-v3"></script>
 </body>
 </html>

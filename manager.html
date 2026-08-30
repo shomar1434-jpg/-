@@ -3329,7 +3329,7 @@ async function legacyPerformanceSave_DISABLED() {
 
         async function getAllManagerLocalRecords() {
             if(!window.CloudFileEngine) throw new Error('الحفظ السحابي غير متاح');
-            await migrateLegacyManagerRecordsToCloud();
+            /* legacy IndexedDB migration disabled: old files remain untouched until explicit user action */
             const r=await CloudFileEngine.list({moduleKey:'manager_records_archive',recordType:'pdf_archive',limit:1000});
             return (r.files||[]).map(f=>({id:f.id,name:f.display_name||f.original_name||'ملف',type:f.mime_type||'',size:Number(f.file_size||0),createdAt:f.created_at,updatedAt:f.updated_at,folder:(f.metadata&&f.metadata.folder)||'عام',kind:(f.metadata&&f.metadata.kind)||'',metadata:f.metadata||{},cloud:true}));
         }
@@ -5534,11 +5534,20 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
   }
   function showDashboard(){var d=document.getElementById('welcome-dashboard'); if(d){d.style.display='block'; if(d.classList)d.classList.remove('hidden');}}
   async function hydrateManagerRecordsCanonicalV6(){
-    const g=window.PlatformPersistenceGuard;if(!g||typeof g.readExactValues!=='function')return {ok:false,error:'V6 unavailable'};
-    let r=await g.readExactValues({moduleKey:'manager',scope:'school',keys:['manager_records_archive_v2']});
-    if(!r.ok)return r;let raw=r.values.manager_records_archive_v2;
-    if(raw===undefined){const old=await g.readExactValues({moduleKey:'manager',scope:'school',keys:['school_manager_records_archive_v1']});raw=old.ok&&old.values.school_manager_records_archive_v1!==undefined?old.values.school_manager_records_archive_v1:'[]';try{const a=JSON.parse(raw||'[]');raw=JSON.stringify(Array.isArray(a)?a.filter(x=>!(x&&x.recordType==='decision_assignment')):[])}catch(_){raw='[]'};if(raw!=='[]')await g.writeExactValues({moduleKey:'manager',scope:'school',values:{manager_records_archive_v2:raw}});}
-    g.setLocalSilently('manager_records_archive_v2',raw||'[]');return {ok:true};
+    // Records Final V3: الفهرس السحابي المستقل هو المصدر الحديث. لا ترحيل تلقائي من مفاتيح Legacy.
+    try{
+      if(!window.PlatformRecordSaveEngine||PlatformRecordSaveEngine.isSystemAdminContext())return {ok:true,source:'local-or-system-admin'};
+      const cloud=await PlatformRecordSaveEngine.listAll({moduleKey:'manager_records_items',recordType:'manager_record',scope:'school'});
+      const existing=readArray(['manager_records_archive_v2']);
+      const legacy=existing.filter(function(x){return x&&x.recordType!=='decision_assignment'&&!x.__recordEngineV2;});
+      const modern=(cloud||[]).map(function(x){
+        const d=x&&x.data||{},m=x&&x.meta||{};
+        return Object.assign({},d,{id:d.id||m.id,sourceRecordId:d.sourceRecordId||m.id,folderId:d.folderId||m.folderId,recordId:d.recordId||m.folderId,title:d.title||m.title,folderName:d.folderName||d.recordName||m.title,academicYear:m.academicYear,semester:m.semester,updatedAt:m.updatedAt,createdAt:m.createdAt,__recordEngineV2:true});
+      });
+      const map=new Map();legacy.concat(modern).forEach(function(r){if(!r)return;const k=String(r.id||r.sourceRecordId||'')+'|'+String(r.folderId||r.recordId||'');if(k)map.set(k,r)});
+      localStorage.setItem('manager_records_archive_v2',JSON.stringify(Array.from(map.values())));
+      return {ok:true,source:'record-engine',count:modern.length};
+    }catch(e){console.error('[manager records independent hydrate]',e);return {ok:false,error:String(e&&e.message||e)};}
   }
   async function hydrateCanonicalManagerArchive(kind){
     try{
@@ -5773,9 +5782,14 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
         return;
       }
     }else{
-      var key=primaryKey(kind);
-      var arr=readArray([key]).filter(function(r){return String(r.id||r.createdAt||r.title)!==String(id);});
-      writeArray(key,arr);
+      var key=primaryKey(kind),before=localStorage.getItem(key),target=item;
+      try{
+        if(kind==='manager'&&target&&window.PlatformRecordSaveEngine&&!PlatformRecordSaveEngine.isSystemAdminContext()&&target.recordType!=='decision_assignment'){
+          await PlatformRecordSaveEngine.remove({moduleKey:'manager_records_items',recordType:'manager_record',recordId:String(target.sourceRecordId||target.id),academicYear:target.academicYear||target.values?.year||target.values?.academicYear||undefined,semester:target.semester||target.values?.semester||target.values?.term||undefined,scope:'school'});
+        }
+        var arr=readArray([key]).filter(function(r){return String(r.id||r.createdAt||r.title)!==String(id);});
+        writeArray(key,arr);
+      }catch(e){if(before===null)localStorage.removeItem(key);else localStorage.setItem(key,before);console.error('[manager record delete]',e);alert('تعذر تأكيد حذف السجل سحابيًا؛ لم يتم حذف النسخة المحلية.');return;}
     }
     if(currentArchiveFolder&&currentArchiveFolder.kind===kind) openFolder(kind,currentArchiveFolder.id); else renderFolders(kind);
   }
@@ -5879,7 +5893,8 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
 <script src="unified-assignment-ui.js"></script>
   <script src="evidence-library-source.js"></script>
 
-<script src="school-information-source.js"></script>
+<script src="school-information-source.js?v=20260830-records-final-v4"></script>
+<script src="platform-record-save-engine.js?v=20260830-records-final-v3"></script>
 <script src="internal-messaging.js"></script>
 
 <script defer src="unified_workspace.js"></script>

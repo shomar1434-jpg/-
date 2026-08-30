@@ -236,7 +236,7 @@
                     return 'semester_1';
                 },
                 periodStorageKey(year,semester) {
-                    return `kindergarten_teacher_records_period_v1:${this.normalizeAcademicYear(year)}:${this.semesterStorageKey(semester)}`;
+                    return `teacher_records_period_v1:${this.normalizeAcademicYear(year)}:${this.semesterStorageKey(semester)}`;
                 },
                 readPeriodState(year,semester) {
                     try {
@@ -255,6 +255,59 @@
                         currentClassId: this.currentClassId||'',
                         savedAt: new Date().toISOString()
                     };
+                },
+                async restoreCurrentPeriodFromCloud() {
+                    if(!window.PlatformRecordSaveEngine) return false;
+                    try{
+                        const cloud=await PlatformRecordSaveEngine.load({moduleKey:'kindergarten_comprehensive_records',recordType:'teacher_period',recordId:'main',academicYear:this.globalMetadata.year,semester:this.globalMetadata.semester,scope:'user'});
+                        if(!cloud||!cloud.data)return false;
+                        const local=this.readPeriodState(this.globalMetadata.year,this.globalMetadata.semester);
+                        const cloudAt=Date.parse(cloud.savedAt||cloud.data?.savedAt||0)||0,localAt=Date.parse(local?.savedAt||0)||0;
+                        if(cloudAt>localAt){
+                            const d=cloud.data;
+                            this.globalMetadata=Object.assign({},this.globalMetadata,d.globalMetadata||{});
+                            this.classes=this.migrateLegacyStudentRecords(d.classes||[]);
+                            this.currentClassId=(d.currentClassId&&this.classes.some(c=>c.id===d.currentClassId))?d.currentClassId:(this.classes[0]?.id||'');
+                            this.writePeriodState(this.globalMetadata.year,this.globalMetadata.semester,this.currentPeriodSnapshot());
+                            localStorage.setItem('followup_global_v3',JSON.stringify(this.globalMetadata));
+                            localStorage.setItem('followup_classes_v3',JSON.stringify(this.classes));
+                            localStorage.setItem('followup_current_class_id_v3',this.currentClassId||'');
+                            this.showNotification('تمت استعادة سجل هذا الفصل من السحابة','success');
+                        }
+                        return true;
+                    }catch(e){console.warn('[teacher period cloud restore]',e);return false}
+                },
+                scheduleCurrentPeriodCloudSave() {
+                    if(!window.PlatformRecordSaveEngine||this._switchingAcademicPeriod)return;
+                    clearTimeout(this._periodCloudTimer);
+                    this._periodCloudTimer=setTimeout(async()=>{
+                        try{
+                            const snap=this.currentPeriodSnapshot();
+                            await PlatformRecordSaveEngine.save({moduleKey:'kindergarten_comprehensive_records',recordType:'teacher_period',recordId:'main',academicYear:this.globalMetadata.year,semester:this.globalMetadata.semester,scope:'user',title:'سجل معلمة رياض الأطفال الشامل',folderId:'kindergarten-comprehensive',data:snap,createdAt:snap.savedAt});
+                        }catch(e){console.warn('[teacher period cloud save]',e)}
+                    },900);
+                },
+                async syncInformationCenterStudentsIntoClasses(forceRefresh=true) {
+                    try{
+                        const rows=await this.getInformationCenterStudents(forceRefresh);if(!Array.isArray(rows))return;
+                        const all=rows.map((s,i)=>this.normalizeCenterStudent(s,i)).filter(s=>s.name);
+                        let changed=false;
+                        const norm=v=>(v||'').toString().replace(/\s+/g,' ').trim();
+                        const same=(a,b)=>!norm(b)||norm(a)===norm(b)||norm(a).includes(norm(b))||norm(b).includes(norm(a));
+                        this.classes=this.classes.map(cls=>{
+                            if(cls.source!=='information_center')return cls;
+                            const candidates=all.filter(s=>same(s.grade||s.stage,cls.grade)&&same(s.track_name,cls.track)&&same(s.section_name,cls.section));
+                            const existing=new Map((cls.students||[]).map(s=>[String(s.centerStudentId||s.student_number||s.id||s.name),s]));
+                            const merged=(cls.students||[]).slice();
+                            candidates.forEach(s=>{
+                                const key=String(s.centerStudentId||s.student_number||s.id||s.name),old=existing.get(key);
+                                if(old){Object.assign(old,{name:s.name,student_number:s.student_number,stage:s.stage,grade:s.grade,track_name:s.track_name,section_name:s.section_name,centerStudentId:s.centerStudentId||old.centerStudentId});}
+                                else{merged.push(s);existing.set(key,s);changed=true;}
+                            });
+                            return Object.assign({},cls,{students:merged});
+                        });
+                        if(changed)this.saveData();
+                    }catch(e){console.warn('[teacher center live sync]',e)}
                 },
                 async switchAcademicPeriod(nextSemester,nextYear) {
                     if(this._switchingAcademicPeriod) return;
@@ -283,10 +336,19 @@
                         localStorage.setItem('followup_global_v3',JSON.stringify(this.globalMetadata));
                         localStorage.setItem('followup_classes_v3',JSON.stringify(this.classes));
                         localStorage.setItem('followup_current_class_id_v3',this.currentClassId||'');
-                        if(window.PlatformPersistenceGuard&&typeof PlatformPersistenceGuard.commit==='function') {
+                        if(window.PlatformRecordSaveEngine){
+                            await PlatformRecordSaveEngine.save({moduleKey:'kindergarten_comprehensive_records',recordType:'teacher_period',recordId:'main',academicYear:oldYear,semester:oldSemester,scope:'user',title:'سجل معلمة رياض الأطفال الشامل',folderId:'kindergarten-comprehensive',data:oldSnapshot,createdAt:oldSnapshot.savedAt});
+                            const cloudTarget=await PlatformRecordSaveEngine.load({moduleKey:'kindergarten_comprehensive_records',recordType:'teacher_period',recordId:'main',academicYear:targetYear,semester:targetSemester,scope:'user'});
+                            if(cloudTarget&&cloudTarget.data&&!existing){
+                                this.globalMetadata=Object.assign({},this.globalMetadata,cloudTarget.data.globalMetadata||{},{year:targetYear,semester:targetSemester});
+                                this.classes=this.migrateLegacyStudentRecords(cloudTarget.data.classes||[]);
+                                this.currentClassId=(cloudTarget.data.currentClassId&&this.classes.some(c=>c.id===cloudTarget.data.currentClassId))?cloudTarget.data.currentClassId:(this.classes[0]?.id||'');
+                            }
+                        }else if(window.PlatformPersistenceGuard&&typeof PlatformPersistenceGuard.commit==='function') {
                             const r=await PlatformPersistenceGuard.commit([oldKey,targetKey,'followup_global_v3','followup_classes_v3']);
                             if(!r||r.ok===false) throw new Error(r?.error||'تعذر تأكيد الانتقال السحابي بين الفصول');
                         }
+                        this.scheduleCurrentPeriodCloudSave();
                         this.showNotification(`تم فتح ${targetSemester} للعام ${targetYear} دون التأثير على الفترة السابقة`,'success');
                     } catch(e) {
                         // لا نترك المستخدم على فترة لم يتأكد حفظ انتقالها سحابيًا.
@@ -389,77 +451,20 @@
                     };
                 },
 
-                getCenterStudentsFromLocalSources() {
-                    // ربط محلي موحد مع مركز المعلومات المدرسية دون التأثير على أي قسم آخر.
-                    // يعتمد على نفس مفاتيح التخزين التي أثبتت نجاحها في أعمال الاختبارات.
-                    const windowSources = [
-                        window.schoolInformationCenterStudents,
-                        window.SCHOOL_INFORMATION_CENTER_STUDENTS,
-                        window.SCHOOL_CENTER_STUDENTS,
-                        window.centerStudents
-                    ].filter(Array.isArray);
-                    if (windowSources.length) return windowSources[0];
+                getCenterStudentsFromLocalSources() { return []; },
 
-                    const getActiveSchoolId = () => {
-                        try {
-                            const active = (window.ActiveSchoolScope && window.ActiveSchoolScope.get) ? window.ActiveSchoolScope.get() : {};
-                            return active.schoolId || active.id || localStorage.getItem('active_school_id') || localStorage.getItem('school_id') || 'DEV_SCHOOL';
-                        } catch (e) {
-                            return localStorage.getItem('active_school_id') || localStorage.getItem('school_id') || 'DEV_SCHOOL';
-                        }
-                    };
-                    const activeSchoolId = getActiveSchoolId();
-                    const yearRaw = (localStorage.getItem('school_info_academic_year') || this.globalMetadata?.year || localStorage.getItem('school_academic_year') || '1447').toString();
-                    const year = (yearRaw.match(/\d{4}/) || [yearRaw])[0];
-                    const keys = [
-                        `schoolInformationCenter:${activeSchoolId}:${year}`,
-                        `school_information_center:${activeSchoolId}:${year}`,
-                        `sic_students:${activeSchoolId}:${year}`,
-                        `school_information_center_students:${activeSchoolId}`,
-                        'school_information_center_students',
-                        'schoolInformationCenterStudents',
-                        'school_information_students',
-                        'school_center_students',
-                        'sic_students_cache',
-                        'students_center_cache',
-                        'teacher_import_students',
-                        'students'
-                    ];
-                    for (const key of keys) {
-                        try {
-                            const value = localStorage.getItem(key);
-                            if (!value) continue;
-                            const parsed = JSON.parse(value);
-                            const rows = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.students) ? parsed.students : (Array.isArray(parsed.data) ? parsed.data : []));
-                            if (rows.length) {
-                                this.centerImportStatus = `تم العثور على ${rows.length} طالب/طالبة في مركز المعلومات المحلي.`;
-                                return rows;
-                            }
-                        } catch (e) {}
-                    }
-                    return [];
+                async getInformationCenterStudents(forceRefresh = false) {
+                    try {
+                        if (!window.SchoolInformationSource || typeof SchoolInformationSource.getStudents !== 'function') return [];
+                        if (forceRefresh && typeof SchoolInformationSource.refresh === 'function') await SchoolInformationSource.refresh();
+                        const rows = await SchoolInformationSource.getStudents();
+                        this.centerImportStatus = `تم جلب ${(rows||[]).length} طالب/طالبة مباشرة من مركز المعلومات.`;
+                        return Array.isArray(rows) ? rows : [];
+                    } catch (e) { console.error('تعذر قراءة مركز المعلومات الموحد:', e); return []; }
                 },
 
                 async fetchStudentsFromSupabaseIfAvailable() {
-                    // قراءة واسعة وآمنة من Supabase: لا نفلتر بالمرحلة/الصف قبل معرفة الصفوف؛
-                    // لأن جدول students قد يحفظ stage بصيغة "ثانوي" و grade بصيغة "الأول الثانوي".
-                    // التصفية والتجميع تتم محلياً بعد الجلب حتى يظهر كل صف وشعبة للمعلمة رياض الأطفال.
-                    const client = window.supabaseClient || window.schoolSupabaseClient || window._supabaseClient || window.supabase || null;
-                    if (!client || !client.from) return [];
-                    try {
-                        const active = (window.ActiveSchoolScope && window.ActiveSchoolScope.get) ? window.ActiveSchoolScope.get() : {};
-                        const activeSchoolId = active.schoolId || active.id || localStorage.getItem('active_school_id') || localStorage.getItem('school_id') || '';
-                        let query = client.from('students').select('*');
-                        if (activeSchoolId) query = query.eq('school_id', activeSchoolId);
-                        const result = await query.order('student_name', { ascending: true });
-                        if (result.error) throw result.error;
-                        const rows = result.data || [];
-                        if (rows.length) this.centerImportStatus = `تم جلب ${rows.length} طالب/طالبة من مركز المعلومات السحابي.`;
-                        return rows;
-                    } catch (e) {
-                        console.warn('تعذر جلب الطلاب من Supabase:', e);
-                        return [];
-                    }
+                    return this.getInformationCenterStudents(true);
                 },
 
                 classNameFromImport(form) {
@@ -489,8 +494,8 @@
 
                 async discoverInformationCenterClasses() {
                     this.centerImportStatus = 'جاري فتح بيانات مركز المعلومات...';
-                    let rows = await this.fetchStudentsFromSupabaseIfAvailable();
-                    if (!rows.length) rows = this.getCenterStudentsFromLocalSources();
+                    let rows = await this.getInformationCenterStudents(true);
+                    
                     this.centerDiscoveredClasses = this.groupCenterStudentsForTeacher(rows);
                     if (!this.centerDiscoveredClasses.length) {
                         this.centerSelectedClassKey = '';
@@ -521,8 +526,8 @@
 
                     this.applyCenterDiscoveredClass();
                     this.centerImportStatus = 'جاري جلب طلاب الصف المختار من مركز المعلومات...';
-                    let sourceStudents = await this.fetchStudentsFromSupabaseIfAvailable();
-                    if (!sourceStudents.length) sourceStudents = this.getCenterStudentsFromLocalSources();
+                    let sourceStudents = await this.getInformationCenterStudents(true);
+                    
 
                     const form = this.centerImportForm;
                     const stageLabel = this.stagesMeta[form.stage]?.label || '';
@@ -2628,7 +2633,7 @@
 <script src="school-activity-engine.js"></script>
   <script src="evidence-library-source.js"></script>
 
-<script src="school-information-source.js"></script>
+<script src="school-information-source.js?v=20260830-records-final-v4"></script>
 <script src="internal-messaging.js"></script>
 <script defer src="unified_workspace.js"></script>
 <script defer src="school_navigation_guard.js"></script>
@@ -2640,5 +2645,7 @@
 <script src="openai-engine.js"></script>
 <script src="top-ai-center.js"></script>
 <script src="platform-page-navigation.js?v=20260818-nav1"></script>
+
+<script src="platform-record-save-engine.js?v=20260830-records-final-v3"></script>
 </body>
 </html>

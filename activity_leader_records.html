@@ -710,6 +710,7 @@ td textarea,
 <script defer src="premium-ui.js"></script>
 <script>window.CLOUD_STATE_CONFIG={moduleKey:'activity_leader',scope:'user',legacyModules:['activity_leader_records'],keys:['activity_records_archive_v3'],prefixes:['activityLeaderRecord_']};</script>
 <script src="platform-state-engine.js"></script>
+<script src="platform-record-save-engine.js?v=20260830-records-final-v3"></script>
 <script src="platform-persistence-guard.js?v=20260828-canonical-archive-v6"></script>
 <script id="canonical-record-archive-hydrate-v4">(function(){async function h(){try{var g=window.PlatformPersistenceGuard;if(g&&typeof g.readExact==='function')await g.readExact({moduleKey:'activity_leader',scope:'user',keys:['activity_records_archive_v3']});}catch(e){console.error('[record archive canonical hydrate]',e)}}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',h,{once:true});else h();window.addEventListener('platform-persistence-ready',h,{once:true});})();</script>
 <script defer src="school-base-settings-source.js"></script>
@@ -1045,7 +1046,6 @@ async function saveArchive(){
  const data=collect();
  const archiveKey="activity_records_archive_v3";
  const beforeMain=localStorage.getItem(archiveKey)||"[]";
- const beforeLocal=localStorage.getItem(key()+"_archive")||"[]";
  let platformArchive=[]; try{platformArchive=JSON.parse(beforeMain);}catch(e){platformArchive=[];}
  const editId=Number(sessionStorage.getItem('activity_record_edit_id')||0);
  let saved;
@@ -1059,21 +1059,25 @@ async function saveArchive(){
    saved={id:Date.now(),folderId:current.id,folderName:current.title,recordId:current.id,title:current.title,displayName:current.title+" - نسخة "+sameFolderCount,duplicateNo:sameFolderCount,values:data.values,htmlContent:"<!DOCTYPE html>"+document.documentElement.outerHTML,createdAt:new Date().toLocaleString('ar-SA'),createdAtIso:new Date().toISOString()};
    platformArchive.push(saved);
  }
- localStorage.setItem(archiveKey,JSON.stringify(platformArchive));
  try{
-   if(!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.commit!=='function')throw new Error('محرك التحقق السحابي غير متاح');
-   const cloud=await PlatformPersistenceGuard.commitExact({moduleKey:'activity_leader',scope:'user',keys:[archiveKey]}); if(!cloud||cloud.ok===false)throw new Error(cloud?.error||'تعذر تأكيد الحفظ السحابي');
-   const verify=JSON.parse(localStorage.getItem(archiveKey)||'[]').find(x=>Number(x.id)===Number(saved.id)&&x.folderId===current.id); if(!verify)throw new Error('لم يظهر السجل داخل مجلده بعد الحفظ');
+   if(!window.PlatformRecordSaveEngine)throw new Error('محرك حفظ السجلات الجديد غير متاح');
+   const academicYear=data.values.year||document.querySelector('[data-k="year"]')?.value||'غير محدد';
+   const semester=data.values.term||document.querySelector('[data-k="term"]')?.value||'سنوي';
+   saved.academicYear=academicYear;saved.semester=semester;saved.__recordEngineV2=true;
+   // الحفظ السحابي والتحقق أولاً؛ لا نعدل الأرشيف المحلي قبل نجاحه.
+   await PlatformRecordSaveEngine.save({moduleKey:'activity_leader_records',recordType:'activity_record',recordId:String(saved.id),academicYear,semester,scope:'user',folderId:current.id,title:current.title,data:saved,createdAt:saved.createdAtIso||saved.updatedAt});
+   localStorage.setItem(archiveKey,JSON.stringify(platformArchive));
    sessionStorage.removeItem('activity_record_edit_id');
    localStorage.removeItem(key()+"_draft");
    if(window.parent&&window.parent!==window){try{window.parent.postMessage({type:'ACTIVITY_LEADER_RECORD_SAVED',payload:saved},'*');}catch(e){}}
-   renderArchive(); alert(editId?'تم تعديل السجل وحفظه سحابياً داخل مجلده.':'تم حفظ السجل سحابياً في الأرشيف داخل مجلده الخاص، ولن يتم حذف النسخ السابقة.'); return true;
- }catch(e){localStorage.setItem(archiveKey,beforeMain);localStorage.setItem(key()+"_archive",beforeLocal);console.error(e);alert('تعذر تأكيد الحفظ السحابي؛ تمت استعادة الأرشيف السابق دون فقد بيانات.');return false;}
+   renderArchive(); alert(editId?'تم تعديل السجل والتحقق من حفظه سحابياً داخل مجلده.':'تم حفظ السجل والتحقق منه سحابياً داخل مجلده، ولن يتم حذف النسخ السابقة.'); return true;
+ }catch(e){localStorage.setItem(archiveKey,beforeMain);console.error(e);alert('تعذر تأكيد الحفظ السحابي؛ لم يتم تغيير الأرشيف المحلي.');return false;}
 }
+async function hydrateActivityArchiveFromRecordCloud(){try{if(!window.PlatformRecordSaveEngine||PlatformRecordSaveEngine.isSystemAdminContext())return[];const rows=await PlatformRecordSaveEngine.listAll({moduleKey:'activity_leader_records',recordType:'activity_record',scope:'user'});const modern=(rows||[]).map(x=>Object.assign({},x.data||{},{academicYear:x.meta?.academicYear,semester:x.meta?.semester,__recordEngineV2:true}));let legacy=[];try{legacy=JSON.parse(localStorage.getItem('activity_records_archive_v3')||'[]').filter(x=>!x.__recordEngineV2)}catch(_){legacy=[]}const map=new Map();legacy.concat(modern).forEach(r=>{if(r){const k=String(r.id||'');if(k)map.set(k,r)}});localStorage.setItem('activity_records_archive_v3',JSON.stringify([...map.values()]));return modern}catch(e){console.error('[activity records cloud hydrate]',e);return[]}}
 function toggleArchive(){document.getElementById('archivePanel').classList.toggle('show');renderArchive()}
 function renderArchive(){
  const box=document.getElementById('archiveList');
- const list=JSON.parse(localStorage.getItem(key()+"_archive")||"[]");
+ const list=(JSON.parse(localStorage.getItem('activity_records_archive_v3')||'[]')).filter(x=>String(x.folderId)===String(current.id));
  box.innerHTML = list.length ? "" : "<p class='small'>لا توجد سجلات مؤرشفة لهذا النموذج.</p>";
  list.forEach((item,i)=>{
    const d=document.createElement('div');d.className="archiveItem";
@@ -1084,12 +1088,13 @@ function renderArchive(){
  });
 }
 function restoreArchive(i){
- const list=JSON.parse(localStorage.getItem(key()+"_archive")||"[]");
+ const list=(JSON.parse(localStorage.getItem('activity_records_archive_v3')||'[]')).filter(x=>String(x.folderId)===String(current.id));
  fill(list[i]); autoDraft();
 }
-function deleteArchive(i){
- const list=JSON.parse(localStorage.getItem(key()+"_archive")||"[]");
- if(confirm("هل تريد حذف هذا السجل من الأرشيف؟")){list.splice(i,1);localStorage.setItem(key()+"_archive",JSON.stringify(list));renderArchive();}
+async function deleteArchive(i){
+ const all=JSON.parse(localStorage.getItem('activity_records_archive_v3')||'[]'),list=all.filter(x=>String(x.folderId)===String(current.id)),item=list[i];if(!item)return;
+ if(!confirm('هل تريد حذف هذا السجل من الأرشيف؟'))return;
+ try{if(window.PlatformRecordSaveEngine&&!PlatformRecordSaveEngine.isSystemAdminContext())await PlatformRecordSaveEngine.remove({moduleKey:'activity_leader_records',recordType:'activity_record',recordId:String(item.id),academicYear:item.academicYear||'غير محدد',semester:item.semester||'سنوي',scope:'user'});const next=all.filter(x=>String(x.id)!==String(item.id));localStorage.setItem('activity_records_archive_v3',JSON.stringify(next));if(window.PlatformPersistenceGuard?.commitExact){const r=await PlatformPersistenceGuard.commitExact({moduleKey:'activity_leader',scope:'user',keys:['activity_records_archive_v3']});if(!r||r.ok===false)throw new Error(r?.error||'تعذر تأكيد حذف الأرشيف');}renderArchive();}catch(e){console.error(e);alert('تعذر تأكيد الحذف سحابيًا؛ لم يتم حذف السجل.');}
 }
 function clearForm(){
  if(confirm("سيتم مسح بيانات النموذج الحالي فقط، هل أنت متأكد؟")){
@@ -1106,6 +1111,7 @@ function clearForm(){
  }catch(e){}
 })();
 renderAll();
+setTimeout(hydrateActivityArchiveFromRecordCloud,0);
 </script>
 
 
@@ -1200,7 +1206,7 @@ document.addEventListener("blur", function(e){
 <script src="school-activity-engine.js"></script>
   <script src="evidence-library-source.js"></script>
 
-<script src="school-information-source.js"></script>
+<script src="school-information-source.js?v=20260830-records-final-v4"></script>
 <script src="internal-messaging.js"></script>
 
 <script defer src="unified_workspace.js"></script>
@@ -1216,6 +1222,6 @@ document.addEventListener("blur", function(e){
 <script src="platform-archive-crud.js"></script>
 
 
-
+<script id="CANONICAL_RECORD_MIGRATION_V6_DISABLED">(function(){async function m(){try{const g=window.PlatformPersistenceGuard;if(!g||typeof g.readExactValues!=='function')return;let r=await g.readExactValues({moduleKey:"activity_leader",scope:'user',keys:["activity_records_archive_v3"]});let raw=r.ok?r.values["activity_records_archive_v3"]:undefined;if(raw===undefined){const old=await g.readExactValues({moduleKey:"activity_leader",scope:'user',keys:["activity_leader_records_archive_v2"]});raw=old.ok&&old.values["activity_leader_records_archive_v2"]!==undefined?old.values["activity_leader_records_archive_v2"]:'[]';if(raw!=='[]')await g.writeExactValues({moduleKey:"activity_leader",scope:'user',values:{["activity_records_archive_v3"]:raw}});}g.setLocalSilently("activity_records_archive_v3",raw||'[]');}catch(e){console.error('[record V6 migrate]',e)}}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',m,{once:true});else m();})();</script>
 </body>
 </html>

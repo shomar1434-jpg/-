@@ -8,7 +8,7 @@ const CFG={
 };
 const SECTION_MAP={'1':'أ','2':'ب','3':'ج','4':'د','5':'هـ','6':'و','7':'ز','8':'ح','9':'ط','10':'ي','11':'ك','12':'ل'};
 const ROLE_AR={manager:'مدير/ة المدرسة',school_manager:'مدير/ة المدرسة',agent:'وكيل/ة',deputy:'وكيل/ة',teacher:'معلم/ة',student_advisor:'موجه/موجهة طلابية',counselor:'موجه/موجهة طلابية',activity_leader:'رائد/ة النشاط',admin_employee:'موظف/ة إداري/ة',administrative_employee:'موظف/ة إداري/ة',employee:'موظف/ة',health_advisor:'الموجه الصحي',kindergarten_teacher:'معلمة رياض الأطفال',principal:'مدير/ة المدرسة'};
-const state={students:[],staff:[],administrativeStaff:[],loaded:false,loading:null,schoolId:'',year:'',updatedAt:'',version:'3.0.0-secure-live-center'};
+const state={students:[],staff:[],administrativeStaff:[],loaded:false,loading:null,schoolId:'',year:'',updatedAt:'',version:'4.0.0-lazy-performance-hotfix'};
 const safe=v=>String(v==null?'':v).trim();
 const norm=v=>safe(v).replace(/[إأآا]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/[ـ\u064B-\u0652]/g,'').replace(/\s+/g,' ').toLowerCase();
 const readJson=k=>{try{return JSON.parse(localStorage.getItem(k)||sessionStorage.getItem(k)||'null')}catch(_){return null}};
@@ -201,8 +201,29 @@ function enhance(el){
   el.addEventListener('focus',()=>load(false).then(()=>{if(el.tagName==='SELECT')fillSelectIfNeeded(el)}));el.addEventListener('change',()=>autofill(el,k));
 }
 function scan(root){if(!root)return;if(root.matches&&root.matches('input,select,textarea'))enhance(root);root.querySelectorAll&&root.querySelectorAll('input,select,textarea').forEach(enhance)}
-function boot(){ensureDatalist('sicStudentsList');ensureDatalist('sicTeachersList');ensureDatalist('sicAdministrativeEmployeesList');ensureDatalist('sicStaffList');scan(document);load(false);
-if(infoChannel)infoChannel.onmessage=e=>{if(e.data&&e.data.type==='updated'){state.loaded=false;load(true)}};new MutationObserver(ms=>ms.forEach(m=>m.addedNodes.forEach(n=>{if(n.nodeType===1)scan(n)}))).observe(document.documentElement,{childList:true,subtree:true});window.addEventListener('storage',e=>{if(/schoolInformationCenter|school_information_center|sic_students|users|school_users/i.test(e.key||''))load(true)});window.addEventListener('school-information-updated',()=>{state.loaded=false;load(true)});window.addEventListener('focus',()=>{if(state.schoolId)load(true)});document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.schoolId)load(true)});}
+let lastBackgroundRefreshAt=0;
+function scheduleBackgroundLoad(force){
+  const run=()=>{
+    const now=Date.now();
+    if(force&&now-lastBackgroundRefreshAt<15000)return;
+    if(force)lastBackgroundRefreshAt=now;
+    load(!!force).catch(e=>console.warn('[SchoolInformationSource] background load',e?.message||e));
+  };
+  if(typeof requestIdleCallback==='function')requestIdleCallback(run,{timeout:1800});else setTimeout(run,60);
+}
+function boot(){
+  ensureDatalist('sicStudentsList');ensureDatalist('sicTeachersList');ensureDatalist('sicAdministrativeEmployeesList');ensureDatalist('sicStaffList');
+  // Performance V4: لا نمسح DOM كاملًا عند فتح الصفحة. نعزز الحقل عند استخدامه فقط.
+  document.addEventListener('focusin',e=>{const el=e.target;if(el&&/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)){enhance(el);if(el.dataset.sicKind)scheduleBackgroundLoad(false)}},true);
+  document.addEventListener('change',e=>{const el=e.target;if(el&&/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)){if(!el.dataset.sicEnhanced)enhance(el);const k=el.dataset.sicKind;if(k)autofill(el,k)}},true);
+  // أول مزامنة تتم بعد إتاحة الفرصة للمتصفح لرسم الواجهة.
+  setTimeout(()=>scheduleBackgroundLoad(false),0);
+  if(infoChannel)infoChannel.onmessage=e=>{if(e.data&&e.data.type==='updated'){state.loaded=false;scheduleBackgroundLoad(true)}};
+  window.addEventListener('storage',e=>{if(/schoolInformationCenter|school_information_center|sic_students|users|school_users/i.test(e.key||'')){state.loaded=false;scheduleBackgroundLoad(true)}});
+  window.addEventListener('school-information-updated',()=>{state.loaded=false;scheduleBackgroundLoad(true)});
+  window.addEventListener('focus',()=>{if(state.schoolId)scheduleBackgroundLoad(true)});
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.schoolId)scheduleBackgroundLoad(true)});
+}
 window.SchoolInformationSource={
   load,
   getStudents:async()=>{await load(false);return state.students.slice()},
@@ -218,7 +239,7 @@ window.SchoolInformationSource={
   refresh:async()=>{const s=await load(true);emit('school-information-updated',snapshot());return s},
   notifyUpdated:()=>{state.loaded=false;emit('school-information-updated',snapshot());return load(true)},
   state,
-  version:'3.0.0-secure-live-center'
+  version:'4.0.0-lazy-performance-hotfix'
 };
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })();

@@ -1416,7 +1416,11 @@ function allowedWakilCategory(cat){
   var agencies=currentWakilAgencies();
   cat=cat||'shared';
   if(cat==='shared') return true;
-  if(!agencies.length){var u=currentWakilUser();var r=String(u.role||u.dbRole||'').toLowerCase();return !(r==='agent'||r==='agency'||r==='deputy') ? true : false;}
+  // إذا لم يحدد المدير تصنيف وكالة صريحاً، فالحالة المقصودة هي «كل السجلات»
+  // كما تعرضها الواجهة، ولا يجوز حصر الوكيل في السجلات المشتركة فقط.
+  if(!agencies.length) return true;
+  // عند وجود تصنيف/تصنيفات صريحة، يظل العزل الوظيفي كما هو:
+  // السجلات المشتركة + التصنيفات المكلف بها الوكيل فقط.
   return agencies.indexOf(cat)>-1;
 }
 function visibleForms(){return FORMS.filter(function(f){return allowedWakilCategory(f.category||'shared');});}

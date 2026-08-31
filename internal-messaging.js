@@ -10,7 +10,80 @@ function addStyles(){if(document.getElementById('im-style'))return;const st=docu
 .im-toolbar-btn{position:relative;display:inline-flex!important;align-items:center;gap:7px;white-space:nowrap}
 .im-toolbar-badge{position:absolute;top:-7px;left:-7px;min-width:18px;height:18px;padding:0 4px;border-radius:999px;background:#d94a4a;color:#fff;font:700 10px/18px Tahoma;text-align:center;display:none;box-shadow:0 1px 4px #0002}
 .im-admin-toolbar-btn{border:1px solid #cfe4d9;background:#fff;color:#0f6b4a;border-radius:13px;padding:10px 16px;font-family:inherit;font-weight:900;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:7px;position:relative}`;document.head.appendChild(st)}
-async function refresh(){try{const d=await call('inbox',{}),badges=[...document.querySelectorAll('.im-toolbar-badge')];badges.forEach(b=>{b.textContent=d.unread||0;b.style.display=d.unread?'block':'none'});render(d.messages||[])}catch(e){console.warn('[InternalMessaging]',e.message)}}
+function setBadge(el,count){if(!el)return;const n=Math.max(0,Number(count)||0);el.textContent=String(n);el.style.display=n?'flex':'none';el.setAttribute('aria-label',n?'لديك '+n+' تنبيه غير مقروء':'لا توجد تنبيهات غير مقروءة')}
+function updateNotificationBadges(messages){
+ const rows=Array.isArray(messages)?messages:[];
+ const unreadNotices=rows.filter(m=>String(m.message_type||'')==='notice'&&!m.read_at).length;
+ document.querySelectorAll('#ssInboxBadge,.ss-notification-badge,[data-notification-badge]').forEach(b=>setBadge(b,unreadNotices));
+ const btn=document.getElementById('ssInbox');if(btn){btn.dataset.cloudNotificationCount=String(unreadNotices);btn.title=unreadNotices?'تلقي التنبيهات — '+unreadNotices+' جديد':'تلقي التنبيهات'}
+ return unreadNotices;
+}
+async function refresh(){try{const d=await call('inbox',{}),rows=d.messages||[],badges=[...document.querySelectorAll('.im-toolbar-badge')];badges.forEach(b=>setBadge(b,d.unread||0));updateNotificationBadges(rows);render(rows)}catch(e){console.warn('[InternalMessaging]',e.message)}}
+function currentRole(){return String(localStorage.getItem('platform_file_session_role')||localStorage.getItem('currentRole')||'').trim().toLowerCase()}
+function canSendSchoolAlerts(){return /^(manager|school_manager|principal|agent|deputy|deputy_admin|deputy_academic|deputy_students)$/.test(currentRole())}
+function validHttpUrl(v){return !v||/^https?:\/\//i.test(String(v).trim())}
+function legacyAlertRecipientSelection(){
+ const target=document.getElementById('alertTarget')?.value||'custom';
+ const selected=[...document.querySelectorAll('.recUser:checked')].map(x=>String(x.value||''));
+ const ids=selected.map(v=>v.includes(':')?v.slice(v.indexOf(':')+1):v).filter(Boolean);
+ const roles=[...new Set(selected.map(v=>v.includes(':')?v.slice(0,v.indexOf(':')):'').filter(Boolean))];
+ const role=currentRole();
+ if(target==='all'&&/^(manager|school_manager|principal)$/.test(role))return {recipientIds:[],recipientRoles:[],allSchool:true};
+ if(target==='custom')return {recipientIds:ids,recipientRoles:[],allSchool:false};
+ if(roles.length)return {recipientIds:[],recipientRoles:roles,allSchool:false};
+ const map={agents:['agent'],teachers:['teacher'],student_advisors:['student_advisor'],activity_leaders:['activity_leader'],health_advisors:['health_advisor'],employees:['administrative_employee','admin_employee']};
+ return {recipientIds:[],recipientRoles:map[target]||[],allSchool:false};
+}
+async function uploadLegacyAlertFiles(files){
+ const list=[...(files||[])];if(!list.length)return [];
+ if(!window.CloudFileEngine||typeof CloudFileEngine.upload!=='function')throw new Error('محرك الملفات السحابي غير متاح لرفع مرفقات التنبيه');
+ const out=[];
+ try{
+  for(const file of list){
+   const r=await CloudFileEngine.upload({file,ownershipScope:'user',moduleKey:'internal_messages',displayName:file.name,metadata:{source:'school_notification',pendingMessage:true}});
+   if(!r?.file?.id)throw new Error('تعذر تأكيد رفع المرفق: '+file.name);
+   out.push({fileId:r.file.id,name:r.file.display_name||file.name,source:'device'});
+  }
+  return out;
+ }catch(e){
+  for(const a of out){try{if(CloudFileEngine.trash)await CloudFileEngine.trash(a.fileId)}catch(_){}}
+  throw e;
+ }
+}
+async function sendLegacyAlertThroughCloud(){
+ if(!canSendSchoolAlerts())throw new Error('إرسال التنبيهات متاح للمدير والوكيل فقط');
+ const msg=String(document.getElementById('alertMsg')?.value||'').trim();
+ const link=String(document.getElementById('alertLink')?.value||'').trim();
+ if(!msg)throw new Error('اكتب نص التنبيه أولاً');if(msg.length>300)throw new Error('نص التنبيه يتجاوز 300 حرف');if(!validHttpUrl(link))throw new Error('الرابط يجب أن يبدأ بـ http أو https');
+ const t=legacyAlertRecipientSelection();if(!t.allSchool&&!t.recipientIds.length&&!t.recipientRoles.length)throw new Error('اختر مستلمًا واحدًا على الأقل');
+ const input=document.getElementById('alertFiles'),uploaded=await uploadLegacyAlertFiles(input?.files||[]);
+ try{
+  const role=currentRole(),senderIsManager=/^(manager|school_manager|principal)$/.test(role),subject=senderIsManager?'تنبيه من مدير المدرسة':'تنبيه من الوكيل';
+  const result=await call('send',{...t,subject,body:msg,priority:'important',messageType:'notice',acknowledgementMode:'read_receipt',attachments:uploaded,linked:link?{module:'school_notifications',recordType:'notice',title:'رابط مرفق بالتنبيه',url:link}:{module:'school_notifications',recordType:'notice'},metadata:{source:'school_notification_bridge'}});
+  const expected=uploaded.length;if(expected&&(Number(result?.savedAttachmentCount||0)!==expected||result?.attachmentsConfirmed!==true))throw new Error('لم يتم تأكيد حفظ جميع مرفقات التنبيه');
+  const backdrop=document.getElementById('ssFinalBackdrop');if(backdrop)backdrop.style.display='none';
+  alert(expected?'تم إرسال التنبيه وحفظ '+expected+' مرفق سحابيًا بنجاح ✅':'تم إرسال التنبيه بنجاح ✅');
+  await refresh();return result;
+ }catch(e){
+  for(const a of uploaded){try{if(window.CloudFileEngine?.trash)await CloudFileEngine.trash(a.fileId)}catch(_){}}
+  throw e;
+ }
+}
+function notificationCenterUrl(){const q=new URLSearchParams({return_to:roleHome(),filterType:'notice'});return 'internal_messages.html?'+q.toString()}
+function installNotificationBridge(){
+ if(document.documentElement.dataset.imNotificationBridge==='1')return;document.documentElement.dataset.imNotificationBridge='1';
+ document.addEventListener('click',function(ev){
+  const inbox=ev.target?.closest?.('#ssInbox');if(inbox){ev.preventDefault();ev.stopPropagation();ev.stopImmediatePropagation();location.href=notificationCenterUrl();return}
+  const send=ev.target?.closest?.('#sendAlert');if(send&&document.getElementById('alertMsg')&&canSendSchoolAlerts()){
+   ev.preventDefault();ev.stopPropagation();ev.stopImmediatePropagation();
+   if(send.dataset.cloudSending==='1')return;send.dataset.cloudSending='1';send.disabled=true;
+   const old=send.textContent;send.textContent='جارٍ الإرسال...';
+   sendLegacyAlertThroughCloud().catch(e=>alert(e?.message||'تعذر إرسال التنبيه')).finally(()=>{send.dataset.cloudSending='0';send.disabled=false;send.textContent=old||'إرسال التنبيه'});
+  }
+ },true);
+ window.addEventListener('focus',refresh);document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh()});
+}
+
 function render(msgs){const list=document.querySelector('.im-list');if(!list)return;list.innerHTML=msgs.length?msgs.slice(0,8).map(m=>`<div class="im-item ${m.read_at?'':'unread'}" data-id="${esc(m.id)}"><div class="im-sub">${m.pinned_at?'📌 ':''}${esc(m.subject)}</div><div class="im-meta">من: ${esc(m.sender_name||'مستخدم')} · ${new Date(m.created_at).toLocaleString('ar-SA')}</div></div>`).join(''):'<div style="padding:28px;text-align:center;color:#84908f">لا توجد رسائل جديدة</div>';list.querySelectorAll('.im-item').forEach(x=>x.onclick=()=>location.href='internal_messages.html?message='+encodeURIComponent(x.dataset.id))}
 function roleHome(){
  const role=(localStorage.getItem('platform_file_session_role')||'').toLowerCase();
@@ -22,6 +95,7 @@ function returnPath(){return roleHome()}function centerUrl(extra={}){const q=new
 function mount(){
  if(/internal_messages\.html$/i.test(location.pathname))return;
  addStyles();
+ installNotificationBridge();
  const buttons=[...document.querySelectorAll('.im-static-messaging-btn')];
  if(!buttons.length)return;
  buttons.forEach(btn=>{

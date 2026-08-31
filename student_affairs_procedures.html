@@ -230,6 +230,14 @@ try{
 }catch(_){ }
 </script>
 <script src="platform-cloud-session.js?v=20260828-session-continuity-v2"></script>
+<script>
+window.CLOUD_STATE_CONFIG={
+  moduleKey:'student_affairs',
+  scope:'user',
+  keys:[],
+  prefixes:['studentAffairsStudentsVisible:']
+};
+</script>
 <script src="platform-persistence-guard.js?v=20260828-canonical-archive-v6"></script>
 
 <style id="design-review-editable-style">
@@ -1294,7 +1302,7 @@ function bindImportControls(){
      const rows=await readExcelRows($('#studentsExcelFile').files[0]);let added=0,updated=0,skipped=0;
      if($('#studentsImportMode').value==='replace')students.splice(0,students.length);
      rows.forEach((row,i)=>{const name=pickField(row,['الاسم','اسم الطالب','اسم الطالب/ة','الطالب']);const national=cleanNationalId(pickField(row,['السجل المدني','رقم السجل المدني','رقم الهوية','الهوية','سجل مدني']));const stage=normalizeStage(pickField(row,['المرحلة','المرحلة الدراسية']));const grade=pickField(row,['الصف','الصف الدراسي']);const classroom=pickField(row,['الفصل','فصل','الشعبة']);if(!name||!national||!stage||!grade||!classroom){skipped++;return;}let st=students.find(x=>x.national_id===national);if(st){Object.assign(st,{name,stage,grade,classroom,class:`${grade}/${classroom}`,source:'Excel'});updated++;}else{students.push({id:'S'+String(Date.now()+i),national_id:national,name,stage,grade,classroom,class:`${grade}/${classroom}`,guardian:'',guardian_relation:'',phone:'',alt_phone:'',primary_guardian:true,source:'Excel'});added++;}});
-     refreshStudentSelectors();await persistStudentAffairsState();result.innerHTML=`<div class="import-summary"><div class="stat"><small>تمت الإضافة</small><b>${added}</b></div><div class="stat"><small>تم التحديث</small><b>${updated}</b></div><div class="stat"><small>سجلات غير مكتملة</small><b>${skipped}</b></div><div class="stat"><small>إجمالي الطلاب</small><b>${students.length}</b></div></div><div class="ok" style="margin-top:8px">✓ تم حفظ قائمة الطلاب وستستعاد تلقائيًا عند فتح القسم مرة أخرى.</div>`;
+     refreshStudentSelectors();await saveStudentVisiblePayload();result.innerHTML=`<div class="import-summary"><div class="stat"><small>تمت الإضافة</small><b>${added}</b></div><div class="stat"><small>تم التحديث</small><b>${updated}</b></div><div class="stat"><small>سجلات غير مكتملة</small><b>${skipped}</b></div><div class="stat"><small>إجمالي الطلاب</small><b>${students.length}</b></div></div><div class="ok" style="margin-top:8px">✓ تم حفظ قائمة الطلاب وستستعاد تلقائيًا عند فتح القسم مرة أخرى.</div>`;
    }catch(err){result.innerHTML='<span class="error">'+esc(err.message)+'</span>';}
  };
  if($('#processGuardiansExcel')) $('#processGuardiansExcel').onclick=async()=>{
@@ -1302,7 +1310,7 @@ function bindImportControls(){
    try{
      const rows=await readExcelRows($('#guardiansExcelFile').files[0]);let linked=0,notFound=0,invalid=0;
      rows.forEach(row=>{const national=cleanNationalId(pickField(row,['السجل المدني للطالب','رقم السجل المدني','السجل المدني','رقم الهوية','هوية الطالب']));const guardian=pickField(row,['اسم ولي الامر','اسم ولي الأمر','ولي الامر','ولي الأمر','اسم الوالد']);const phone=pickField(row,['رقم الجوال','الجوال','رقم جوال ولي الامر','رقم جوال ولي الأمر','جوال ولي الأمر']);if(!national||!guardian||!phone){invalid++;return;}const st=students.find(x=>x.national_id===national);if(!st){notFound++;return;}st.guardian=guardian;st.guardian_relation=$('#guardianRelationDefault').value;st.phone=phone;st.primary_guardian=true;linked++;});
-     refreshStudentSelectors();await persistStudentAffairsState();result.innerHTML=`<div class="import-summary"><div class="stat"><small>تم الربط</small><b>${linked}</b></div><div class="stat"><small>طالب غير موجود</small><b>${notFound}</b></div><div class="stat"><small>بيانات ناقصة</small><b>${invalid}</b></div><div class="stat"><small>جاهزون للتواصل</small><b>${students.filter(st=>isValidSaudiMobile(st.phone)).length}</b></div></div>`;
+     refreshStudentSelectors();await saveStudentVisiblePayload();result.innerHTML=`<div class="import-summary"><div class="stat"><small>تم الربط</small><b>${linked}</b></div><div class="stat"><small>طالب غير موجود</small><b>${notFound}</b></div><div class="stat"><small>بيانات ناقصة</small><b>${invalid}</b></div><div class="stat"><small>جاهزون للتواصل</small><b>${students.filter(st=>isValidSaudiMobile(st.phone)).length}</b></div></div>`;
    }catch(err){result.innerHTML='<span class="error">'+esc(err.message)+'</span>';}
  };
  if($('#runPlatformSync')) $('#runPlatformSync').onclick=async()=>{
@@ -1333,42 +1341,15 @@ function normalizeImportedStudentV1(row,i,source){
  if(!name||!national)return null;return{id:'S'+String(Date.now()+i),name,national_id:national,stage,grade,classroom,class:`${grade}/${classroom}`,guardian,guardian_relation:pickField(row,['صلة القرابة','القرابة'])||'ولي أمر',phone,alt_phone:'',primary_guardian:true,source}
 }
 const importBtnV1=$('#processStudentsExcel');
-if(importBtnV1)importBtnV1.onclick=async()=>{const result=$('#studentsImportResult');try{const file=$('#studentsExcelFile').files[0],rows=await readImportRowsV1(file);if($('#studentsImportMode').value==='replace')students.splice(0,students.length);let added=0,updated=0,ready=0,review=0;rows.forEach((row,i)=>{const item=normalizeImportedStudentV1(row,i,String(file?.name||'').toLowerCase().endsWith('.pdf')?'PDF':'Excel');if(!item){review++;return}let st=students.find(x=>x.national_id===item.national_id);if(st){Object.assign(st,item,{id:st.id});updated++}else{students.push(st=item);added++}if(studentDataQuality(st)==='مكتملة')ready++;else review++});refreshStudentSelectors();await persistStudentAffairsState();result.innerHTML=`<div class="import-summary"><div class="stat"><small>تمت الإضافة</small><b>${added}</b></div><div class="stat"><small>تم التحديث</small><b>${updated}</b></div><div class="stat"><small>جاهزون للإجراءات</small><b>${ready}</b></div><div class="stat"><small>تحتاج مراجعة</small><b>${review}</b></div></div><div class="notice" style="margin-top:10px">يشترط اسم الطالب والسجل المدني والصف والفصل وولي الأمر ورقم جوال صالح قبل إرسال أي إجراء.</div>`}catch(e){result.innerHTML='<span class="error">'+esc(e.message)+'</span>'}};
+if(importBtnV1)importBtnV1.onclick=async()=>{const result=$('#studentsImportResult');try{const file=$('#studentsExcelFile').files[0],rows=await readImportRowsV1(file);if($('#studentsImportMode').value==='replace')students.splice(0,students.length);let added=0,updated=0,ready=0,review=0;rows.forEach((row,i)=>{const item=normalizeImportedStudentV1(row,i,String(file?.name||'').toLowerCase().endsWith('.pdf')?'PDF':'Excel');if(!item){review++;return}let st=students.find(x=>x.national_id===item.national_id);if(st){Object.assign(st,item,{id:st.id});updated++}else{students.push(st=item);added++}if(studentDataQuality(st)==='مكتملة')ready++;else review++});refreshStudentSelectors();await saveStudentVisiblePayload();result.innerHTML=`<div class="import-summary"><div class="stat"><small>تمت الإضافة</small><b>${added}</b></div><div class="stat"><small>تم التحديث</small><b>${updated}</b></div><div class="stat"><small>جاهزون للإجراءات</small><b>${ready}</b></div><div class="stat"><small>تحتاج مراجعة</small><b>${review}</b></div></div><div class="notice" style="margin-top:10px">يشترط اسم الطالب والسجل المدني والصف والفصل وولي الأمر ورقم جوال صالح قبل إرسال أي إجراء.</div>`}catch(e){result.innerHTML='<span class="error">'+esc(e.message)+'</span>'}};
 const guardianBtnV1=$('#processGuardiansExcel');
-if(guardianBtnV1)guardianBtnV1.onclick=async()=>{const result=$('#guardiansImportResult');try{const rows=await readImportRowsV1($('#guardiansExcelFile').files[0]);let linked=0,notFound=0,invalid=0;rows.forEach(row=>{const national=cleanNationalId(pickField(row,['السجل المدني للطالب','رقم السجل المدني','السجل المدني','رقم الهوية','هوية الطالب'])),guardian=pickField(row,['اسم ولي الامر','اسم ولي الأمر','ولي الامر','ولي الأمر','اسم الوالد']),phone=pickField(row,['رقم الجوال','الجوال','رقم جوال ولي الامر','رقم جوال ولي الأمر','جوال ولي الأمر']);if(!national||!guardian||!phone){invalid++;return}const st=students.find(x=>x.national_id===national);if(!st){notFound++;return}st.guardian=guardian;st.guardian_relation=$('#guardianRelationDefault').value;st.phone=phone;st.primary_guardian=true;linked++});refreshStudentSelectors();await persistStudentAffairsState();result.innerHTML=`<div class="import-summary"><div class="stat"><small>تم الربط</small><b>${linked}</b></div><div class="stat"><small>طالب غير موجود</small><b>${notFound}</b></div><div class="stat"><small>بيانات ناقصة</small><b>${invalid}</b></div><div class="stat"><small>جاهزون للتواصل</small><b>${students.filter(st=>studentDataQuality(st)==='مكتملة').length}</b></div></div>`}catch(e){result.innerHTML='<span class="error">'+esc(e.message)+'</span>'}};
+if(guardianBtnV1)guardianBtnV1.onclick=async()=>{const result=$('#guardiansImportResult');try{const rows=await readImportRowsV1($('#guardiansExcelFile').files[0]);let linked=0,notFound=0,invalid=0;rows.forEach(row=>{const national=cleanNationalId(pickField(row,['السجل المدني للطالب','رقم السجل المدني','السجل المدني','رقم الهوية','هوية الطالب'])),guardian=pickField(row,['اسم ولي الامر','اسم ولي الأمر','ولي الامر','ولي الأمر','اسم الوالد']),phone=pickField(row,['رقم الجوال','الجوال','رقم جوال ولي الامر','رقم جوال ولي الأمر','جوال ولي الأمر']);if(!national||!guardian||!phone){invalid++;return}const st=students.find(x=>x.national_id===national);if(!st){notFound++;return}st.guardian=guardian;st.guardian_relation=$('#guardianRelationDefault').value;st.phone=phone;st.primary_guardian=true;linked++});refreshStudentSelectors();await saveStudentVisiblePayload();result.innerHTML=`<div class="import-summary"><div class="stat"><small>تم الربط</small><b>${linked}</b></div><div class="stat"><small>طالب غير موجود</small><b>${notFound}</b></div><div class="stat"><small>بيانات ناقصة</small><b>${invalid}</b></div><div class="stat"><small>جاهزون للتواصل</small><b>${students.filter(st=>studentDataQuality(st)==='مكتملة').length}</b></div></div>`}catch(e){result.innerHTML='<span class="error">'+esc(e.message)+'</span>'}};
 const platformBtnV1=$('#runPlatformSync');
 if(platformBtnV1)platformBtnV1.onclick=async()=>{
  const r=$('#platformSyncResult');
- r.innerHTML='<span>جارٍ الاتصال بمركز معلومات مدير المدرسة...</span>';
- try{
-   const source=window.SchoolInformationSource;
-   if(!source||typeof source.getStudents!=='function')throw new Error('تعذر تحميل مصدر مركز معلومات مدير المدرسة. تأكد من وجود school-information-source.js في جذر المنصة.');
-   const expectedSchool=activeSchoolId();
-   if(typeof source.refresh==='function')await source.refresh();
-   const ctx=typeof source.context==='function'?source.context():{};
-   const sourceSchool=String(ctx?.schoolId||'').trim();
-   if(expectedSchool&&sourceSchool&&expectedSchool!==sourceSchool)throw new Error('تم منع الاستيراد لأن مركز المعلومات مرتبط بمدرسة أخرى.');
-   const data=await source.getStudents(true);
-   if(!Array.isArray(data))throw new Error('لم يرجع مركز المعلومات قائمة طلاب صالحة.');
-   let added=0,updated=0,skipped=0;
-   data.forEach((row,i)=>{
-     const name=String(row.student_name||row.name||row.full_name||'').trim();
-     const national=cleanNationalId(row.national_id||row.student_national_id||row.identity||row.civil_id||'');
-     if(!name){skipped++;return;}
-     const stage=normalizeStage(row.stage||row.stage_name||'');
-     const grade=String(row.grade||row.grade_name||'').trim();
-     const classroom=String(row.section_name||row.classroom||row.section||row.noor_section_code||'').trim();
-     const stableId=String(row.id||row.student_id||'').trim();
-     let st=(national&&students.find(x=>x.national_id===national))||(stableId&&students.find(x=>String(x.source_id||'')===stableId));
-     const patch={name,national_id:national,stage,grade,classroom,class:`${grade}/${classroom}`,source:'مركز معلومات مدير المدرسة',source_id:stableId};
-     // لا نستبدل بيانات ولي الأمر الموجودة محليًا لأن المصدر المركزي الحالي لا يحتوي حقول ولي الأمر.
-     if(st){Object.assign(st,patch,{id:st.id});updated++;}
-     else{students.push({id:stableId?('SI-'+stableId):('S'+String(Date.now()+i)),guardian:'',guardian_relation:'',phone:'',alt_phone:'',primary_guardian:true,...patch});added++;}
-   });
-   refreshStudentSelectors();
-   renderAll();
-   r.innerHTML=`<div class="import-summary"><div class="stat"><small>طلاب جدد</small><b>${added}</b></div><div class="stat"><small>تم تحديثهم</small><b>${updated}</b></div><div class="stat"><small>تجاوزها النظام</small><b>${skipped}</b></div><div class="stat"><small>إجمالي الطلاب</small><b>${students.length}</b></div></div><div class="notice" style="margin-top:10px">تمت القراءة من مركز معلومات مدير المدرسة لنفس المدرسة. بيانات ولي الأمر غير موجودة في المصدر المركزي الحالي، ويمكن استكمالها من زر استيراد بيانات أولياء الأمور من Excel.</div>`;
- }catch(e){r.innerHTML='<span class="error">'+esc(e.message||String(e))+'</span>';}
+ r.innerHTML='<span>جارٍ قراءة الطلاب مباشرة من مركز معلومات مدير المدرسة...</span>';
+ try{await refreshStudentsFromInformationCenter({silent:false})}
+ catch(e){r.innerHTML='<span class="error">'+esc(e.message||String(e))+'</span>'}
 };
 
 function archiveFormKeyV1(a){const d=a?.formKey||'';if(d&&templates[d])return d;return Object.keys(templates).find(k=>templates[k].title===a?.title)||''}
@@ -1452,9 +1433,132 @@ loadOfficialIdentityFromPlatformV2().catch(()=>{});
 window.addEventListener('schoolBaseSettingsUpdated',()=>loadOfficialIdentityFromPlatformV2().catch(()=>{}));
 window.addEventListener('school-information-source-invalidated',()=>loadOfficialIdentityFromPlatformV2().catch(()=>{}));
 
+
+/* ===== حفظ قائمة الطلاب بنفس نمط متابعة الأعمال الأسبوعية ===== */
+function studentRosterSchoolId(){return String(activeSchoolId()||'').trim()}
+function studentRosterUserId(){
+  try{
+    const p=currentAgentProfileV2?.()||{};
+    return String(window.PlatformCloudSession?.userId?.()||p.userId||p.user_id||
+      sessionStorage.getItem('platform_tab_session_user_v1')||
+      localStorage.getItem('platform_file_session_user')||
+      localStorage.getItem('currentUserId')||
+      localStorage.getItem('current_user_id')||'').trim();
+  }catch(_){return ''}
+}
+function studentVisibleKey(){
+  return 'studentAffairsStudentsVisible:'+studentRosterSchoolId()+':'+(studentRosterUserId()||'user');
+}
+function readStudentVisiblePayload(){
+  try{
+    const raw=localStorage.getItem(studentVisibleKey())||sessionStorage.getItem(studentVisibleKey());
+    if(!raw)return null;
+    const p=JSON.parse(raw);
+    if(!p||!Array.isArray(p.students))return null;
+    if(p.school_id&&String(p.school_id)!==studentRosterSchoolId())return null;
+    if(p.user_id&&studentRosterUserId()&&String(p.user_id)!==studentRosterUserId())return null;
+    return p;
+  }catch(_){return null}
+}
+function loadStudentVisiblePayload(){
+  const p=readStudentVisiblePayload();
+  if(!p||!p.students.length)return false;
+  students.splice(0,students.length,...p.students);
+  refreshStudentSelectors();
+  renderAll();
+  return true;
+}
+async function saveStudentVisiblePayload(){
+  const sid=studentRosterSchoolId(),uid=studentRosterUserId();
+  if(!sid||resolveViewerRole()!=='student_affairs')return false;
+  const payload={
+    source:'student_affairs_roster',
+    school_id:sid,
+    user_id:uid,
+    updated_at:new Date().toISOString(),
+    students:students
+  };
+  localStorage.setItem(studentVisibleKey(),JSON.stringify(payload));
+  if(window.PlatformPersistenceGuard&&typeof PlatformPersistenceGuard.commit==='function'){
+    const r=await PlatformPersistenceGuard.commit([studentVisibleKey()]);
+    if(!r||r.ok===false)console.warn('student roster cloud commit failed',r?.error||'unknown');
+  }
+  return true;
+}
+function mergeCenterStudentsIntoRoster(data){
+  let added=0,updated=0,skipped=0;
+  (Array.isArray(data)?data:[]).forEach((row,i)=>{
+    const name=String(row.student_name||row.name||row.full_name||'').trim();
+    const national=cleanNationalId(row.national_id||row.student_national_id||row.identity||row.civil_id||'');
+    if(!name){skipped++;return}
+    const stage=normalizeStage(row.stage||row.stage_name||'');
+    const grade=String(row.grade||row.grade_name||'').trim();
+    const classroom=String(row.section_name||row.classroom||row.section||row.noor_section_code||'').trim();
+    const stableId=String(row.id||row.student_id||row.student_number||'').trim();
+    let st=(national&&students.find(x=>x.national_id===national))||
+           (stableId&&students.find(x=>String(x.source_id||'')===stableId));
+    const patch={name,national_id:national,stage,grade,classroom,class:`${grade}/${classroom}`,
+      source:'مركز معلومات مدير المدرسة',source_id:stableId};
+    if(st){
+      // بيانات ولي الأمر المستوردة يدويًا لا يمسحها مركز المعلومات.
+      const guardian=st.guardian,relation=st.guardian_relation,phone=st.phone,alt=st.alt_phone;
+      Object.assign(st,patch,{id:st.id,guardian,guardian_relation:relation,phone,alt_phone:alt});
+      updated++;
+    }else{
+      students.push({id:stableId?('SI-'+stableId):('S'+String(Date.now()+i)),
+        guardian:'',guardian_relation:'',phone:'',alt_phone:'',primary_guardian:true,...patch});
+      added++;
+    }
+  });
+  return {added,updated,skipped}
+}
+let studentCenterRefreshPromise=null;
+async function refreshStudentsFromInformationCenter(opts={}){
+  if(studentCenterRefreshPromise)return studentCenterRefreshPromise;
+  studentCenterRefreshPromise=(async()=>{
+    const silent=!!opts.silent;
+    const source=window.SchoolInformationSource;
+    if(!source||typeof source.getStudents!=='function')return false;
+    const expected=studentRosterSchoolId();
+    if(!expected)return false;
+    if(typeof source.refresh==='function')await source.refresh();
+    const ctx=typeof source.context==='function'?source.context():{};
+    const sourceSchool=String(ctx?.schoolId||'').trim();
+    if(expected&&sourceSchool&&expected!==sourceSchool)throw new Error('تم منع قراءة الطلاب لأن مركز المعلومات مرتبط بمدرسة أخرى.');
+    const data=await source.getStudents(true);
+    if(!Array.isArray(data))return false;
+    const stats=mergeCenterStudentsIntoRoster(data);
+    refreshStudentSelectors();
+    renderAll();
+    await saveStudentVisiblePayload();
+    if(!silent){
+      const r=$('#platformSyncResult');
+      if(r)r.innerHTML=`<div class="import-summary"><div class="stat"><small>طلاب جدد</small><b>${stats.added}</b></div><div class="stat"><small>تم تحديثهم</small><b>${stats.updated}</b></div><div class="stat"><small>تجاوزها النظام</small><b>${stats.skipped}</b></div><div class="stat"><small>إجمالي الطلاب</small><b>${students.length}</b></div></div><div class="success" style="margin-top:8px">✓ تمت القراءة والحفظ بنفس آلية قائمة المعلمين في متابعة الأعمال الأسبوعية.</div>`;
+    }
+    return true;
+  })();
+  try{return await studentCenterRefreshPromise}
+  finally{studentCenterRefreshPromise=null}
+}
+
+/* حفظ تغييرات ولي الأمر مع نفس سجل الطالب فور مغادرة الحقل. */
+['guardianName','guardianPhone','guardianRelation'].forEach(id=>{
+  const el=$( '#'+id );
+  if(el)el.addEventListener('change',async()=>{
+    const st=studentById($('#studentSelect')?.value);
+    if(!st)return;
+    st.guardian=String($('#guardianName')?.value||st.guardian||'').trim();
+    st.phone=String($('#guardianPhone')?.value||st.phone||'').trim();
+    st.guardian_relation=String($('#guardianRelation')?.value||st.guardian_relation||'').trim();
+    await saveStudentVisiblePayload();
+  });
+});
+
 if(new URLSearchParams(location.search).get('guardian')!=='1'){
   enforceStudentAffairsAccess().catch(()=>renderStudentAffairsAccess(''));
+  loadStudentVisiblePayload();
   renderAll();
+  setTimeout(()=>refreshStudentsFromInformationCenter({silent:true}).catch(e=>console.warn('student center auto refresh',e)),700);
   setTimeout(()=>syncStudentAffairsCloudTransactions(true),1200);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncStudentAffairsCloudTransactions(true)});
   setInterval(()=>{if(!document.hidden)syncStudentAffairsCloudTransactions(true)},20000);
@@ -2068,7 +2172,7 @@ window.addEventListener('load',()=>{
 
 <script>
 /* ضمان إضافي لحفظ نتائج الاستيراد بعد اكتمال المعالجة غير المتزامنة. */
-(function bindImportPersistenceFallback(){ const ids=['studentsImportResult','guardiansImportResult','platformSyncResult']; ids.forEach(id=>{ const el=document.getElementById(id); if(!el)return; const obs=new MutationObserver(()=>{ if(typeof persistStudentAffairsState==='function') setTimeout(()=>persistStudentAffairsState().catch(console.error),120); }); obs.observe(el,{childList:true,subtree:true,characterData:true}); });})();
+(function bindImportPersistenceFallback(){ /* تم الاستغناء عنه: الحفظ أصبح داخل نفس نطاق بيانات الطلاب مثل متابعة الأعمال الأسبوعية. */ })();
 </script>
 </body>
 </html>

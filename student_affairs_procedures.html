@@ -593,56 +593,44 @@ function getSchoolStamp(){return (window.StudentAffairsConfig&&window.StudentAff
 function getAgentSignature(){return (window.StudentAffairsConfig&&window.StudentAffairsConfig.agent_signature)||SchoolContactConfig.agent_signature||''}
 function safeJSON(raw){try{return JSON.parse(raw||'null')}catch(_){return null}}
 function activeSchoolId(){try{return String(window.PlatformCloudSession?.schoolId?.()||sessionStorage.getItem('smart_school_tab_school_v1')||sessionStorage.getItem('current_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||'').trim()}catch(_){return ''}}
-function normalizeStudentAffairsRole(v){
-  const x=String(v||'').trim().toLowerCase().replace(/[_-]+/g,' ').replace(/\s+/g,' ');
-  if(['system admin','system administrator','مدير النظام'].includes(x))return 'system_admin';
-  if(['student affairs','student affairs agent','student affairs deputy','deputy students','وكيل شؤون الطلاب','وكيلة شؤون الطلاب','وكيل الشؤون الطلابية','وكيلة الشؤون الطلابية','وكيل/وكيلة شؤون الطلاب','شؤون الطلاب','الشؤون الطلابية'].includes(x))return 'student_affairs';
-  return x;
-}
-function saList(v){if(Array.isArray(v))return v.flatMap(saList);v=String(v||'').trim();if(!v)return[];if(v[0]==='['){try{return saList(JSON.parse(v))}catch(_){}}return v.split(/[،,|;/]+/).map(x=>x.trim()).filter(Boolean)}
 function saSystemAdminContext(){
   return sessionStorage.getItem('system_admin_context')==='1'||
     sessionStorage.getItem('system_admin_verified')==='true'||
     document.documentElement.getAttribute('data-system-admin-context')==='1';
 }
-function saProfile(){
-  return window.FOLLOW_TARGET_USER||
-    safeJSON(sessionStorage.getItem('smart_school_current_session'))||
-    safeJSON(localStorage.getItem('smart_school_current_session'))||
-    safeJSON(localStorage.getItem('currentSchoolUser'))||
-    safeJSON(localStorage.getItem('currentUser'))||{};
-}
-function saAgentHasStudentAffairs(){
-  if(saSystemAdminContext())return false;
-  const p=saProfile(),role=String(p.dbRole||p.role||sessionStorage.getItem('smart_school_tab_role_v1')||'').toLowerCase();
-  if(role&&!/agent|وكيل|student_affairs|student-affairs/.test(role))return false;
-  const direct=[p.agent_categories,p.agency_categories,p.agency_types,p.agency_type,p.agencyType,p.vice_agency_type,p.viceAgencyType,p.roleLabel,p.role_label].flatMap(saList).map(normalizeStudentAffairsRole);
-  if(direct.includes('student_affairs'))return true;
+let __saVerifiedKind='';
+function resolveViewerRole(){return saSystemAdminContext()?'system_admin':__saVerifiedKind}
+async function verifyStudentAffairsServerAccess(){
+  if(saSystemAdminContext()){__saVerifiedKind='system_admin';return __saVerifiedKind}
   try{
-    const sid=p.schoolId||p.school_id||activeSchoolId()||'default';
-    const map=safeJSON(localStorage.getItem('smartSchoolUnifiedOpsV2_vp_agency_map_'+sid))||{};
-    const id=String(p.id||p.userId||p.user_id||''),email=String(p.email||'').trim().toLowerCase();
-    return saList((id&&map[id])||(email&&map[email])||'').map(normalizeStudentAffairsRole).includes('student_affairs');
-  }catch(_){return false}
+    const r=await studentAffairsGuardianCall('list',{formKey:'__student_affairs_access_probe__'},true);
+    __saVerifiedKind=r?.viewerKind==='student_affairs'?'student_affairs':'';
+  }catch(e){console.warn('[StudentAffairsProcedures] access denied',e?.message||e);__saVerifiedKind=''}
+  return __saVerifiedKind;
 }
-function resolveViewerRole(){
-  if(saSystemAdminContext())return 'system_admin';
-  return saAgentHasStudentAffairs()?'student_affairs':'';
+function renderStudentAffairsAccess(kind){
+  const b=document.getElementById('roleGuardBanner');
+  const ok=kind==='student_affairs'||kind==='system_admin';
+  const layout=document.querySelector('.layout');
+  if(layout)layout.classList.toggle('hidden',!ok);
+  if(b){
+    b.className='role-guard-banner'+(ok?' review':'');
+    b.textContent=ok
+      ?(kind==='system_admin'?'وضع مدير النظام — مراجعة فقط. لا تُنشأ أو تُعدّل معاملات تشغيلية من هذا السياق.':'القسم التشغيلي لوكيل/وكيلة شؤون الطلاب.')
+      :'';
+  }
+  let deny=document.getElementById('studentAffairsAccessDenied');
+  if(!ok){
+    if(!deny){
+      document.body.insertAdjacentHTML('afterbegin','<div id="studentAffairsAccessDenied" style="max-width:720px;margin:70px auto;padding:25px;border:1px solid #eadada;background:#fff5f5;border-radius:16px;color:#8d3636;font-weight:800;text-align:center">هذا القسم مخصص لوكيل/وكيلة شؤون الطلاب ومدير النظام في سياق المراجعة فقط.<div style="margin-top:18px"><button type="button" onclick="location.href=\'agent.html?sectionReturn=1\'" style="border:0;border-radius:12px;padding:10px 18px;background:#15445A;color:white;font:inherit;cursor:pointer">العودة لواجهة أقسام الوكيل</button></div></div>');
+      deny=document.getElementById('studentAffairsAccessDenied');
+    }
+  }else if(deny)deny.remove();
+  return ok;
 }
-function enforceStudentAffairsAccess(){
- const role=resolveViewerRole(),b=document.getElementById('roleGuardBanner');
- const ok=role==='student_affairs'||role==='system_admin';
- if(b){
-   b.className='role-guard-banner'+(ok?' review':'');
-   b.textContent=ok
-     ?(role==='system_admin'?'وضع مدير النظام — مراجعة فقط. لا تُنشأ أو تُعدّل معاملات تشغيلية من هذا السياق.':'القسم التشغيلي لوكيل/وكيلة شؤون الطلاب.')
-     :'';
- }
- if(!ok){
-   document.querySelector('.layout')?.classList.add('hidden');
-   document.body.insertAdjacentHTML('afterbegin','<div style="max-width:720px;margin:70px auto;padding:25px;border:1px solid #eadada;background:#fff5f5;border-radius:16px;color:#8d3636;font-weight:800;text-align:center">هذا القسم مخصص لوكيل/وكيلة شؤون الطلاب ومدير النظام في سياق المراجعة فقط.</div>');
- }
- return ok;
+async function enforceStudentAffairsAccess(){
+  const kind=await verifyStudentAffairsServerAccess();
+  return renderStudentAffairsAccess(kind);
 }
 
 function getAgentName(){
@@ -1384,7 +1372,7 @@ loadOfficialIdentityFromPlatformV2().catch(()=>{});
 window.addEventListener('schoolBaseSettingsUpdated',()=>loadOfficialIdentityFromPlatformV2().catch(()=>{}));
 window.addEventListener('school-information-source-invalidated',()=>loadOfficialIdentityFromPlatformV2().catch(()=>{}));
 
-enforceStudentAffairsAccess();
+enforceStudentAffairsAccess().catch(()=>renderStudentAffairsAccess(''));
 renderAll();
 })();
 </script>

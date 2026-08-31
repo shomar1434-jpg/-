@@ -6737,94 +6737,77 @@ window.__AGENT_PERFORMANCE_ARCHIVE_SAVE_V2__={verifiedBeforeSuccess:true,folderB
 </script>
 <script id="student-affairs-procedures-card-guard">
 (function(){
-  if(window.__STUDENT_AFFAIRS_SECTION_ACCESS_V4__)return;
-  window.__STUDENT_AFFAIRS_SECTION_ACCESS_V4__=true;
+  if(window.__STUDENT_AFFAIRS_SECTION_ACCESS_V5__)return;
+  window.__STUDENT_AFFAIRS_SECTION_ACCESS_V5__=true;
 
-  function parse(v){try{return JSON.parse(v||'null')}catch(_){return null}}
-  function list(v){
-    if(Array.isArray(v))return v.flatMap(list);
-    v=String(v||'').trim();if(!v)return[];
-    if(v[0]==='['){try{return list(JSON.parse(v))}catch(_){}}
-    return v.split(/[،,|;/]+/).map(x=>x.trim()).filter(Boolean);
-  }
-  function canonical(v){
-    const x=String(v||'').trim().toLowerCase().replace(/[_-]+/g,' ').replace(/\s+/g,' ');
-    if(!x||x==='general')return '';
-    const sa=[
-      'student affairs','student affairs agent','student affairs deputy','deputy students',
-      'وكيل شؤون الطلاب','وكيلة شؤون الطلاب','وكيل الشؤون الطلابية','وكيلة الشؤون الطلابية',
-      'وكيل/وكيلة شؤون الطلاب','شؤون الطلاب','الشؤون الطلابية'
-    ];
-    if(sa.includes(x))return 'student_affairs';
-    if(['system admin','system administrator','مدير النظام'].includes(x))return 'system_admin';
-    return x;
-  }
-  function activeSchoolId(){
-    return String(
-      window.PlatformCloudSession?.schoolId?.()||
-      sessionStorage.getItem('smart_school_tab_school_v1')||
-      sessionStorage.getItem('current_school_id')||
-      localStorage.getItem('current_school_id')||
-      localStorage.getItem('school_id')||''
-    ).trim();
-  }
+  const API='https://cijhgvbtrvmmlcssgxht.supabase.co/functions/v1/student-affairs-guardian';
+  const ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
+  let verifiedKind='';
+  let verifying=null;
+
   function isSystemAdminContext(){
     return sessionStorage.getItem('system_admin_context')==='1'||
            sessionStorage.getItem('system_admin_verified')==='true'||
            document.documentElement.getAttribute('data-system-admin-context')==='1';
   }
-  function currentProfile(){
-    return window.FOLLOW_TARGET_USER||
-      parse(sessionStorage.getItem('smart_school_current_session'))||
-      parse(localStorage.getItem('smart_school_current_session'))||
-      parse(localStorage.getItem('currentSchoolUser'))||
-      parse(localStorage.getItem('currentUser'))||{};
+  function token(){
+    try{return window.PlatformCloudSession?.token?.()||sessionStorage.getItem('platform_tab_session_token_v1')||localStorage.getItem('platform_file_session_token')||''}catch(_){return ''}
   }
-  function studentAffairsAssignment(){
-    if(isSystemAdminContext())return false; // مدير النظام ليس وكيلاً تشغيلياً.
-    const p=currentProfile();
-    const role=String(p.dbRole||p.role||sessionStorage.getItem('smart_school_tab_role_v1')||'').trim().toLowerCase();
-    if(role && !/agent|وكيل|student_affairs|student-affairs/.test(role))return false;
-
-    const direct=[
-      p.agent_categories,p.agency_categories,p.agency_types,p.agency_type,p.agencyType,
-      p.vice_agency_type,p.viceAgencyType,p.roleLabel,p.role_label
-    ].flatMap(list).map(canonical);
-    if(direct.includes('student_affairs'))return true;
-
-    try{
-      const sid=p.schoolId||p.school_id||activeSchoolId()||'default';
-      const map=parse(localStorage.getItem('smartSchoolUnifiedOpsV2_vp_agency_map_'+sid))||{};
-      const id=String(p.id||p.userId||p.user_id||'');
-      const email=String(p.email||'').trim().toLowerCase();
-      const mapped=(id&&map[id])||(email&&map[email])||'';
-      return list(mapped).map(canonical).includes('student_affairs');
-    }catch(_){return false}
+  async function serverAccess(){
+    if(isSystemAdminContext()){verifiedKind='system_admin';return verifiedKind}
+    if(verifiedKind==='student_affairs')return verifiedKind;
+    if(verifying)return verifying;
+    verifying=(async()=>{
+      try{
+        if(window.PlatformCloudSession?.ensure)await window.PlatformCloudSession.ensure();
+        let tk=token();
+        if(!tk)throw new Error('NO_PLATFORM_SESSION');
+        const send=async()=>{
+          const r=await fetch(API,{method:'POST',headers:{apikey:ANON,'content-type':'application/json','x-platform-session':tk},body:JSON.stringify({action:'list',formKey:'__student_affairs_access_probe__'})});
+          const j=await r.json().catch(()=>({}));
+          return {r,j};
+        };
+        let x=await send();
+        if(x.r.status===401&&window.PlatformCloudSession?.recover){
+          await window.PlatformCloudSession.recover();tk=token();x=await send();
+        }
+        if(x.r.ok&&x.j?.viewerKind==='student_affairs')verifiedKind='student_affairs';
+        else verifiedKind='';
+      }catch(e){console.warn('[StudentAffairsAccess] server verification failed',e?.message||e);verifiedKind=''}
+      finally{verifying=null}
+      return verifiedKind;
+    })();
+    return verifying;
   }
-  function accessKind(){
-    if(isSystemAdminContext())return 'system_admin';
-    return studentAffairsAssignment()?'student_affairs':'';
-  }
-  function apply(){
-    const allowed=!!accessKind();
+  function apply(kind){
+    const allowed=kind==='student_affairs'||kind==='system_admin';
     document.querySelectorAll('[data-student-affairs-only="1"]').forEach(el=>el.style.display=allowed?'flex':'none');
     document.documentElement.setAttribute('data-student-affairs-card-ready','1');
-    window.dispatchEvent(new CustomEvent('student-affairs-card-ready'));
+    window.dispatchEvent(new CustomEvent('student-affairs-card-ready',{detail:{kind:kind||''}}));
+  }
+  async function verifyAndApply(){
+    if(isSystemAdminContext()){apply('system_admin');return 'system_admin'}
+    const kind=await serverAccess();apply(kind);return kind;
   }
 
-  window.StudentAffairsSectionAccess={kind:accessKind,isSystemAdminContext,studentAffairsAssignment,activeSchoolId};
-  window.openStudentAffairsProcedures=function(){
-    if(!accessKind()){alert('هذا القسم مخصص لوكيل/وكيلة شؤون الطلاب ومدير النظام في سياق الإدارة فقط.');return}
+  window.StudentAffairsSectionAccess={
+    kind:()=>isSystemAdminContext()?'system_admin':verifiedKind,
+    isSystemAdminContext,
+    verify:serverAccess
+  };
+  window.openStudentAffairsProcedures=async function(){
+    const kind=isSystemAdminContext()?'system_admin':(verifiedKind||await serverAccess());
+    if(!kind){alert('هذا القسم مخصص لوكيل/وكيلة شؤون الطلاب ومدير النظام في سياق الإدارة فقط.');return}
     location.href='student_affairs_procedures.html';
   };
-  window.openStudentAffairsProceduresArchive=function(){
-    if(!accessKind()){alert('هذا الأرشيف مخصص لوكيل/وكيلة شؤون الطلاب ومدير النظام في سياق الإدارة فقط.');return}
+  window.openStudentAffairsProceduresArchive=async function(){
+    const kind=isSystemAdminContext()?'system_admin':(verifiedKind||await serverAccess());
+    if(!kind){alert('هذا الأرشيف مخصص لوكيل/وكيلة شؤون الطلاب ومدير النظام في سياق الإدارة فقط.');return}
     location.href='student_affairs_procedures_archive.html';
   };
 
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',apply,{once:true});else apply();
-  window.addEventListener('load',apply,{once:true});
-  window.addEventListener('focus',apply);
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',verifyAndApply,{once:true});else verifyAndApply();
+  window.addEventListener('focus',()=>verifyAndApply());
 })();
 </script>
 <script id="agent-section-return-main-grid-v1">

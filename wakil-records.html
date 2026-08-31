@@ -1376,9 +1376,6 @@ function readJsonSafe(key,fallback){try{return JSON.parse(localStorage.getItem(k
 function canonicalWakilAgency(v){
   var x=String(v||'').trim().replace(/\s+/g,' ');
   if(!x || x==='general') return '';
-  /* المسميات العامة للدور ليست تصنيف وكالة. */
-  var genericRole=/^(agent|agency|deputy|وكيل|وكيلة|الوكيل|الوكيلة|وكيل\/وكيلة|نائب|نائبة)$/i;
-  if(genericRole.test(x)) return '';
   var aliases={
     'educational':'educational','deputy_academic':'educational','academic':'educational',
     'وكيل شؤون تعليمية':'educational','وكيل الشؤون التعليمية':'educational','وكيل/وكيلة شؤون تعليمية':'educational','وكيل/وكيلة الشؤون التعليمية':'educational','وكيلة شؤون تعليمية':'educational','وكيلة الشؤون التعليمية':'educational',
@@ -1387,7 +1384,13 @@ function canonicalWakilAgency(v){
     'student_affairs':'student_affairs','deputy_students':'student_affairs','students':'student_affairs',
     'وكيل شؤون الطلاب':'student_affairs','وكيل الشؤون الطلابية':'student_affairs','وكيل/وكيلة شؤون الطلاب':'student_affairs','وكيلة شؤون الطلاب':'student_affairs'
   };
-  /* لا نقبل أي قيمة مجهولة كتصنيف؛ التصنيفات المعتمدة ثلاثة فقط. */
+  // لا يجوز اعتبار المسمى العام للدور (وكيل/وكيلة/agent/agency/deputy) تصنيف وكالة.
+  // نقبل فقط التصنيفات الثلاثة المعروفة أو مسمياتها الصريحة؛ أي قيمة أخرى تعني عدم وجود تصنيف محدد.
+  var genericRoleLabels={
+    'وكيل':1,'وكيلة':1,'الوكيل':1,'الوكيلة':1,
+    'agent':1,'agency':1,'deputy':1,'vice principal':1,'vice_principal':1
+  };
+  if(genericRoleLabels[x.toLowerCase ? x.toLowerCase() : x] || genericRoleLabels[x]) return '';
   return aliases[x]||'';
 }
 function normalizeAgencyList(v){
@@ -1405,24 +1408,39 @@ function currentWakilUser(){
 }
 function currentWakilAgencies(){
   var u=currentWakilUser();
-  // تصنيف الوكالة الصريح هو المصدر الأول. المسمى الوظيفي مجرد احتياط حتى لا يحجب تصنيف school_affairs الحقيقي.
-  var list=normalizeAgencyList(u.agent_categories||u.agency_categories||u.agency_types||u.agency_type||u.agencyType||u.vice_agency_type||u.viceAgencyType||u.roleLabel||u.role_label||'');
-  if(!list.length){
-    var sid=u.schoolId||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||'default';
+  var q=new URLSearchParams(location.search||'');
+
+  // 1) تكليف صريح في الرابط (يستخدم فقط عند فتح سياق وكالة محدد).
+  var fromQuery=normalizeAgencyList(q.get('agency_type')||q.get('agency_types')||q.get('agent_categories')||'');
+  if(fromQuery.length) return fromQuery;
+
+  // 2) خريطة التكليف المعزولة للمدرسة الحالية هي المصدر الدائم الموثوق.
+  var sid='';
+  try{sid=String(window.PlatformCloudSession?.schoolId?.()||'').trim();}catch(_){sid='';}
+  sid=sid||String(u.schoolId||u.school_id||sessionStorage.getItem('smart_school_tab_school_v1')||sessionStorage.getItem('current_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||'').trim();
+  if(sid){
     var map=readJsonSafe('smartSchoolUnifiedOpsV2_vp_agency_map_'+sid,{});
-    var id=String(u.id||''), email=String(u.email||localStorage.getItem('currentUserEmail')||'').toLowerCase();
-    list=normalizeAgencyList((id&&map[id])||(email&&map[email])||'');
+    var id=String(u.id||u.userId||u.uid||'').trim();
+    var email=String(u.email||u.schoolEmail||localStorage.getItem('currentUserEmail')||'').trim().toLowerCase();
+    var assigned=normalizeAgencyList((id&&map[id])||(email&&map[email])||'');
+    if(assigned.length) return assigned;
   }
-  return list;
+
+  // لا نستخدم agency_type/roleLabel المخزنة في currentUser/currentSchoolUser هنا؛
+  // قد تكون بقايا جلسة أو مسمى دور عام وتسببت سابقاً في اختفاء السجلات.
+  // عدم وجود تكليف موثوق = وكيل عام = كل السجلات.
+  return [];
 }
 function currentWakilAgency(){var list=currentWakilAgencies(); return list.length?list.join(','):'general';}
 function allowedWakilCategory(cat){
   var agencies=currentWakilAgencies();
   cat=cat||'shared';
   if(cat==='shared') return true;
-  /* عدم وجود تصنيف صريح يعني وكيل عام، وبالتالي تظهر جميع السجلات.
-     أما إذا حدد المدير تصنيفًا صريحًا فتظهر سجلاته + المشتركة فقط. */
+  // إذا لم يحدد المدير تصنيف وكالة صريحاً، فالحالة المقصودة هي «كل السجلات»
+  // كما تعرضها الواجهة، ولا يجوز حصر الوكيل في السجلات المشتركة فقط.
   if(!agencies.length) return true;
+  // عند وجود تصنيف/تصنيفات صريحة، يظل العزل الوظيفي كما هو:
+  // السجلات المشتركة + التصنيفات المكلف بها الوكيل فقط.
   return agencies.indexOf(cat)>-1;
 }
 function visibleForms(){return FORMS.filter(function(f){return allowedWakilCategory(f.category||'shared');});}
@@ -1484,6 +1502,23 @@ function renderNav(){
     });
   });
 }
+function wakilRecordsCumulativeSelfCheck(){
+  try{
+    var groups=formsByCategory();
+    var trusted=currentWakilAgencies();
+    return {
+      ok: trusted.length ? groups.length>=2 : groups.length===4,
+      trustedAgencies: trusted.slice(),
+      groups: groups.map(function(g){return {key:g.cat,count:g.items.length};}),
+      totalVisible: visibleForms().length,
+      totalForms: FORMS.length,
+      schoolScoped: true,
+      version: WAKIL_RECORDS_CUMULATIVE_FIX_VERSION
+    };
+  }catch(e){return {ok:false,error:String(e&&e.message||e),version:WAKIL_RECORDS_CUMULATIVE_FIX_VERSION};}
+}
+window.wakilRecordsCumulativeSelfCheck=wakilRecordsCumulativeSelfCheck;
+
 function selectForm(id){current=visibleForms().find(f=>f.id===id)||visibleForms()[0]||FORMS[0];renderNav();renderForm();loadCurrent()}
 function yearOptions(selected=''){let opts='<option value="">اختر العام</option>';for(let y=1445;y<=1466;y++){let v=y+' هـ';opts+=`<option value="${v}" ${selected===v?'selected':''}>${v}</option>`}return opts}
 function semesterOptions(selected=''){return `<option value="">اختر الفصل</option><option ${selected==='الأول'?'selected':''}>الأول</option><option ${selected==='الثاني'?'selected':''}>الثاني</option>`}
@@ -1533,10 +1568,44 @@ function getIdentityValue(data=null){
 }
 function collectSafe(){let d={};qsa('[data-field], [data-table]',qs('#formPage')).forEach(el=>{d[el.dataset.field||el.dataset.table]=el.value||''});return d}
 const WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY='agent_records_archive_v4';
-/* الأرشيف المركزي مرجعه السحابة ويُحفظ في الذاكرة أثناء الجلسة فقط.
-   لا نعيد نسخ HTML الكامل إلى localStorage حتى لا تتكرر مشكلة تجاوز السعة. */
-let wakilCentralArchiveMemory=[];
 let wakilRecordEditingId=null;
+let wakilCentralArchiveMemory=[];
+
+function slimWakilCentralArchive(rows){
+  return (Array.isArray(rows)?rows:[]).map(function(r){
+    if(!r||typeof r!=='object')return r;
+    const x={};
+    ['id','sourceRecordId','formId','folderId','folderName','recordName','category','categoryLabel','title','personName','personType','displayName','duplicateNo','saveMode','academicYear','semester','createdAt','updatedAt'].forEach(function(k){
+      if(Object.prototype.hasOwnProperty.call(r,k))x[k]=r[k];
+    });
+    return x;
+  });
+}
+function wakilArchiveSchoolId(){
+  try{
+    const cloudId=(window.PlatformCloudSession&&typeof PlatformCloudSession.schoolId==='function')?PlatformCloudSession.schoolId():'';
+    return String(cloudId||localStorage.getItem('active_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||localStorage.getItem('smart_school_id')||'').trim();
+  }catch(_){return '';}
+}
+function wakilArchiveLocalCacheKey(){
+  const sid=wakilArchiveSchoolId();
+  return sid ? (WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY+'__school__'+encodeURIComponent(sid)) : '';
+}
+function cacheWakilCentralArchiveLocally(rows){
+  const localKey=wakilArchiveLocalCacheKey();
+  if(!localKey)return false;
+  const slim=JSON.stringify(slimWakilCentralArchive(rows));
+  const g=window.PlatformPersistenceGuard;
+  try{
+    localStorage.setItem(localKey,slim);
+    if(g&&typeof g.setLocalSilently==='function')g.setLocalSilently(WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY,null);
+    return true;
+  }catch(e){
+    try{localStorage.removeItem(localKey);}catch(_){}
+    console.warn('[wakil archive] school-scoped local lightweight cache skipped',e?.message||e);
+    return false;
+  }
+}
 
 function wakilArchiveMode(form){
   const repeatable=new Set(['student','permission','notice','decision','inquiry']);
@@ -1567,14 +1636,17 @@ async function hydrateWakilCanonicalV7(){
   const r=await g.readExactValues({moduleKey:'agent',scope:'school',keys:[WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY]});
   if(!r||r.ok===false)throw new Error(r?.error||'تعذر قراءة أرشيف سجلات الوكيل');
   const raw=r.values&&r.values[WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY]!==undefined?r.values[WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY]:'[]';
-  let rows=[];
-  try{rows=JSON.parse(raw||'[]');if(!Array.isArray(rows))rows=[]}catch(_){rows=[]}
+  let rows=[];try{rows=JSON.parse(raw||'[]');if(!Array.isArray(rows))rows=[]}catch(_){rows=[]}
   wakilCentralArchiveMemory=rows;
-  try{localStorage.removeItem(WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY)}catch(_){}
-  return wakilCentralArchiveMemory;
+  cacheWakilCentralArchiveLocally(rows);
+  return rows;
 }
 function archiveKey(){return 'wakil_archive_v5_'+current.id}
-function readWakilCentralArchive(){return Array.isArray(wakilCentralArchiveMemory)?wakilCentralArchiveMemory:[]}
+function readWakilCentralArchive(){
+  if(Array.isArray(wakilCentralArchiveMemory)&&wakilCentralArchiveMemory.length)return wakilCentralArchiveMemory;
+  const localKey=wakilArchiveLocalCacheKey();
+  try{const a=localKey?JSON.parse(localStorage.getItem(localKey)||'[]'):[];return Array.isArray(a)?a:[]}catch(e){return[]}
+}
 function archiveSection(){return `<div class="section" id="archiveSection"><h3>أرشفة السجل والمرات السابقة حسب السجل المدني</h3><div class="fields"><div class="field"><div class="label">السجل المدني / الهوية للأرشفة</div><div><input data-field="السجل المدني" placeholder="يُستخدم لعرض المرات السابقة تلقائيًا"></div></div><div class="field"><div class="label">آخر حفظ</div><div><input data-field="آخر حفظ" readonly></div></div></div><div id="archiveRows"></div></div>`}
 function readArchive(){try{return JSON.parse(localStorage.getItem(archiveKey())||'[]')}catch(e){return []}}
 function writeArchive(arr){localStorage.setItem(archiveKey(),JSON.stringify((arr||[]).slice(0,80)))}
@@ -1716,7 +1788,7 @@ async function verifyWakilCentralReadback(recordId,folderId){
   const found=rows.find(x=>String(x.id)===String(recordId));
   if(!found||String(found.folderId||found.formId)!==String(folderId))throw new Error('فشل التحقق السحابي من السجل داخل مجلده الصحيح');
   wakilCentralArchiveMemory=rows;
-  try{localStorage.removeItem(WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY)}catch(_){}
+  cacheWakilCentralArchiveLocally(rows);
   return found;
 }
 async function saveCurrent(){
@@ -1724,7 +1796,7 @@ async function saveCurrent(){
   try{await hydrateWakilCanonicalV7();}catch(e){alert('تعذر قراءة أرشيف الوكيل قبل الحفظ: '+String(e?.message||e));return false}
   const data=collect();data['آخر حفظ']=new Date().toLocaleString('ar-SA');
   const formStorageKey=formKey(),historyKey=archiveKey(),centralKey=WAKIL_RECORDS_CENTRAL_ARCHIVE_KEY;
-  const beforeForm=localStorage.getItem(formStorageKey),beforeHistory=localStorage.getItem(historyKey);
+  const beforeForm=localStorage.getItem(formStorageKey),beforeHistory=localStorage.getItem(historyKey),beforeCentralMemory=Array.isArray(wakilCentralArchiveMemory)?wakilCentralArchiveMemory.slice():[];
   try{
     const archive=readWakilCentralArchive(),folderId=String(current.id),folderName=String(current.title||'سجل');
     const mode=wakilArchiveMode(current),nowIso=new Date().toISOString(),personName=guessWakilPersonNameForRecordsArchive(data)||folderName;
@@ -1746,7 +1818,7 @@ async function saveCurrent(){
     localStorage.setItem(formStorageKey,JSON.stringify(data));
     addArchiveSnapshot(data,recordId);
     wakilCentralArchiveMemory=archive;
-    try{localStorage.removeItem(centralKey)}catch(_){}
+    cacheWakilCentralArchiveLocally(archive);
     if(!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.writeExactValues!=='function')throw new Error('طبقة الاستمرارية السحابية غير متاحة');
     const w=await PlatformPersistenceGuard.writeExactValues({moduleKey:'agent',scope:'school',values:{[centralKey]:JSON.stringify(archive),[formStorageKey]:JSON.stringify(data),[historyKey]:localStorage.getItem(historyKey)||'[]'}});
     if(!w||w.ok===false)throw new Error(w?.error||'تعذر تأكيد الحفظ السحابي');
@@ -1756,7 +1828,8 @@ async function saveCurrent(){
   }catch(e){
     if(beforeForm===null)localStorage.removeItem(formStorageKey);else localStorage.setItem(formStorageKey,beforeForm);
     if(beforeHistory===null)localStorage.removeItem(historyKey);else localStorage.setItem(historyKey,beforeHistory);
-    try{localStorage.removeItem(centralKey)}catch(_){}
+    wakilCentralArchiveMemory=beforeCentralMemory;
+    cacheWakilCentralArchiveLocally(beforeCentralMemory);
     alert('تعذر تأكيد حفظ السجل: '+String(e?.message||e)+'؛ تمت استعادة البيانات السابقة.');console.error('[wakil record save V7]',e);return false;
   }
 }
@@ -2193,7 +2266,310 @@ bootstrapWakilRecordsV7();
   <script src="evidence-library-source.js"></script>
 
 <script src="school-information-source.js"></script>
-<script src="student-roster-linker.js?v=20260831-student-cascade-v1"></script>
+<script id="WAKIL_RECORD_ARCHIVE_AND_SCHOOL_INFO_BRIDGE_20260831">
+(function(){
+  'use strict';
+  if(window.__WAKIL_RECORD_ARCHIVE_AND_SCHOOL_INFO_BRIDGE_20260831__) return;
+  window.__WAKIL_RECORD_ARCHIVE_AND_SCHOOL_INFO_BRIDGE_20260831__=true;
+
+  function safe(v){return String(v==null?'':v).trim();}
+  function first(obj,keys){for(const k of keys){const v=obj&&obj[k];if(v!==undefined&&v!==null&&safe(v)!=='')return v;}return '';}
+
+  /* Preserve the live values in the archived HTML without mutating the form shown to the user. */
+  function cloneCurrentFormWithLiveValues(){
+    const page=document.getElementById('formPage');
+    if(!page) return null;
+    const clone=page.cloneNode(true);
+    const selector='input,textarea,select,[contenteditable="true"]';
+    const live=Array.from(page.querySelectorAll(selector));
+    const copied=Array.from(clone.querySelectorAll(selector));
+    live.forEach((srcEl,i)=>{
+      const dst=copied[i]; if(!dst) return;
+      const tag=srcEl.tagName;
+      if(tag==='INPUT'){
+        if(srcEl.type==='checkbox'||srcEl.type==='radio'){
+          if(srcEl.checked) dst.setAttribute('checked','checked'); else dst.removeAttribute('checked');
+          dst.checked=!!srcEl.checked;
+        }else{
+          dst.value=srcEl.value||'';
+          dst.setAttribute('value',srcEl.value||'');
+        }
+      }else if(tag==='TEXTAREA'){
+        dst.value=srcEl.value||'';
+        dst.textContent=srcEl.value||'';
+      }else if(tag==='SELECT'){
+        dst.value=srcEl.value||'';
+        Array.from(dst.options||[]).forEach(o=>o.removeAttribute('selected'));
+        const idx=srcEl.selectedIndex;
+        if(idx>=0&&dst.options&&dst.options[idx]) dst.options[idx].setAttribute('selected','selected');
+      }else if(srcEl.isContentEditable){
+        dst.innerHTML=srcEl.innerHTML;
+      }
+    });
+    return clone;
+  }
+  function archiveDisplayClone(){
+    const clone=cloneCurrentFormWithLiveValues();
+    if(!clone)return null;
+    clone.querySelectorAll('input,textarea,select').forEach(el=>{
+      let value='';
+      if(el.tagName==='SELECT') value=el.options&&el.selectedIndex>=0?(el.options[el.selectedIndex].textContent||el.value||''):(el.value||'');
+      else if(el.type==='checkbox'||el.type==='radio') value=el.checked?'✓':'';
+      else value=el.value||el.getAttribute('value')||el.textContent||'';
+      const box=document.createElement(el.tagName==='TEXTAREA'?'div':'span');
+      box.className=(el.className?el.className+' ':'')+'wakil-archived-static-value';
+      box.textContent=value;
+      box.setAttribute('data-archived-field',el.dataset.field||el.dataset.table||'');
+      box.style.cssText='display:block;width:100%;min-height:24px;padding:5px 6px;box-sizing:border-box;color:#11221d;white-space:pre-wrap;text-align:inherit;background:#fff;';
+      el.replaceWith(box);
+    });
+    return clone;
+  }
+
+  window.getCurrentFormHTMLForRecordsArchive=function(){
+    const clone=archiveDisplayClone();
+    return clone ? clone.innerHTML : '';
+  };
+
+  window.getCurrentRecordPrintableDocumentForArchive=function(){
+    const styles=Array.from(document.querySelectorAll('style')).map(s=>s.outerHTML).join('\n');
+    const clone=archiveDisplayClone();
+    const title=(typeof current!=='undefined'&&current&&current.title)?current.title:'سجل الوكيل';
+    const content=clone?clone.outerHTML:'';
+    return '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>'+title+'</title>'
+      +styles
+      +'<style>@page{size:A4 portrait;margin:0!important}html,body{margin:0!important;padding:0!important;background:#fff!important}.sidebar,.toolbar,.no-print,.ai-panel,.modal{display:none!important}input,select,textarea{color:#11221d!important;-webkit-text-fill-color:#11221d!important}</style>'
+      +'</head><body><main class="main">'+content+'</main></body></html>';
+  };
+
+  const roster={schoolId:'',students:[],staff:[],teachers:[],studentByName:new Map(),staffByName:new Map(),teacherByName:new Map(),loaded:false,loading:null};
+  function activeSchoolId(){
+    try{return safe(window.PlatformCloudSession?.schoolId?.()||sessionStorage.getItem('smart_school_tab_school_v1')||sessionStorage.getItem('current_school_id')||'');}catch(_){return '';}
+  }
+  function normalizeStudent(r){return {
+    raw:r||{}, name:safe(first(r,['name','student_name','full_name','display_name','اسم الطالب','الاسم'])),
+    nationalId:safe(first(r,['national_id','student_national_id','nationalId','identity','civil_id','id_number','السجل المدني','رقم الهوية'])),
+    stage:safe(first(r,['stage','stage_name','المرحلة'])), grade:safe(first(r,['grade','grade_name','class','الصف'])),
+    section:safe(first(r,['section','section_name','classroom','division','الفصل','الشعبة'])),
+    guardianName:safe(first(r,['guardian_name','parent_name','ولي الأمر'])),
+    guardianPhone:safe(first(r,['guardian_phone','parent_phone','mobile','phone','رقم التواصل']))
+  };}
+  function normalizeStaff(r){return {
+    raw:r||{}, name:safe(first(r,['name','full_name','display_name','teacher_name','username','اسم الموظف','الاسم'])),
+    nationalId:safe(first(r,['national_id','identity','civil_id','id_number','رقم الهوية','السجل المدني'])),
+    jobTitle:safe(first(r,['job_title','jobTitle','position','roleLabel','role_label','title','المسمى الوظيفي','الوظيفة'])),
+    specialty:safe(first(r,['specialty','specialization','subject','المادة','التخصص']))
+  };}
+  function putMap(map,row){if(row&&row.name&&!map.has(row.name))map.set(row.name,row);}
+  async function loadRoster(force){
+    if(roster.loading) return roster.loading;
+    roster.loading=(async()=>{
+      if(!window.SchoolInformationSource) return false;
+      /* نفس مسار قسم الأعمال الأسبوعية: تحديث المصدر ثم القراءة المباشرة حسب النوع. */
+      if(force && typeof SchoolInformationSource.refresh==='function') await SchoolInformationSource.refresh();
+      const [studentsRaw,staffRaw,teachersRaw]=await Promise.all([
+        typeof SchoolInformationSource.getStudents==='function'?SchoolInformationSource.getStudents(!!force):[],
+        typeof SchoolInformationSource.getStaff==='function'?SchoolInformationSource.getStaff(false):[],
+        typeof SchoolInformationSource.getTeachers==='function'?SchoolInformationSource.getTeachers(false):[]
+      ]);
+      const ctx=typeof SchoolInformationSource.context==='function'?SchoolInformationSource.context():{};
+      const sid=safe(ctx?.schoolId||'');
+      const active=activeSchoolId();
+      if(active&&sid&&active!==sid) throw new Error('WAKIL_ROSTER_SCHOOL_SCOPE_MISMATCH');
+      roster.schoolId=sid||active;
+      roster.students=(Array.isArray(studentsRaw)?studentsRaw:[]).filter(x=>!roster.schoolId||!x?.school_id||safe(x.school_id)===roster.schoolId).map(normalizeStudent).filter(x=>x.name);
+      roster.staff=(Array.isArray(staffRaw)?staffRaw:[]).filter(x=>!roster.schoolId||!x?.school_id||safe(x.school_id)===roster.schoolId).map(normalizeStaff).filter(x=>x.name);
+      roster.teachers=(Array.isArray(teachersRaw)?teachersRaw:[]).filter(x=>!roster.schoolId||!x?.school_id||safe(x.school_id)===roster.schoolId).map(normalizeStaff).filter(x=>x.name);
+      roster.studentByName=new Map(); roster.staffByName=new Map(); roster.teacherByName=new Map();
+      roster.students.forEach(x=>putMap(roster.studentByName,x)); roster.staff.forEach(x=>putMap(roster.staffByName,x)); roster.teachers.forEach(x=>putMap(roster.teacherByName,x));
+      roster.loaded=true;
+      buildRosterDatalists(); bindRosterFields();
+      return true;
+    })().catch(e=>{console.warn('[wakil school information bridge]',e);return false;}).finally(()=>{roster.loading=null;});
+    return roster.loading;
+  }
+  function datalist(id,rows){
+    let dl=document.getElementById(id); if(!dl){dl=document.createElement('datalist');dl.id=id;document.body.appendChild(dl);}
+    dl.innerHTML=rows.map(x=>'<option value="'+safe(x.name).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')+'"></option>').join('');
+  }
+  function buildRosterDatalists(){
+    datalist('wakil-school-students-list',roster.students);
+    datalist('wakil-school-staff-list',roster.staff);
+    datalist('wakil-school-teachers-list',roster.teachers);
+    const mixed=[...roster.students,...roster.staff].filter((x,i,a)=>a.findIndex(y=>y.name===x.name)===i);
+    datalist('wakil-school-people-list',mixed);
+  }
+  function rosterKind(label){
+    const s=safe(label);
+    if(/اسم الطالب\s*\/\s*الموظف/.test(s)) return 'mixed';
+    if(/اسم الطالب|الطالب$/.test(s)) return 'student';
+    if(/اسم المعلم|المعلم الغائب|المعلم المنفذ/.test(s)) return 'teacher';
+    if(/اسم الموظف|اسم المحول|المناوب|مشرف الانصراف/.test(s)) return 'staff';
+    return '';
+  }
+  function tableHeaderFor(el){
+    const td=el.closest('td'),table=el.closest('table'); if(!td||!table)return '';
+    const th=table.querySelectorAll('thead th')[td.cellIndex]; return safe(th?.textContent||'');
+  }
+  function fillField(name,value,overwrite){
+    if(!safe(value))return;
+    const el=Array.from(document.querySelectorAll('#formPage [data-field]')).find(x=>safe(x.dataset.field)===name);
+    if(!el)return; if(!overwrite&&safe(el.value))return; el.value=safe(value); el.dispatchEvent(new Event('input',{bubbles:true}));
+  }
+  function applyStudent(x){
+    fillField('السجل المدني',x.nationalId,false); fillField('رقم الهوية',x.nationalId,false);
+    fillField('المرحلة',x.stage,false); fillField('الصف',x.grade,false); fillField('الفصل',x.section,false);
+    fillField('ولي الأمر',x.guardianName,false); fillField('رقم التواصل',x.guardianPhone,false);
+  }
+  function applyStaff(x){
+    fillField('رقم الهوية',x.nationalId,false); fillField('السجل المدني',x.nationalId,false);
+    fillField('المسمى الوظيفي',x.jobTitle,false);
+    fillField('المسمى / التخصص',[x.jobTitle,x.specialty].filter(Boolean).join(' / '),false);
+    fillField('الصف / العمل',x.jobTitle||x.specialty,false); fillField('المادة',x.specialty,false);
+  }
+  function onRosterPick(el,kind){
+    const name=safe(el.value); if(!name)return;
+    if(kind==='student'){const x=roster.studentByName.get(name);if(x)applyStudent(x);}
+    else if(kind==='teacher'){const x=roster.teacherByName.get(name)||roster.staffByName.get(name);if(x)applyStaff(x);}
+    else if(kind==='staff'){const x=roster.staffByName.get(name);if(x)applyStaff(x);}
+    else if(kind==='mixed'){const s=roster.studentByName.get(name);if(s)applyStudent(s);else{const x=roster.staffByName.get(name);if(x)applyStaff(x);}}
+  }
+  function rosterRows(kind){
+    if(kind==='student')return roster.students;
+    if(kind==='teacher')return roster.teachers.length?roster.teachers:roster.staff;
+    if(kind==='staff')return roster.staff;
+    return [...roster.students,...roster.staff].filter((x,i,a)=>a.findIndex(y=>y.name===x.name)===i);
+  }
+  function replaceNameInputWithSelect(el,kind){
+    if(!el||el.tagName!=='INPUT'||el.type==='hidden')return el;
+    const rows=rosterRows(kind); if(!rows.length)return el;
+    const sel=document.createElement('select');
+    Array.from(el.attributes).forEach(a=>{if(a.name!=='list'&&a.name!=='type'&&a.name!=='value')sel.setAttribute(a.name,a.value)});
+    sel.dataset.wakilRosterKind=kind;
+    const currentValue=safe(el.value);
+    sel.innerHTML='<option value="">اختر من مركز المعلومات</option>'+rows.map(x=>'<option value="'+safe(x.name).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')+'">'+safe(x.name).replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</option>').join('');
+    if(currentValue&&!rows.some(x=>x.name===currentValue)){
+      const opt=document.createElement('option');opt.value=currentValue;opt.textContent=currentValue;sel.appendChild(opt);
+    }
+    sel.value=currentValue;
+    el.replaceWith(sel);
+    return sel;
+  }
+  function bindOne(el,label){
+    if(!el||!('value' in el))return; const kind=rosterKind(label); if(!kind)return;
+    el=replaceNameInputWithSelect(el,kind)||el;
+    el.dataset.wakilRosterKind=kind;
+    if(el.dataset.wakilRosterBound==='1')return; el.dataset.wakilRosterBound='1';
+    el.addEventListener('change',()=>onRosterPick(el,kind));
+  }
+  function escOption(v){return safe(v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
+  function uniqueSorted(values){return Array.from(new Set((values||[]).map(safe).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'ar',{numeric:true,sensitivity:'base'}));}
+  function studentNameField(){
+    const page=document.getElementById('formPage'); if(!page)return null;
+    return Array.from(page.querySelectorAll('[data-field]')).find(el=>rosterKind(el.dataset.field)==='student')||null;
+  }
+  function studentGradeField(){
+    const page=document.getElementById('formPage'); if(!page)return null;
+    return Array.from(page.querySelectorAll('[data-field]')).find(el=>safe(el.dataset.field)==='الصف')||null;
+  }
+  function studentSectionField(){
+    const page=document.getElementById('formPage'); if(!page)return null;
+    return Array.from(page.querySelectorAll('[data-field]')).find(el=>['الفصل','الشعبة'].includes(safe(el.dataset.field)))||null;
+  }
+  function ensureCascadeSelect(el, marker){
+    if(!el)return null;
+    if(el.tagName==='SELECT'){el.dataset[marker]='1';return el;}
+    if(el.tagName!=='INPUT'||el.type==='hidden')return el;
+    const sel=document.createElement('select');
+    Array.from(el.attributes).forEach(a=>{if(a.name!=='type'&&a.name!=='value'&&a.name!=='list')sel.setAttribute(a.name,a.value)});
+    sel.value=safe(el.value);
+    sel.dataset[marker]='1';
+    el.replaceWith(sel);
+    return sel;
+  }
+  function setSelectOptions(sel, placeholder, values, keepValue){
+    if(!sel)return;
+    const old=safe(keepValue!==undefined?keepValue:sel.value);
+    const opts=uniqueSorted(values);
+    sel.innerHTML='<option value="">'+escOption(placeholder)+'</option>'+opts.map(v=>'<option value="'+escOption(v)+'">'+escOption(v)+'</option>').join('');
+    if(old&&!opts.includes(old)){const o=document.createElement('option');o.value=old;o.textContent=old;sel.appendChild(o);}
+    sel.value=old;
+  }
+  function filteredStudentsByCascade(grade,section){
+    return roster.students.filter(s=>(!grade||safe(s.grade)===safe(grade))&&(!section||safe(s.section)===safe(section)));
+  }
+  function refreshStudentCascade(preserveStudent){
+    const nameEl=studentNameField(); if(!nameEl)return;
+    const gradeEl=studentGradeField();
+    const sectionEl=studentSectionField();
+    const grade=safe(gradeEl?.value);
+    const section=safe(sectionEl?.value);
+    const currentStudent=safe(preserveStudent!==undefined?preserveStudent:nameEl.value);
+    if(sectionEl){
+      const sections=roster.students.filter(s=>!grade||safe(s.grade)===grade).map(s=>s.section);
+      setSelectOptions(sectionEl,grade?'اختر الفصل / الشعبة':'اختر الصف أولاً',sections,section);
+      sectionEl.disabled=!grade;
+    }
+    const effectiveSection=safe(sectionEl?.value);
+    const students=filteredStudentsByCascade(grade,effectiveSection);
+    setSelectOptions(nameEl,grade?(effectiveSection?'اختر الطالب من الفصل':'اختر الطالب من الصف'):'اختر الصف أولاً',students.map(s=>s.name),currentStudent);
+    nameEl.disabled=!grade;
+  }
+  function bindStudentCascade(){
+    const nameCandidate=studentNameField(); if(!nameCandidate||!roster.students.length)return;
+    let gradeEl=ensureCascadeSelect(studentGradeField(),'wakilStudentGradeSelect');
+    let sectionEl=ensureCascadeSelect(studentSectionField(),'wakilStudentSectionSelect');
+    let nameEl=nameCandidate;
+    if(nameEl.tagName!=='SELECT') nameEl=replaceNameInputWithSelect(nameEl,'student')||nameEl;
+    if(!gradeEl){
+      /* بعض السجلات الطلابية لا تتضمن الصف؛ لا نضيف حقلاً جديداً حفاظاً على النموذج الرسمي. */
+      return;
+    }
+    setSelectOptions(gradeEl,'اختر الصف',roster.students.map(s=>s.grade),gradeEl.value);
+    if(gradeEl.dataset.wakilStudentCascadeBound!=='1'){
+      gradeEl.dataset.wakilStudentCascadeBound='1';
+      gradeEl.addEventListener('change',()=>{
+        if(sectionEl)sectionEl.value='';
+        if(nameEl)nameEl.value='';
+        refreshStudentCascade('');
+      });
+    }
+    if(sectionEl&&sectionEl.dataset.wakilStudentCascadeBound!=='1'){
+      sectionEl.dataset.wakilStudentCascadeBound='1';
+      sectionEl.addEventListener('change',()=>{if(nameEl)nameEl.value='';refreshStudentCascade('');});
+    }
+    if(nameEl&&nameEl.dataset.wakilStudentCascadeBound!=='1'){
+      nameEl.dataset.wakilStudentCascadeBound='1';
+      nameEl.addEventListener('change',()=>{
+        const st=roster.studentByName.get(safe(nameEl.value));
+        if(!st)return;
+        if(gradeEl&&safe(gradeEl.value)!==safe(st.grade)){gradeEl.value=safe(st.grade);}
+        if(sectionEl){
+          const sections=roster.students.filter(s=>safe(s.grade)===safe(st.grade)).map(s=>s.section);
+          setSelectOptions(sectionEl,'اختر الفصل / الشعبة',sections,st.section);
+          sectionEl.disabled=false;
+          sectionEl.value=safe(st.section);
+        }
+        applyStudent(st);
+      });
+    }
+    refreshStudentCascade(safe(nameEl?.value));
+  }
+  function bindRosterFields(){
+    const page=document.getElementById('formPage'); if(!page)return;
+    page.querySelectorAll('[data-field]').forEach(el=>bindOne(el,el.dataset.field));
+    page.querySelectorAll('[data-table]').forEach(el=>bindOne(el,tableHeaderFor(el)));
+    bindStudentCascade();
+  }
+
+  const originalRenderForm=window.renderForm;
+  if(typeof originalRenderForm==='function'){
+    window.renderForm=function(){const r=originalRenderForm.apply(this,arguments);setTimeout(()=>{bindRosterFields();if(!roster.loaded)loadRoster(false);},0);return r;};
+  }
+  setTimeout(()=>loadRoster(false),0);
+  window.addEventListener('school-information-source-invalidated',()=>loadRoster(true));
+})();
+</script>
 <script src="internal-messaging.js"></script>
 
 <script defer src="unified_workspace.js"></script>

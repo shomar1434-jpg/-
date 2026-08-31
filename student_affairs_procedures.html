@@ -1453,10 +1453,10 @@ if(new URLSearchParams(location.search).get('guardian')!=='1'){
   <main id="app" class="hidden">
     <section class="card">
       <div class="meta">
-        <div><b>رقم المعاملة</b><br><span id="tx"></span></div>
-        <div><b>نوع المعاملة</b><br><span id="title"></span></div>
-        <div><b>الطالب</b><br><span id="student"></span></div>
-        <div><b>التاريخ</b><br><span id="date"></span></div>
+        <div><b>رقم المعاملة</b><br><span id="guardianPortalTx"></span></div>
+        <div><b>نوع المعاملة</b><br><span id="guardianPortalTitle"></span></div>
+        <div><b>الطالب</b><br><span id="guardianPortalStudent"></span></div>
+        <div><b>التاريخ</b><br><span id="guardianPortalDate"></span></div>
       </div>
     </section>
 
@@ -1531,16 +1531,17 @@ try{
 }
 if(!publicInfo){if(invalid)invalid.classList.remove('hidden');return}
 if(app)app.classList.remove('hidden');
-set('tx',publicInfo.tokenHint?('••••'+publicInfo.tokenHint):'معاملة إلكترونية');
-set('title',publicInfo.formTitle||'معاملة شؤون طلاب');
-set('student',publicInfo.studentName||'');
-try{set('date',publicInfo.sentAt?new Date(publicInfo.sentAt).toLocaleString('ar-SA',{dateStyle:'medium',timeStyle:'short'}):(publicInfo.createdAt||''));}catch(_){set('date',publicInfo.sentAt||publicInfo.createdAt||'');}
+set('guardianPortalTx',publicInfo.tokenHint?('••••'+publicInfo.tokenHint):'معاملة إلكترونية');
+set('guardianPortalTitle',publicInfo.formTitle||'معاملة شؤون طلاب');
+set('guardianPortalStudent',publicInfo.studentName||'');
+try{set('guardianPortalDate',publicInfo.sentAt?new Date(publicInfo.sentAt).toLocaleString('ar-SA',{dateStyle:'medium',timeStyle:'short'}):(publicInfo.createdAt||''));}catch(_){set('guardianPortalDate',publicInfo.sentAt||publicInfo.createdAt||'');}
 const head=document.querySelector('#guardianUnifiedWrapper .head h1');if(head)head.textContent='بوابة ولي الأمر الإلكترونية';
 document.title=`${publicInfo.formTitle||'معاملة شؤون طلاب'} | بوابة ولي الأمر`;
 
 const verifyBtn=document.getElementById('verifyBtn');
 if(verifyBtn)verifyBtn.onclick=async()=>{
- const last4=(document.getElementById('phone4')?.value||'').replace(/\D/g,'');
+ const normalizeDigits=(v)=>String(v||'').replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d));
+ const last4=normalizeDigits(document.getElementById('phone4')?.value||'').replace(/\D/g,'').slice(-4);
  const msg=document.getElementById('verifyMsg');
  if(last4.length!==4){if(msg)msg.innerHTML='<span class="error">أدخل آخر أربعة أرقام من رقم جوال ولي الأمر المسجل.</span>';return}
  try{
@@ -1548,7 +1549,7 @@ if(verifyBtn)verifyBtn.onclick=async()=>{
   if(!r?.ok||!r.verificationToken||!r.transaction?.payload)throw new Error('تعذر التحقق من بيانات ولي الأمر.');
   verificationToken=r.verificationToken;verifiedTx=r.transaction.payload;
   const tx=verifiedTx;
-  set('tx',tx.transaction_no||tx.token||'');set('title',tx.title);set('student',tx.student);set('date',tx.date);
+  set('guardianPortalTx',tx.transaction_no||tx.token||'');set('guardianPortalTitle',tx.title);set('guardianPortalStudent',tx.student);set('guardianPortalDate',tx.date);
   set('gTx',tx.transaction_no||tx.token||'');set('gDate',tx.date);set('gStudent',tx.student);set('gNational',maskNationalId(tx.national_id||''));
   set('gStage',tx.stage);set('gGradeClass',[tx.grade,tx.classroom].filter(Boolean).join(' / '));set('gGuardian',tx.guardian);set('gPhone',tx.phone);
   set('gEduAdmin',tx.education_admin||'إدارة التعليم');set('gSchoolName',tx.school_name||publicInfo.schoolName||'المدرسة');set('gAgent',tx.agent_name||'وكيل/وكيلة شؤون الطلاب');

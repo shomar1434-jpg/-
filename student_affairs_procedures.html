@@ -2019,20 +2019,11 @@ window.addEventListener('load',()=>{
 })();
 </script>
 
-/* ضمان إضافي لحفظ نتائج الاستيراد بعد اكتمال المعالجة غير المتزامنة. */
-(function bindImportPersistenceFallback(){
-  const ids=['studentsImportResult','guardiansImportResult','platformSyncResult'];
-  ids.forEach(id=>{
-    const el=document.getElementById(id); if(!el)return;
-    const obs=new MutationObserver(()=>{
-      if(saStateHydrated&&saOperationalAgent()&&students.length){
-        clearTimeout(saPersistTimer);
-        saPersistTimer=setTimeout(()=>persistStudentAffairsState().catch(e=>console.error('student affairs import persist failed',e)),120);
-      }
-    });
-    obs.observe(el,{childList:true,subtree:true,characterData:true});
-  });
-})();
 
+
+<script>
+/* ضمان إضافي لحفظ نتائج الاستيراد بعد اكتمال المعالجة غير المتزامنة. */
+(function bindImportPersistenceFallback(){ const ids=['studentsImportResult','guardiansImportResult','platformSyncResult']; ids.forEach(id=>{ const el=document.getElementById(id); if(!el)return; const obs=new MutationObserver(()=>{ if(typeof persistStudentAffairsState==='function') setTimeout(()=>persistStudentAffairsState().catch(console.error),120); }); obs.observe(el,{childList:true,subtree:true,characterData:true}); });})();
+</script>
 </body>
 </html>

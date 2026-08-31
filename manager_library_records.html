@@ -701,6 +701,71 @@ td textarea,
 .uw-verified-title-back:hover{background:#e6fffb!important}
 @media print{.uw-verified-title-back{display:none!important}}
 </style><link rel="stylesheet" href="responsive-layout.css?v=20260818-responsive-1">
+
+<style id="records-header-meta-row-fix-20260831">
+/* عزل حقول الترويسة: لا يعتمد ترتيبها على nth-of-type، لمنع تكرار حقل العام بصرياً. */
+.officialHeader .metaBlock{
+  display:flex!important;
+  flex-direction:column!important;
+  gap:6px!important;
+  direction:rtl!important;
+  min-width:0!important;
+}
+.officialHeader .metaBlock .metaRow{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) 125px!important;
+  column-gap:14px!important;
+  align-items:center!important;
+  min-height:31px!important;
+  width:100%!important;
+  direction:ltr!important;
+}
+.officialHeader .metaBlock .metaRow > label{
+  grid-column:2!important;
+  grid-row:1!important;
+  direction:rtl!important;
+  text-align:right!important;
+  line-height:31px!important;
+  margin:0!important;
+  white-space:nowrap!important;
+}
+.officialHeader .metaBlock .metaRow > select,
+.officialHeader .metaBlock .metaRow > input,
+.officialHeader .metaBlock .metaRow > .dateControlWrap{
+  grid-column:1!important;
+  grid-row:1!important;
+  min-width:0!important;
+  width:100%!important;
+}
+.officialHeader .dateControlWrap{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) 34px!important;
+  gap:4px!important;
+  align-items:center!important;
+  direction:ltr!important;
+}
+.officialHeader .dateControlWrap #interactiveDateText{
+  grid-column:1!important;
+  width:100%!important;
+}
+.officialHeader .dateControlWrap .interactiveDatePicker{
+  grid-column:2!important;
+  width:34px!important;
+  min-width:34px!important;
+  height:31px!important;
+  padding:0!important;
+  border:0!important;
+  border-bottom:1px dotted #667085!important;
+  background:transparent!important;
+  color:transparent!important;
+  cursor:pointer!important;
+}
+@media print{
+  .officialHeader .dateControlWrap{grid-template-columns:1fr!important;}
+  .officialHeader .dateControlWrap .interactiveDatePicker{display:none!important;}
+}
+</style>
+
 </head>
 <body>
 <div class="app">
@@ -850,8 +915,9 @@ return `<div class="officialHeader">
 
     
 <div class="metaBlock">
-      <label>العام الدراسي</label>
-      <select data-k="year" id="academicYear">
+      <div class="metaRow metaYearRow">
+        <label for="academicYear">العام الدراسي</label>
+        <select data-k="year" id="academicYear">
         <option value="">اختر العام</option>
         <option>1445هـ</option>
         <option>1446هـ</option>
@@ -887,17 +953,19 @@ return `<div class="officialHeader">
         <option>1476هـ</option>
         <option>1477هـ</option>
       </select>
-
-      <label>الفصل الدراسي</label>
-      <select data-k="term" id="academicTerm">
+      </div>
+      <div class="metaRow metaTermRow">
+        <label for="academicTerm">الفصل الدراسي</label>
+        <select data-k="term" id="academicTerm">
         <option value="">اختر الفصل</option>
         <option>الأول</option>
         <option>الثاني</option>
         <option>الثالث</option>
       </select>
-
-      <label>اليوم</label>
-      <select data-k="day" id="interactiveDay">
+      </div>
+      <div class="metaRow metaDayRow">
+        <label for="interactiveDay">اليوم</label>
+        <select data-k="day" id="interactiveDay">
         <option value="">اختر اليوم</option>
         <option>الأحد</option>
         <option>الإثنين</option>
@@ -907,9 +975,15 @@ return `<div class="officialHeader">
         <option>الجمعة</option>
         <option>السبت</option>
       </select>
-
-      <label>التاريخ</label>
-      <input type="text" data-k="date" id="interactiveDateText" placeholder="يوم / شهر / سنة" inputmode="numeric" />
+      </div>
+      <div class="metaRow metaDateRow">
+        <label for="interactiveDateText">التاريخ</label>
+        <div class="dateControlWrap">
+          <input type="text" data-k="date" id="interactiveDateText" placeholder="يوم / شهر / سنة" inputmode="numeric" />
+          <input type="date" id="interactiveDatePicker" class="interactiveDatePicker no-print" aria-label="اختيار التاريخ من التقويم" />
+          <input type="hidden" data-k="dateIso" id="interactiveDateISO" />
+        </div>
+      </div>
     </div>
   </div>
   <div class="headerDivider"></div>
@@ -1156,6 +1230,7 @@ renderAll();
 
 
 <script>
+(function legacyHeaderDateSync_DISABLED(){ if(true)return;
 function normalizeDigits(value){
   const ar = "٠١٢٣٤٥٦٧٨٩";
   const fa = "۰۱۲۳۴۵۶۷۸۹";
@@ -1221,6 +1296,8 @@ document.addEventListener("blur", function(e){
     updateDayFromDate();
   }
 }, true);
+
+})();
 </script>
 
 <!-- Unified Cloud File Engine v3 -->
@@ -1247,5 +1324,133 @@ document.addEventListener("blur", function(e){
 <script src="top-ai-center.js"></script>
 <script src="platform-page-navigation.js?v=20260818-nav1"></script>
 <script src="platform-archive-crud.js"></script>
+
+<script id="records-day-date-bidirectional-sync-20260831">
+(function(){
+  if(window.__RECORDS_DAY_DATE_SYNC_20260831__) return;
+  window.__RECORDS_DAY_DATE_SYNC_20260831__=true;
+
+  const DAY_NAMES=["الأحد","الإثنين","الثلاثاء","الأربعاء","الخميس","الجمعة","السبت"];
+  const DAY_INDEX=Object.fromEntries(DAY_NAMES.map((d,i)=>[d,i]));
+
+  function pad2(n){return String(n).padStart(2,"0");}
+  function isoLocal(d){return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;}
+  function parseIso(v){
+    const m=String(v||"").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if(!m)return null;
+    const d=new Date(Number(m[1]),Number(m[2])-1,Number(m[3]),12,0,0,0);
+    return Number.isNaN(d.getTime())?null:d;
+  }
+  function nearestDateForDay(dayName,anchor){
+    const idx=DAY_INDEX[dayName];
+    if(idx===undefined)return null;
+    const base=anchor instanceof Date&&!Number.isNaN(anchor.getTime())?new Date(anchor):new Date();
+    base.setHours(12,0,0,0);
+    let diff=idx-base.getDay();
+    // نفس الأسبوع قدر الإمكان، وإذا كان الاختيار بعد نهاية أسبوع العمل يبدأ من الأسبوع التالي.
+    if(base.getDay()===5 || base.getDay()===6) diff=(7-base.getDay())+idx;
+    base.setDate(base.getDate()+diff);
+    return base;
+  }
+  function formatGregorianText(d){
+    return `${pad2(d.getDate())} / ${pad2(d.getMonth()+1)} / ${d.getFullYear()}`;
+  }
+  function formatHijriText(d){
+    try{
+      const parts=new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura-nu-latn',{
+        day:'2-digit',month:'2-digit',year:'numeric'
+      }).formatToParts(d);
+      const get=t=>parts.find(p=>p.type===t)?.value||'';
+      return `${get('day')} / ${get('month')} / ${get('year')} هـ`;
+    }catch(_){ return formatGregorianText(d); }
+  }
+  function isManagerRecordPage(){
+    return /manager_records\.html(?:$|[?#])/i.test(location.pathname+location.search) ||
+           document.body?.dataset?.recordsRole==="manager";
+  }
+  function setDateFromDay(){
+    const day=document.getElementById("interactiveDay");
+    const text=document.getElementById("interactiveDateText");
+    const iso=document.getElementById("interactiveDateISO");
+    const picker=document.getElementById("interactiveDatePicker");
+    if(!day||!text||!day.value)return;
+    const anchor=parseIso((iso&&iso.value)||(picker&&picker.value))||new Date();
+    const d=nearestDateForDay(day.value,anchor);
+    if(!d)return;
+    const v=isoLocal(d);
+    if(iso)iso.value=v;
+    if(picker)picker.value=v;
+    text.value=isManagerRecordPage()?formatHijriText(d):formatGregorianText(d);
+    if(typeof autoDraft==="function")autoDraft();
+  }
+  function setDayFromDate(d){
+    const day=document.getElementById("interactiveDay");
+    const text=document.getElementById("interactiveDateText");
+    const iso=document.getElementById("interactiveDateISO");
+    const picker=document.getElementById("interactiveDatePicker");
+    if(!day||!text||!d||Number.isNaN(d.getTime()))return;
+    day.value=DAY_NAMES[d.getDay()];
+    const v=isoLocal(d);
+    if(iso)iso.value=v;
+    if(picker)picker.value=v;
+    text.value=isManagerRecordPage()?formatHijriText(d):formatGregorianText(d);
+    if(typeof autoDraft==="function")autoDraft();
+  }
+  function parseVisibleGregorian(value){
+    const normalized=String(value||"")
+      .replace(/[٠-٩]/g,ch=>"٠١٢٣٤٥٦٧٨٩".indexOf(ch))
+      .replace(/[۰-۹]/g,ch=>"۰۱۲۳۴۵۶۷۸۹".indexOf(ch))
+      .replace(/[.\- ـ]/g,"/").replace(/\s+/g,"").replace(/هـ/g,"");
+    const p=normalized.split("/").filter(Boolean);
+    if(p.length!==3)return null;
+    let d=+p[0],m=+p[1],y=+p[2];
+    if(y<100)y+=2000;
+    // لا نفسر السنة الهجرية كنظام ميلادي.
+    if(y<1900||y>2200||d<1||d>31||m<1||m>12)return null;
+    const dt=new Date(y,m-1,d,12,0,0,0);
+    return dt.getFullYear()===y&&dt.getMonth()===m-1&&dt.getDate()===d?dt:null;
+  }
+  function syncControlsAfterRender(){
+    const text=document.getElementById("interactiveDateText");
+    const iso=document.getElementById("interactiveDateISO");
+    const picker=document.getElementById("interactiveDatePicker");
+    const day=document.getElementById("interactiveDay");
+    if(!text||!day)return;
+    const d=parseIso(iso?.value)||parseVisibleGregorian(text.value);
+    if(d){
+      const v=isoLocal(d);
+      if(iso)iso.value=v;
+      if(picker)picker.value=v;
+      day.value=DAY_NAMES[d.getDay()];
+    }else if(day.value && !text.value){
+      setDateFromDay();
+    }
+  }
+
+  document.addEventListener("change",function(e){
+    if(e.target?.id==="interactiveDay"){ setDateFromDay(); }
+    if(e.target?.id==="interactiveDatePicker"){
+      const d=parseIso(e.target.value); if(d)setDayFromDate(d);
+    }
+    if(e.target?.id==="interactiveDateText"){
+      const d=parseVisibleGregorian(e.target.value); if(d)setDayFromDate(d);
+    }
+  },true);
+  document.addEventListener("blur",function(e){
+    if(e.target?.id==="interactiveDateText"){
+      const d=parseVisibleGregorian(e.target.value); if(d)setDayFromDate(d);
+    }
+  },true);
+
+  document.addEventListener("manager-record-rendered",syncControlsAfterRender);
+  document.addEventListener("activity-record-rendered",syncControlsAfterRender);
+  document.addEventListener("DOMContentLoaded",()=>setTimeout(syncControlsAfterRender,0),{once:true});
+  window.addEventListener("load",()=>setTimeout(syncControlsAfterRender,0),{once:true});
+
+  window.recordsHeaderSetDateFromDay=setDateFromDay;
+  window.recordsHeaderSyncDateDay=syncControlsAfterRender;
+})();
+</script>
+
 </body>
 </html>

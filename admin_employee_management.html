@@ -56,11 +56,59 @@ function normalizePlan(p){p.id=p.id||('emp_'+Date.now()+Math.random().toString(1
 function plans(){return allPlans().map(normalizePlan).filter(x=>(x.supervisor||'manager')===supervisor)}
 let administrativeEmployeeAccounts=[];
 let cloudPlansByOwner=new Map();
-function currentActualRole(){try{return String(localStorage.getItem('currentRole')||JSON.parse(localStorage.getItem('currentUser')||'{}').role||'').toLowerCase()}catch(e){return ''}}
-function isManagerSession(){return ['manager','leadership','school_manager','principal','مدير','مديرة'].includes(currentActualRole())}
-function isAgentSession(){return ['agent','agency','wakil','vice','deputy','وكيل','وكيلة'].includes(currentActualRole())}
+function normalizeSupervisor(v){
+  v=String(v||'').trim().toLowerCase();
+  if(['agent','agency','wakil','vice','deputy','vice_principal','وكيل','وكيلة','الوكيل','الوكيلة'].includes(v))return 'agent';
+  if(['manager','leadership','school_manager','principal','owner','مدير','مديرة','المدير','المديرة'].includes(v))return 'manager';
+  return v;
+}
+supervisor=normalizeSupervisor(supervisor)==='agent'?'agent':'manager';
+
+function safeJsonRole(raw){
+  try{
+    const x=JSON.parse(raw||'null');
+    return x&&typeof x==='object'?(x.role||x.dbRole||x.appRole||x.role_key||''):'';
+  }catch(e){return ''}
+}
+function currentActualRole(){
+  try{
+    const candidates=[
+      sessionStorage.getItem('smart_school_tab_role_v1'),
+      safeJsonRole(sessionStorage.getItem('smart_school_current_session')),
+      safeJsonRole(localStorage.getItem('smart_school_current_session')),
+      safeJsonRole(localStorage.getItem('currentSchoolUser')),
+      safeJsonRole(localStorage.getItem('currentUser')),
+      localStorage.getItem('smart_school_active_role'),
+      localStorage.getItem('currentRole')
+    ];
+    for(const v of candidates){
+      const n=normalizeSupervisor(v);
+      if(n==='agent'||n==='manager')return n;
+      const raw=String(v||'').trim().toLowerCase();
+      if(raw==='system_admin')return 'system_admin';
+    }
+    return '';
+  }catch(e){return ''}
+}
+function isManagerSession(){return currentActualRole()==='manager'}
+function isAgentSession(){return currentActualRole()==='agent'}
 function isSystemAdminSession(){return currentActualRole()==='system_admin'||sessionStorage.getItem('system_admin_context')==='1'||sessionStorage.getItem('system_admin_verified')==='true'}
 function isCurrentSupervisorSession(){return isSystemAdminSession()||(supervisor==='manager'?isManagerSession():isAgentSession())}
+
+function validateEmployeeSupervisorContext(p){
+  if(!p) return {ok:false,message:'تعذر تحديد بيانات الموظف الإداري.'};
+  const expected=normalizeSupervisor(supervisor);
+  const actual=normalizeSupervisor(p.supervisor||p.adminSupervisor||'');
+  if(actual && actual!==expected){
+    return {ok:false,message:'هذه الخطة تتبع '+supLabel(actual)+' وليست '+supLabel(expected)+'.'};
+  }
+  const pageSchool=String(currentSchoolScope()||'').trim();
+  const employeeSchool=String(p.schoolId||p.school_id||'').trim();
+  if(pageSchool&&employeeSchool&&pageSchool!==employeeSchool){
+    return {ok:false,message:'لا يمكن اعتماد خطة موظف تابع لمدرسة أخرى.'};
+  }
+  return {ok:true};
+}
 async function loadAdministrativeEmployeeAccounts(){
   const sid=currentSchoolScope();
   if(!sid||!window.SmartSchoolSupabase?.listAdministrativeEmployeesBySchool){administrativeEmployeeAccounts=[];return administrativeEmployeeAccounts;}
@@ -122,7 +170,7 @@ function updateOne(id,fn){let a=allPlans().map(normalizePlan);let i=a.findIndex(
 function initExecutionForPlan(p){try{var key='administrative_employee_execution_'+p.id;var ex=JSON.parse(localStorage.getItem(key)||'null')||{employeeId:p.id,goals:[],progress:0,evidenceCount:0};var old=ex.goals||[];ex.goals=(p.goals||[]).map(function(g,i){var prev=old.find(function(x){return String(x.goal)===String(g.goal)})||old[i]||{};return {goal:g.goal||('هدف '+(i+1)),kpi:g.kpi||'',target:g.target||'',weight:g.weight||'',description:prev.description||'',progress:prev.progress||0,evidence:prev.evidence||[],updatedAt:prev.updatedAt||''};});ex.name=p.name;ex.jobTitle=p.jobTitle;ex.supervisor=p.supervisor||supervisor;ex.schoolId=p.schoolId||currentSchoolScope();ex.updatedAt=new Date().toISOString();localStorage.setItem(key,JSON.stringify(ex));localStorage.setItem('administrative_employee_execution_touch',new Date().toISOString());}catch(e){console.warn('تعذر تهيئة تنفيذ الخطة',e)}}
 async function activateAdministrativeEmployee(userId){if(!isCurrentSupervisorSession())return alert('تفعيل الموظف الإداري متاح فقط للمسؤول المباشر الذي أرسل رابط التسجيل.');try{if(window.PlatformStateEngine?.updateAdministrativeEmployeeStatus)await PlatformStateEngine.updateAdministrativeEmployeeStatus(userId,'active');else await SmartSchoolSupabase.updateAdministrativeEmployeeStatus({schoolId:currentSchoolScope(),userId,status:'active',supervisor});await render();alert('تم تفعيل الموظف الإداري ويمكنه الآن الدخول من بوابته المستقلة.');}catch(e){alert('تعذر التفعيل: '+(e.message||e));}}
 async function disableAdministrativeEmployee(userId){if(!isCurrentSupervisorSession())return alert('تعطيل الموظف الإداري متاح فقط للمسؤول المباشر.');try{if(window.PlatformStateEngine?.updateAdministrativeEmployeeStatus)await PlatformStateEngine.updateAdministrativeEmployeeStatus(userId,'disabled');else await SmartSchoolSupabase.updateAdministrativeEmployeeStatus({schoolId:currentSchoolScope(),userId,status:'disabled',supervisor});await render();alert('تم تعطيل دخول الموظف الإداري.');}catch(e){alert('تعذر التعطيل: '+(e.message||e));}}
-async function approve(id){const p=combinedEmployees().find(x=>String(x.id)===String(id));if(!p||!p._hasPlan)return alert('لا توجد خطة مرسلة للاعتماد.');if(!isCurrentSupervisorSession())return alert('اعتماد خطة الموظف الإداري متاح فقط للمسؤول المباشر الذي أرسل رابط التسجيل.');p.status='approved';initExecutionForPlan(p);snapshot(p,'اعتماد الخطة','تم اعتماد خطة الأداء الوظيفي وبدء مرحلة التنفيذ');try{await persistEmployeePlanCloud(p,p._ownerUserId);let a=allPlans().filter(x=>String(x.id)!==String(p.id));a.push(p);saveAll(a);await render();alert('تم اعتماد الخطة وإتاحتها للموظف للتنفيذ.');}catch(e){alert('تعذر اعتماد الخطة سحابيًا: '+(e.message||e));}}
+async function approve(id){const p=combinedEmployees().find(x=>String(x.id)===String(id));if(!p||!p._hasPlan)return alert('لا توجد خطة مرسلة للاعتماد.');if(!isCurrentSupervisorSession())return alert('اعتماد خطة الموظف الإداري متاح فقط للمسؤول المباشر الذي أرسل رابط التسجيل.');const ctx=validateEmployeeSupervisorContext(p);if(!ctx.ok)return alert(ctx.message);p.supervisor=normalizeSupervisor(p.supervisor||supervisor)||supervisor;p.status='approved';initExecutionForPlan(p);snapshot(p,'اعتماد الخطة','تم اعتماد خطة الأداء الوظيفي وبدء مرحلة التنفيذ');try{await persistEmployeePlanCloud(p,p._ownerUserId);let a=allPlans().filter(x=>String(x.id)!==String(p.id));a.push(p);saveAll(a);await render();alert('تم اعتماد الخطة وإتاحتها للموظف للتنفيذ.');}catch(e){alert('تعذر اعتماد الخطة سحابيًا: '+(e.message||e));}}
 async function returnPlan(id){if(!isCurrentSupervisorSession())return alert('إعادة خطة الموظف الإداري متاحة فقط للمسؤول المباشر.');const p=combinedEmployees().find(x=>String(x.id)===String(id));if(!p||!p._hasPlan)return;let note=prompt('ملاحظة الإعادة للموظف/ة:')||'تحتاج الخطة إلى تعديل.';p.status='returned';p.reviewNotes=note;snapshot(p,'إعادة الخطة للتعديل',note);try{await persistEmployeePlanCloud(p,p._ownerUserId);await render();alert('تمت إعادة الخطة للموظف للتعديل.');}catch(e){alert('تعذر إعادة الخطة سحابيًا: '+(e.message||e));}}
 function openExecution(id,ownerUid){location.href='administrative_employee_execution.html?emp='+encodeURIComponent(id)+'&owner_uid='+encodeURIComponent(ownerUid||'')+'&supervisor='+encodeURIComponent(supervisor)+(currentSchoolScope()?'&school='+encodeURIComponent(currentSchoolScope()):'')}
 function openEval(id,ownerUid){location.href='administrative_employee_evaluation.html?comp_model=4&emp='+encodeURIComponent(id)+'&owner_uid='+encodeURIComponent(ownerUid||'')+'&supervisor='+encodeURIComponent(supervisor)+(currentSchoolScope()?'&school='+encodeURIComponent(currentSchoolScope()):'')}

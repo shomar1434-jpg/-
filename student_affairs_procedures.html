@@ -293,9 +293,9 @@ input::placeholder,textarea::placeholder{
 <section class="screen" id="directory">
   <div class="top">
     <div><h1>مركز بيانات الطلاب وأولياء الأمور</h1><p>المصدر الموحد الذي تعتمد عليه جميع معاملات شؤون الطلاب</p></div><div class="chips">
-      <button class="btn primary" id="importStudentsBtn" type="button">استيراد بيانات الطلاب</button>
-      <button class="btn primary" id="importGuardiansBtn" type="button">استيراد بيانات أولياء الأمور</button>
-      <button class="btn" id="syncPlatformBtn" type="button">جلب من مركز المعلومات</button>
+      <button class="btn primary" id="importStudentsBtn" type="button" onclick="(function(){var a=document.getElementById('studentsImportPanel'),b=document.getElementById('guardiansImportPanel'),c=document.getElementById('platformSyncPanel');if(a){a.classList.remove('hidden');a.scrollIntoView({behavior:'smooth',block:'start'})}if(b)b.classList.add('hidden');if(c)c.classList.add('hidden')})()">استيراد بيانات الطلاب</button>
+      <button class="btn primary" id="importGuardiansBtn" type="button" onclick="(function(){var a=document.getElementById('guardiansImportPanel'),b=document.getElementById('studentsImportPanel'),c=document.getElementById('platformSyncPanel');if(a){a.classList.remove('hidden');a.scrollIntoView({behavior:'smooth',block:'start'})}if(b)b.classList.add('hidden');if(c)c.classList.add('hidden')})()">استيراد بيانات أولياء الأمور</button>
+      <button class="btn" id="syncPlatformBtn" type="button" onclick="(function(){var a=document.getElementById('platformSyncPanel'),b=document.getElementById('studentsImportPanel'),c=document.getElementById('guardiansImportPanel');if(a){a.classList.remove('hidden');a.scrollIntoView({behavior:'smooth',block:'start'})}if(b)b.classList.add('hidden');if(c)c.classList.add('hidden')})()">جلب الطلاب من مركز معلومات المدير</button>
     </div></div>
 
   <div class="panel">
@@ -326,7 +326,7 @@ input::placeholder,textarea::placeholder{
 
   <div id="studentsImportPanel" class="panel hidden">
     <div class="card-head"><h3>استيراد بيانات الطلاب وأولياء الأمور</h3><button class="btn" id="closeStudentsImport">إغلاق</button></div>
-    <div class="notice">يدعم الاستيراد <b>Excel أو PDF النصي</b>. يجب أن يحتوي السجل على بيانات الطالب وولي أمره معًا.</div>
+    <div class="notice">يدعم استيراد بيانات الطلاب من <b>Excel أو PDF النصي</b>. ويمكن استكمال بيانات ولي الأمر من ملف مستقل. تحفظ البيانات داخل نطاق المستخدم والمدرسة الحالية فقط.</div>
     <div class="data-requirements"><b>إلزامي للاستخدام في الإجراءات:</b> اسم الطالب + السجل المدني + المرحلة + الصف + الفصل/الشعبة + اسم ولي الأمر + رقم جوال ولي الأمر. السجل الناقص يظهر للمراجعة ولا يسمح بإرساله على واتساب.</div>
     <div class="import-file-row" style="margin-top:12px">
       <div class="field"><label>ملف Excel أو PDF</label><input id="studentsExcelFile" type="file" accept=".xlsx,.xls,.pdf,application/pdf"></div>
@@ -1234,9 +1234,9 @@ function bindImportControls(){
  const importStudentsBtn=$('#importStudentsBtn');
  const importGuardiansBtn=$('#importGuardiansBtn');
  const syncPlatformBtn=$('#syncPlatformBtn');
- if(importStudentsBtn) importStudentsBtn.onclick=()=>{$('#studentsImportPanel').classList.remove('hidden');$('#guardiansImportPanel').classList.add('hidden');$('#platformSyncPanel').classList.add('hidden');};
- if(importGuardiansBtn) importGuardiansBtn.onclick=()=>{$('#guardiansImportPanel').classList.remove('hidden');$('#studentsImportPanel').classList.add('hidden');$('#platformSyncPanel').classList.add('hidden');};
- if(syncPlatformBtn) syncPlatformBtn.onclick=()=>{$('#platformSyncPanel').classList.remove('hidden');$('#studentsImportPanel').classList.add('hidden');$('#guardiansImportPanel').classList.add('hidden');};
+ if(importStudentsBtn) importStudentsBtn.onclick=()=>{const p=$('#studentsImportPanel');p.classList.remove('hidden');$('#guardiansImportPanel').classList.add('hidden');$('#platformSyncPanel').classList.add('hidden');p.scrollIntoView({behavior:'smooth',block:'start'});};
+ if(importGuardiansBtn) importGuardiansBtn.onclick=()=>{const p=$('#guardiansImportPanel');p.classList.remove('hidden');$('#studentsImportPanel').classList.add('hidden');$('#platformSyncPanel').classList.add('hidden');p.scrollIntoView({behavior:'smooth',block:'start'});};
+ if(syncPlatformBtn) syncPlatformBtn.onclick=()=>{const p=$('#platformSyncPanel');p.classList.remove('hidden');$('#studentsImportPanel').classList.add('hidden');$('#guardiansImportPanel').classList.add('hidden');p.scrollIntoView({behavior:'smooth',block:'start'});};
  if($('#closeStudentsImport')) $('#closeStudentsImport').onclick=()=>$('#studentsImportPanel').classList.add('hidden');
  if($('#closeGuardiansImport')) $('#closeGuardiansImport').onclick=()=>$('#guardiansImportPanel').classList.add('hidden');
  if($('#closePlatformSync')) $('#closePlatformSync').onclick=()=>$('#platformSyncPanel').classList.add('hidden');
@@ -1289,7 +1289,39 @@ if(importBtnV1)importBtnV1.onclick=async()=>{const result=$('#studentsImportResu
 const guardianBtnV1=$('#processGuardiansExcel');
 if(guardianBtnV1)guardianBtnV1.onclick=async()=>{const result=$('#guardiansImportResult');try{const rows=await readImportRowsV1($('#guardiansExcelFile').files[0]);let linked=0,notFound=0,invalid=0;rows.forEach(row=>{const national=cleanNationalId(pickField(row,['السجل المدني للطالب','رقم السجل المدني','السجل المدني','رقم الهوية','هوية الطالب'])),guardian=pickField(row,['اسم ولي الامر','اسم ولي الأمر','ولي الامر','ولي الأمر','اسم الوالد']),phone=pickField(row,['رقم الجوال','الجوال','رقم جوال ولي الامر','رقم جوال ولي الأمر','جوال ولي الأمر']);if(!national||!guardian||!phone){invalid++;return}const st=students.find(x=>x.national_id===national);if(!st){notFound++;return}st.guardian=guardian;st.guardian_relation=$('#guardianRelationDefault').value;st.phone=phone;st.primary_guardian=true;linked++});refreshStudentSelectors();result.innerHTML=`<div class="import-summary"><div class="stat"><small>تم الربط</small><b>${linked}</b></div><div class="stat"><small>طالب غير موجود</small><b>${notFound}</b></div><div class="stat"><small>بيانات ناقصة</small><b>${invalid}</b></div><div class="stat"><small>جاهزون للتواصل</small><b>${students.filter(st=>studentDataQuality(st)==='مكتملة').length}</b></div></div>`}catch(e){result.innerHTML='<span class="error">'+esc(e.message)+'</span>'}};
 const platformBtnV1=$('#runPlatformSync');
-if(platformBtnV1)platformBtnV1.onclick=async()=>{const r=$('#platformSyncResult');try{let data=[];if(window.SchoolInformationSource){if(typeof SchoolInformationSource.refresh==='function')await SchoolInformationSource.refresh();const ss=String(SchoolInformationSource.getSchoolId?.()||SchoolInformationSource.schoolId||'').trim(),as=activeSchoolId();if(as&&ss&&as!==ss)throw new Error('تم منع قراءة بيانات مدرسة أخرى بسبب اختلاف school_id.');data=typeof SchoolInformationSource.getStudents==='function'?await SchoolInformationSource.getStudents():[]}else if(window.PlatformInformationProvider?.getStudentsAndGuardians)data=await PlatformInformationProvider.getStudentsAndGuardians();else throw new Error('تعذر الوصول إلى مركز المعلومات المدرسي.');let imported=0,ready=0,review=0;(data||[]).forEach((row,i)=>{const item={id:'S'+String(Date.now()+i),name:row.student_name||row.name||row.full_name||row['اسم الطالب']||'',national_id:cleanNationalId(row.national_id||row.student_national_id||row.identity||row.civil_id||row['السجل المدني']),stage:row.stage||row.stage_name||row['المرحلة']||'',grade:row.grade||row.grade_name||row.class||row['الصف']||'',classroom:row.classroom||row.section||row.section_name||row['الفصل']||row['الشعبة']||'',guardian:row.guardian_name||row.parent_name||row['ولي الأمر']||'',guardian_relation:row.guardian_relation||row.relation||'ولي أمر',phone:row.guardian_phone||row.parent_phone||row.mobile||row.phone||row['رقم الجوال']||'',source:'مركز المعلومات المدرسي',primary_guardian:true};if(!item.name||!item.national_id){review++;return}item.class=`${item.grade}/${item.classroom}`;let st=students.find(x=>x.national_id===item.national_id);if(st)Object.assign(st,item,{id:st.id});else students.push(st=item);imported++;if(studentDataQuality(st)==='مكتملة')ready++;else review++});refreshStudentSelectors();r.innerHTML=`<span class="success">✓ تمت مزامنة ${imported} طالبًا.</span><br>جاهزون للإجراءات: ${ready} · تحتاج مراجعة: ${review}`}catch(e){r.innerHTML='<span class="error">'+esc(e.message)+'</span>'}};
+if(platformBtnV1)platformBtnV1.onclick=async()=>{
+ const r=$('#platformSyncResult');
+ r.innerHTML='<span>جارٍ الاتصال بمركز معلومات مدير المدرسة...</span>';
+ try{
+   const source=window.SchoolInformationSource;
+   if(!source||typeof source.getStudents!=='function')throw new Error('تعذر تحميل مصدر مركز معلومات مدير المدرسة. تأكد من وجود school-information-source.js في جذر المنصة.');
+   const expectedSchool=activeSchoolId();
+   if(typeof source.refresh==='function')await source.refresh();
+   const ctx=typeof source.context==='function'?source.context():{};
+   const sourceSchool=String(ctx?.schoolId||'').trim();
+   if(expectedSchool&&sourceSchool&&expectedSchool!==sourceSchool)throw new Error('تم منع الاستيراد لأن مركز المعلومات مرتبط بمدرسة أخرى.');
+   const data=await source.getStudents(true);
+   if(!Array.isArray(data))throw new Error('لم يرجع مركز المعلومات قائمة طلاب صالحة.');
+   let added=0,updated=0,skipped=0;
+   data.forEach((row,i)=>{
+     const name=String(row.student_name||row.name||row.full_name||'').trim();
+     const national=cleanNationalId(row.national_id||row.student_national_id||row.identity||row.civil_id||'');
+     if(!name){skipped++;return;}
+     const stage=normalizeStage(row.stage||row.stage_name||'');
+     const grade=String(row.grade||row.grade_name||'').trim();
+     const classroom=String(row.section_name||row.classroom||row.section||row.noor_section_code||'').trim();
+     const stableId=String(row.id||row.student_id||'').trim();
+     let st=(national&&students.find(x=>x.national_id===national))||(stableId&&students.find(x=>String(x.source_id||'')===stableId));
+     const patch={name,national_id:national,stage,grade,classroom,class:`${grade}/${classroom}`,source:'مركز معلومات مدير المدرسة',source_id:stableId};
+     // لا نستبدل بيانات ولي الأمر الموجودة محليًا لأن المصدر المركزي الحالي لا يحتوي حقول ولي الأمر.
+     if(st){Object.assign(st,patch,{id:st.id});updated++;}
+     else{students.push({id:stableId?('SI-'+stableId):('S'+String(Date.now()+i)),guardian:'',guardian_relation:'',phone:'',alt_phone:'',primary_guardian:true,...patch});added++;}
+   });
+   refreshStudentSelectors();
+   scheduleStudentAffairsPersist?.(20);
+   r.innerHTML=`<div class="import-summary"><div class="stat"><small>طلاب جدد</small><b>${added}</b></div><div class="stat"><small>تم تحديثهم</small><b>${updated}</b></div><div class="stat"><small>تجاوزها النظام</small><b>${skipped}</b></div><div class="stat"><small>إجمالي الطلاب</small><b>${students.length}</b></div></div><div class="notice" style="margin-top:10px">تمت القراءة من مركز معلومات مدير المدرسة لنفس المدرسة. بيانات ولي الأمر غير موجودة في المصدر المركزي الحالي، ويمكن استكمالها من زر استيراد بيانات أولياء الأمور من Excel.</div>`;
+ }catch(e){r.innerHTML='<span class="error">'+esc(e.message||String(e))+'</span>';}
+};
 
 function archiveFormKeyV1(a){const d=a?.formKey||'';if(d&&templates[d])return d;return Object.keys(templates).find(k=>templates[k].title===a?.title)||''}
 function decorateArchiveV1(){const counters={};archive.forEach(a=>{const fk=archiveFormKeyV1(a);if(!fk)return;const key=fk+'|'+String(a.student);counters[key]=(counters[key]||0)+1;const n=Number(a.cloudArchiveSequence||counters[key]||1),base=studentName(a.student)||'طالب';a.formKey=fk;a.folderTitle=a.cloudArchiveFolder||templates[fk].title;a.sequence=n;a.saveName=a.cloudArchiveName||(n>1?`${base} (${n})`:base)})}
@@ -1878,5 +1910,21 @@ window.addEventListener('load',()=>{
 </script>
 
 
+
+<script id="student-affairs-import-ui-stability-v1">
+(function(){
+ function openPanel(id){
+   ['studentsImportPanel','guardiansImportPanel','platformSyncPanel'].forEach(function(x){var el=document.getElementById(x);if(el)el.classList.toggle('hidden',x!==id)});
+   var p=document.getElementById(id);if(p)p.scrollIntoView({behavior:'smooth',block:'start'});
+ }
+ function bind(){
+   var a=document.getElementById('importStudentsBtn'),b=document.getElementById('importGuardiansBtn'),c=document.getElementById('syncPlatformBtn');
+   if(a)a.onclick=function(){openPanel('studentsImportPanel')};
+   if(b)b.onclick=function(){openPanel('guardiansImportPanel')};
+   if(c)c.onclick=function(){openPanel('platformSyncPanel')};
+ }
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bind,{once:true});else bind();
+})();
+</script>
 </body>
 </html>

@@ -11,9 +11,10 @@ html[data-agent-ui-ready="1"] body{visibility:visible!important;opacity:1!import
 </style>
 <script id="agent-first-paint-ready-fix">
 (function(){
-  if(window.__AGENT_FIRST_PAINT_READY_FIX_V2__) return;
-  window.__AGENT_FIRST_PAINT_READY_FIX_V2__=true;
-  var revealed=false;
+  if(window.__AGENT_FIRST_PAINT_READY_FIX_V3__) return;
+  window.__AGENT_FIRST_PAINT_READY_FIX_V3__=true;
+  var revealed=false, loadDone=(document.readyState==='complete');
+
   function revealStableUI(){
     if(revealed) return;
     revealed=true;
@@ -23,11 +24,19 @@ html[data-agent-ui-ready="1"] body{visibility:visible!important;opacity:1!import
       });
     });
   }
-  function afterLoad(){
-    setTimeout(revealStableUI,80);
+  function tryReveal(){
+    if(!loadDone) return;
+    /* لا نكشف واجهة الوكيل قبل حسم البطاقات المشروطة بالدور. */
+    if(document.getElementById('student-affairs-procedures-card') &&
+       document.documentElement.getAttribute('data-student-affairs-card-ready')!=='1') return;
+    setTimeout(revealStableUI,90);
   }
-  if(document.readyState==='complete') afterLoad();
-  else window.addEventListener('load',afterLoad,{once:true});
+
+  window.addEventListener('student-affairs-card-ready',tryReveal);
+  if(document.readyState==='complete'){loadDone=true;tryReveal()}
+  else window.addEventListener('load',function(){loadDone=true;tryReveal()},{once:true});
+
+  /* fallback للحماية من بقاء الصفحة مخفية إذا تعطل سكربت ثانوي غير متعلق بالواجهة. */
   setTimeout(revealStableUI,2200);
 })();
 </script>
@@ -6717,22 +6726,91 @@ window.__AGENT_PERFORMANCE_ARCHIVE_SAVE_V2__={verifiedBeforeSuccess:true,folderB
 </script>
 <script id="student-affairs-procedures-card-guard">
 (function(){
- if(window.__STUDENT_AFFAIRS_PROCEDURES_CARD_GUARD__)return;window.__STUDENT_AFFAIRS_PROCEDURES_CARD_GUARD__=true;
- function j(v){try{return JSON.parse(v||'null')}catch(_){return null}}
- function values(){
-  const s=j(sessionStorage.getItem('smart_school_current_session'))||j(localStorage.getItem('smart_school_current_session'))||{},u=j(localStorage.getItem('currentSchoolUser'))||j(localStorage.getItem('currentUser'))||{};
-  return [sessionStorage.getItem('smart_school_tab_role_v1'),s.role,s.roleLabel,s.role_label,s.agency_type,s.agent_categories,u.role,u.roleLabel,u.role_label,u.agency_type,u.agent_categories];
- }
- function allowed(){
-  if(sessionStorage.getItem('system_admin_context')==='1'||sessionStorage.getItem('system_admin_verified')==='true')return true;
-  return values().some(v=>{
-   const a=Array.isArray(v)?v:String(v||'').split(',');
-   return a.some(x=>['student_affairs','deputy_students','وكيل شؤون الطلاب','وكيلة شؤون الطلاب'].includes(String(x||'').trim().toLowerCase()));
-  });
- }
- window.openStudentAffairsProcedures=()=>{if(!allowed()){alert('هذا القسم مخصص لوكيل/وكيلة شؤون الطلاب ومدير النظام فقط.');return}location.href='student_affairs_procedures.html'};
- function apply(){const c=document.getElementById('student-affairs-procedures-card');if(c)c.style.display=allowed()?'flex':'none'}
- if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',apply,{once:true});else apply();window.addEventListener('load',apply,{once:true});
+  if(window.__STUDENT_AFFAIRS_PROCEDURES_CARD_GUARD_V2__)return;
+  window.__STUDENT_AFFAIRS_PROCEDURES_CARD_GUARD_V2__=true;
+
+  function j(v){try{return JSON.parse(v||'null')}catch(_){return null}}
+  function split(v){
+    if(Array.isArray(v))return v.flatMap(split);
+    const s=String(v||'').trim();
+    if(!s)return [];
+    if(s[0]==='['){try{return split(JSON.parse(s))}catch(_){}}
+    return s.split(/[،,|;/]+/).map(x=>x.trim()).filter(Boolean);
+  }
+  function canon(v){
+    const s=String(v||'').trim().toLowerCase().replace(/[_-]+/g,' ').replace(/\s+/g,' ');
+    if(!s)return '';
+    if(
+      s==='student affairs' ||
+      s==='student affairs agent' ||
+      s==='student affairs deputy' ||
+      s==='deputy students' ||
+      s==='student affairs deputy agent' ||
+      s==='وكيل شؤون الطلاب' ||
+      s==='وكيلة شؤون الطلاب' ||
+      s==='وكيل الشؤون الطلابية' ||
+      s==='وكيلة الشؤون الطلابية' ||
+      s==='شؤون الطلاب' ||
+      s==='الشؤون الطلابية' ||
+      s==='طلاب'
+    ) return 'student_affairs';
+    if(s==='system admin'||s==='system administrator'||s==='مدير النظام')return 'system_admin';
+    return s;
+  }
+  function currentProfiles(){
+    const keys=['smart_school_current_session','currentSchoolUser','currentUser'];
+    const out=[];
+    keys.forEach(k=>{
+      const a=j(sessionStorage.getItem(k)), b=j(localStorage.getItem(k));
+      if(a)out.push(a); if(b)out.push(b);
+    });
+    return out;
+  }
+  function agencyValues(){
+    const q=new URLSearchParams(location.search||'');
+    const vals=[
+      q.get('agency_type'),q.get('agency_types'),q.get('agent_categories'),
+      q.get('role'),sessionStorage.getItem('smart_school_tab_role_v1')
+    ];
+    currentProfiles().forEach(p=>{
+      [
+        'role','roleLabel','role_label',
+        'agency_type','agencyType','agency_types',
+        'agent_category','agent_categories','agency_categories',
+        'department','department_name','assignment','assignment_name',
+        'job_title','jobTitle','position','position_name'
+      ].forEach(k=>vals.push(p?.[k]));
+    });
+    return vals.flatMap(split).map(canon).filter(Boolean);
+  }
+  function isSystemAdmin(){
+    if(sessionStorage.getItem('system_admin_context')==='1')return true;
+    if(sessionStorage.getItem('system_admin_verified')==='true')return true;
+    if(document.documentElement.getAttribute('data-system-admin-context')==='1')return true;
+    return agencyValues().includes('system_admin');
+  }
+  function allowed(){
+    return isSystemAdmin() || agencyValues().includes('student_affairs');
+  }
+  function apply(){
+    const card=document.getElementById('student-affairs-procedures-card');
+    if(card)card.style.display=allowed()?'flex':'none';
+    document.documentElement.setAttribute('data-student-affairs-card-ready','1');
+    window.dispatchEvent(new CustomEvent('student-affairs-card-ready'));
+  }
+
+  window.openStudentAffairsProcedures=function(){
+    if(!allowed()){
+      alert('هذا القسم مخصص لوكيل/وكيلة شؤون الطلاب ومدير النظام فقط.');
+      return;
+    }
+    location.href='student_affairs_procedures.html';
+  };
+
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',apply,{once:true});
+  else apply();
+  window.addEventListener('load',apply,{once:true});
+  window.addEventListener('focus',apply);
 })();
 </script>
 </body></html>

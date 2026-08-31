@@ -1294,7 +1294,7 @@ function bindImportControls(){
      const rows=await readExcelRows($('#studentsExcelFile').files[0]);let added=0,updated=0,skipped=0;
      if($('#studentsImportMode').value==='replace')students.splice(0,students.length);
      rows.forEach((row,i)=>{const name=pickField(row,['الاسم','اسم الطالب','اسم الطالب/ة','الطالب']);const national=cleanNationalId(pickField(row,['السجل المدني','رقم السجل المدني','رقم الهوية','الهوية','سجل مدني']));const stage=normalizeStage(pickField(row,['المرحلة','المرحلة الدراسية']));const grade=pickField(row,['الصف','الصف الدراسي']);const classroom=pickField(row,['الفصل','فصل','الشعبة']);if(!name||!national||!stage||!grade||!classroom){skipped++;return;}let st=students.find(x=>x.national_id===national);if(st){Object.assign(st,{name,stage,grade,classroom,class:`${grade}/${classroom}`,source:'Excel'});updated++;}else{students.push({id:'S'+String(Date.now()+i),national_id:national,name,stage,grade,classroom,class:`${grade}/${classroom}`,guardian:'',guardian_relation:'',phone:'',alt_phone:'',primary_guardian:true,source:'Excel'});added++;}});
-     refreshStudentSelectors();await persistStudentAffairsState();result.innerHTML=`<div class="import-summary"><div class="stat"><small>تمت الإضافة</small><b>${added}</b></div><div class="stat"><small>تم التحديث</small><b>${updated}</b></div><div class="stat"><small>سجلات غير مكتملة</small><b>${skipped}</b></div><div class="stat"><small>إجمالي الطلاب</small><b>${students.length}</b></div></div>`;
+     refreshStudentSelectors();await persistStudentAffairsState();result.innerHTML=`<div class="import-summary"><div class="stat"><small>تمت الإضافة</small><b>${added}</b></div><div class="stat"><small>تم التحديث</small><b>${updated}</b></div><div class="stat"><small>سجلات غير مكتملة</small><b>${skipped}</b></div><div class="stat"><small>إجمالي الطلاب</small><b>${students.length}</b></div></div><div class="ok" style="margin-top:8px">✓ تم حفظ قائمة الطلاب وستستعاد تلقائيًا عند فتح القسم مرة أخرى.</div>`;
    }catch(err){result.innerHTML='<span class="error">'+esc(err.message)+'</span>';}
  };
  if($('#processGuardiansExcel')) $('#processGuardiansExcel').onclick=async()=>{
@@ -1515,9 +1515,9 @@ if(new URLSearchParams(location.search).get('guardian')!=='1'){
 
     <section id="doneCard" class="card hidden">
       <div class="ok">✓ تم تسجيل الإقرار والتوقيع بنجاح.</div>
-      <div class="notice">تم تثبيت التوقيع على النموذج النهائي وحفظ المعاملة وأرشفتها إلكترونيًا. يمكنك الآن إرسال تأكيد للوكيل عبر واتساب.</div>
+      <div class="notice">تم تثبيت التوقيع على النموذج النهائي وحفظ المعاملة وأرشفتها إلكترونيًا. يمكنك الآن الرجوع إلى نفس محادثة واتساب التي وصل منها الرابط وإرسال التأكيد.</div>
       <div class="actions">
-        <button id="replyAgentBtn" class="primary" type="button">إرسال تأكيد للوكيل عبر واتساب</button>
+        <button id="replyAgentBtn" class="primary" type="button">الرد على نفس محادثة واتساب</button>
       </div>
       <div id="replyMsg" class="notice"></div>
     </section>
@@ -1615,13 +1615,28 @@ document.getElementById('submitBtn').onclick=async()=>{
   if(finalSig)finalSig.classList.remove('hidden');
   document.getElementById('signCard')?.classList.add('hidden');document.getElementById('doneCard')?.classList.remove('hidden');
   const replyBtn=document.getElementById('replyAgentBtn');
-  if(replyBtn)replyBtn.onclick=()=>{
-    const agentPhone=guardianNormalizeSaudiPhone(verifiedTx.agent_phone||''),replyMsg=document.getElementById('replyMsg');
-    if(!agentPhone){if(replyMsg)replyMsg.innerHTML='<span class="error">رقم وكيل/وكيلة شؤون الطلاب غير مسجل.</span>';return}
-    const guardianName=(verifiedTx.guardian||'ولي الأمر').trim();
-    const reply=`السلام عليكم ورحمة الله وبركاته\n${verifiedTx.agent_name||'وكيل/وكيلة شؤون الطلاب'} — ${verifiedTx.school_name||'المدرسة'}\n\nأفيدكم أنا ${guardianName}، ولي أمر الطالب/الطالبة ${verifiedTx.student||''}، بأنني اطلعت على ${verifiedTx.title||'المعاملة'} ووقعت عليها بالعلم.\nرقم المعاملة: ${verifiedTx.transaction_no||''}\n\nتم الإرسال من بوابة ولي الأمر الإلكترونية.`;
-    window.open('https://wa.me/'+agentPhone+'?text='+encodeURIComponent(reply),'_blank','noopener');
-  };
+  if(replyBtn){
+    replyBtn.textContent='الرد على نفس محادثة واتساب';
+    replyBtn.onclick=async()=>{
+      const replyMsg=document.getElementById('replyMsg');
+      const guardianName=(verifiedTx.guardian||'ولي الأمر').trim();
+      const reply=`السلام عليكم ورحمة الله وبركاته\n\nأفيدكم أنا ${guardianName}، ولي أمر الطالب/الطالبة ${verifiedTx.student||''}، بأنني اطلعت على ${verifiedTx.title||'المعاملة'} ووقعت عليها بالعلم.\nرقم المعاملة: ${verifiedTx.transaction_no||''}\n\nتم الإرسال من بوابة ولي الأمر الإلكترونية.`;
+      let copied=false;
+      try{await navigator.clipboard.writeText(reply);copied=true}catch(_){
+        try{const ta=document.createElement('textarea');ta.value=reply;ta.style.cssText='position:fixed;opacity:0;pointer-events:none';document.body.appendChild(ta);ta.select();copied=document.execCommand('copy');ta.remove()}catch(__){}
+      }
+      if(replyMsg)replyMsg.innerHTML=copied
+        ?'<span class="ok">✓ تم نسخ الرد. جارٍ الرجوع إلى محادثة واتساب الأصلية نفسها؛ الصق الرسالة وأرسلها.</span>'
+        :'<span class="ok">ارجع إلى محادثة واتساب التي وصل منها الرابط وأرسل التأكيد فيها.</span>';
+      // لا نبحث عن رقم الوكيل إطلاقًا؛ الرجوع للمحادثة الأصلية يضمن الرد على نفس الحساب المرسل.
+      setTimeout(()=>{
+        try{
+          if(history.length>1){history.back();return}
+          if(window.opener){window.close();return}
+        }catch(_){ }
+      },650);
+    };
+  }
  }catch(e){verifyBtn.disabled=false;verifyBtn.textContent=originalVerifyText;if(msg)msg.innerHTML='<span class="error">'+guardianEsc(e?.message||e||'تعذر التحقق')+'</span>'}
 };
 resizeGuardianCanvas();
@@ -1819,8 +1834,14 @@ window.addEventListener('load',()=>{
 
 
 /* ===== التكامل التشغيلي الصارم بعد اعتماد التصميم ===== */
-const SA_PROCEDURES_STATE_KEY='student_affairs_procedures_state_v1';
+const SA_PROCEDURES_STATE_KEY='student_affairs_procedures_state_v2';
+const SA_CLOUD_MODULE_KEY='student_affairs';
+const SA_LEGACY_CLOUD_MODULE_KEY='student_affairs_procedures';
 let saStateHydrated=false,saPersistTimer=null;
+function saCurrentUserId(){try{return String(window.PlatformCloudSession?.userId?.()||sessionStorage.getItem('platform_tab_session_user_v1')||localStorage.getItem('platform_file_session_user')||localStorage.getItem('currentUserId')||localStorage.getItem('current_user_id')||'').trim()}catch(_){return ''}}
+function saLocalStateKey(){const sid=saCurrentSchoolId()||'no-school',uid=saCurrentUserId()||'no-user';return `student_affairs_procedures_cache_v2:${sid}:${uid}`;}
+function saReadLocalState(){try{const raw=localStorage.getItem(saLocalStateKey());return raw?JSON.parse(raw):null}catch(_){return null}}
+function saWriteLocalState(state){try{const raw=JSON.stringify(state);if(window.PlatformPersistenceGuard?.setLocalSilently)window.PlatformPersistenceGuard.setLocalSilently(saLocalStateKey(),raw);else localStorage.setItem(saLocalStateKey(),raw);return true}catch(e){console.warn('student affairs local state save failed',e);return false}}
 
 function saStrictRoleAllowed(){return ['student_affairs','system_admin'].includes(resolveViewerRole())}
 function saOperationalAgent(){return resolveViewerRole()==='student_affairs'}
@@ -1840,10 +1861,24 @@ async function hydrateStudentAffairsState(){
   const g=window.PlatformPersistenceGuard;
   if(!g||typeof g.readExactValues!=='function')throw new Error('طبقة الاستمرارية السحابية غير متاحة.');
   if(saSystemAdminReadonly()){saStateHydrated=true;renderAll();return true}
-  const r=await g.readExactValues({moduleKey:'student_affairs_procedures',scope:'user',keys:[SA_PROCEDURES_STATE_KEY]});
-  if(!r||r.ok===false)throw new Error(r?.error||'تعذر قراءة بيانات إجراءات شؤون الطلاب.');
-  let state={};
-  try{state=JSON.parse(r.values?.[SA_PROCEDURES_STATE_KEY]||'{}')||{}}catch(_){state={}}
+
+  // الاستعادة المحلية أولاً لضمان بقاء قائمة الطلاب حتى عند بطء/تعذر السحابة.
+  let state=saReadLocalState()||{};
+  try{
+    const rr=await g.readExactValues({moduleKey:SA_CLOUD_MODULE_KEY,scope:'user',keys:[SA_PROCEDURES_STATE_KEY]});
+    if(rr?.ok&&rr.values?.[SA_PROCEDURES_STATE_KEY]){
+      const cloud=JSON.parse(rr.values[SA_PROCEDURES_STATE_KEY]||'{}')||{};
+      if(Array.isArray(cloud.students))state=cloud;
+    }else{
+      // ترحيل صامت من المفتاح القديم إن وجد.
+      const legacy=await g.readExactValues({moduleKey:SA_LEGACY_CLOUD_MODULE_KEY,scope:'user',keys:['student_affairs_procedures_state_v1']});
+      if(legacy?.ok&&legacy.values?.student_affairs_procedures_state_v1){
+        const migrated=JSON.parse(legacy.values.student_affairs_procedures_state_v1||'{}')||{};
+        if(Array.isArray(migrated.students))state=migrated;
+      }
+    }
+  }catch(e){console.warn('student affairs cloud hydrate fallback to local',e)}
+
   if(Array.isArray(state.students)){students.splice(0,students.length,...state.students)}
   if(Array.isArray(state.cases))cases=state.cases;
   if(Array.isArray(state.attendance))attendance=state.attendance;
@@ -1855,17 +1890,27 @@ async function hydrateStudentAffairsState(){
   saStateHydrated=true;
   refreshStudentSelectors();
   renderAll();
+  // إذا استعدنا من المحلي فقط، ارفع النسخة للسحابة بعد اكتمال الفتح.
+  if(students.length)setTimeout(()=>persistStudentAffairsState().catch(e=>console.warn('student affairs post-hydrate save',e)),300);
   return true;
 }
 async function persistStudentAffairsState(){
   if(!saStateHydrated)return false;
   const ctx=saRequireOperationalContext();if(!ctx.ok)return false;
-  const g=window.PlatformPersistenceGuard;
-  if(!g||typeof g.writeExactValues!=='function')throw new Error('طبقة الاستمرارية السحابية غير متاحة.');
-  const state={schoolId:ctx.schoolId,students,cases,attendance,transactions,archive,txSeq,caseSeq,attSeq,updatedAt:new Date().toISOString()};
   if(!saOperationalAgent())return false;
-  const r=await g.writeExactValues({moduleKey:'student_affairs_procedures',scope:'user',values:{[SA_PROCEDURES_STATE_KEY]:JSON.stringify(state)}});
-  if(!r||r.ok===false)throw new Error(r?.error||'تعذر حفظ بيانات إجراءات شؤون الطلاب.');
+  const state={schoolId:ctx.schoolId,userId:saCurrentUserId(),students,cases,attendance,transactions,archive,txSeq,caseSeq,attSeq,updatedAt:new Date().toISOString()};
+  const localOk=saWriteLocalState(state);
+  const g=window.PlatformPersistenceGuard;
+  if(!g||typeof g.writeExactValues!=='function'){
+    if(localOk)return true;
+    throw new Error('طبقة الاستمرارية السحابية غير متاحة.');
+  }
+  const r=await g.writeExactValues({moduleKey:SA_CLOUD_MODULE_KEY,scope:'user',values:{[SA_PROCEDURES_STATE_KEY]:JSON.stringify(state)}});
+  if(!r||r.ok===false){
+    console.warn('student affairs cloud state save failed',r?.error||'unknown');
+    if(localOk)return true;
+    throw new Error(r?.error||'تعذر حفظ بيانات إجراءات شؤون الطلاب.');
+  }
   return true;
 }
 function scheduleStudentAffairsPersist(delay=250){

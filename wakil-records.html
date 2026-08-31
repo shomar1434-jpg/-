@@ -1376,6 +1376,9 @@ function readJsonSafe(key,fallback){try{return JSON.parse(localStorage.getItem(k
 function canonicalWakilAgency(v){
   var x=String(v||'').trim().replace(/\s+/g,' ');
   if(!x || x==='general') return '';
+  /* المسميات العامة للدور ليست تصنيف وكالة. */
+  var genericRole=/^(agent|agency|deputy|وكيل|وكيلة|الوكيل|الوكيلة|وكيل\/وكيلة|نائب|نائبة)$/i;
+  if(genericRole.test(x)) return '';
   var aliases={
     'educational':'educational','deputy_academic':'educational','academic':'educational',
     'وكيل شؤون تعليمية':'educational','وكيل الشؤون التعليمية':'educational','وكيل/وكيلة شؤون تعليمية':'educational','وكيل/وكيلة الشؤون التعليمية':'educational','وكيلة شؤون تعليمية':'educational','وكيلة الشؤون التعليمية':'educational',
@@ -1384,7 +1387,8 @@ function canonicalWakilAgency(v){
     'student_affairs':'student_affairs','deputy_students':'student_affairs','students':'student_affairs',
     'وكيل شؤون الطلاب':'student_affairs','وكيل الشؤون الطلابية':'student_affairs','وكيل/وكيلة شؤون الطلاب':'student_affairs','وكيلة شؤون الطلاب':'student_affairs'
   };
-  return aliases[x]||x;
+  /* لا نقبل أي قيمة مجهولة كتصنيف؛ التصنيفات المعتمدة ثلاثة فقط. */
+  return aliases[x]||'';
 }
 function normalizeAgencyList(v){
   if(Array.isArray(v)) return Array.from(new Set(v.map(canonicalWakilAgency).filter(Boolean).filter(function(x){return x!=='general';})));
@@ -1416,7 +1420,9 @@ function allowedWakilCategory(cat){
   var agencies=currentWakilAgencies();
   cat=cat||'shared';
   if(cat==='shared') return true;
-  if(!agencies.length){var u=currentWakilUser();var r=String(u.role||u.dbRole||'').toLowerCase();return !(r==='agent'||r==='agency'||r==='deputy') ? true : false;}
+  /* عدم وجود تصنيف صريح يعني وكيل عام، وبالتالي تظهر جميع السجلات.
+     أما إذا حدد المدير تصنيفًا صريحًا فتظهر سجلاته + المشتركة فقط. */
+  if(!agencies.length) return true;
   return agencies.indexOf(cat)>-1;
 }
 function visibleForms(){return FORMS.filter(function(f){return allowedWakilCategory(f.category||'shared');});}

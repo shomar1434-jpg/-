@@ -257,7 +257,7 @@ input::placeholder,textarea::placeholder{
   <div class="group">الإدارة والمتابعة</div>
   <div class="nav">
     <button data-screen="reports"><span class="ni">▥</span>التقارير والمؤشرات</button>
-    <button data-screen="archive"><span class="ni">▣</span>الأرشيف الذكي</button>
+    <button type="button" onclick="location.href='student_affairs_procedures_archive.html'"><span class="ni">▣</span>أرشيف الإجراءات</button>
   </div>
 </aside>
 
@@ -285,7 +285,7 @@ input::placeholder,textarea::placeholder{
     <button class="module" data-go="cases"><div class="ico">▤</div><h4>الحالات والإحالات</h4><p>الرصد والدراسة والإحالة والمتابعة والإغلاق.</p></button>
     <button class="module" data-go="parents"><div class="ico">✉</div><h4>أولياء الأمور</h4><p>الخطابات والروابط وواتساب والتوقيع الإلكتروني.</p></button>
     <button class="module" data-go="reports"><div class="ico">▥</div><h4>التقارير والمؤشرات</h4><p>اتجاهات أسبوعية وشهرية ومؤشرات قرار.</p></button>
-    <button class="module" data-go="archive"><div class="ico">▣</div><h4>الأرشيف الذكي</h4><p>بحث واسترجاع جميع معاملات الطلاب.</p></button>
+    <button class="module" type="button" onclick="location.href='student_affairs_procedures_archive.html'"><div class="ico">▣</div><h4>أرشيف الإجراءات</h4><p>المعاملات المكتملة والموقعة حسب النموذج والطالب/الطالبة.</p></button>
   </div>
 </section>
 
@@ -593,20 +593,54 @@ function getSchoolStamp(){return (window.StudentAffairsConfig&&window.StudentAff
 function getAgentSignature(){return (window.StudentAffairsConfig&&window.StudentAffairsConfig.agent_signature)||SchoolContactConfig.agent_signature||''}
 function safeJSON(raw){try{return JSON.parse(raw||'null')}catch(_){return null}}
 function activeSchoolId(){try{return String(window.PlatformCloudSession?.schoolId?.()||sessionStorage.getItem('smart_school_tab_school_v1')||sessionStorage.getItem('current_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||'').trim()}catch(_){return ''}}
-function normalizeStudentAffairsRole(v){v=String(v||'').trim().toLowerCase();if(['system_admin','system-admin','مدير النظام'].includes(v))return 'system_admin';if(['student_affairs','student-affairs','student_affairs_agent','deputy_students','وكيل شؤون الطلاب','وكيلة شؤون الطلاب','وكيل الشؤون الطلابية'].includes(v))return 'student_affairs';return v}
-function resolveViewerRole(){const q=new URLSearchParams(location.search);if(q.get('review')==='1')return 'review';const s=safeJSON(sessionStorage.getItem('smart_school_current_session'))||safeJSON(localStorage.getItem('smart_school_current_session'))||{},u=safeJSON(localStorage.getItem('currentSchoolUser'))||safeJSON(localStorage.getItem('currentUser'))||{};for(const c of [q.get('role'),sessionStorage.getItem('smart_school_tab_role_v1'),s.role,s.dbRole,s.agency_type,s.agent_category,u.role,u.dbRole,u.agency_type,u.agent_categories]){if(Array.isArray(c)&&c.some(x=>normalizeStudentAffairsRole(x)==='student_affairs'))return 'student_affairs';const r=normalizeStudentAffairsRole(c);if(r==='system_admin'||r==='student_affairs')return r}return ''}
+function normalizeStudentAffairsRole(v){
+  const x=String(v||'').trim().toLowerCase().replace(/[_-]+/g,' ').replace(/\s+/g,' ');
+  if(['system admin','system administrator','مدير النظام'].includes(x))return 'system_admin';
+  if(['student affairs','student affairs agent','student affairs deputy','deputy students','وكيل شؤون الطلاب','وكيلة شؤون الطلاب','وكيل الشؤون الطلابية','وكيلة الشؤون الطلابية','وكيل/وكيلة شؤون الطلاب','شؤون الطلاب','الشؤون الطلابية'].includes(x))return 'student_affairs';
+  return x;
+}
+function saList(v){if(Array.isArray(v))return v.flatMap(saList);v=String(v||'').trim();if(!v)return[];if(v[0]==='['){try{return saList(JSON.parse(v))}catch(_){}}return v.split(/[،,|;/]+/).map(x=>x.trim()).filter(Boolean)}
+function saSystemAdminContext(){
+  return sessionStorage.getItem('system_admin_context')==='1'||
+    sessionStorage.getItem('system_admin_verified')==='true'||
+    document.documentElement.getAttribute('data-system-admin-context')==='1';
+}
+function saProfile(){
+  return window.FOLLOW_TARGET_USER||
+    safeJSON(sessionStorage.getItem('smart_school_current_session'))||
+    safeJSON(localStorage.getItem('smart_school_current_session'))||
+    safeJSON(localStorage.getItem('currentSchoolUser'))||
+    safeJSON(localStorage.getItem('currentUser'))||{};
+}
+function saAgentHasStudentAffairs(){
+  if(saSystemAdminContext())return false;
+  const p=saProfile(),role=String(p.dbRole||p.role||sessionStorage.getItem('smart_school_tab_role_v1')||'').toLowerCase();
+  if(role&&!/agent|وكيل|student_affairs|student-affairs/.test(role))return false;
+  const direct=[p.agent_categories,p.agency_categories,p.agency_types,p.agency_type,p.agencyType,p.vice_agency_type,p.viceAgencyType,p.roleLabel,p.role_label].flatMap(saList).map(normalizeStudentAffairsRole);
+  if(direct.includes('student_affairs'))return true;
+  try{
+    const sid=p.schoolId||p.school_id||activeSchoolId()||'default';
+    const map=safeJSON(localStorage.getItem('smartSchoolUnifiedOpsV2_vp_agency_map_'+sid))||{};
+    const id=String(p.id||p.userId||p.user_id||''),email=String(p.email||'').trim().toLowerCase();
+    return saList((id&&map[id])||(email&&map[email])||'').map(normalizeStudentAffairsRole).includes('student_affairs');
+  }catch(_){return false}
+}
+function resolveViewerRole(){
+  if(saSystemAdminContext())return 'system_admin';
+  return saAgentHasStudentAffairs()?'student_affairs':'';
+}
 function enforceStudentAffairsAccess(){
  const role=resolveViewerRole(),b=document.getElementById('roleGuardBanner');
  const ok=role==='student_affairs'||role==='system_admin';
  if(b){
    b.className='role-guard-banner'+(ok?' review':'');
    b.textContent=ok
-     ?(role==='system_admin'?'وضع مدير النظام: القسم متاح للمراجعة والتحسين ضمن سياق المدرسة المحددة.':'القسم مخصص لوكيل/وكيلة شؤون الطلاب.')
+     ?(role==='system_admin'?'وضع مدير النظام — مراجعة فقط. لا تُنشأ أو تُعدّل معاملات تشغيلية من هذا السياق.':'القسم التشغيلي لوكيل/وكيلة شؤون الطلاب.')
      :'';
  }
  if(!ok){
    document.querySelector('.layout')?.classList.add('hidden');
-   document.body.insertAdjacentHTML('afterbegin','<div style="max-width:720px;margin:70px auto;padding:25px;border:1px solid #eadada;background:#fff5f5;border-radius:16px;color:#8d3636;font-weight:800;text-align:center">هذا القسم مخصص لوكيل/وكيلة شؤون الطلاب ومدير النظام فقط.</div>');
+   document.body.insertAdjacentHTML('afterbegin','<div style="max-width:720px;margin:70px auto;padding:25px;border:1px solid #eadada;background:#fff5f5;border-radius:16px;color:#8d3636;font-weight:800;text-align:center">هذا القسم مخصص لوكيل/وكيلة شؤون الطلاب ومدير النظام في سياق المراجعة فقط.</div>');
  }
  return ok;
 }
@@ -895,6 +929,7 @@ $('#closePreviewBtn').addEventListener('click',()=>$('#previewBox').classList.ad
 const behaviorCommitmentPdf='https://www.saadalsahli.sa/wp-content/uploads/2025/08/1447.pdf';
 
 async function ensureGuardianCloudTransaction(){
+ if(!saOperationalAgent())throw new Error('مدير النظام في وضع المراجعة فقط ولا ينشئ معاملات تشغيلية.');
  const st=studentById($('#studentSelect').value);
  if(!st||studentDataQuality(st)!=='مكتملة')throw new Error('يجب اكتمال ربط الطالب/الطالبة بالسجل المدني والصف والفصل/الشعبة وولي الأمر ورقم جوال صالح أولًا.');
  const localId=$('#txNo').textContent;
@@ -1700,9 +1735,11 @@ const SA_PROCEDURES_STATE_KEY='student_affairs_procedures_state_v1';
 let saStateHydrated=false,saPersistTimer=null;
 
 function saStrictRoleAllowed(){return ['student_affairs','system_admin'].includes(resolveViewerRole())}
+function saOperationalAgent(){return resolveViewerRole()==='student_affairs'}
+function saSystemAdminReadonly(){return resolveViewerRole()==='system_admin'}
 function saCurrentSchoolId(){return String(activeSchoolId()||'').trim()}
 function saRequireOperationalContext(){
-  if(!saStrictRoleAllowed()) return {ok:false,message:'هذا القسم مخصص لوكيل/وكيلة شؤون الطلاب ومدير النظام فقط.'};
+  if(!saStrictRoleAllowed()) return {ok:false,message:'هذا القسم مخصص لوكيل/وكيلة شؤون الطلاب ومدير النظام في سياق المراجعة فقط.'};
   const sid=saCurrentSchoolId();
   if(!sid) return {ok:false,message:'لا توجد مدرسة نشطة. يجب فتح القسم من سياق مدرسة محددة.'};
   return {ok:true,schoolId:sid};
@@ -1714,7 +1751,8 @@ async function hydrateStudentAffairsState(){
   if(!ctx.ok){const b=document.getElementById('roleGuardBanner');if(b&&saStrictRoleAllowed())b.textContent=ctx.message;return false}
   const g=window.PlatformPersistenceGuard;
   if(!g||typeof g.readExactValues!=='function')throw new Error('طبقة الاستمرارية السحابية غير متاحة.');
-  const r=await g.readExactValues({moduleKey:'agent',scope:'school',keys:[SA_PROCEDURES_STATE_KEY]});
+  if(saSystemAdminReadonly()){saStateHydrated=true;renderAll();return true}
+  const r=await g.readExactValues({moduleKey:'student_affairs_procedures',scope:'user',keys:[SA_PROCEDURES_STATE_KEY]});
   if(!r||r.ok===false)throw new Error(r?.error||'تعذر قراءة بيانات إجراءات شؤون الطلاب.');
   let state={};
   try{state=JSON.parse(r.values?.[SA_PROCEDURES_STATE_KEY]||'{}')||{}}catch(_){state={}}
@@ -1737,7 +1775,8 @@ async function persistStudentAffairsState(){
   const g=window.PlatformPersistenceGuard;
   if(!g||typeof g.writeExactValues!=='function')throw new Error('طبقة الاستمرارية السحابية غير متاحة.');
   const state={schoolId:ctx.schoolId,students,cases,attendance,transactions,archive,txSeq,caseSeq,attSeq,updatedAt:new Date().toISOString()};
-  const r=await g.writeExactValues({moduleKey:'agent',scope:'school',values:{[SA_PROCEDURES_STATE_KEY]:JSON.stringify(state)}});
+  if(!saOperationalAgent())return false;
+  const r=await g.writeExactValues({moduleKey:'student_affairs_procedures',scope:'user',values:{[SA_PROCEDURES_STATE_KEY]:JSON.stringify(state)}});
   if(!r||r.ok===false)throw new Error(r?.error||'تعذر حفظ بيانات إجراءات شؤون الطلاب.');
   return true;
 }
@@ -1752,6 +1791,7 @@ const __productionOpenForm=typeof openForm==='function'?openForm:null;
 if(__productionOpenForm){
   openForm=function(key){
     const ctx=saRequireOperationalContext();if(!ctx.ok){alert(ctx.message);return}
+    if(saSystemAdminReadonly()){alert('مدير النظام في وضع المراجعة فقط. استخدم زر معاينة الخطاب دون إنشاء معاملة تشغيلية.');return}
     if(!students.length){alert('لا يمكن إنشاء معاملة قبل جلب أو استيراد بيانات الطلاب وأولياء الأمور. استخدم «معاينة الخطاب» فقط لمراجعة الشكل.');return}
     return __productionOpenForm.apply(this,arguments);
   };
@@ -1759,6 +1799,7 @@ if(__productionOpenForm){
 const __productionSaveTransaction=typeof saveTransaction==='function'?saveTransaction:null;
 if(__productionSaveTransaction){
   saveTransaction=function(archiveIt){
+    if(!saOperationalAgent()){alert('مدير النظام في وضع المراجعة فقط ولا يحفظ معاملات تشغيلية.');return false}
     const st=studentById($('#studentSelect').value);
     if(archiveIt&&!saStudentReady(st)){
       $('#txStatus').innerHTML='<span class="error">لا يمكن الاعتماد والأرشفة قبل اكتمال ربط الطالب/الطالبة بالسجل المدني والصف والفصل/الشعبة وولي الأمر ورقم الجوال.</span>';
@@ -1794,56 +1835,60 @@ window.addEventListener('load',()=>{
   const top=document.querySelector('#dashboard .top');
   if(top&&!document.getElementById('backToAgentBtn')){
     const b=document.createElement('button');b.id='backToAgentBtn';b.className='btn';b.textContent='← العودة لقسم الوكيل/الوكيلة';
-    b.onclick=()=>location.href='agent.html';top.appendChild(b);
+    b.onclick=()=>location.href='agent.html?sectionReturn=1';top.appendChild(b);
   }
   hydrateStudentAffairsState().catch(e=>{
     const b=document.getElementById('roleGuardBanner');
     if(b&&saStrictRoleAllowed()){b.className='role-guard-banner';b.style.display='block';b.textContent='تعذر تحميل بيانات القسم سحابيًا: '+String(e.message||e)}
   });
+
+  /* مدير النظام: صلاحية مراجعة مستقلة وليست تحويلاً إلى وكيل شؤون الطلاب. */
+  if(saSystemAdminReadonly()){
+    document.documentElement.setAttribute('data-student-affairs-admin-readonly','1');
+    const blocked=['saveDraftBtn','generateLink','sendWhatsApp','archiveBtn','runPlatformSync','processStudentsExcel','processGuardiansExcel','addCaseBtn','addAttendanceBtn'];
+    blocked.forEach(id=>{const el=document.getElementById(id);if(el){el.disabled=true;el.style.opacity='.45';el.style.pointerEvents='none';el.title='مدير النظام: وضع مراجعة فقط'}});
+    document.querySelectorAll('input[type=file]').forEach(el=>{el.disabled=true;el.title='مدير النظام: وضع مراجعة فقط'});
+  }
+
+  /* مزامنة حالات توقيع ولي الأمر داخل نفس نطاق المستخدم والمدرسة. */
+  async function syncGuardianCloudStates(){
+    if(!window.SchoolGuardianCloud||!saOperationalAgent())return;
+    try{
+      const r=await SchoolGuardianCloud.list(),rows=r?.transactions||[];
+      let changed=false;
+      rows.forEach(c=>{
+        let tx=transactions.find(t=>String(t.guardianCloudId||'')===String(c.id));
+        if(!tx)return;
+        const map={waiting_guardian:'بانتظار ولي الأمر',opened:'تم فتح الرابط',verified:'تم التحقق',signed:'تم التوقيع',archived:'مكتمل ومؤرشف',revoked:'ملغي'};
+        const next=map[c.status]||tx.status;
+        if(tx.status!==next){tx.status=next;changed=true}
+        tx.cloudArchiveFolder=c.archive_folder||tx.cloudArchiveFolder;
+        tx.cloudArchiveName=c.archive_name||tx.cloudArchiveName;
+        tx.cloudArchiveSequence=c.archive_sequence||tx.cloudArchiveSequence;
+        tx.signed=!!c.signed_at;tx.archived=!!c.archived_at;
+        if(c.status==='archived'){
+          const exists=archive.some(a=>String(a.guardianCloudId||'')===String(c.id));
+          if(!exists){
+            archive.push({
+              id:tx.id,date:tx.date,student:tx.student,type:'معاملة',title:tx.title,status:'مكتمل ومؤرشف',
+              details:tx.body||'',formKey:tx.formKey||archiveFormKeyV1(tx),
+              guardianCloudId:c.id,cloudArchiveFolder:c.archive_folder,cloudArchiveName:c.archive_name,cloudArchiveSequence:c.archive_sequence
+            });changed=true;
+          }
+        }
+      });
+      if(changed){renderAll();scheduleStudentAffairsPersist(10)}
+    }catch(e){console.warn('تعذر مزامنة معاملات أولياء الأمور',e)}
+  }
+  window.syncGuardianCloudStates=syncGuardianCloudStates;
+  setTimeout(syncGuardianCloudStates,700);
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')syncGuardianCloudStates()});
+  setInterval(syncGuardianCloudStates,30000);
 });
 
 })();
 </script>
 
-
-<script id="student-affairs-guardian-internal-sync-v1">
-(function(){
- if(new URLSearchParams(location.search).get('guardian')==='1')return;
- async function syncGuardianCloudStates(){
-  if(!window.SchoolGuardianCloud||!saStrictRoleAllowed?.())return;
-  try{
-   const r=await SchoolGuardianCloud.list(),rows=r?.transactions||[];
-   let changed=false;
-   rows.forEach(c=>{
-    let tx=transactions.find(t=>String(t.guardianCloudId||'')===String(c.id));
-    if(!tx)return;
-    const map={waiting_guardian:'بانتظار ولي الأمر',opened:'تم فتح الرابط',verified:'تم التحقق',signed:'تم التوقيع',archived:'مكتمل ومؤرشف',revoked:'ملغي'};
-    const next=map[c.status]||tx.status;
-    if(tx.status!==next){tx.status=next;changed=true}
-    tx.cloudArchiveFolder=c.archive_folder||tx.cloudArchiveFolder;
-    tx.cloudArchiveName=c.archive_name||tx.cloudArchiveName;
-    tx.cloudArchiveSequence=c.archive_sequence||tx.cloudArchiveSequence;
-    tx.signed=!!c.signed_at;tx.archived=!!c.archived_at;
-    if(c.status==='archived'){
-      const exists=archive.some(a=>String(a.guardianCloudId||'')===String(c.id));
-      if(!exists){
-        archive.push({
-          id:tx.id,date:tx.date,student:tx.student,type:'معاملة',title:tx.title,status:'مكتمل ومؤرشف',
-          details:tx.body||'',formKey:tx.formKey||archiveFormKeyV1(tx),
-          guardianCloudId:c.id,cloudArchiveFolder:c.archive_folder,cloudArchiveName:c.archive_name,cloudArchiveSequence:c.archive_sequence
-        });changed=true;
-      }
-    }
-   });
-   if(changed){renderAll();scheduleStudentAffairsPersist?.(10)}
-  }catch(e){console.warn('تعذر مزامنة معاملات أولياء الأمور',e)}
- }
- window.syncGuardianCloudStates=syncGuardianCloudStates;
- window.addEventListener('load',()=>setTimeout(syncGuardianCloudStates,700));
- document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')syncGuardianCloudStates()});
- setInterval(syncGuardianCloudStates,30000);
-})();
-</script>
 
 </body>
 </html>

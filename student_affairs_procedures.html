@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<script>try{if(new URLSearchParams(location.search).get('guardian')==='1')document.documentElement.classList.add('guardian-public-mode')}catch(_){}</script>
 <meta property="og:type" content="website">
 <meta property="og:title" content="وكالة شؤون الطلاب | المدرسة">
 <meta property="og:description" content="رسالة رسمية من وكالة شؤون الطلاب — للاطلاع والإقرار والتوقيع الإلكتروني">
@@ -19,6 +20,7 @@
 }
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
+html.guardian-public-mode .layout,html.guardian-public-mode #studentAffairsAccessDenied,html.guardian-public-mode #roleGuardBanner{display:none!important}
 body{margin:0;background:radial-gradient(circle at 90% 0,#0da9a60d,transparent 28rem),linear-gradient(#F9FCFD,#F2F7F9);font-family:Tajawal,Arial,sans-serif;color:var(--text)}
 button,input,select,textarea{font:inherit}
 button{cursor:pointer}
@@ -80,6 +82,8 @@ button{border:0;border-radius:10px;padding:11px 14px;font:inherit;font-weight:80
 .hidden{display:none!important}.notice{font-size:12px;line-height:1.8;color:var(--muted);margin-top:9px}.ok{color:#087E7B;font-weight:800}.error{color:#A94B4B;font-weight:800}
 canvas{width:100%;height:180px;border:1px dashed #bccfd5;border-radius:12px;background:#fff;touch-action:none;margin-top:9px}.check{display:flex;gap:8px;align-items:flex-start;margin-top:13px;font-size:13px;line-height:1.8}.check input{margin-top:5px;width:18px;height:18px}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .locked{background:#f8fafb;border:1px solid var(--border);border-radius:12px;padding:13px;color:var(--muted);font-size:12px}
+
+.guardian-final-signature{margin-top:8mm;padding:5mm;border:1px solid #cfe0e5;border-radius:12px;background:#fbfefe;text-align:center}.guardian-final-signature b{display:block;color:#15445A;margin-bottom:3mm}.guardian-final-signature img{max-width:70mm;max-height:28mm;object-fit:contain;background:#fff}.guardian-final-signature small{display:block;margin-top:2mm;color:#607783;font-weight:700}
 @media(max-width:620px){.meta,.verify{grid-template-columns:1fr}.wrap{padding:10px}.head{border-radius:16px}}
 
 
@@ -609,6 +613,7 @@ async function verifyStudentAffairsServerAccess(){
   return __saVerifiedKind;
 }
 function renderStudentAffairsAccess(kind){
+  if(new URLSearchParams(location.search).get('guardian')==='1')return true;
   const b=document.getElementById('roleGuardBanner');
   const ok=kind==='student_affairs'||kind==='system_admin';
   const layout=document.querySelector('.layout');
@@ -693,7 +698,6 @@ window.SchoolGuardianCloud={
   async verifyGuardian(payload){
     return await studentAffairsGuardianCall('verify',{
       token:payload.token,
-      guardianName:payload.guardian_name||payload.guardianName,
       phoneLast4:payload.phone_last4||payload.phoneLast4
     },false);
   },
@@ -964,7 +968,7 @@ async function ensureGuardianCloudTransaction(){
  if(tx)Object.assign(tx,data);else transactions.push(data);
  $('#guardianPhone').value=manualPhone;
  $('#txStatus').innerHTML='<span class="success">تم إنشاء رابط التوقيع السحابي وهو بانتظار ولي الأمر.</span>';
- renderAll();scheduleStudentAffairsPersist?.(10);
+ renderAll();
  return transactions.find(x=>x.id===localId)||data;
 }
 async function createLink(){
@@ -1115,13 +1119,12 @@ function renderAttendance(){
 
 function renderParents(){
  const f=$('#parentFilter').value;const rows=transactions.filter(t=>f==='الكل'||t.status===f);
- $('#parentRows').innerHTML=rows.map(t=>`<tr><td>${t.id}<br><small>${esc(t.title)}</small></td><td>${esc(studentName(t.student))}</td><td>${esc(t.guardian)}</td><td><span class="tag ${t.status==='مكتمل ومؤرشف'?'':'warn'}">${esc(t.status)}</span></td><td>${esc(t.link||'لم ينشأ')}</td><td><button class="btn viewTx" data-id="${t.id}">عرض</button> <button class="btn wa parentTx" data-id="${t.id}">واتساب</button> <button class="btn markOpened" data-id="${t.id}"> فتح الرابط</button> <button class="btn primary markSigned" data-id="${t.id}"> التوقيع</button></td></tr>`).join('');
+ $('#parentRows').innerHTML=rows.map(t=>`<tr><td>${t.id}<br><small>${esc(t.title)}</small></td><td>${esc(studentName(t.student))}</td><td>${esc(t.guardian)}</td><td><span class="tag ${t.status==='مكتمل ومؤرشف'?'':'warn'}">${esc(t.status)}</span></td><td>${esc(t.link||'لم ينشأ')}</td><td><button class="btn viewTx" data-id="${t.id}">عرض</button> <button class="btn wa parentTx" data-id="${t.id}">واتساب</button> <button class="btn syncTxStatus" data-id="${t.id}">تحديث الحالة</button></td></tr>`).join('');
  attachTxActions();
- $$('.markOpened').forEach(b=>b.addEventListener('click',()=>{const t=transactions.find(x=>x.id===b.dataset.id);if(t.status!=='مكتمل ومؤرشف')t.status='تم فتح الرابط';renderAll()}));
- $$('.markSigned').forEach(b=>b.addEventListener('click',()=>{const t=transactions.find(x=>x.id===b.dataset.id);t.status='مكتمل ومؤرشف';t.signed=true;t.archived=true;if(!archive.some(a=>a.id===t.id))archive.push({id:t.id,date:t.date,student:t.student,type:'معاملة',title:t.title,status:t.status,details:t.body||''});renderAll()}));
 }
 $('#parentFilter').addEventListener('change',renderParents);$('#parentRefreshBtn').addEventListener('click',renderParents);
 function attachTxActions(){
+ $$('.syncTxStatus').forEach(b=>b.addEventListener('click',async()=>{const t=transactions.find(x=>x.id===b.dataset.id);if(!t?.guardianCloudId)return;try{const r=await SchoolGuardianCloud.status(t.guardianCloudId),c=r?.transaction||{};t.status=cloudStatusArabic(c.status);t.signed=!!c.signed_at;t.archived=!!c.archived_at;t.signedAt=c.signed_at||'';t.archivedAt=c.archived_at||'';renderAll()}catch(e){openModal('تحديث حالة المعاملة','<div class="error">'+esc(e.message||e)+'</div>')}}));
  $$('.viewTx').forEach(b=>b.addEventListener('click',()=>{const t=transactions.find(x=>x.id===b.dataset.id);openModal(t.title,`<div class="statement"><b>رقم المعاملة:</b> ${esc(t.id)}<br><b>الطالب:</b> ${esc(studentName(t.student))}<br><b>ولي الأمر:</b> ${esc(t.guardian)}<br><b>التاريخ:</b> ${esc(t.date)}<br><b>الحالة:</b> ${esc(t.status)}<br><b>الرابط:</b> ${esc(t.link||'غير منشأ')}</div>${t.body?`<div class="previewbox">${t.body}</div>`:''}`)}));
  $$('.parentTx').forEach(b=>b.addEventListener('click',()=>{const t=transactions.find(x=>x.id===b.dataset.id),s=studentById(t.student);const msg=`السلام عليكم ورحمة الله وبركاته\nولي أمر الطالب ${s.name}،\nنأمل الاطلاع على ${t.title} عبر الرابط الآمن:\n${t.link}\nرقم المعاملة: ${t.id}\n\nوكالة شؤون الطلاب`;window.open('https://web.whatsapp.com/send?phone='+encodeURIComponent(phoneIntl(t.phone))+'&text='+encodeURIComponent(msg),'_blank','noopener')}));
 }
@@ -1239,6 +1242,21 @@ function renderDirectory(){
  }));
 }
 
+function cloudStatusArabic(s){return({archived:'مكتمل ومؤرشف',signed:'تم التوقيع',verified:'تم التحقق',opened:'تم فتح الرابط',waiting_guardian:'بانتظار ولي الأمر',revoked:'ملغي'})[s]||s||''}
+async function syncStudentAffairsCloudTransactions(silent=true){
+  if(new URLSearchParams(location.search).get('guardian')==='1'||!window.SchoolGuardianCloud?.list)return;
+  try{
+    const r=await window.SchoolGuardianCloud.list(),rows=r?.transactions||[];let changed=false;
+    rows.forEach(c=>{
+      const t=transactions.find(x=>String(x.guardianCloudId||'')===String(c.id));if(!t)return;
+      const ns=cloudStatusArabic(c.status);if(ns&&t.status!==ns){t.status=ns;changed=true}
+      if(c.signed_at&&!t.signed){t.signed=true;t.signedAt=c.signed_at;changed=true}
+      if(c.archived_at&&!t.archived){t.archived=true;t.archivedAt=c.archived_at;changed=true}
+      if(c.archive_name&&t.cloudArchiveName!==c.archive_name){t.cloudArchiveName=c.archive_name;changed=true}
+    });
+    if(changed)renderAll();
+  }catch(e){if(!silent)throw e}
+}
 function renderAll(){renderDashboard();renderDirectory();renderStudentProfile();renderCases();renderBehavior();renderAttendance();renderParents();renderArchive()}
 
 function bindImportControls(){
@@ -1329,7 +1347,7 @@ if(platformBtnV1)platformBtnV1.onclick=async()=>{
      else{students.push({id:stableId?('SI-'+stableId):('S'+String(Date.now()+i)),guardian:'',guardian_relation:'',phone:'',alt_phone:'',primary_guardian:true,...patch});added++;}
    });
    refreshStudentSelectors();
-   scheduleStudentAffairsPersist?.(20);
+   renderAll();
    r.innerHTML=`<div class="import-summary"><div class="stat"><small>طلاب جدد</small><b>${added}</b></div><div class="stat"><small>تم تحديثهم</small><b>${updated}</b></div><div class="stat"><small>تجاوزها النظام</small><b>${skipped}</b></div><div class="stat"><small>إجمالي الطلاب</small><b>${students.length}</b></div></div><div class="notice" style="margin-top:10px">تمت القراءة من مركز معلومات مدير المدرسة لنفس المدرسة. بيانات ولي الأمر غير موجودة في المصدر المركزي الحالي، ويمكن استكمالها من زر استيراد بيانات أولياء الأمور من Excel.</div>`;
  }catch(e){r.innerHTML='<span class="error">'+esc(e.message||String(e))+'</span>';}
 };
@@ -1415,8 +1433,13 @@ loadOfficialIdentityFromPlatformV2().catch(()=>{});
 window.addEventListener('schoolBaseSettingsUpdated',()=>loadOfficialIdentityFromPlatformV2().catch(()=>{}));
 window.addEventListener('school-information-source-invalidated',()=>loadOfficialIdentityFromPlatformV2().catch(()=>{}));
 
-enforceStudentAffairsAccess().catch(()=>renderStudentAffairsAccess(''));
-renderAll();
+if(new URLSearchParams(location.search).get('guardian')!=='1'){
+  enforceStudentAffairsAccess().catch(()=>renderStudentAffairsAccess(''));
+  renderAll();
+  setTimeout(()=>syncStudentAffairsCloudTransactions(true),1200);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncStudentAffairsCloudTransactions(true)});
+  setInterval(()=>{if(!document.hidden)syncStudentAffairsCloudTransactions(true)},20000);
+}
 })();
 </script>
 
@@ -1439,9 +1462,8 @@ renderAll();
 
     <section id="verifyCard" class="card">
       <h3 style="margin-top:0;color:var(--navy)">التحقق قبل عرض المعاملة</h3>
-      <div class="verify">
-        <div class="field"><label>اسم ولي الأمر</label><input id="guardianInput" autocomplete="name"></div>
-        <div class="field"><label>آخر 4 أرقام من رقم الجوال المسجل</label><input id="phone4" inputmode="numeric" maxlength="4" placeholder="0001"></div>
+      <div class="verify" style="grid-template-columns:1fr">
+        <div class="field"><label>آخر 4 أرقام من رقم جوال ولي الأمر المسجل</label><input id="phone4" inputmode="numeric" maxlength="4" autocomplete="one-time-code" placeholder="0001"></div>
       </div>
       <div class="actions"><button id="verifyBtn" class="primary">التحقق وفتح المعاملة</button></div>
       <div id="verifyMsg" class="notice"></div>
@@ -1459,6 +1481,7 @@ renderAll();
   <div id="docBody" class="g-body"></div>
   <div id="guideBox" class="guide hidden"><b>دليل قواعد السلوك والمواظبة</b><div class="notice">يرجى الاطلاع على الدليل قبل الإقرار والتوقيع بالعلم.</div><a id="guideLink" href="#" target="_blank" rel="noopener">فتح دليل قواعد السلوك والمواظبة</a></div>
   <div class="g-sign"><div><b>وكيل/وكيلة شؤون الطلاب</b><br><span id="gAgent"></span><br><img id="gAgentSign" style="display:none" alt="التوقيع الرقمي"></div><div><b>ختم المدرسة</b><br><img id="gStamp" style="display:none" alt="ختم المدرسة"></div></div>
+  <div id="guardianFinalSignature" class="guardian-final-signature hidden"><b>توقيع ولي الأمر المعتمد إلكترونيًا</b><img id="guardianFinalSignatureImg" alt="توقيع ولي الأمر"><small id="guardianFinalSignedAt"></small></div>
 </article>
 </section>
 
@@ -1473,7 +1496,7 @@ renderAll();
 
     <section id="doneCard" class="card hidden">
       <div class="ok">✓ تم تسجيل الإقرار والتوقيع بنجاح.</div>
-      <div class="notice">تم حفظ التوقيع وربطه بالمعاملة. يمكنك الآن إرسال تأكيد للوكيل عبر واتساب.</div>
+      <div class="notice">تم تثبيت التوقيع على النموذج النهائي وحفظ المعاملة وأرشفتها إلكترونيًا. يمكنك الآن إرسال تأكيد للوكيل عبر واتساب.</div>
       <div class="actions">
         <button id="replyAgentBtn" class="primary" type="button">إرسال تأكيد للوكيل عبر واتساب</button>
       </div>
@@ -1510,19 +1533,18 @@ if(!publicInfo){if(invalid)invalid.classList.remove('hidden');return}
 if(app)app.classList.remove('hidden');
 set('tx',publicInfo.tokenHint?('••••'+publicInfo.tokenHint):'معاملة إلكترونية');
 set('title',publicInfo.formTitle||'معاملة شؤون طلاب');
-set('student','تظهر بيانات الطالب/الطالبة بعد التحقق');
-set('date','');
-const head=document.querySelector('#guardianUnifiedWrapper .head h1');if(head)head.textContent=`وكالة شؤون الطلاب/الطالبات | ${publicInfo.schoolName||'المدرسة'}`;
-document.title=`${publicInfo.formTitle||'معاملة شؤون طلاب'} | ${publicInfo.schoolName||'المدرسة'}`;
+set('student',publicInfo.studentName||'');
+try{set('date',publicInfo.sentAt?new Date(publicInfo.sentAt).toLocaleString('ar-SA',{dateStyle:'medium',timeStyle:'short'}):(publicInfo.createdAt||''));}catch(_){set('date',publicInfo.sentAt||publicInfo.createdAt||'');}
+const head=document.querySelector('#guardianUnifiedWrapper .head h1');if(head)head.textContent='بوابة ولي الأمر الإلكترونية';
+document.title=`${publicInfo.formTitle||'معاملة شؤون طلاب'} | بوابة ولي الأمر`;
 
 const verifyBtn=document.getElementById('verifyBtn');
 if(verifyBtn)verifyBtn.onclick=async()=>{
- const name=(document.getElementById('guardianInput')?.value||'').trim();
  const last4=(document.getElementById('phone4')?.value||'').replace(/\D/g,'');
  const msg=document.getElementById('verifyMsg');
- if(!name||last4.length!==4){if(msg)msg.innerHTML='<span class="error">أدخل اسم ولي الأمر وآخر أربعة أرقام من الجوال المسجل.</span>';return}
+ if(last4.length!==4){if(msg)msg.innerHTML='<span class="error">أدخل آخر أربعة أرقام من رقم جوال ولي الأمر المسجل.</span>';return}
  try{
-  const r=await SchoolGuardianCloud.verifyGuardian({token,guardianName:name,phoneLast4:last4});
+  const r=await SchoolGuardianCloud.verifyGuardian({token,phoneLast4:last4});
   if(!r?.ok||!r.verificationToken||!r.transaction?.payload)throw new Error('تعذر التحقق من بيانات ولي الأمر.');
   verificationToken=r.verificationToken;verifiedTx=r.transaction.payload;
   const tx=verifiedTx;
@@ -1554,14 +1576,19 @@ document.getElementById('submitBtn').onclick=async()=>{
  if(!ink){if(msg)msg.innerHTML='<span class="error">يرجى التوقيع على الشاشة.</span>';return}
  if(!verificationToken||!verifiedTx){if(msg)msg.innerHTML='<span class="error">انتهت جلسة التحقق. أعد فتح الرابط والتحقق مرة أخرى.</span>';return}
  try{
-  const r=await SchoolGuardianCloud.submitSignature({token,verificationToken,signatureData:canvas.toDataURL('image/png')});
+  const signatureData=canvas.toDataURL('image/png');
+  const r=await SchoolGuardianCloud.submitSignature({token,verificationToken,signatureData});
   if(!r?.ok)throw new Error('تعذر اعتماد التوقيع.');
+  const finalSig=document.getElementById('guardianFinalSignature'),finalImg=document.getElementById('guardianFinalSignatureImg'),finalAt=document.getElementById('guardianFinalSignedAt');
+  if(finalImg)finalImg.src=signatureData;
+  if(finalAt){const when=r?.transaction?.signed_at||r?.signedAt||new Date().toISOString();try{finalAt.textContent='تم التوقيع في '+new Intl.DateTimeFormat('ar-SA',{dateStyle:'medium',timeStyle:'short'}).format(new Date(when));}catch(_){finalAt.textContent='تم التوقيع في '+when}}
+  if(finalSig)finalSig.classList.remove('hidden');
   document.getElementById('signCard')?.classList.add('hidden');document.getElementById('doneCard')?.classList.remove('hidden');
   const replyBtn=document.getElementById('replyAgentBtn');
   if(replyBtn)replyBtn.onclick=()=>{
     const agentPhone=normalizeSaudiPhone(verifiedTx.agent_phone||''),replyMsg=document.getElementById('replyMsg');
     if(!agentPhone){if(replyMsg)replyMsg.innerHTML='<span class="error">رقم وكيل/وكيلة شؤون الطلاب غير مسجل.</span>';return}
-    const guardianName=(document.getElementById('guardianInput')?.value||verifiedTx.guardian||'ولي الأمر').trim();
+    const guardianName=(verifiedTx.guardian||'ولي الأمر').trim();
     const reply=`السلام عليكم ورحمة الله وبركاته\n${verifiedTx.agent_name||'وكيل/وكيلة شؤون الطلاب'} — ${verifiedTx.school_name||'المدرسة'}\n\nأفيدكم أنا ${guardianName}، ولي أمر الطالب/الطالبة ${verifiedTx.student||''}، بأنني اطلعت على ${verifiedTx.title||'المعاملة'} ووقعت عليها بالعلم.\nرقم المعاملة: ${verifiedTx.transaction_no||''}\n\nتم الإرسال من بوابة ولي الأمر الإلكترونية.`;
     window.open('https://wa.me/'+agentPhone+'?text='+encodeURIComponent(reply),'_blank','noopener');
   };

@@ -2073,6 +2073,32 @@ body{overflow-x:hidden}
 html.health-advisor-auth-pending body{visibility:hidden!important;}
 </style>
 <script id="health-advisor-secure-entry-pending-flag">document.documentElement.classList.add('health-advisor-auth-pending');</script>
+
+<script id="ROLE_PERFORMANCE_LOCAL_ISOLATION_20260831">
+(function(){
+  'use strict';
+  const ROLE="health_advisor";
+  const nativeGet=Storage.prototype.getItem;
+  const nativeSet=Storage.prototype.setItem;
+  const nativeRemove=Storage.prototype.removeItem;
+  const KEYS={
+    reports_archive: ROLE+'_reports_archive_local_v1',
+    category_goals: ROLE+'_category_goals_local_v1'
+  };
+  window.RolePerformanceLocal={
+    role:ROLE,
+    key:function(k){return KEYS[k]||k;},
+    get:function(k){return nativeGet.call(localStorage,KEYS[k]||k);},
+    set:function(k,v){nativeSet.call(localStorage,KEYS[k]||k,String(v));return true;},
+    remove:function(k){nativeRemove.call(localStorage,KEYS[k]||k);return true;},
+    readArray:function(k){try{const x=JSON.parse(this.get(k)||'[]');return Array.isArray(x)?x:[]}catch(_){return[];}},
+    readObject:function(k){try{const x=JSON.parse(this.get(k)||'{}');return x&&typeof x==='object'&&!Array.isArray(x)?x:{}}catch(_){return{};}}
+  };
+  window.performanceRoleLocalGet=function(k){return window.RolePerformanceLocal.get(k);};
+  window.performanceRoleLocalSet=function(k,v){return window.RolePerformanceLocal.set(k,v);};
+  window.performanceRoleLocalRemove=function(k){return window.RolePerformanceLocal.remove(k);};
+})();
+</script>
 </head>
 <body data-platform-role="health_advisor" class="global-app-bg" data-ss-role="teacher">
 <script data-openai-engine="true" defer="" src="./openai-engine.js"></script>
@@ -3058,7 +3084,7 @@ html.health-advisor-auth-pending body{visibility:hidden!important;}
             /* CLEAN V3: legacy performance archive is read-only; no writeback */
 
             let goals = {};
-            try { goals = JSON.parse(localStorage.getItem('category_goals') || '{}'); } catch(e) { goals = {}; }
+            try { goals = JSON.parse(performanceRoleLocalGet('category_goals') || '{}'); } catch(e) { goals = {}; }
             if (!goals || typeof goals !== 'object' || Array.isArray(goals)) goals = {};
             let goalsChanged = false;
             Object.keys(HEALTH_ARCHIVE_LEGACY_CATEGORY_MAP).forEach(oldId => {
@@ -3067,7 +3093,7 @@ html.health-advisor-auth-pending body{visibility:hidden!important;}
                     goals[newId] = goals[oldId]; goalsChanged = true;
                 }
             });
-            if (goalsChanged) localStorage.setItem('category_goals', JSON.stringify(goals));
+            if (goalsChanged) performanceRoleLocalSet('category_goals', JSON.stringify(goals));
             return reports;
         }
 
@@ -3231,7 +3257,7 @@ html.health-advisor-auth-pending body{visibility:hidden!important;}
         function openGoalSetter(catId, catName) {
             pendingGoalCatId = catId;
             document.getElementById('target-cat-name').innerText = catName;
-            const goals = JSON.parse(localStorage.getItem('category_goals') || '{}');
+            const goals = JSON.parse(performanceRoleLocalGet('category_goals') || '{}');
             document.getElementById('goal-input-value').value = goals[catId] || 5;
             document.getElementById('goal-setter-modal').style.display = 'flex';
         }
@@ -3241,9 +3267,9 @@ html.health-advisor-auth-pending body{visibility:hidden!important;}
         function saveCategoryGoal() {
             const val = parseInt(document.getElementById('goal-input-value').value);
             if (isNaN(val) || val < 1) return showToast("أدخل رقماً صحيحاً ⚠️");
-            const goals = JSON.parse(localStorage.getItem('category_goals') || '{}');
+            const goals = JSON.parse(performanceRoleLocalGet('category_goals') || '{}');
             goals[pendingGoalCatId] = val;
-            localStorage.setItem('category_goals', JSON.stringify(goals));
+            performanceRoleLocalSet('category_goals', JSON.stringify(goals));
             closeGoalSetter();
             showToast("تم تحديث الهدف المستهدف 🎯");
             if (document.getElementById('stats-view').style.display === 'block') renderStatsDashboard();
@@ -3491,7 +3517,7 @@ async function legacyPerformanceArchiveOpen_DISABLED() {
             document.getElementById('archive-search-wrapper').classList.remove('hidden'); 
             const container = document.getElementById('archive-content'); 
             const reports = migrateHealthArchiveToPerformanceDomains(); 
-            const goals = JSON.parse(localStorage.getItem('category_goals') || '{}'); 
+            const goals = JSON.parse(performanceRoleLocalGet('category_goals') || '{}'); 
             document.getElementById('archive-view-title').innerText = "أرشيف مجالات الأداء الوظيفي"; 
             document.getElementById('back-to-folders').classList.add('hidden'); 
             document.getElementById('archive-count').innerText = `${reports.length} تقرير كلي`; 
@@ -3586,7 +3612,7 @@ async function legacyPerformanceArchiveOpen_DISABLED() {
         function renderStatsDashboard() { 
             const container = document.getElementById('stats-container'); 
             const reports = performanceArchiveCleanView(); 
-            const goals = JSON.parse(localStorage.getItem('category_goals') || '{}'); 
+            const goals = JSON.parse(performanceRoleLocalGet('category_goals') || '{}'); 
             container.innerHTML = ""; 
             let statsData = ALL_CATEGORIES.map(cat => {
                 const count = reports.filter(r => performanceArchiveFolderId(r) === String(cat.id)).length;
@@ -4365,14 +4391,14 @@ body{overflow-x:hidden}
                 try { 
                     const data = JSON.parse(e.target.result); if (!data.reports) throw new Error(); 
                     localStorage.setItem('reports_archive', JSON.stringify(data.reports)); 
-                    if (data.goals) localStorage.setItem('category_goals', JSON.stringify(data.goals)); 
+                    if (data.goals) performanceRoleLocalSet('category_goals', JSON.stringify(data.goals)); 
                     showToast("تم استيراد الأرشيف ✅"); renderArchiveFolders(); 
                 } catch(err) { showToast("ملف غير صالح ❌"); } 
             }; reader.readAsText(file); 
         }
 
         function exportFullArchive() { 
-            const data = { reports: performanceArchiveCleanView(), goals: JSON.parse(localStorage.getItem('category_goals') || '{}') }; 
+            const data = { reports: performanceArchiveCleanView(), goals: JSON.parse(performanceRoleLocalGet('category_goals') || '{}') }; 
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }); 
             const url = URL.createObjectURL(blob); const a = document.createElement('a'); 
             a.href = url; a.download = `archive_${Date.now()}.json`; a.click(); 
@@ -4484,7 +4510,7 @@ body{overflow-x:hidden}
          * وظائف النسخة المطوّرة: حفظ مسودة تلقائية، مؤشرات لوحة التحكم،
          * وتصدير التقرير الحالي كملف مستقل مع المحافظة على الطابع الرسمي للصفحة.
          */
-        const ENHANCED_DRAFT_KEY = 'teacher_report_enhanced_autodraft_v2';
+        const ENHANCED_DRAFT_KEY = 'health_advisor_report_enhanced_autodraft_v2';
         let enhancedDraftTimer = null;
 
         function parseStoredArray(key) {
@@ -4497,7 +4523,7 @@ body{overflow-x:hidden}
         }
 
         function refreshDashboardMetrics() {
-            const reports = parseStoredArray('reports_archive');
+            const reports = (typeof window.performanceArchiveCleanView === 'function') ? window.performanceArchiveCleanView() : [];
             const complete = reports.filter(report => report && report.isComplete).length;
             const totalEl = document.getElementById('dash-total-reports');
             const completeEl = document.getElementById('dash-complete-reports');

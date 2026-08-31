@@ -1938,6 +1938,32 @@ body[data-ss-role="activity-leader"] [aria-label*="تحليل البيانات"]
 .im-static-messaging-btn:hover{background:#ccfbf1!important}
 .im-static-messaging-btn .im-toolbar-badge{position:absolute;top:-7px;left:-7px;min-width:18px;height:18px;padding:0 4px;border-radius:999px;background:#dc2626;color:#fff;font:700 10px/18px Tahoma;text-align:center;display:none}
 </style><link rel="stylesheet" href="responsive-layout.css?v=20260818-responsive-1">
+
+<script id="ROLE_PERFORMANCE_LOCAL_ISOLATION_20260831">
+(function(){
+  'use strict';
+  const ROLE="activity_leader";
+  const nativeGet=Storage.prototype.getItem;
+  const nativeSet=Storage.prototype.setItem;
+  const nativeRemove=Storage.prototype.removeItem;
+  const KEYS={
+    reports_archive: ROLE+'_reports_archive_local_v1',
+    category_goals: ROLE+'_category_goals_local_v1'
+  };
+  window.RolePerformanceLocal={
+    role:ROLE,
+    key:function(k){return KEYS[k]||k;},
+    get:function(k){return nativeGet.call(localStorage,KEYS[k]||k);},
+    set:function(k,v){nativeSet.call(localStorage,KEYS[k]||k,String(v));return true;},
+    remove:function(k){nativeRemove.call(localStorage,KEYS[k]||k);return true;},
+    readArray:function(k){try{const x=JSON.parse(this.get(k)||'[]');return Array.isArray(x)?x:[]}catch(_){return[];}},
+    readObject:function(k){try{const x=JSON.parse(this.get(k)||'{}');return x&&typeof x==='object'&&!Array.isArray(x)?x:{}}catch(_){return{};}}
+  };
+  window.performanceRoleLocalGet=function(k){return window.RolePerformanceLocal.get(k);};
+  window.performanceRoleLocalSet=function(k,v){return window.RolePerformanceLocal.set(k,v);};
+  window.performanceRoleLocalRemove=function(k){return window.RolePerformanceLocal.remove(k);};
+})();
+</script>
 </head>
 <body class="global-app-bg" data-ss-role="activity-leader">
 <div class="hidden no-print fixed inset-0 bg-white/90 backdrop-blur flex-col items-center justify-center z-[10001]" id="share-loader">
@@ -3201,7 +3227,7 @@ font-size:16px;font-weight:700;text-align:center;background:#fff;color:#0f172a;"
         function openGoalSetter(catId, catName) {
             pendingGoalCatId = catId;
             document.getElementById('target-cat-name').innerText = catName;
-            const goals = JSON.parse(localStorage.getItem('category_goals') || '{}');
+            const goals = JSON.parse(performanceRoleLocalGet('category_goals') || '{}');
             document.getElementById('goal-input-value').value = goals[catId] || 5;
             document.getElementById('goal-setter-modal').style.display = 'flex';
         }
@@ -3211,9 +3237,9 @@ font-size:16px;font-weight:700;text-align:center;background:#fff;color:#0f172a;"
         function saveCategoryGoal() {
             const val = parseInt(document.getElementById('goal-input-value').value);
             if (isNaN(val) || val < 1) return showToast("أدخل رقماً صحيحاً ⚠️");
-            const goals = JSON.parse(localStorage.getItem('category_goals') || '{}');
+            const goals = JSON.parse(performanceRoleLocalGet('category_goals') || '{}');
             goals[pendingGoalCatId] = val;
-            localStorage.setItem('category_goals', JSON.stringify(goals));
+            performanceRoleLocalSet('category_goals', JSON.stringify(goals));
             closeGoalSetter();
             showToast("تم تحديث الهدف المستهدف 🎯");
             if (document.getElementById('stats-view').style.display === 'block') renderStatsDashboard();
@@ -3229,9 +3255,9 @@ font-size:16px;font-weight:700;text-align:center;background:#fff;color:#0f172a;"
         function closeConfirmModal() { document.getElementById('confirm-modal').style.display = 'none'; }
 
         async function confirmDeleteReport() {
-            const before = JSON.parse(localStorage.getItem('reports_archive') || '[]');
+            const before = JSON.parse(performanceRoleLocalGet('reports_archive') || '[]');
             const reports = before.filter(r => r.id !== pendingDeleteId);
-            localStorage.setItem('reports_archive', JSON.stringify(reports));
+            performanceRoleLocalSet('reports_archive', JSON.stringify(reports));
             try {
                 await verifyReportArchiveCloud('reports_archive');
                 closeConfirmModal();
@@ -3239,7 +3265,7 @@ font-size:16px;font-weight:700;text-align:center;background:#fff;color:#0f172a;"
                 if (currentArchiveViewCatId) openArchiveFolder(currentArchiveViewCatId);
                 else renderArchiveFolders();
             } catch(e) {
-                localStorage.setItem('reports_archive', JSON.stringify(before));
+                performanceRoleLocalSet('reports_archive', JSON.stringify(before));
                 try { await verifyReportArchiveCloud('reports_archive'); } catch(_) {}
                 showToast("تعذر التحقق من الحذف السحابي؛ تم إبقاء التقرير حفاظًا على بيانات المدرسة");
             }
@@ -3392,19 +3418,19 @@ async function saveReportToArchive() {
             try{ if(typeof showToast==='function') showToast('جاري حفظ التقرير والتحقق من الأرشيف السحابي...'); }catch(_e){}
             try{await loadCanonicalPerformanceArchiveV6();}catch(e){if(typeof showToast==='function')showToast('تعذر استعادة أرشيف تقارير الأداء قبل الحفظ: '+String(e?.message||e));console.error('[performance canonical preload]',e);return false;}
             if(typeof freezeReportDOMForArchive==='function')freezeReportDOMForArchive();
-            const archiveKey='reports_archive',beforeRaw=localStorage.getItem(archiveKey)||'[]',previousEditingId=currentEditingId;
+            const archiveKey='reports_archive',beforeRaw=performanceRoleLocalGet(archiveKey)||'[]',previousEditingId=currentEditingId;
             let reports=[];try{reports=JSON.parse(beforeRaw);if(!Array.isArray(reports))reports=[]}catch(e){reports=[]}
             const selectedDomain=selectedPerformanceArchiveDomain();const cat=String(selectedDomain.id||'');if(!cat)return showToast('اختر المجال أولاً ⚠️');
             let folderName=performanceArchiveFolderName(cat);const completion=typeof checkReportCompletionStatus==='function'?checkReportCompletionStatus():{isComplete:true};
             const old=previousEditingId?reports.find(r=>String(r.id)===String(previousEditingId)):null;
             if(selectedDomain.name) folderName=selectedDomain.name;const data={id:previousEditingId||Date.now(),title:document.getElementById('field_prog_name')?.innerText||'تقرير جديد',category:cat,categoryName:folderName,archiveFolderId:cat,archiveFolderName:folderName,archiveRole:'activity_leader',reportDate:document.getElementById('dateInputHeader')?.value||'',date:old?.date||new Date().toLocaleDateString('ar-SA'),content:document.getElementById('report-content-container').innerHTML,isComplete:completion.isComplete,saveTimestamp:Date.now(),updatedAt:new Date().toISOString()};
             const idx=reports.findIndex(r=>String(r.id)===String(data.id));if(idx>=0)reports[idx]=data;else reports.push(data);
-            currentEditingId=data.id;localStorage.setItem(archiveKey,JSON.stringify(reports));
-            try{if(!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.commit!=='function')throw new Error('محرك التحقق السحابي غير متاح');await saveCanonicalPerformanceArchiveV6();const saved=JSON.parse(localStorage.getItem(archiveKey)||'[]').find(r=>String(r.id)===String(data.id));if(!saved||performanceArchiveFolderId(saved)!==cat)throw new Error('لم يظهر التقرير داخل مجلد المجال المحدد');showToast('تم الحفظ في أرشيف تقارير الأداء الوظيفي / '+folderName+' ✅');return true}catch(e){localStorage.setItem(archiveKey,beforeRaw);currentEditingId=previousEditingId;showToast('تعذر حفظ التقرير سحابيًا: '+String(e?.message||e||'خطأ غير معروف'));console.error('[performance folder save]',e);return false}
+            currentEditingId=data.id;performanceRoleLocalSet(archiveKey,JSON.stringify(reports));
+            try{if(!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.commit!=='function')throw new Error('محرك التحقق السحابي غير متاح');await saveCanonicalPerformanceArchiveV6();const saved=JSON.parse(performanceRoleLocalGet(archiveKey)||'[]').find(r=>String(r.id)===String(data.id));if(!saved||performanceArchiveFolderId(saved)!==cat)throw new Error('لم يظهر التقرير داخل مجلد المجال المحدد');showToast('تم الحفظ في أرشيف تقارير الأداء الوظيفي / '+folderName+' ✅');return true}catch(e){performanceRoleLocalSet(archiveKey,beforeRaw);currentEditingId=previousEditingId;showToast('تعذر حفظ التقرير سحابيًا: '+String(e?.message||e||'خطأ غير معروف'));console.error('[performance folder save]',e);return false}
         }
 
         function checkPendingReminders() {
-            const reports = JSON.parse(localStorage.getItem('reports_archive') || '[]');
+            const reports = JSON.parse(performanceRoleLocalGet('reports_archive') || '[]');
             const twoDaysInMs = 2 * 24 * 60 * 60 * 1000;
             const now = Date.now();
             const pending = reports.find(r => !r.isComplete && (now - r.saveTimestamp >= twoDaysInMs));
@@ -3420,15 +3446,15 @@ async function saveReportToArchive() {
 
         function openPendingReport() { if (pendingReportIdToOpen) { closeReminderModal(); editReport(pendingReportIdToOpen); } }
         function closeReminderModal() { document.getElementById('reminder-modal').style.display = 'none'; }
-        async function openArchiveView() { try{if(window.PlatformPersistenceGuard&&typeof PlatformPersistenceGuard.readExact==='function')await PlatformPersistenceGuard.readExact({moduleKey:'activity_leader',scope:'user',keys:['reports_archive']});}catch(e){console.error('[performance archive hydrate]',e)} document.getElementById('welcome-dashboard').style.display = 'none'; document.getElementById('archive-view').style.display = 'block'; renderArchiveFolders(); }
+        async function openArchiveView() { try{if(window.PlatformPersistenceGuard&&typeof PlatformPersistenceGuard.readExact==='function')await PlatformPersistenceGuard.readExactValues({moduleKey:'activity_leader',scope:'user',keys:['reports_archive']});}catch(e){console.error('[performance archive hydrate]',e)} document.getElementById('welcome-dashboard').style.display = 'none'; document.getElementById('archive-view').style.display = 'block'; renderArchiveFolders(); }
         function closeArchiveView() { document.getElementById('archive-view').style.display = 'none'; document.getElementById('welcome-dashboard').style.display = 'block'; }
         
         function renderArchiveFolders() { 
             currentArchiveViewCatId = null; 
             document.getElementById('archive-search-wrapper').classList.remove('hidden'); 
             const container = document.getElementById('archive-content'); 
-            const reports = JSON.parse(localStorage.getItem('reports_archive') || '[]'); 
-            const goals = JSON.parse(localStorage.getItem('category_goals') || '{}'); 
+            const reports = JSON.parse(performanceRoleLocalGet('reports_archive') || '[]'); 
+            const goals = JSON.parse(performanceRoleLocalGet('category_goals') || '{}'); 
             document.getElementById('archive-view-title').innerText = "أرشيف المجالات"; 
             document.getElementById('back-to-folders').classList.add('hidden'); 
             document.getElementById('archive-count').innerText = `${reports.length} تقرير كلي`; 
@@ -3451,7 +3477,7 @@ async function saveReportToArchive() {
         function openArchiveFolder(catId) { 
             currentArchiveViewCatId = catId; 
             const cat = ALL_CATEGORIES.find(c => c.id === catId); 
-            const reports = JSON.parse(localStorage.getItem('reports_archive') || '[]'); 
+            const reports = JSON.parse(performanceRoleLocalGet('reports_archive') || '[]'); 
             const catReports = reports.filter(r => performanceArchiveFolderId(r) === String(catId)); 
             document.getElementById('archive-view-title').innerText = `مجلد: ${cat.name}`; 
             document.getElementById('back-to-folders').classList.remove('hidden'); 
@@ -3479,7 +3505,7 @@ async function saveReportToArchive() {
             const container = document.getElementById('archive-content');
             if (!currentArchiveViewCatId) {
                 if (query === "") { renderArchiveFolders(); return; }
-                const allReports = JSON.parse(localStorage.getItem('reports_archive') || '[]');
+                const allReports = JSON.parse(performanceRoleLocalGet('reports_archive') || '[]');
                 const filtered = allReports.filter(r => r.title.toLowerCase().includes(query));
                 container.innerHTML = "";
                 if (filtered.length === 0) {
@@ -3500,7 +3526,7 @@ async function saveReportToArchive() {
         }
 
         function editReport(id) { 
-            const reports = JSON.parse(localStorage.getItem('reports_archive') || '[]'); 
+            const reports = JSON.parse(performanceRoleLocalGet('reports_archive') || '[]'); 
             const report = reports.find(r => r.id === id); 
             if (report) { 
                 document.getElementById('report-content-container').innerHTML = report.content; 
@@ -3522,8 +3548,8 @@ async function saveReportToArchive() {
 
         function renderStatsDashboard() { 
             const container = document.getElementById('stats-container'); 
-            const reports = JSON.parse(localStorage.getItem('reports_archive') || '[]'); 
-            const goals = JSON.parse(localStorage.getItem('category_goals') || '{}'); 
+            const reports = JSON.parse(performanceRoleLocalGet('reports_archive') || '[]'); 
+            const goals = JSON.parse(performanceRoleLocalGet('category_goals') || '{}'); 
             container.innerHTML = ""; 
             let statsData = ALL_CATEGORIES.map(cat => {
                 const count = reports.filter(r => performanceArchiveFolderId(r) === String(cat.id)).length;
@@ -3558,7 +3584,7 @@ async function saveReportToArchive() {
         }
 
         function generateDigitalPortfolio() {
-            const reports = JSON.parse(localStorage.getItem('reports_archive') || '[]');
+            const reports = JSON.parse(performanceRoleLocalGet('reports_archive') || '[]');
             if (reports.length === 0) return showToast("الأرشيف فارغ! لا توجد تقارير لتصدير المحفظة ⚠️");
             const loader = document.getElementById('share-loader');
             const loaderText = document.getElementById('loader-text');
@@ -4302,15 +4328,15 @@ body{overflow-x:hidden}
             const reader = new FileReader(); reader.onload = e => { 
                 try { 
                     const data = JSON.parse(e.target.result); if (!data.reports) throw new Error(); 
-                    localStorage.setItem('reports_archive', JSON.stringify(data.reports)); 
-                    if (data.goals) localStorage.setItem('category_goals', JSON.stringify(data.goals)); 
+                    performanceRoleLocalSet('reports_archive', JSON.stringify(data.reports)); 
+                    if (data.goals) performanceRoleLocalSet('category_goals', JSON.stringify(data.goals)); 
                     showToast("تم استيراد الأرشيف ✅"); renderArchiveFolders(); 
                 } catch(err) { showToast("ملف غير صالح ❌"); } 
             }; reader.readAsText(file); 
         }
 
         function exportFullArchive() { 
-            const data = { reports: JSON.parse(localStorage.getItem('reports_archive') || '[]'), goals: JSON.parse(localStorage.getItem('category_goals') || '{}') }; 
+            const data = { reports: JSON.parse(performanceRoleLocalGet('reports_archive') || '[]'), goals: JSON.parse(performanceRoleLocalGet('category_goals') || '{}') }; 
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }); 
             const url = URL.createObjectURL(blob); const a = document.createElement('a'); 
             a.href = url; a.download = `archive_${Date.now()}.json`; a.click(); 
@@ -4422,7 +4448,7 @@ body{overflow-x:hidden}
          * وظائف النسخة المطوّرة: حفظ مسودة تلقائية، مؤشرات لوحة التحكم،
          * وتصدير التقرير الحالي كملف مستقل مع المحافظة على الطابع الرسمي للصفحة.
          */
-        const ENHANCED_DRAFT_KEY = 'teacher_report_enhanced_autodraft_v2';
+        const ENHANCED_DRAFT_KEY = 'activity_leader_report_enhanced_autodraft_v2';
         let enhancedDraftTimer = null;
 
         function parseStoredArray(key) {
@@ -4435,7 +4461,7 @@ body{overflow-x:hidden}
         }
 
         function refreshDashboardMetrics() {
-            const reports = parseStoredArray('reports_archive');
+            const reports = (window.RolePerformanceLocal ? window.RolePerformanceLocal.readArray('reports_archive') : []);
             const complete = reports.filter(report => report && report.isComplete).length;
             const totalEl = document.getElementById('dash-total-reports');
             const completeEl = document.getElementById('dash-complete-reports');
@@ -5482,7 +5508,7 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
         if(!title || !actions) return;
 
         var reports = [];
-        try{ reports = JSON.parse(localStorage.getItem('reports_archive') || '[]'); }catch(e){}
+        try{ reports = JSON.parse(performanceRoleLocalGet('reports_archive') || '[]'); }catch(e){}
         var record = reports.find(function(r){
           return r.archiveType === 'studentAdvisorSmartArchivePreview' &&
                  title.textContent &&
@@ -5820,14 +5846,14 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
     let raw=r.values[CANON];
     if(raw===undefined){
       const old=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:[LEGACY]});
-      raw=old.ok&&old.values[LEGACY]!==undefined?old.values[LEGACY]:(localStorage.getItem(LEGACY)||'[]');
+      raw=old.ok&&old.values[LEGACY]!==undefined?old.values[LEGACY]:(performanceRoleLocalGet(LEGACY)||'[]');
       if(arr(raw).length){const w=await G.writeExactValues({moduleKey:MODULE,scope:'user',values:{[CANON]:raw}});if(!w.ok)throw new Error(w.error||'تعذر ترحيل الأرشيف القديم');}
     }
-    raw=raw===undefined?'[]':raw;G.setLocalSilently(LEGACY,raw);return arr(raw);
+    raw=raw===undefined?'[]':raw;performanceRoleLocalSet(LEGACY,raw);return arr(raw);
   }
   async function saveCanonical(){
     const G=g();if(!G||typeof G.writeExactValues!=='function')throw new Error('محرك الأرشيف المرجعي V6 غير متاح');
-    const raw=localStorage.getItem(LEGACY)||'[]';
+    const raw=performanceRoleLocalGet(LEGACY)||'[]';
     const w=await G.writeExactValues({moduleKey:MODULE,scope:'user',values:{[CANON]:raw}});if(!w.ok)throw new Error(w.error||'تعذر حفظ الأرشيف المرجعي');
     const r=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:[CANON]});if(!r.ok||r.values[CANON]!==raw)throw new Error('فشل التحقق النهائي من الأرشيف المرجعي');return true;
   }

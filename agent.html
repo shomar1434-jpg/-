@@ -1556,7 +1556,10 @@ body{overflow-x:hidden}
 <p class="text-[11px] text-slate-400 font-bold mt-2">إدارة الحضور والغياب والتأخر والاستئذان، الإحصاءات اليومية والأسبوعية والشهرية، ونماذج الحسم والتقارير الرسمية</p>
 </div>
 </div>
-<div class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-emerald-400 cursor-pointer transition-all flex flex-col items-center gap-4 group" onclick="openAgentRecordsView()">
+<div id="student-affairs-procedures-card" class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-cyan-400 cursor-pointer transition-all flex flex-col items-center gap-4 group min-h-[220px]" style="display:none" onclick="openStudentAffairsProcedures()">
+<div class="w-16 h-16 bg-gradient-to-br from-cyan-600 to-teal-800 text-white rounded-[24px] flex items-center justify-center shadow-xl text-3xl">🎓</div>
+<div class="text-center"><h3 class="font-black text-lg text-slate-800">إجراءات وكيل شؤون الطلاب</h3><p class="text-[11px] text-slate-400 font-bold mt-2">الخطابات الرسمية، أولياء الأمور، التوقيع الإلكتروني والأرشيف</p></div>
+</div><div class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-emerald-400 cursor-pointer transition-all flex flex-col items-center gap-4 group" onclick="openAgentRecordsView()">
 <div class="w-14 h-14 bg-emerald-600 text-white rounded-2xl flex items-center justify-center shadow-lg text-2xl">📚</div>
 <h3 class="font-bold text-lg text-slate-700 flex items-center gap-2">سجلات الوكيل</h3>
 </div>
@@ -6711,5 +6714,25 @@ window.saveReportToArchive=async function(){
 window.__AGENT_PERFORMANCE_ARCHIVE_SAVE_V2__={verifiedBeforeSuccess:true,folderBoundToSelectedDomain:true,agentOnly:true};
 })();
 
+</script>
+<script id="student-affairs-procedures-card-guard">
+(function(){
+ if(window.__STUDENT_AFFAIRS_PROCEDURES_CARD_GUARD__)return;window.__STUDENT_AFFAIRS_PROCEDURES_CARD_GUARD__=true;
+ function j(v){try{return JSON.parse(v||'null')}catch(_){return null}}
+ function values(){
+  const s=j(sessionStorage.getItem('smart_school_current_session'))||j(localStorage.getItem('smart_school_current_session'))||{},u=j(localStorage.getItem('currentSchoolUser'))||j(localStorage.getItem('currentUser'))||{};
+  return [sessionStorage.getItem('smart_school_tab_role_v1'),s.role,s.roleLabel,s.role_label,s.agency_type,s.agent_categories,u.role,u.roleLabel,u.role_label,u.agency_type,u.agent_categories];
+ }
+ function allowed(){
+  if(sessionStorage.getItem('system_admin_context')==='1'||sessionStorage.getItem('system_admin_verified')==='true')return true;
+  return values().some(v=>{
+   const a=Array.isArray(v)?v:String(v||'').split(',');
+   return a.some(x=>['student_affairs','deputy_students','وكيل شؤون الطلاب','وكيلة شؤون الطلاب'].includes(String(x||'').trim().toLowerCase()));
+  });
+ }
+ window.openStudentAffairsProcedures=()=>{if(!allowed()){alert('هذا القسم مخصص لوكيل/وكيلة شؤون الطلاب ومدير النظام فقط.');return}location.href='student_affairs_procedures.html'};
+ function apply(){const c=document.getElementById('student-affairs-procedures-card');if(c)c.style.display=allowed()?'flex':'none'}
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',apply,{once:true});else apply();window.addEventListener('load',apply,{once:true});
+})();
 </script>
 </body></html>

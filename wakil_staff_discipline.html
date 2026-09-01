@@ -429,28 +429,89 @@ window.SchoolPlatformBridge={
 <script>
 const DBKEY='school_attendance_ui_v1';
 const state=JSON.parse(localStorage.getItem(DBKEY)||'{"staff":[],"records":[],"deductions":[],"settings":{},"integration":{}}');
-state.deductions=state.deductions||[]; state.integration=state.integration||{};
+state.staff=Array.isArray(state.staff)?state.staff:[];
+state.records=Array.isArray(state.records)?state.records:[];
+state.deductions=Array.isArray(state.deductions)?state.deductions:[];
+state.integration=state.integration||{};
 const platformBridge=()=>window.SchoolPlatformBridge||null;
 const platformMode=()=>!!platformBridge();
 const _ctx=platformBridge()?.getContext?.()||{};
 let importRows=[], importHeaders=[];
 const today=()=>new Date().toISOString().slice(0,10); document.getElementById('recordDate').value=today();
 let _disciplineCloudTimer=null;
+let _disciplineCloudHydrated=false;
+let _disciplineCloudHydrationPromise=null;
+
 async function disciplineCloudCall(action,payload){
  const token=localStorage.getItem('platform_file_session_token')||'';
  if(!token)return null;
  const url=(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'');
  const key=localStorage.getItem('smartSchoolSupabaseAnonKey')||'';
  const r=await fetch(url+'/functions/v1/platform-discipline?action='+encodeURIComponent(action),{method:'POST',headers:{'content-type':'application/json','apikey':key,'x-platform-session':token},body:JSON.stringify(payload||{})});
- const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'تعذر مزامنة الانضباط');return j;
+ const j=await r.json().catch(()=>({}));
+ if(!r.ok)throw new Error(j.error||'تعذر مزامنة الانضباط');
+ return j;
 }
+
+function normalizeDisciplineState(){
+ state.staff=Array.isArray(state.staff)?state.staff:[];
+ state.records=Array.isArray(state.records)?state.records:[];
+ state.deductions=Array.isArray(state.deductions)?state.deductions:[];
+ state.settings=state.settings||{};
+ state.integration=state.integration||{};
+}
+
+async function loadDisciplineCloud(){
+ if(_disciplineCloudHydrated)return state;
+ if(_disciplineCloudHydrationPromise)return _disciplineCloudHydrationPromise;
+ _disciplineCloudHydrationPromise=(async()=>{
+   try{
+     const j=await disciplineCloudCall('load',{academicYear:_ctx.academicYear||state.settings.year||'1448'});
+     if(j?.state&&typeof j.state==='object'){
+       Object.keys(state).forEach(k=>delete state[k]);
+       Object.assign(state,j.state);
+       normalizeDisciplineState();
+       localStorage.setItem(DBKEY,JSON.stringify(state));
+       renderAll();
+     }else{
+       normalizeDisciplineState();
+     }
+   }catch(e){
+     console.warn('[discipline cloud load]',e.message);
+     normalizeDisciplineState();
+   }finally{
+     _disciplineCloudHydrated=true;
+   }
+   return state;
+ })();
+ return _disciplineCloudHydrationPromise;
+}
+
+async function ensureDisciplineHydrated(){
+ if(!platformMode()){_disciplineCloudHydrated=true;normalizeDisciplineState();return state;}
+ return loadDisciplineCloud();
+}
+
+async function saveDisciplineCloudNow(){
+ normalizeDisciplineState();
+ localStorage.setItem(DBKEY,JSON.stringify(state));
+ if(!platformMode())return {ok:true,local:true};
+ const result=await disciplineCloudCall('save',{academicYear:_ctx.academicYear||state.settings.year||'1448',state});
+ return result||{ok:true};
+}
+
 function scheduleDisciplineCloudSave(){
  clearTimeout(_disciplineCloudTimer);
- _disciplineCloudTimer=setTimeout(()=>disciplineCloudCall('save',{academicYear:_ctx.academicYear||state.settings.year||'1448',state}).catch(e=>console.warn('[discipline cloud]',e.message)),700);
+ _disciplineCloudTimer=setTimeout(()=>{
+   saveDisciplineCloudNow().catch(e=>console.warn('[discipline cloud]',e.message));
+ },700);
 }
-function persist(){localStorage.setItem(DBKEY,JSON.stringify(state)); scheduleDisciplineCloudSave(); renderAll()}
-async function loadDisciplineCloud(){
- try{const j=await disciplineCloudCall('load',{academicYear:_ctx.academicYear||state.settings.year||'1448'});if(j?.state&&typeof j.state==='object'){Object.keys(state).forEach(k=>delete state[k]);Object.assign(state,j.state);state.staff=state.staff||[];state.records=state.records||[];state.deductions=state.deductions||[];state.settings=state.settings||{};state.integration=state.integration||{};localStorage.setItem(DBKEY,JSON.stringify(state));renderAll()}}catch(e){console.warn('[discipline cloud load]',e.message)}
+
+function persist(){
+ normalizeDisciplineState();
+ localStorage.setItem(DBKEY,JSON.stringify(state));
+ scheduleDisciplineCloudSave();
+ renderAll();
 }
 function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.remove('hidden');setTimeout(()=>t.classList.add('hidden'),2200)}
 function showView(name){document.querySelectorAll('.view').forEach(v=>v.classList.add('hidden'));const target=document.getElementById('view-'+name);if(target)target.classList.remove('hidden');document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.view===name));document.querySelectorAll('.mobile-nav-btn').forEach(b=>{const on=b.dataset.view===name;b.classList.toggle('bg-teal-700',on);b.classList.toggle('text-white',on);b.classList.toggle('text-slate-200',!on)});if(name==='records')renderRecords();if(name==='monthly')renderMonthlyReport();if(name==='deductions')renderDeductions();if(name==='integration')renderIntegration();window.scrollTo({top:0,behavior:'smooth'});}
@@ -461,8 +522,117 @@ function closeStaffModal(){document.getElementById('staffModal').classList.add('
 document.getElementById('staffForm').onsubmit=e=>{e.preventDefault();const id=staffId.value.trim(),name=staffName.value.trim();if(state.staff.some(s=>String(s.id)===id)){toast('الرقم الوظيفي موجود مسبقًا');return}state.staff.push({id,name,title:staffTitle.value.trim(),dept:staffDept.value.trim(),phone:staffPhone.value.trim(),status:staffStatus.value});persist();closeStaffModal();toast('تمت إضافة الموظف')}
 function renderStaff(){staffBody.innerHTML=state.staff.length?state.staff.map(s=>`<tr class="border-t"><td class="p-3">${esc(s.id)}</td><td class="p-3 font-bold">${esc(s.name)}</td><td class="p-3">${esc(s.title||'-')}</td><td class="p-3">${esc(s.dept||'-')}</td><td class="p-3"><span class="badge bg-emerald-50 text-emerald-700">${esc(s.status||'غير محدد')}</span></td><td class="p-3 text-left"><button onclick="removeStaff('${encodeURIComponent(s.id)}')" class="text-rose-600 text-xs font-bold">حذف</button></td></tr>`).join(''):`<tr><td colspan="6" class="p-12 text-center text-slate-400">لا يوجد منسوبون مسجلون بعد</td></tr>`;recordEmployee.innerHTML='<option value="">اختر من سجل المنسوبين</option>'+state.staff.map(s=>`<option value="${escAttr(s.id)}">${esc(s.name)} — ${esc(s.id)}</option>`).join('')}
 function removeStaff(x){const id=decodeURIComponent(x);if(confirm('حذف الموظف من السجل؟')){state.staff=state.staff.filter(s=>String(s.id)!==String(id));persist()}}
-let editingRecordId=null;function resetRecordForm(){document.getElementById('recordForm').reset();recordDate.value=today();recordMinutes.value=0;editingRecordId=null;if(window.recordSubmitBtn)recordSubmitBtn.textContent='حفظ الحركة';if(window.cancelRecordEdit)cancelRecordEdit.classList.add('hidden')}function cancelRecordEditing(){resetRecordForm();toast('تم إلغاء التعديل')}function editRecord(x){const id=decodeURIComponent(x),r=state.records.find(v=>String(v.id)===String(id));if(!r){toast('تعذر العثور على الحركة');return}editingRecordId=r.id;recordDate.value=r.date||today();recordEmployee.value=String(r.employeeId||'');recordType.value=r.type||'حاضر';recordMinutes.value=Number(r.minutes||0);recordExcuse.value=r.excuse||'';recordExcuseStatus.value=r.excuseStatus||'';recordNotes.value=r.notes||'';recordSubmitBtn.textContent='حفظ التعديل';cancelRecordEdit.classList.remove('hidden');showView('daily')}function deleteRecord(x){const id=decodeURIComponent(x);if(!confirm('حذف هذه الحركة نهائيًا؟ سيتم تحديث الإحصاءات والحسم المرتبط بها.'))return;state.records=state.records.filter(v=>String(v.id)!==String(id));state.deductions=(state.deductions||[]).filter(d=>String(d.sourceRecordId||'')!==String(id));persist();if(document.getElementById('autoSyncDed')?.checked)syncDeductionsToPlatform(true);toast('تم حذف الحركة')}document.getElementById('recordForm').onsubmit=e=>{e.preventDefault();const emp=state.staff.find(v=>String(v.id)===recordEmployee.value);if(!emp){toast('اختر موظفًا');return}const base={date:recordDate.value,employeeId:emp.id,type:recordType.value,minutes:Number(recordMinutes.value||0),excuse:recordExcuse.value,excuseStatus:recordExcuseStatus.value,notes:recordNotes.value.trim(),updatedAt:new Date().toISOString()};if(editingRecordId){const i=state.records.findIndex(v=>String(v.id)===String(editingRecordId));if(i<0)return;const old=state.records[i];state.records[i]=Object.assign({},old,base);state.deductions=(state.deductions||[]).filter(d=>String(d.sourceRecordId||'')!==String(editingRecordId));createOrUpdateDeductionForRecord(state.records[i]);toast('تم تعديل الحركة')}else{const rec=Object.assign({id:crypto.randomUUID?crypto.randomUUID():Date.now().toString(),createdAt:new Date().toISOString()},base);state.records.unshift(rec);createOrUpdateDeductionForRecord(rec);toast('تم حفظ الحركة')}persist();if(document.getElementById('autoSyncDed')?.checked)syncDeductionsToPlatform(true);resetRecordForm()}
-function renderRecords(){const q=(recordsSearch.value||'').trim().toLowerCase(),ty=recordsType.value,fr=recordsFrom.value,to=recordsTo.value;const rows=state.records.filter(r=>{const st=state.staff.find(x=>String(x.id)===String(r.employeeId));const txt=((st?.name||'')+' '+r.employeeId).toLowerCase();return(!q||txt.includes(q))&&(!ty||r.type===ty)&&(!fr||r.date>=fr)&&(!to||r.date<=to)});recordsBody.innerHTML=rows.length?rows.map(r=>{const st=state.staff.find(x=>String(x.id)===String(r.employeeId)),rid=encodeURIComponent(r.id);return`<tr class="border-t"><td class="p-3">${esc(r.date)}</td><td class="p-3"><b>${esc(st?.name||'غير موجود')}</b><div class="text-xs text-slate-400">${esc(r.employeeId)}</div></td><td class="p-3">${esc(r.type)}</td><td class="p-3">${r.minutes||0}</td><td class="p-3">${esc(r.excuse||'-')}</td><td class="p-3">${esc(r.excuseStatus||'-')}</td><td class="p-3">${esc(r.notes||'-')}</td><td class="p-3 text-center whitespace-nowrap"><button onclick="editRecord('${rid}')" class="text-teal-700 font-bold ml-3">تعديل</button><button onclick="deleteRecord('${rid}')" class="text-rose-600 font-bold">حذف</button></td></tr>`}).join(''):`<tr><td colspan="8" class="p-12 text-center text-slate-400">لا توجد حركات مطابقة</td></tr>`}
+let editingRecordId=null;function resetRecordForm(){document.getElementById('recordForm').reset();recordDate.value=today();recordMinutes.value=0;editingRecordId=null;if(window.recordSubmitBtn)recordSubmitBtn.textContent='حفظ الحركة';if(window.cancelRecordEdit)cancelRecordEdit.classList.add('hidden')}function cancelRecordEditing(){resetRecordForm();toast('تم إلغاء التعديل')}function editRecord(x){const id=decodeURIComponent(x),r=state.records.find(v=>String(v.id)===String(id));if(!r){toast('تعذر العثور على الحركة');return}editingRecordId=r.id;recordDate.value=r.date||today();recordEmployee.value=String(r.employeeId||'');recordType.value=r.type||'حاضر';recordMinutes.value=Number(r.minutes||0);recordExcuse.value=r.excuse||'';recordExcuseStatus.value=r.excuseStatus||'';recordNotes.value=r.notes||'';recordSubmitBtn.textContent='حفظ التعديل';cancelRecordEdit.classList.remove('hidden');showView('daily')}function deleteRecord(x){const id=decodeURIComponent(x);if(!confirm('حذف هذه الحركة نهائيًا؟ سيتم تحديث الإحصاءات والحسم المرتبط بها.'))return;state.records=state.records.filter(v=>String(v.id)!==String(id));state.deductions=(state.deductions||[]).filter(d=>String(d.sourceRecordId||'')!==String(id));persist();if(document.getElementById('autoSyncDed')?.checked)syncDeductionsToPlatform(true);toast('تم حذف الحركة')}document.getElementById('recordForm').onsubmit=async e=>{
+ e.preventDefault();
+ const form=e.currentTarget;
+ const employeeEl=document.getElementById('recordEmployee');
+ const dateEl=document.getElementById('recordDate');
+ const typeEl=document.getElementById('recordType');
+ const minutesEl=document.getElementById('recordMinutes');
+ const excuseEl=document.getElementById('recordExcuse');
+ const excuseStatusEl=document.getElementById('recordExcuseStatus');
+ const notesEl=document.getElementById('recordNotes');
+ const submitBtn=document.getElementById('recordSubmitBtn');
+
+ if(submitBtn)submitBtn.disabled=true;
+ try{
+   await ensureDisciplineHydrated();
+
+   const emp=state.staff.find(v=>String(v.id)===String(employeeEl?.value||''));
+   if(!emp){toast('اختر موظفًا');return}
+
+   const base={
+     date:dateEl?.value||today(),
+     employeeId:emp.id,
+     type:typeEl?.value||'حاضر',
+     minutes:Number(minutesEl?.value||0),
+     excuse:excuseEl?.value||'',
+     excuseStatus:excuseStatusEl?.value||'',
+     notes:(notesEl?.value||'').trim(),
+     updatedAt:new Date().toISOString()
+   };
+
+   let savedId=editingRecordId;
+   let successMessage='تم تعديل الحركة وحفظها';
+
+   if(editingRecordId){
+     const i=state.records.findIndex(v=>String(v.id)===String(editingRecordId));
+     if(i<0)throw new Error('تعذر العثور على الحركة المطلوب تعديلها');
+     const old=state.records[i];
+     state.records[i]=Object.assign({},old,base);
+     state.deductions=(state.deductions||[]).filter(d=>String(d.sourceRecordId||'')!==String(editingRecordId));
+     createOrUpdateDeductionForRecord(state.records[i]);
+   }else{
+     const rec=Object.assign({
+       id:(globalThis.crypto&&crypto.randomUUID)?crypto.randomUUID():Date.now().toString(),
+       createdAt:new Date().toISOString()
+     },base);
+     state.records.unshift(rec);
+     savedId=rec.id;
+     createOrUpdateDeductionForRecord(rec);
+     successMessage='تم حفظ الحركة وإضافتها إلى سجل الحركات';
+   }
+
+   // اعكس الحركة في الواجهة فوراً من نفس المصدر قبل أي إعادة تحميل.
+   normalizeDisciplineState();
+   localStorage.setItem(DBKEY,JSON.stringify(state));
+   renderRecords();
+   renderDashboard();
+   renderMonthlyReport();
+   renderDeductions();
+
+   // في وضع المنصة لا نعلن نجاح الحفظ النهائي قبل تأكيد الخادم.
+   try{
+     await saveDisciplineCloudNow();
+   }catch(cloudError){
+     console.warn('[discipline cloud save record]',cloudError);
+     toast('حُفظت الحركة محليًا، وتعذرت المزامنة السحابية. أعد المحاولة عند عودة الاتصال.');
+     return;
+   }
+
+   // تحقق داخلي أن الحركة ما زالت موجودة بعد الحفظ.
+   if(!state.records.some(r=>String(r.id)===String(savedId))){
+     throw new Error('لم تثبت الحركة في سجل الحركات');
+   }
+
+   if(document.getElementById('autoSyncDed')?.checked)syncDeductionsToPlatform(true);
+   resetRecordForm();
+   renderRecords();
+   toast(successMessage);
+ }catch(err){
+   console.error('[discipline record save]',err);
+   toast(err?.message||'تعذر حفظ الحركة');
+ }finally{
+   if(submitBtn)submitBtn.disabled=false;
+ }
+}
+
+function renderRecords(){
+ normalizeDisciplineState();
+ const searchEl=document.getElementById('recordsSearch');
+ const typeFilterEl=document.getElementById('recordsType');
+ const fromEl=document.getElementById('recordsFrom');
+ const toEl=document.getElementById('recordsTo');
+ const bodyEl=document.getElementById('recordsBody');
+ if(!bodyEl)return;
+
+ const q=(searchEl?.value||'').trim().toLowerCase();
+ const ty=typeFilterEl?.value||'';
+ const fr=fromEl?.value||'';
+ const to=toEl?.value||'';
+
+ const rows=state.records.filter(r=>{
+   const st=state.staff.find(x=>String(x.id)===String(r.employeeId));
+   const txt=((st?.name||'')+' '+String(r.employeeId||'')).toLowerCase();
+   return(!q||txt.includes(q))&&(!ty||r.type===ty)&&(!fr||String(r.date||'')>=fr)&&(!to||String(r.date||'')<=to)
+ });
+
+ bodyEl.innerHTML=rows.length?rows.map(r=>{
+   const st=state.staff.find(x=>String(x.id)===String(r.employeeId));
+   const rid=encodeURIComponent(r.id);
+   return`<tr class="border-t" data-record-id="${escAttr(r.id)}"><td class="p-3">${esc(r.date)}</td><td class="p-3"><b>${esc(st?.name||'غير موجود')}</b><div class="text-xs text-slate-400">${esc(r.employeeId)}</div></td><td class="p-3">${esc(r.type)}</td><td class="p-3">${r.minutes||0}</td><td class="p-3">${esc(r.excuse||'-')}</td><td class="p-3">${esc(r.excuseStatus||'-')}</td><td class="p-3">${esc(r.notes||'-')}</td><td class="p-3 text-center whitespace-nowrap"><button onclick="editRecord('${rid}')" class="text-teal-700 font-bold ml-3">تعديل</button><button onclick="deleteRecord('${rid}')" class="text-rose-600 font-bold">حذف</button></td></tr>`
+ }).join(''):`<tr><td colspan="8" class="p-12 text-center text-slate-400">لا توجد حركات مطابقة</td></tr>`;
+}
 ['recordsSearch','recordsType','recordsFrom','recordsTo'].forEach(id=>document.getElementById(id).addEventListener('input',renderRecords));
 function renderDashboard(){kpiStaff.textContent=state.staff.length;const tr=state.records.filter(r=>r.date===today());kpiToday.textContent=tr.length;kpiLate.textContent=state.records.filter(r=>['تأخر','انصراف مبكر','استئذان'].includes(r.type)&&(r.excuseStatus==='غير مقبول'||!r.excuseStatus)).reduce((a,r)=>a+(r.minutes||0),0);kpiAbsent.textContent=state.records.filter(r=>r.type==='غياب بدون عذر').length;todayList.innerHTML=tr.length?tr.slice(0,8).map(r=>{const s=state.staff.find(x=>String(x.id)===String(r.employeeId));return`<div class="flex justify-between gap-3 py-3 border-b last:border-0"><div><div class="font-bold">${esc(s?.name||'غير موجود')}</div><div class="text-xs text-slate-500">${esc(r.type)}${r.minutes?' · '+r.minutes+' دقيقة':''}</div></div><span class="badge bg-slate-100">${esc(r.date)}</span></div>`}).join(''):`<div class="py-10 text-center text-slate-400">لا توجد حركات مسجلة اليوم</div>`}
 function saveSettings(){state.settings={school:setSchool.value.trim(),year:setYear.value.trim(),startTime:setStartTime.value,workHours:Number(setWorkHours.value||7),lateAlert:Number(setLateAlert.value||60),lateDay:Number(setLateDay.value||7)};persist();toast('تم حفظ الإعدادات')}
@@ -517,7 +687,7 @@ function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&l
 function renderAll(){renderStaff();renderRecords();renderDashboard();renderSettings();renderDeductions();renderIntegration();renderMonthlyReport()}
 globalSearch.addEventListener('input',()=>{const q=globalSearch.value.trim().toLowerCase();if(!q)return;showView('staff');[...staffBody.querySelectorAll('tr')].forEach(tr=>tr.style.display=tr.innerText.toLowerCase().includes(q)?'':'none')});
 renderAll();
-if(platformMode()){setTimeout(async()=>{await loadDisciplineCloud();await syncStaffFromPlatform()},100);}
+if(platformMode()){setTimeout(async()=>{await ensureDisciplineHydrated();await syncStaffFromPlatform();renderRecords()},100);}else{_disciplineCloudHydrated=true;}
 
 
 // ===== Official identity + multi-format monthly reports =====

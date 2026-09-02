@@ -160,7 +160,7 @@
           </div>
           <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
 <span id="structureRoleBadge" class="pill">إدارة الهيكل الدراسي</span>
-<span class="pill" id="structureBuildBadge" title="للتأكد أن المتصفح حمّل النسخة الجديدة">الإصدار R4 — 2026/09/02</span>
+<span class="pill" id="structureBuildBadge" title="للتأكد أن المتصفح حمّل النسخة الجديدة">الإصدار R5 — 2026/09/02</span>
 </div>
         </div>
 
@@ -537,70 +537,19 @@
   function phase2SchoolInfoHeaders(){if(phase2IsSystemAdmin())return null;const token=(window.PlatformCloudSession?.token?.()||sessionStorage.getItem('platform_tab_session_token_v1')||localStorage.getItem('platform_file_session_token')||'');return token?{'x-platform-session':token}:null}
   async function phase2Call(action,body={}){await window.__PLATFORM_ACCESS_READY__;const headers={'content-type':'application/json','apikey':SUPABASE_KEY};if(phase2IsSystemAdmin()){const session=await adminAuthSession();headers.authorization='Bearer '+session.access_token;body=Object.assign({},body,{schoolId:currentSchool.id})}else{const ph=phase2SchoolInfoHeaders();if(!ph)throw new Error('جلسة المدرسة غير متاحة.');Object.assign(headers,ph)}const r=await fetch(SUPABASE_URL+'/functions/v1/school-information-structure',{method:'POST',headers,body:JSON.stringify(Object.assign({},body,{action}))});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'تعذر تنفيذ العملية');return j}
   function normalizeStageName(stage){
-    return canonicalStageLabel(stage);
+    const s=safe(stage).trim();
+    if(s==='رياض الأطفال'||s==='رياض اطفال'||s==='رياض أطفال')return 'رياض أطفال';
+    if(s==='الطفولة المبكرة'||s==='طفولة مبكرة')return 'طفولة مبكرة';
+    if(s==='الابتدائية'||s==='ابتدائية'||s==='ابتدائي')return 'ابتدائية';
+    if(s==='المتوسطة'||s==='متوسطة'||s==='متوسط')return 'متوسطة';
+    if(s==='الثانوية'||s==='ثانوية'||s==='ثانوي')return 'ثانوية';
+    return s;
   }
-  
-  const GRADE_CANONICAL_MAP={
-    'اول':'grade_1','أول':'grade_1','الأول':'grade_1','الاول':'grade_1','1':'grade_1','١':'grade_1',
-    'ثاني':'grade_2','الثاني':'grade_2','الثانى':'grade_2','2':'grade_2','٢':'grade_2',
-    'ثالث':'grade_3','الثالث':'grade_3','3':'grade_3','٣':'grade_3',
-    'رابع':'grade_4','الرابع':'grade_4','4':'grade_4','٤':'grade_4',
-    'خامس':'grade_5','الخامس':'grade_5','5':'grade_5','٥':'grade_5',
-    'سادس':'grade_6','السادس':'grade_6','6':'grade_6','٦':'grade_6'
-  };
-  const GRADE_LABELS={
-    grade_1:'الأول',grade_2:'الثاني',grade_3:'الثالث',
-    grade_4:'الرابع',grade_5:'الخامس',grade_6:'السادس'
-  };
-  const STAGE_CANONICAL_MAP={
-    'رياض الأطفال':'kg','رياض اطفال':'kg','رياض أطفال':'kg','روضة':'kg',
-    'الطفولة المبكرة':'early_childhood','طفولة مبكرة':'early_childhood',
-    'الابتدائية':'primary','ابتدائية':'primary','ابتدائي':'primary',
-    'المتوسطة':'middle','متوسطة':'middle','متوسط':'middle',
-    'الثانوية':'secondary','ثانوية':'secondary','ثانوي':'secondary'
-  };
-  const STAGE_LABELS={
-    kg:'رياض أطفال',
-    early_childhood:'طفولة مبكرة',
-    primary:'ابتدائية',
-    middle:'متوسطة',
-    secondary:'ثانوية'
-  };
-  function normalizeArabicToken(v){
-    return safe(v).replace(/[ـ]/g,'').replace(/\s+/g,' ').trim();
-  }
-  function canonicalGradeId(v){
-    const raw=normalizeArabicToken(v);
-    if(GRADE_CANONICAL_MAP[raw])return GRADE_CANONICAL_MAP[raw];
-    const compact=raw.replace(/^ال/,'');
-    return GRADE_CANONICAL_MAP[compact]||'';
-  }
-  function canonicalGradeLabel(v){
-    const id=canonicalGradeId(v);
-    return id?GRADE_LABELS[id]:normalizeArabicToken(v);
-  }
-  function canonicalStageId(v){
-    const raw=normalizeArabicToken(v);
-    return STAGE_CANONICAL_MAP[raw]||STAGE_CANONICAL_MAP[raw.replace(/^ال/,'')]||'';
-  }
-  function canonicalStageLabel(v){
-    const id=canonicalStageId(v);
-    return id?STAGE_LABELS[id]:normalizeArabicToken(v);
-  }
-  function canonicalStudentLocation(row){
-    const r={...(row||{})};
-    const stageId=canonicalStageId(r.stage);
-    const gradeId=canonicalGradeId(r.grade);
-    r.stage_id=stageId||safe(r.stage_id);
-    r.grade_id=gradeId||safe(r.grade_id);
-    r.stage=stageId?STAGE_LABELS[stageId]:canonicalStageLabel(r.stage);
-    r.grade=gradeId?GRADE_LABELS[gradeId]:canonicalGradeLabel(r.grade);
-    return r;
-  }
-function exactGradeNames(stage){
+  function exactGradeNames(stage){
     stage=normalizeStageName(stage);
     if(stage==='ابتدائية')return ['الرابع','الخامس','السادس'];
-    return ['الأول','الثاني','الثالث'];
+    if(stage==='رياض أطفال'||stage==='طفولة مبكرة'||stage==='متوسطة'||stage==='ثانوية')return ['الأول','الثاني','الثالث'];
+    return [];
   }
   function defaultGradeNames(stage){return exactGradeNames(stage)}
   function sectionNames(count){return Array.from({length:Math.max(1,Number(count)||1)},(_,i)=>String(i+1))}

@@ -114,8 +114,8 @@
     document.querySelectorAll('button,a,[role="button"],.cursor-pointer,.card,div').forEach(function(el){
       if (el.dataset && el.dataset.followChecked) return;
       var t = textOf(el);
-      if (t === 'تقرير جديد' || t === 'تقارير الأداء الوظيفي' || /تقرير\s+جديد/.test(t) || /تقارير\s+الأداء\s+الوظيفي/.test(t)) {
-        var box = el.closest('.group, .card, .rounded-\[2rem\], .rounded-3xl, .bg-white, .cursor-pointer') || el;
+      if (t === 'تقرير جديد' || /تقرير\s+جديد/.test(t)) {
+        var box = el.closest('button,a,[role="button"],.cursor-pointer,.card') || el;
         box.style.display = 'none';
         if (box.dataset) box.dataset.followChecked = '1';
       }
@@ -123,7 +123,7 @@
   }
   function applyReadonly(){
     hideNewReport();
-    document.querySelectorAll('input,textarea,select,[contenteditable="true"]').forEach(function(el){
+    document.querySelectorAll('#main-report-app input,#main-report-app textarea,#main-report-app select,#main-report-app [contenteditable="true"]').forEach(function(el){
       el.setAttribute('readonly','readonly');
       if (el.tagName === 'SELECT') el.setAttribute('disabled','disabled');
       if (el.getAttribute('contenteditable') === 'true') el.setAttribute('contenteditable','false');
@@ -3296,56 +3296,38 @@ html.teacher-auth-pending body{visibility:hidden!important;}
         }
 
         function startNewReport() { resetFormOnly(); applyReportTemplate('تقرير تنفيذ'); setReportHeading('تقرير تنفيذ'); currentEditingId = null; document.getElementById('welcome-dashboard').style.display = 'none'; document.getElementById('main-report-app').classList.remove('hidden'); updateReportProgress(); }
+        function teacherIsFollowMode() {
+            try {
+                const qs=new URLSearchParams(location.search||'');
+                const mode=String(qs.get('mode')||'').toLowerCase();
+                const explicit=qs.get('follow')==='1'||qs.get('followMode')==='1'||qs.get('monitoring')==='true'||mode.includes('follow')||mode.includes('supervisor')||mode.includes('monitor');
+                const target=qs.get('followEmail')||qs.get('targetEmail')||qs.get('targetUser')||qs.get('followUserId')||qs.get('userId')||qs.get('uid')||(explicit?qs.get('email'):'');
+                return !!(explicit&&target);
+            }catch(_){return false;}
+        }
         function returnToTeacherSections(event) {
-            if (event) {
-                event.preventDefault();
-                event.stopPropagation();
-            }
-
-            // إغلاق أي طبقات خاصة بالتقرير قبل إظهار واجهة أقسام المعلم.
-            const reportApp = document.getElementById('main-report-app');
-            const welcome = document.getElementById('welcome-dashboard');
-            const archive = document.getElementById('archive-screen');
-            const modalIds = [
-                'selectionModal','magicGoalsModal','themeModal',
-                'official-output-modal','report-preview-modal'
-            ];
-
-            if (reportApp) reportApp.classList.add('hidden');
-            if (archive) {
-                archive.classList.add('hidden');
-                archive.style.display = 'none';
-            }
-            modalIds.forEach(id => {
-                const el = document.getElementById(id);
-                if (!el) return;
-                el.classList.add('hidden');
-                if (el.style) el.style.display = 'none';
-            });
-
-            if (welcome) {
-                welcome.classList.remove('hidden');
-                welcome.style.display = 'block';
-            }
-
-            // حفظ المسودة اختياري ولا يجوز أن يمنع الرجوع إذا تعذر.
-            try {
-                if (typeof saveDraftSnapshot === 'function') saveDraftSnapshot(true);
-            } catch (err) {
-                console.warn('[teacher return] draft save skipped', err);
-            }
-
-            try {
-                if (typeof refreshDashboardMetrics === 'function') refreshDashboardMetrics();
-            } catch (err) {
-                console.warn('[teacher return] dashboard refresh skipped', err);
-            }
-
-            window.scrollTo({ top: 0, behavior: 'auto' });
+            if(event){event.preventDefault();event.stopPropagation();}
+            const followMode=teacherIsFollowMode();
+            currentEditingId=null;
+            window.__performanceExplicitEditId=null;
+            window.__performanceEditingLegacy=false;
+            window.__performanceEditingOriginalCreatedAt='';
+            try{if(typeof clearEditingDomainLock==='function')clearEditingDomainLock();}catch(_){}
+            const reportApp=document.getElementById('main-report-app');
+            const archive=document.getElementById('archive-view');
+            const stats=document.getElementById('stats-view');
+            if(reportApp)reportApp.classList.add('hidden');
+            if(archive)archive.style.display='none';
+            if(stats)stats.style.display='none';
+            const welcome=document.getElementById('welcome-dashboard');
+            if(welcome){welcome.classList.remove('hidden');welcome.style.display='block';}
+            if(!followMode){try{if(typeof saveDraftSnapshot==='function')saveDraftSnapshot(true);}catch(err){console.warn('[teacher return] draft save skipped',err);}}
+            try{if(typeof refreshDashboardMetrics==='function')refreshDashboardMetrics();}catch(err){console.warn('[teacher return] metrics skipped',err);}
+            window.scrollTo({top:0,behavior:'auto'});
             return false;
         }
-        window.returnToTeacherSections = returnToTeacherSections;
-
+        window.teacherIsFollowMode=teacherIsFollowMode;
+        window.returnToTeacherSections=returnToTeacherSections;
         function goHome() { document.getElementById('main-report-app').classList.add('hidden'); document.getElementById('welcome-dashboard').style.display = 'block'; }
         function setReportHeading(title) {
             const heading = document.getElementById('report-title-heading');
@@ -3576,22 +3558,12 @@ async function legacyPerformanceArchiveOpen_DISABLED() {
             }
         }
 
-        function editReport(id) { 
-            const reports = performanceArchiveCleanView(); 
-            const report = reports.find(r => r.id === id); 
-            if (report) { 
-                document.getElementById('report-content-container').innerHTML = report.content; 
-                currentEditingId = id; 
-                if(report.category) document.getElementById('categorySelect').value = report.category; 
-                // إعادة تعيين القيمة المنسدلة للتاريخ إذا وجدت
-                if(report.reportDate) document.getElementById('dateInputHeader').value = report.reportDate;
-                
-                document.getElementById('archive-view').style.display = 'none'; 
-                document.getElementById('main-report-app').classList.remove('hidden'); 
-                updateReportProgress();
-            } 
+        async function editReport(id) {
+            if(teacherIsFollowMode()){showToast('وضع المتابعة للقراءة فقط؛ استخدم المعاينة بدل التعديل.');return false;}
+            if(typeof window.loadReport==='function')return await window.loadReport(String(id));
+            showToast('تعذر فتح التقرير للتعديل');return false;
         }
-
+        window.editReport=editReport;
         function openStatsView() { document.getElementById('welcome-dashboard').style.display = 'none'; document.getElementById('stats-view').style.display = 'block'; renderStatsDashboard(); }
         function closeStatsView() { document.getElementById('stats-view').style.display = 'none'; document.getElementById('welcome-dashboard').style.display = 'block'; }
         
@@ -4726,12 +4698,14 @@ body{overflow-x:hidden}
 
         document.addEventListener('input', function(event) {
             if (!event.target.closest('#main-report-app')) return;
+            if (typeof teacherIsFollowMode === 'function' && teacherIsFollowMode()) return;
             clearTimeout(enhancedDraftTimer);
             enhancedDraftTimer = setTimeout(() => saveDraftSnapshot(true), 900);
         }, true);
 
         document.addEventListener('change', function(event) {
             if (!event.target.closest('#main-report-app')) return;
+            if (typeof teacherIsFollowMode === 'function' && teacherIsFollowMode()) return;
             clearTimeout(enhancedDraftTimer);
             enhancedDraftTimer = setTimeout(() => saveDraftSnapshot(true), 500);
         }, true);
@@ -4739,7 +4713,7 @@ body{overflow-x:hidden}
         const __enhancedEnterApp = enterApp;
         enterApp = function() { __enhancedEnterApp(); refreshDashboardMetrics(); };
         const __enhancedGoHome = goHome;
-        goHome = function() { saveDraftSnapshot(true); __enhancedGoHome(); refreshDashboardMetrics(); };
+        goHome = function() { if (typeof teacherIsFollowMode === 'function' && teacherIsFollowMode()) { __enhancedGoHome(); refreshDashboardMetrics(); return; } saveDraftSnapshot(true); __enhancedGoHome(); refreshDashboardMetrics(); };
         const __enhancedSaveReportToArchive = saveReportToArchive;
         saveReportToArchive = async function() { const ok=await __enhancedSaveReportToArchive(); if(ok){ refreshDashboardMetrics(); saveDraftSnapshot(true); } return ok; };
         const __enhancedUpdateReportProgress = updateReportProgress;

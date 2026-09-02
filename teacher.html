@@ -2353,7 +2353,7 @@ html.teacher-auth-pending body{visibility:hidden!important;}
 <div class="hidden" id="main-report-app">
 <nav class="no-print bg-white/90 backdrop-blur-md border-b p-3 sticky top-0 z-[100] flex justify-between items-center px-8 shadow-sm">
 <div class="flex items-center gap-4">
-<button class="p-2 text-slate-400 hover:bg-slate-50 rounded-full" onclick="goHome()"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg></button><!-- أيقونة الثيم اللوني -->
+<button type="button" class="p-2 text-slate-400 hover:bg-slate-50 rounded-full" onclick="returnToTeacherSections(event)" aria-label="العودة إلى أقسام المعلم" title="العودة إلى أقسام المعلم"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg></button><!-- أيقونة الثيم اللوني -->
 <button class="p-2 text-slate-600 hover:bg-slate-100 rounded-full transition-all" onclick="openThemeModal()" title="مكتبة الألوان">
 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewbox="0 0 24 24">
 <path d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
@@ -3296,6 +3296,56 @@ html.teacher-auth-pending body{visibility:hidden!important;}
         }
 
         function startNewReport() { resetFormOnly(); applyReportTemplate('تقرير تنفيذ'); setReportHeading('تقرير تنفيذ'); currentEditingId = null; document.getElementById('welcome-dashboard').style.display = 'none'; document.getElementById('main-report-app').classList.remove('hidden'); updateReportProgress(); }
+        function returnToTeacherSections(event) {
+            if (event) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+
+            // إغلاق أي طبقات خاصة بالتقرير قبل إظهار واجهة أقسام المعلم.
+            const reportApp = document.getElementById('main-report-app');
+            const welcome = document.getElementById('welcome-dashboard');
+            const archive = document.getElementById('archive-screen');
+            const modalIds = [
+                'selectionModal','magicGoalsModal','themeModal',
+                'official-output-modal','report-preview-modal'
+            ];
+
+            if (reportApp) reportApp.classList.add('hidden');
+            if (archive) {
+                archive.classList.add('hidden');
+                archive.style.display = 'none';
+            }
+            modalIds.forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.classList.add('hidden');
+                if (el.style) el.style.display = 'none';
+            });
+
+            if (welcome) {
+                welcome.classList.remove('hidden');
+                welcome.style.display = 'block';
+            }
+
+            // حفظ المسودة اختياري ولا يجوز أن يمنع الرجوع إذا تعذر.
+            try {
+                if (typeof saveDraftSnapshot === 'function') saveDraftSnapshot(true);
+            } catch (err) {
+                console.warn('[teacher return] draft save skipped', err);
+            }
+
+            try {
+                if (typeof refreshDashboardMetrics === 'function') refreshDashboardMetrics();
+            } catch (err) {
+                console.warn('[teacher return] dashboard refresh skipped', err);
+            }
+
+            window.scrollTo({ top: 0, behavior: 'auto' });
+            return false;
+        }
+        window.returnToTeacherSections = returnToTeacherSections;
+
         function goHome() { document.getElementById('main-report-app').classList.add('hidden'); document.getElementById('welcome-dashboard').style.display = 'block'; }
         function setReportHeading(title) {
             const heading = document.getElementById('report-title-heading');

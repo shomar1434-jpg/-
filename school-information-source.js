@@ -1,13 +1,82 @@
 (function(){
 'use strict';
 if(window.SchoolInformationSource&&String(window.SchoolInformationSource.VERSION||'').includes('live-roster-v5'))return;
-const VERSION='6.0.0-authoritative-live-roster-no-legacy';
+const VERSION='8.1.0-noor-class-roster-live-propagation';
 const SUPABASE_URL=(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'');
 const DEFAULT_SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
 const API_KEY=localStorage.getItem('smartSchoolSupabaseAnonKey')||DEFAULT_SUPABASE_KEY;
 const safe=v=>String(v==null?'':v).trim();
 const lower=v=>safe(v).toLowerCase();
-const state={school:null,students:[],staff:[],updatedAt:'',schoolId:'',accessMode:'',academicYear:'1448',loading:null};
+const state={school:null,students:[],staff:[],updatedAt:'',schoolId:'',accessMode:'',academicYear:'1448',loading:null,cacheHydrated:false,revalidating:null};
+const CACHE_DB='smart_school_information_cache_v1';
+const CACHE_STORE='snapshots';
+const CACHE_SCHEMA_VERSION=1;
+const CACHE_MAX_AGE_MS=5*60*1000;
+function cacheIdentity(sid,year){return safe(sid)+'::'+safe(year||'1448')}
+function openCacheDb(){
+ return new Promise((resolve,reject)=>{
+   if(!('indexedDB' in window))return resolve(null);
+   const req=indexedDB.open(CACHE_DB,CACHE_SCHEMA_VERSION);
+   req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains(CACHE_STORE))db.createObjectStore(CACHE_STORE,{keyPath:'key'})};
+   req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);
+ });
+}
+async function readPersistentCache(sid,year){
+ const key=cacheIdentity(sid,year);
+ try{
+   const db=await openCacheDb();if(!db)return null;
+   return await new Promise((resolve,reject)=>{
+     const tx=db.transaction(CACHE_STORE,'readonly'),r=tx.objectStore(CACHE_STORE).get(key);
+     r.onsuccess=()=>resolve(r.result||null);r.onerror=()=>reject(r.error);
+   });
+ }catch(e){console.warn('[school-information-cache read]',e);return null}
+}
+async function writePersistentCache(snapshot){
+ try{
+   if(!snapshot?.schoolId)return false;
+   const db=await openCacheDb();if(!db)return false;
+   const row={key:cacheIdentity(snapshot.schoolId,snapshot.academicYear),schoolId:snapshot.schoolId,academicYear:snapshot.academicYear,
+     school:snapshot.school||null,students:Array.isArray(snapshot.students)?snapshot.students:[],staff:Array.isArray(snapshot.staff)?snapshot.staff:[],
+     updatedAt:snapshot.updatedAt||new Date().toISOString(),cachedAt:new Date().toISOString(),accessMode:snapshot.accessMode||''};
+   await new Promise((resolve,reject)=>{
+     const tx=db.transaction(CACHE_STORE,'readwrite');tx.objectStore(CACHE_STORE).put(row);
+     tx.oncomplete=()=>resolve(true);tx.onerror=()=>reject(tx.error);
+   });
+   try{localStorage.setItem('school_information_cache_version:'+snapshot.schoolId+':'+snapshot.academicYear,row.updatedAt)}catch(_){}
+   return true;
+ }catch(e){console.warn('[school-information-cache write]',e);return false}
+}
+function applySnapshotData(data,academicYear,fromCache=false){
+ const sid=safe(data.schoolId||data.school?.id||targetSchoolId());
+ state.school=data.school||null;
+ state.students=(Array.isArray(data.students)?data.students:[]).filter(x=>safe(x.student_status)!=='محذوف'&&(!sid||safe(x.school_id||sid)===sid));
+ state.staff=normalizeStaff(data.staff,sid);
+ state.schoolId=sid;
+ state.accessMode=safe(data.accessMode||(systemAdminRequested()?'system_admin':'school_manager'));
+ state.academicYear=academicYear;
+ state.updatedAt=safe(data.updatedAt||data.cachedAt||new Date().toISOString());
+ state.cacheHydrated=true;
+ if(!fromCache){
+   const snap=getSnapshotSync();
+   writePersistentCache(snap);
+   try{window.dispatchEvent(new CustomEvent('school-information-updated',{detail:{schoolId:sid,academicYear,source:'cloud'}}))}catch(_){}
+ }
+ return getSnapshotSync();
+}
+async function hydratePersistentCache(){
+ const sid=targetSchoolId(),year=currentAcademicYear();
+ if(!sid)return false;
+ if(state.cacheHydrated&&state.schoolId===sid&&state.academicYear===year)return !!state.updatedAt;
+ const cached=await readPersistentCache(sid,year);
+ if(!cached)return false;
+ applySnapshotData(cached,year,true);
+ try{window.dispatchEvent(new CustomEvent('school-information-ready',{detail:{schoolId:sid,academicYear:year,source:'cache'}}))}catch(_){}
+ return true;
+}
+function cacheIsFresh(){
+ const t=Date.parse(state.updatedAt||'');return !!t&&(Date.now()-t)<CACHE_MAX_AGE_MS;
+}
+
 
 function systemAdminRequested(){
  try{
@@ -109,15 +178,14 @@ async function refresh(){
  state.loading=(async()=>{
    const academicYear=currentAcademicYear();
    const data=await call('bootstrap',{academicYear});
-   const sid=safe(data.schoolId||data.school?.id||targetSchoolId());
-   state.school=data.school||null;
-   state.students=(Array.isArray(data.students)?data.students:[]).filter(x=>safe(x.student_status)!=='محذوف'&&(!sid||safe(x.school_id||sid)===sid));
-   state.staff=normalizeStaff(data.staff,sid);
-   state.schoolId=sid;state.accessMode=safe(data.accessMode||(systemAdminRequested()?'system_admin':'school_manager'));
-   state.academicYear=academicYear;state.updatedAt=new Date().toISOString();
-   return getSnapshotSync();
+   return applySnapshotData({...data,updatedAt:new Date().toISOString()},academicYear,false);
  })().finally(()=>{state.loading=null});
  return state.loading;
+}
+function revalidateInBackground(){
+ if(state.revalidating)return state.revalidating;
+ state.revalidating=refresh().catch(e=>{console.warn('[school-information background refresh]',e);return getSnapshotSync()}).finally(()=>{state.revalidating=null});
+ return state.revalidating;
 }
 function getSnapshotSync(){
  const teachers=state.staff.filter(isTeacher);
@@ -127,14 +195,57 @@ function getSnapshotSync(){
 }
 async function ensureFresh(force){
  const sid=targetSchoolId(),year=currentAcademicYear();
- if(force||!state.updatedAt||state.schoolId!==sid||state.academicYear!==year)await refresh();
+ const same=state.updatedAt&&state.schoolId===sid&&state.academicYear===year;
+ if(force){await refresh();return}
+ if(!same){
+   const cached=await hydratePersistentCache();
+   if(!cached){await refresh();return}
+ }
+ // البيانات المحفوظة تظهر فورًا. إن كانت قديمة تتم المزامنة بالخلفية دون تعطيل القسم.
+ if(!cacheIsFresh())revalidateInBackground();
 }
 async function getSnapshot(force=false){await ensureFresh(force);return getSnapshotSync()}
 async function getStudents(force=false){await ensureFresh(force);return [...state.students]}
 async function getStaff(force=false){await ensureFresh(force);return [...state.staff]}
 async function getTeachers(force=false){await ensureFresh(force);return state.staff.filter(isTeacher)}
 async function getAdministrativeEmployees(force=false){await ensureFresh(force);return state.staff.filter(isAdminEmployee)}
-function notifyUpdated(){state.updatedAt='';try{window.dispatchEvent(new CustomEvent('school-information-source-invalidated'))}catch(_){}}
-window.SchoolInformationSource={VERSION,refresh,getSnapshot,getStudents,getStaff,getTeachers,getAdministrativeEmployees,request:call,notifyUpdated,
+
+function normalizeScope(scope){
+ scope=scope||{};
+ return {stage:safe(scope.stage),grade:safe(scope.grade),track_name:safe(scope.track_name||scope.track),section_name:safe(scope.section_name||scope.section)};
+}
+function studentMatchesScope(r,scope){const s=normalizeScope(scope);return (!s.stage||safe(r.stage)===s.stage)&&(!s.grade||safe(r.grade)===s.grade)&&(!s.track_name||safe(r.track_name)===s.track_name)&&(!s.section_name||safe(r.section_name)===s.section_name)}
+async function getStudentsByScope(scope={},force=false){
+ if(force){try{const s=normalizeScope(scope),r=await call('students-list-scope',{academicYear:currentAcademicYear(),scope:s});if(Array.isArray(r.students))return r.students}catch(e){console.warn('[school-information scoped cloud fallback]',e)}}
+ await ensureFresh(false);return state.students.filter(r=>studentMatchesScope(r,scope));
+}
+function broadcastStudentChange(scope={},operation='update'){
+ const detail={schoolId:state.schoolId||targetSchoolId(),academicYear:state.academicYear||currentAcademicYear(),scope:normalizeScope(scope),operation,version:Date.now()};
+ try{localStorage.setItem('school_information_students_change_v1',JSON.stringify(detail))}catch(_){}
+ try{if('BroadcastChannel' in window){const ch=new BroadcastChannel('school-information-live-v1');ch.postMessage({type:'students-updated',detail});ch.close()}}catch(_){}
+ return detail;
+}
+async function notifyStudentsUpdated(scope={},operation='update'){
+ state.updatedAt='1970-01-01T00:00:00.000Z';
+ const detail=broadcastStudentChange(scope,operation);
+ try{window.dispatchEvent(new CustomEvent('school-information:students-updated',{detail}))}catch(_){}
+ try{window.dispatchEvent(new CustomEvent('school-information-updated',{detail:{...detail,source:'student-mutation'}}))}catch(_){}
+ // تحديث المصدر المركزي نفسه فورًا حتى تقرأ الأقسام التالية النسخة الجديدة بلا تحديث يدوي.
+ try{await refresh()}catch(e){console.warn('[school-information student refresh]',e)}
+ return detail;
+}
+function receiveExternalStudentChange(detail){
+ if(!detail||safe(detail.schoolId)!==safe(targetSchoolId())||safe(detail.academicYear)!==safe(currentAcademicYear()))return;
+ state.updatedAt='1970-01-01T00:00:00.000Z';
+ revalidateInBackground().then(()=>{
+   try{window.dispatchEvent(new CustomEvent('school-information:students-updated',{detail:{...detail,source:'external'}}))}catch(_){}
+   try{window.dispatchEvent(new CustomEvent('school-information-updated',{detail:{...detail,source:'external'}}))}catch(_){}
+ });
+}
+window.addEventListener('storage',e=>{if(e.key==='school_information_students_change_v1'&&e.newValue){try{receiveExternalStudentChange(JSON.parse(e.newValue))}catch(_){}}});
+try{if('BroadcastChannel' in window){const liveCh=new BroadcastChannel('school-information-live-v1');liveCh.onmessage=e=>{if(e.data?.type==='students-updated')receiveExternalStudentChange(e.data.detail)}}}catch(_){}
+function notifyUpdated(){state.updatedAt='1970-01-01T00:00:00.000Z';try{window.dispatchEvent(new CustomEvent('school-information-source-invalidated'))}catch(_){}}
+
+window.SchoolInformationSource={VERSION,refresh,getSnapshot,getStudents,getStudentsByScope,getStaff,getTeachers,getAdministrativeEmployees,request:call,notifyUpdated,notifyStudentsUpdated,hydratePersistentCache,revalidateInBackground,
  context:()=>({systemAdmin:systemAdminRequested(),schoolId:targetSchoolId(),accessMode:systemAdminRequested()?'system_admin':'school_manager'})};
 })();

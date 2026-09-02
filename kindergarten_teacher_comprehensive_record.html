@@ -456,15 +456,18 @@
                 async getInformationCenterStudents(forceRefresh = false) {
                     try {
                         if (!window.SchoolInformationSource || typeof SchoolInformationSource.getStudents !== 'function') return [];
-                        if (forceRefresh && typeof SchoolInformationSource.refresh === 'function') await SchoolInformationSource.refresh();
-                        const rows = await SchoolInformationSource.getStudents();
+                        if (forceRefresh && typeof SchoolInformationSource.refresh === 'function') {
+                            // التحديث الصريح فقط يذهب للسحابة؛ الفتح العادي يقرأ النسخة الدائمة مباشرة.
+                            await SchoolInformationSource.refresh();
+                        }
+                        const rows = await SchoolInformationSource.getStudents(false);
                         this.centerImportStatus = `تم جلب ${(rows||[]).length} طالب/طالبة مباشرة من مركز المعلومات.`;
                         return Array.isArray(rows) ? rows : [];
                     } catch (e) { console.error('تعذر قراءة مركز المعلومات الموحد:', e); return []; }
                 },
 
                 async fetchStudentsFromSupabaseIfAvailable() {
-                    return this.getInformationCenterStudents(true);
+                    return this.getInformationCenterStudents(false);
                 },
 
                 classNameFromImport(form) {

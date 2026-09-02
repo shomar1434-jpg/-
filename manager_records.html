@@ -1407,6 +1407,142 @@ setTimeout(function(){
   <script src="evidence-library-source.js"></script>
 
 <script src="school-information-source.js"></script>
+
+<script id="MANAGER_RECORDS_PERSISTENT_SCHOOL_INFORMATION_BRIDGE_20260902">
+(function(){
+  'use strict';
+  if(window.__MANAGER_RECORDS_PERSISTENT_SCHOOL_INFORMATION_BRIDGE_20260902__)return;
+  window.__MANAGER_RECORDS_PERSISTENT_SCHOOL_INFORMATION_BRIDGE_20260902__=true;
+
+  const roster={schoolId:'',students:[],staff:[],teachers:[],studentByName:new Map(),staffByName:new Map(),teacherByName:new Map(),loaded:false,loading:null};
+  const safe=v=>String(v==null?'':v).trim();
+  function first(o,keys){for(const k of keys){const v=o&&o[k];if(v!==undefined&&v!==null&&safe(v)!=='')return v;}return '';}
+  function esc(v){return safe(v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
+  function activeSchoolId(){
+    try{return safe(window.PlatformCloudSession?.schoolId?.()||sessionStorage.getItem('smart_school_tab_school_v1')||sessionStorage.getItem('current_school_id')||localStorage.getItem('activeSchoolId')||localStorage.getItem('school_id')||'');}
+    catch(_){return '';}
+  }
+  function normalizeStudent(r){return {
+    raw:r||{},name:safe(first(r,['name','student_name','full_name','display_name','اسم الطالب','الاسم'])),
+    nationalId:safe(first(r,['national_id','student_national_id','nationalId','identity','civil_id','id_number','السجل المدني','رقم الهوية'])),
+    stage:safe(first(r,['stage','stage_name','المرحلة'])),
+    grade:safe(first(r,['grade','grade_name','class','الصف'])),
+    section:safe(first(r,['section','section_name','classroom','division','الفصل','الشعبة']))
+  };}
+  function normalizeStaff(r){return {
+    raw:r||{},name:safe(first(r,['name','full_name','display_name','teacher_name','username','اسم الموظف','الاسم'])),
+    nationalId:safe(first(r,['national_id','identity','civil_id','id_number','رقم الهوية','السجل المدني'])),
+    jobTitle:safe(first(r,['job_title','jobTitle','position','roleLabel','role_label','title','المسمى الوظيفي','الوظيفة'])),
+    specialty:safe(first(r,['specialty','specialization','subject','المادة','التخصص']))
+  };}
+  function put(map,row){if(row&&row.name&&!map.has(row.name))map.set(row.name,row);}
+  async function loadRoster(force=false){
+    if(roster.loading)return roster.loading;
+    roster.loading=(async()=>{
+      if(!window.SchoolInformationSource)return false;
+      if(force&&typeof SchoolInformationSource.refresh==='function')await SchoolInformationSource.refresh();
+      const [studentsRaw,staffRaw,teachersRaw]=await Promise.all([
+        SchoolInformationSource.getStudents?.(false)||[],
+        SchoolInformationSource.getStaff?.(false)||[],
+        SchoolInformationSource.getTeachers?.(false)||[]
+      ]);
+      const ctx=SchoolInformationSource.context?.()||{};
+      const sid=safe(ctx.schoolId||''),active=activeSchoolId();
+      if(active&&sid&&active!==sid)throw new Error('MANAGER_RECORDS_ROSTER_SCHOOL_SCOPE_MISMATCH');
+      roster.schoolId=sid||active;
+      const inSchool=x=>!roster.schoolId||!x?.school_id||safe(x.school_id)===roster.schoolId;
+      roster.students=(Array.isArray(studentsRaw)?studentsRaw:[]).filter(inSchool).map(normalizeStudent).filter(x=>x.name);
+      roster.staff=(Array.isArray(staffRaw)?staffRaw:[]).filter(inSchool).map(normalizeStaff).filter(x=>x.name);
+      roster.teachers=(Array.isArray(teachersRaw)?teachersRaw:[]).filter(inSchool).map(normalizeStaff).filter(x=>x.name);
+      roster.studentByName=new Map();roster.staffByName=new Map();roster.teacherByName=new Map();
+      roster.students.forEach(x=>put(roster.studentByName,x));roster.staff.forEach(x=>put(roster.staffByName,x));roster.teachers.forEach(x=>put(roster.teacherByName,x));
+      roster.loaded=true;bindCurrentRecord();
+      return true;
+    })().catch(e=>{console.warn('[manager records school information]',e);return false;}).finally(()=>{roster.loading=null;});
+    return roster.loading;
+  }
+  function kindForHeader(header){
+    const h=safe(header).replace(/\s+/g,' ');
+    if(/اسم المعلم|المعلم\/ة|المعلم\/المعلمة|المعلم الغائب|المعلم المنفذ/.test(h))return 'teacher';
+    if(/اسم الطالب|الطالب\/ة$|الطالب\/الطالبة$/.test(h))return 'student';
+    if(/الطالب\/ة أو المجموعة|الطالب\/الطالبة أو المجموعة/.test(h))return 'student-flex';
+    if(/اسم الموظف|الموظف\/ة|المكلف\/ة/.test(h))return 'staff';
+    return '';
+  }
+  function rowsFor(kind){
+    if(kind==='teacher')return roster.teachers.length?roster.teachers:roster.staff;
+    if(kind==='student'||kind==='student-flex')return roster.students;
+    if(kind==='staff')return roster.staff;
+    return [];
+  }
+  function headerForInput(el){
+    const td=el.closest('td'),table=el.closest('table');if(!td||!table)return '';
+    const ths=table.querySelectorAll('thead th');return safe(ths[td.cellIndex]?.textContent||'');
+  }
+  function makeSelect(el,kind){
+    if(!el||el.tagName!=='INPUT'||el.type==='hidden')return el;
+    const rows=rowsFor(kind);if(!rows.length)return el;
+    const sel=document.createElement('select');
+    Array.from(el.attributes).forEach(a=>{if(!['type','value','list'].includes(a.name))sel.setAttribute(a.name,a.value)});
+    const current=safe(el.value);
+    sel.innerHTML='<option value="">اختر من مركز المعلومات</option>'+rows.map(x=>'<option value="'+esc(x.name)+'">'+esc(x.name)+'</option>').join('');
+    if(current&&!rows.some(x=>x.name===current)){const o=document.createElement('option');o.value=current;o.textContent=current;sel.appendChild(o);}
+    sel.value=current;el.replaceWith(sel);return sel;
+  }
+  function makeFlexibleList(el,kind){
+    if(!el||el.tagName!=='INPUT')return el;
+    const id='manager-records-'+kind+'-list';
+    let dl=document.getElementById(id);
+    if(!dl){dl=document.createElement('datalist');dl.id=id;document.body.appendChild(dl);}
+    dl.innerHTML=rowsFor(kind).map(x=>'<option value="'+esc(x.name)+'"></option>').join('');
+    el.setAttribute('list',id);return el;
+  }
+  function bindCurrentRecord(){
+    const paper=document.getElementById('paper');if(!paper)return;
+    paper.querySelectorAll('tbody td input[data-k]').forEach(el=>{
+      const header=headerForInput(el),kind=kindForHeader(header);if(!kind)return;
+      let bound=kind==='student-flex'?makeFlexibleList(el,kind):makeSelect(el,kind);
+      if(!bound||bound.dataset.managerRosterBound==='1')return;
+      bound.dataset.managerRosterBound='1';
+      bound.addEventListener('change',()=>{
+        const name=safe(bound.value);
+        const person=kind.startsWith('student')?roster.studentByName.get(name):(kind==='teacher'?(roster.teacherByName.get(name)||roster.staffByName.get(name)):roster.staffByName.get(name));
+        if(!person)return;
+        // تعبئة الحقول المجاورة المعروفة فقط، من دون تغيير تصميم السجل الرسمي.
+        const tr=bound.closest('tr');if(!tr)return;
+        const headers=Array.from(bound.closest('table').querySelectorAll('thead th')).map(x=>safe(x.textContent));
+        Array.from(tr.cells).forEach((cell,i)=>{
+          const input=cell.querySelector('input[data-k],select[data-k]');if(!input||input===bound||safe(input.value))return;
+          const h=headers[i]||'';
+          if(kind.startsWith('student')){
+            if(/الصف/.test(h))input.value=person.grade||'';
+            else if(/الفصل|الشعبة/.test(h))input.value=person.section||'';
+          }else{
+            if(/المادة|التخصص/.test(h))input.value=person.specialty||'';
+            else if(/المسمى|الوظيفة/.test(h))input.value=person.jobTitle||'';
+          }
+          if(input.value)input.dispatchEvent(new Event('input',{bubbles:true}));
+        });
+      });
+    });
+  }
+
+  // renderAll يعيد بناء الورقة؛ نعيد الربط من الكاش بعد كل انتقال بين السجلات.
+  const originalRenderAll=window.renderAll;
+  if(typeof originalRenderAll==='function'){
+    window.renderAll=function(){
+      const r=originalRenderAll.apply(this,arguments);
+      setTimeout(()=>{bindCurrentRecord();if(!roster.loaded)loadRoster(false);},0);
+      return r;
+    };
+  }
+  setTimeout(()=>loadRoster(false),0);
+  window.addEventListener('school-information-source-invalidated',()=>loadRoster(false));
+  window.addEventListener('school-information-updated',()=>{roster.loaded=false;loadRoster(false);});
+  window.refreshManagerRecordsRosterFromSchoolInformation=()=>{roster.loaded=false;return loadRoster(true);};
+})();
+</script>
+
 <script src="internal-messaging.js"></script>
 
 <!-- Agent Core V2: school/role/year scoped -->

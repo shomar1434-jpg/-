@@ -58,7 +58,7 @@
     <section class="hero noPrint">
       <div class="topbar">
         <div><h1>📋 متابعة أعمال المعلمين الأسبوعية</h1><p>قسم الوكيل/الوكيلة — التقويم الدراسي، التكليفات الأسبوعية، الأرشفة والتحليل التراكمي.</p></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn secondary agency-return-btn" id="backToAgentBtn" onclick="return goBackToAgent(event)" aria-label="العودة لقسم الوكيل">↩ العودة لقسم الوكيل</button><button class="btn secondary" onclick="refreshTeachers()">🔄 تحديث من مركز المعلومات</button><button class="btn red" onclick="resetDeputyFollowupSection()">🧹 تهيئة المتابعة</button></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn secondary agency-return-btn" id="backToAgentBtn" onclick="return goBackToAgent(event)" aria-label="العودة لقسم الوكيل">↩ العودة لقسم الوكيل</button><button class="btn secondary" onclick="refreshTeachers({forceSourceRefresh:true})">🔄 تحديث من مركز المعلومات</button><button class="btn red" onclick="resetDeputyFollowupSection()">🧹 تهيئة المتابعة</button></div>
       </div>
     </section>
     <div class="grid stats">
@@ -79,7 +79,7 @@
     </section>
     <div class="tabs noPrint"><button class="tab active" id="tabCalendar" onclick="switchTab('calendar')">التقويم الدراسي</button><button class="tab" id="tabTeachers" onclick="switchTab('teachers')">المعلمون</button><button class="tab" id="tabDaily" onclick="switchTab('daily')">المتابعة اليومية</button><button class="tab" id="tabWeeklyAnalysis" onclick="switchTab('weeklyAnalysis')">لوحة التحليل الأسبوعية</button><button class="tab" id="tabAssignments" onclick="switchTab('assignments')">تكليفات الأسبوع</button><button class="tab" id="tabExtra" onclick="switchTab('extra')">المهام الإضافية</button><button class="tab" id="tabReports" onclick="switchTab('reports')">الأرشفة والمقارنة</button><button class="tab" id="tabAnalytics" onclick="switchTab('analytics')">لوحة الأداء الذكية للمعلمين</button></div>
     <section id="calendarPane" class="panel"><div class="panelHead"><div><h2>🗓️ التقويم الدراسي للمتابعة</h2><div class="muted">توليد 20 أسبوعًا لكل فصل، من الأحد إلى الخميس. إذا كانت البداية ليست الأحد يكون الأسبوع الأول من تاريخ البداية إلى الخميس.</div></div><button class="btn" onclick="openCalendarDrawer()">⚙️ توليد الأسابيع</button></div><div class="tablewrap"><table><thead><tr><th>الأسبوع</th><th>العام الدراسي</th><th>الفصل</th><th>البداية</th><th>النهاية</th><th>الحالة</th><th class="noPrint">إجراء</th></tr></thead><tbody id="calendarBody"></tbody></table></div></section>
-    <section id="teachersPane" class="panel hidden"><div class="panelHead"><h2>👨‍🏫 المعلمون المستوردون من مركز المعلومات</h2><button class="btn small secondary" onclick="refreshTeachers()">تحديث القائمة</button></div><div class="tablewrap"><table><thead><tr><th>م</th><th>المعلم</th><th>المادة</th><th>الحصص</th><th>التكليفات التدريسية</th><th>التكليفات الإضافية</th><th>الحالة</th><th>الإنجاز التنفيذي</th><th>إرسال المعلم</th><th class="noPrint">إجراء</th></tr></thead><tbody id="teachersBody"></tbody></table></div></section>
+    <section id="teachersPane" class="panel hidden"><div class="panelHead"><h2>👨‍🏫 المعلمون المستوردون من مركز المعلومات</h2><button class="btn small secondary" onclick="refreshTeachers({forceSourceRefresh:true})">تحديث القائمة</button></div><div class="tablewrap"><table><thead><tr><th>م</th><th>المعلم</th><th>المادة</th><th>الحصص</th><th>التكليفات التدريسية</th><th>التكليفات الإضافية</th><th>الحالة</th><th>الإنجاز التنفيذي</th><th>إرسال المعلم</th><th class="noPrint">إجراء</th></tr></thead><tbody id="teachersBody"></tbody></table></div></section>
     <section id="dailyPane" class="panel hidden"><div class="panelHead"><div><h2>☀️ المتابعة اليومية من الوكيل</h2><div class="muted">قائمة مستقلة لتسجيل الحضور والاصطفاف الصباحي فقط. هذه البيانات تظهر للمعلم للقراءة فقط ولا تدخل في نسبة الإنجاز التنفيذي.</div></div><button class="btn small blue" onclick="saveActiveWeek()">💾 حفظ المتابعة اليومية</button></div><div class="tablewrap"><table><thead><tr><th>م</th><th>المعلم</th><th>اليوم</th><th>الحضور</th><th>الاصطفاف الصباحي</th><th>مؤشر الانضباط</th></tr></thead><tbody id="dailyFollowupBody"></tbody></table></div></section>
     <section id="weeklyAnalysisPane" class="panel hidden"><div class="panelHead"><div><h2>📊 لوحة الأداء الذكية للمعلمين</h2><div class="muted">لوحة تحليل وتصنيف ذكي مرتبطة ببيانات المتابعة اليومية والأعمال التنفيذية للأسبوع النشط، مع فصل الانضباط عن الإنجاز التنفيذي.</div></div><button class="btn small secondary" onclick="syncC1LiveData();renderC1WeeklyAnalysis()">مزامنة وتحديث اللوحة</button></div><div class="grid c1Filters noPrint"><div class="field"><label>فلتر التصنيف الذكي</label><select id="c1StatusFilter" onchange="renderC1WeeklyAnalysis()"><option value="">الكل</option><option>ممتاز</option><option>جيد</option><option>يحتاج متابعة</option><option>متعثر</option></select></div><div class="field"><label>فلتر المادة</label><select id="c1SubjectFilter" onchange="renderC1WeeklyAnalysis()"><option value="">كل المواد</option></select></div><div class="field"><label>بحث داخل اللوحة</label><input id="c1Search" oninput="renderC1WeeklyAnalysis()" placeholder="اسم المعلم أو المادة"></div><div class="field"><label>الأسبوع المعروض</label><input id="c1WeekLabel" readonly value="—"></div></div><div id="c1WeeklyCards"></div><div class="tablewrap" style="margin-top:14px"><table><thead><tr><th>م</th><th>المعلم</th><th>المادة</th><th>الانضباط</th><th>الإنجاز التنفيذي</th><th>الغياب</th><th>تأخر الاصطفاف</th><th>الأعمال غير المنفذة</th><th>التصنيف الذكي</th></tr></thead><tbody id="c1WeeklyBody"></tbody></table></div></section>
     <section id="assignmentsPane" class="panel hidden">
@@ -361,6 +361,7 @@
       teacherRefreshRunning=true;
       const silent=!!opts.silent;
       const skipSourceRefresh=!!opts.skipSourceRefresh;
+      const forceSourceRefresh=!!opts.forceSourceRefresh;
       const sid=schoolId();
       if(!sid){
         if($('sourceInfo'))$('sourceInfo').textContent='تعذر تحديد المدرسة النشطة؛ أعد فتح القسم من حساب الوكيل.';
@@ -374,11 +375,11 @@
         if(window.SchoolInformationSource){
           // التحديث اليدوي/الأولي يطلب قراءة سحابية حقيقية مرة واحدة فقط.
           // عند وصول حدث من مركز المعلومات نفسه نقرأ البيانات الجاهزة فقط حتى لا نولد حلقة تحديث ثانية.
-          if(!skipSourceRefresh && typeof SchoolInformationSource.refresh==='function'){
+          if(forceSourceRefresh && !skipSourceRefresh && typeof SchoolInformationSource.refresh==='function'){
             await SchoolInformationSource.refresh();
           }
           if(typeof SchoolInformationSource.getTeachers==='function'){
-            central=await SchoolInformationSource.getTeachers(!skipSourceRefresh)||[];
+            central=await SchoolInformationSource.getTeachers(false)||[];
           }
         }
       }catch(e){console.warn('SchoolInformationSource teachers',e)}
@@ -823,31 +824,10 @@
   async function addVariableAssignment(){const w=currentWeek(); if(!w)return; const type=$('asType').value,title=($('asTitle').value||'').trim()||type,required=$('asEvidenceRequired').value==='yes'; w.variableAssignments.push({id:'VA'+Date.now(),type,title,teacher_id:$('asTeacher').value,day:$('asDay').value,note:$('asNote').value,evidence_required:required,evidence_type:required?(($('asEvidenceType').value||'').trim()||'شاهد تنفيذ'):'',status:'مكلف وينتظر التنفيذ',created_at:new Date().toISOString()});await saveWeeks();closeDrawer();renderAll();toast('تم إضافة التكليف للأسبوع الحالي والتحقق سحابيًا')}
   function updateAssignmentStatus(i){const w=currentWeek(); const a=w.variableAssignments[i]; openDrawer(`<div class="drawerHead"><h2>تحديث حالة التكليف</h2><button class="btn secondary" onclick="closeDrawer()">إغلاق</button></div><div class="field"><label>الحالة</label><select id="asStatus"><option>مكلف وينتظر التنفيذ</option><option>مكلف وتم التنفيذ</option><option>مكلف ولم ينفذ</option></select></div><button class="btn" onclick="currentWeek().variableAssignments[${i}].status=document.getElementById('asStatus').value;saveWeeks();closeDrawer();renderAll();toast('تم تحديث الحالة')">حفظ</button>`); $('asStatus').value=a.status||'مكلف وينتظر التنفيذ'}
   async function deleteAssignment(i){const w=currentWeek();if(!w)return;w.variableAssignments.splice(i,1);await saveWeeks();renderAll();toast('تم الحذف والتحقق سحابيًا')}
-  function roleOptions(){return '<option value="مهمة إضافية">مهمة إضافية</option>'}
-  function updateExtraTaskOptions(){
-    const teacher=$('exTeacher');
-    if(teacher) teacher.innerHTML=teacherOptions();
-  }
-  async function openExtraTaskDrawer(){
-    if(!currentWeek())return toast('أنشئ أو ولّد أسبوعًا أولًا');
-    if(!teachers.length){
-      try{await refreshTeachers({silent:true});}catch(e){console.warn('refresh teachers before extra task',e)}
-    }
-    const teacherHtml=teacherOptions();
-    openDrawer(`<div class="drawerHead"><h2>تفعيل مهمة إضافية</h2><button class="btn secondary" onclick="closeDrawer()">إغلاق</button></div><div class="row"><div class="field"><label>نوع التكليف</label><select id="exRole" disabled><option value="مهمة إضافية" selected>مهمة إضافية</option></select></div><div class="field"><label>المهمة</label><input id="exTask" type="text" maxlength="250" placeholder="اكتب المهمة التي ستظهر للمعلم"></div><div class="field"><label>المعلم</label><select id="exTeacher">${teacherHtml||'<option value="">لا توجد أسماء معلمين متاحة</option>'}</select></div><div class="field"><label>الموعد</label><select id="exDue"><option>خلال الأسبوع</option>${DAYS.map(d=>'<option>'+d+'</option>').join('')}</select></div></div><div class="field"><label>الشاهد المطلوب</label><select id="exEvidence"><option value="none">لا يتطلب شاهدًا</option><option>شاهد تنفيذ</option><option>صورة</option><option>PDF</option><option>رابط</option><option>ملف Excel</option></select></div><button class="btn" onclick="addExtraTask()">تفعيل المهمة</button>`);
-  }
-  async function addExtraTask(){
-    const w=currentWeek(); if(!w)return;
-    const task=String($('exTask')?.value||'').trim();
-    const teacherId=String($('exTeacher')?.value||'').trim();
-    if(!task)return toast('اكتب المهمة الإضافية أولًا');
-    if(!teacherId)return toast('اختر المعلم المستهدف');
-    const teacher=teachers.find(t=>String(t.user_id)===teacherId);
-    if(!teacher)return toast('تعذر التحقق من المعلم في قائمة مركز المعلومات');
-    const ev=$('exEvidence').value;
-    w.extraTasks.push({id:'EX'+Date.now(),role:'مهمة إضافية',task,teacher_id:teacherId,teacher_name:teacher.name||'',due:$('exDue').value,evidence:ev==='none'?'':ev,evidence_required:ev!=='none',status:'مطلوب',created_at:new Date().toISOString()});
-    await saveWeeks();closeDrawer();renderAll();toast('تم تفعيل المهمة الإضافية للمعلم والتحقق سحابيًا');
-  }
+  function roleOptions(){let roles=[...new Set(teachers.flatMap(t=>t.extra_roles||[]))]; return roles.map(r=>`<option>${esc(r)}</option>`).join('')||'<option>أخرى</option>'}
+  function updateExtraTaskOptions(){let r=$('exRole').value, opts=(EXTRA_TEMPLATES[r]||['مهمة إضافية مخصصة']).map(x=>`<option>${esc(x)}</option>`).join(''); $('exTask').innerHTML=opts; $('exTeacher').innerHTML=teacherOptions(r)}
+  function openExtraTaskDrawer(){if(!currentWeek())return toast('أنشئ أو ولّد أسبوعًا أولًا'); openDrawer(`<div class="drawerHead"><h2>تفعيل مهمة إضافية</h2><button class="btn secondary" onclick="closeDrawer()">إغلاق</button></div><div class="row"><div class="field"><label>نوع التكليف الإضافي</label><select id="exRole" onchange="updateExtraTaskOptions()">${roleOptions()}</select></div><div class="field"><label>المهمة</label><select id="exTask"></select></div><div class="field"><label>المعلم</label><select id="exTeacher"></select></div><div class="field"><label>الموعد</label><select id="exDue"><option>خلال الأسبوع</option>${DAYS.map(d=>'<option>'+d+'</option>').join('')}</select></div></div><div class="field"><label>الشاهد المطلوب</label><select id="exEvidence"><option value="none">لا يتطلب شاهدًا</option><option>شاهد تنفيذ</option><option>صورة</option><option>PDF</option><option>رابط</option><option>ملف Excel</option></select></div><button class="btn" onclick="addExtraTask()">تفعيل المهمة</button>`); updateExtraTaskOptions()}
+  async function addExtraTask(){const w=currentWeek(); const ev=$('exEvidence').value; w.extraTasks.push({id:'EX'+Date.now(),role:$('exRole').value,task:$('exTask').value,teacher_id:$('exTeacher').value,due:$('exDue').value,evidence:ev==='none'?'':ev,evidence_required:ev!=='none',status:'مطلوب',created_at:new Date().toISOString()});await saveWeeks();closeDrawer();renderAll();toast('تم تفعيل المهمة الإضافية والتحقق سحابيًا')}
   function updateExtraStatus(i){const w=currentWeek(); const a=w.extraTasks[i]; openDrawer(`<div class="drawerHead"><h2>تحديث حالة المهمة الإضافية</h2><button class="btn secondary" onclick="closeDrawer()">إغلاق</button></div><div class="field"><label>الحالة</label><select id="exStatus"><option>مطلوب</option><option>تم التنفيذ</option><option>ناقص</option><option>لم ينفذ</option></select></div><button class="btn" onclick="currentWeek().extraTasks[${i}].status=document.getElementById('exStatus').value;saveWeeks();closeDrawer();renderAll();toast('تم تحديث الحالة')">حفظ</button>`); $('exStatus').value=a.status||'مطلوب'}
   async function deleteExtra(i){const w=currentWeek();if(!w)return;w.extraTasks.splice(i,1);await saveWeeks();renderAll();toast('تم حذف المهمة والتحقق سحابيًا')}
   function renderTeacherSubmission(w,t){const sub=(w.teacherSubmissions||{})[t.user_id]; if(!sub)return '<span class="badge gray">لم يرسل المعلم أعماله بعد</span>'; const rows=Object.values(sub.items||{}).map(it=>'<div style="border-bottom:1px solid #e2e8f0;padding:8px 0"><b>'+esc(it.title||'مهمة')+'</b> <span class="badge blue">'+esc(it.status||'')+'</span><div class="muted">الشاهد: '+esc(it.evidence_value||it.file_name||'لم يرفق')+(it.note?' — ملاحظة: '+esc(it.note):'')+'</div></div>').join(''); return '<div class="muted">حالة الإرسال: '+(sub.submitted_at?'مرسل في '+new Date(sub.submitted_at).toLocaleString('ar-SA'):'لم يرسل نهائيًا')+' — الإنجاز التنفيذي: '+(sub.executive_score??sub.score??0)+'%</div>'+(rows||'<span class="badge gray">لا توجد تفاصيل</span>')}

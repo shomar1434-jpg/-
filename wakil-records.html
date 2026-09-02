@@ -1408,28 +1408,15 @@ function currentWakilUser(){
 }
 function currentWakilAgencies(){
   var u=currentWakilUser();
-  var q=new URLSearchParams(location.search||'');
-
-  // 1) تكليف صريح في الرابط (يستخدم فقط عند فتح سياق وكالة محدد).
-  var fromQuery=normalizeAgencyList(q.get('agency_type')||q.get('agency_types')||q.get('agent_categories')||'');
-  if(fromQuery.length) return fromQuery;
-
-  // 2) خريطة التكليف المعزولة للمدرسة الحالية هي المصدر الدائم الموثوق.
-  var sid='';
-  try{sid=String(window.PlatformCloudSession?.schoolId?.()||'').trim();}catch(_){sid='';}
-  sid=sid||String(u.schoolId||u.school_id||sessionStorage.getItem('smart_school_tab_school_v1')||sessionStorage.getItem('current_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||'').trim();
-  if(sid){
+  // تصنيف الوكالة الصريح هو المصدر الأول. المسمى الوظيفي مجرد احتياط حتى لا يحجب تصنيف school_affairs الحقيقي.
+  var list=normalizeAgencyList(u.agent_categories||u.agency_categories||u.agency_types||u.agency_type||u.agencyType||u.vice_agency_type||u.viceAgencyType||u.roleLabel||u.role_label||'');
+  if(!list.length){
+    var sid=u.schoolId||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||'default';
     var map=readJsonSafe('smartSchoolUnifiedOpsV2_vp_agency_map_'+sid,{});
-    var id=String(u.id||u.userId||u.uid||'').trim();
-    var email=String(u.email||u.schoolEmail||localStorage.getItem('currentUserEmail')||'').trim().toLowerCase();
-    var assigned=normalizeAgencyList((id&&map[id])||(email&&map[email])||'');
-    if(assigned.length) return assigned;
+    var id=String(u.id||''), email=String(u.email||localStorage.getItem('currentUserEmail')||'').toLowerCase();
+    list=normalizeAgencyList((id&&map[id])||(email&&map[email])||'');
   }
-
-  // لا نستخدم agency_type/roleLabel المخزنة في currentUser/currentSchoolUser هنا؛
-  // قد تكون بقايا جلسة أو مسمى دور عام وتسببت سابقاً في اختفاء السجلات.
-  // عدم وجود تكليف موثوق = وكيل عام = كل السجلات.
-  return [];
+  return list;
 }
 function currentWakilAgency(){var list=currentWakilAgencies(); return list.length?list.join(','):'general';}
 function allowedWakilCategory(cat){
@@ -1502,23 +1489,6 @@ function renderNav(){
     });
   });
 }
-function wakilRecordsCumulativeSelfCheck(){
-  try{
-    var groups=formsByCategory();
-    var trusted=currentWakilAgencies();
-    return {
-      ok: trusted.length ? groups.length>=2 : groups.length===4,
-      trustedAgencies: trusted.slice(),
-      groups: groups.map(function(g){return {key:g.cat,count:g.items.length};}),
-      totalVisible: visibleForms().length,
-      totalForms: FORMS.length,
-      schoolScoped: true,
-      version: WAKIL_RECORDS_CUMULATIVE_FIX_VERSION
-    };
-  }catch(e){return {ok:false,error:String(e&&e.message||e),version:WAKIL_RECORDS_CUMULATIVE_FIX_VERSION};}
-}
-window.wakilRecordsCumulativeSelfCheck=wakilRecordsCumulativeSelfCheck;
-
 function selectForm(id){current=visibleForms().find(f=>f.id===id)||visibleForms()[0]||FORMS[0];renderNav();renderForm();loadCurrent()}
 function yearOptions(selected=''){let opts='<option value="">اختر العام</option>';for(let y=1445;y<=1466;y++){let v=y+' هـ';opts+=`<option value="${v}" ${selected===v?'selected':''}>${v}</option>`}return opts}
 function semesterOptions(selected=''){return `<option value="">اختر الفصل</option><option ${selected==='الأول'?'selected':''}>الأول</option><option ${selected==='الثاني'?'selected':''}>الثاني</option>`}
@@ -2365,10 +2335,11 @@ bootstrapWakilRecordsV7();
     if(roster.loading) return roster.loading;
     roster.loading=(async()=>{
       if(!window.SchoolInformationSource) return false;
-      /* نفس مسار قسم الأعمال الأسبوعية: تحديث المصدر ثم القراءة المباشرة حسب النوع. */
+      /* الفتح العادي يقرأ النسخة الدائمة من مركز المعلومات مباشرة.
+         التحديث السحابي القسري لا يحدث إلا بطلب صريح من المستخدم. */
       if(force && typeof SchoolInformationSource.refresh==='function') await SchoolInformationSource.refresh();
       const [studentsRaw,staffRaw,teachersRaw]=await Promise.all([
-        typeof SchoolInformationSource.getStudents==='function'?SchoolInformationSource.getStudents(!!force):[],
+        typeof SchoolInformationSource.getStudents==='function'?SchoolInformationSource.getStudents(false):[],
         typeof SchoolInformationSource.getStaff==='function'?SchoolInformationSource.getStaff(false):[],
         typeof SchoolInformationSource.getTeachers==='function'?SchoolInformationSource.getTeachers(false):[]
       ]);
@@ -2567,7 +2538,10 @@ bootstrapWakilRecordsV7();
     window.renderForm=function(){const r=originalRenderForm.apply(this,arguments);setTimeout(()=>{bindRosterFields();if(!roster.loaded)loadRoster(false);},0);return r;};
   }
   setTimeout(()=>loadRoster(false),0);
-  window.addEventListener('school-information-source-invalidated',()=>loadRoster(true));
+  // التغيير في المصدر لا يجبر الصفحة على إعادة تنزيل البيانات؛ يعاد الربط من النسخة الدائمة.
+  window.addEventListener('school-information-source-invalidated',()=>loadRoster(false));
+  window.addEventListener('school-information-updated',()=>{roster.loaded=false;loadRoster(false);});
+  window.refreshWakilRosterFromSchoolInformation=()=>{roster.loaded=false;return loadRoster(true);};
 })();
 </script>
 <script src="internal-messaging.js"></script>

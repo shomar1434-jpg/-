@@ -141,14 +141,21 @@
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap"><div><h2 style="margin-bottom:5px">الهيكل الدراسي للمدرسة</h2><p class="muted">يحدد مدير النظام المراحل والصفوف وعدد الفصول لكل صف. يستخدم هذا الهيكل لتحديث فصل واحد دون الحاجة إلى إعادة استيراد جميع طلاب المدرسة.</p></div><span id="structureRoleBadge" class="pill">عرض الهيكل</span></div>
         <div id="structureEditor">
 <div class="row" style="margin-top:12px;grid-template-columns:2fr 1fr auto">
-<div><label>المرحلة الدراسية</label><select id="structureStageType" onchange="prepareStageGradesEditor()">
-<option value="">اختر المرحلة</option><option value="رياض الأطفال">رياض الأطفال</option><option value="الطفولة المبكرة">الطفولة المبكرة</option>
+<div><label>المرحلة الدراسية</label><select id="structureStageType" onchange="document.getElementById('structureGradesCount').dataset.userSet='';prepareStageGradesEditor()">
+<option value="">اختر المرحلة</option>
+<option value="رياض الأطفال">رياض الأطفال</option>
+<option value="الطفولة المبكرة">الطفولة المبكرة</option>
 <option value="رياض الأطفال والطفولة المبكرة">رياض الأطفال والطفولة المبكرة (مدمجة)</option>
-<option value="الابتدائية">المرحلة الابتدائية</option><option value="المتوسطة">المرحلة المتوسطة</option><option value="الثانوية">المرحلة الثانوية</option>
+<option value="الابتدائية">المرحلة الابتدائية</option>
+<option value="المتوسطة">المرحلة المتوسطة</option>
+<option value="الثانوية">المرحلة الثانوية</option>
 </select></div>
 <div><label>عدد الصفوف / المستويات</label><input id="structureGradesCount" type="number" min="1" max="12" value="1" onchange="this.dataset.userSet='1';prepareStageGradesEditor()"></div>
 <div style="align-self:end"><button type="button" class="btn secondary" onclick="prepareStageGradesEditor()">إظهار الصفوف</button></div></div>
 <div id="stageGradesEditor" style="margin-top:12px"></div>
+<div class="muted" style="margin-top:7px">
+رياض الأطفال: المستويات الأول–الثالث. الطفولة المبكرة: الصفوف الأول–الثالث. الابتدائية: الصفوف الرابع–السادس.
+</div>
 <div class="actions" style="margin-top:10px"><button type="button" class="btn" onclick="addAcademicStage()">إضافة / تحديث المرحلة</button><button type="button" class="btn" onclick="saveAcademicStructure()">حفظ الهيكل الدراسي</button><button type="button" class="btn secondary" onclick="loadAcademicStructure(true)">إعادة تحميل الهيكل</button></div>
 </div></div><div id="academicStructureView" class="structureGrid" style="margin-top:14px"></div>
       </div>
@@ -510,10 +517,47 @@
   function phase2IsSystemAdmin(){return isVerifiedSystemAdmin()}
   function phase2SchoolInfoHeaders(){if(phase2IsSystemAdmin())return null;const token=(window.PlatformCloudSession?.token?.()||sessionStorage.getItem('platform_tab_session_token_v1')||localStorage.getItem('platform_file_session_token')||'');return token?{'x-platform-session':token}:null}
   async function phase2Call(action,body={}){await window.__PLATFORM_ACCESS_READY__;const headers={'content-type':'application/json','apikey':SUPABASE_KEY};if(phase2IsSystemAdmin()){const session=await adminAuthSession();headers.authorization='Bearer '+session.access_token;body=Object.assign({},body,{schoolId:currentSchool.id})}else{const ph=phase2SchoolInfoHeaders();if(!ph)throw new Error('جلسة المدرسة غير متاحة.');Object.assign(headers,ph)}const r=await fetch(SUPABASE_URL+'/functions/v1/school-information-structure',{method:'POST',headers,body:JSON.stringify(Object.assign({},body,{action}))});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'تعذر تنفيذ العملية');return j}
-  function defaultGradeNames(stage,count){const ord=['الأول','الثاني','الثالث','الرابع','الخامس','السادس','السابع','الثامن','التاسع','العاشر','الحادي عشر','الثاني عشر'],n=Math.max(1,Number(count)||1);return Array.from({length:n},(_,i)=>{if(stage==='رياض الأطفال')return ['المستوى الأول','المستوى الثاني','المستوى الثالث'][i]||('المستوى '+(i+1));if(stage==='الطفولة المبكرة')return ['الصف الأول','الصف الثاني','الصف الثالث'][i]||('الصف '+(ord[i]||i+1));if(stage==='رياض الأطفال والطفولة المبكرة')return ['المستوى الأول','المستوى الثاني','المستوى الثالث','الصف الأول','الصف الثاني','الصف الثالث'][i]||('المستوى/الصف '+(i+1));if(stage==='المتوسطة')return 'الصف '+(ord[i]||String(i+1))+' متوسط';if(stage==='الثانوية')return 'الصف '+(ord[i]||String(i+1))+' ثانوي';return 'الصف '+(ord[i]||String(i+1))})}
+  function defaultGradeNames(stage,count){
+    const n=Math.max(1,Number(count)||1);
+    let names=[];
+    if(stage==='رياض الأطفال') names=['المستوى الأول','المستوى الثاني','المستوى الثالث'];
+    else if(stage==='الطفولة المبكرة') names=['الصف الأول','الصف الثاني','الصف الثالث'];
+    else if(stage==='رياض الأطفال والطفولة المبكرة') names=['المستوى الأول','المستوى الثاني','المستوى الثالث','الصف الأول','الصف الثاني','الصف الثالث'];
+    else if(stage==='الابتدائية') names=['الصف الرابع','الصف الخامس','الصف السادس'];
+    else if(stage==='المتوسطة') names=['الصف الأول متوسط','الصف الثاني متوسط','الصف الثالث متوسط'];
+    else if(stage==='الثانوية') names=['الصف الأول ثانوي','الصف الثاني ثانوي','الصف الثالث ثانوي'];
+    return names.slice(0,Math.min(n,names.length));
+  }
   function sectionNames(count){return Array.from({length:Math.max(1,Number(count)||1)},(_,i)=>sectionMap[String(i+1)]||String(i+1))}
   function defaultTracks(){return ['المسار العام','مسار علوم الحاسب والهندسة','مسار الصحة والحياة','مسار إدارة الأعمال','المسار الشرعي']}
-  window.prepareStageGradesEditor=function(){const stage=safe($('structureStageType')?.value),box=$('stageGradesEditor');if(!box)return;if(!stage){box.innerHTML='<div class="muted">اختر المرحلة أولًا لتظهر الصفوف وتحدد عدد الفصول لكل صف.</div>';return}const existing=academicStructure.stages.find(s=>s.name===stage),dc=existing?.grades?.length||(stage==='الابتدائية'?6:stage==='المتوسطة'?3:stage==='الثانوية'?3:stage==='رياض الأطفال والطفولة المبكرة'?6:3);if(!$('structureGradesCount').dataset.userSet)$('structureGradesCount').value=dc;const count=Math.max(1,Number($('structureGradesCount').value)||dc),names=defaultGradeNames(stage,count);box.innerHTML='<div class="muted" style="margin-bottom:7px">حدد عدد الفصول لكل صف بشكل مستقل:</div>'+names.map((name,i)=>{const old=existing?.grades?.[i],sections=old?.sections?.length||1,tracks=stage==='الثانوية'?(old?.tracks?.length?old.tracks:defaultTracks()):[];return `<div class="structureGrade"><div class="gradeHead"><b>${html(old?.name||name)}</b><label>عدد الفصول <input class="stageGradeSectionsInput" data-index="${i}" style="width:72px;padding:6px" type="number" min="1" max="30" value="${sections}"></label></div>${stage==='الثانوية'?`<div style="margin-top:8px"><label>المسارات لهذا الصف</label><input class="stageGradeTracksInput" data-index="${i}" value="${html(tracks.join('، '))}"><div class="muted">افصل المسارات بعلامة ،</div></div>`:''}</div>`}).join('')}
+  window.prepareStageGradesEditor=function(){
+    const stage=safe($('structureStageType')?.value),box=$('stageGradesEditor');
+    if(!box)return;
+    if(!stage){
+      box.innerHTML='<div class="muted">اختر المرحلة أولًا لتظهر الصفوف وتحدد عدد الفصول لكل صف.</div>';
+      return;
+    }
+    const existing=academicStructure.stages.find(s=>s.name===stage);
+    const maxCount=(stage==='رياض الأطفال والطفولة المبكرة'?6:3);
+    if(!existing || !$('structureGradesCount').dataset.userSet){
+      $('structureGradesCount').value=existing?.grades?.length||maxCount;
+    }
+    let count=Math.max(1,Number($('structureGradesCount').value)||maxCount);
+    count=Math.min(count,maxCount);
+    $('structureGradesCount').value=count;
+    const names=defaultGradeNames(stage,count);
+    box.innerHTML='<div class="muted" style="margin-bottom:7px">حدد عدد الفصول لكل صف بشكل مستقل:</div>'+
+      names.map((name,i)=>{
+        const old=existing?.grades?.[i],sections=old?.sections?.length||1;
+        const tracks=stage==='الثانوية'?(old?.tracks?.length?old.tracks:defaultTracks()):[];
+        return `<div class="structureGrade">
+          <div class="gradeHead"><b>${html(old?.name||name)}</b>
+            <label>عدد الفصول <input class="stageGradeSectionsInput" data-index="${i}" style="width:72px;padding:6px" type="number" min="1" max="30" value="${sections}"></label>
+          </div>
+          ${stage==='الثانوية'?`<div style="margin-top:8px"><label>المسارات لهذا الصف</label><input class="stageGradeTracksInput" data-index="${i}" value="${html(tracks.join('، '))}"><div class="muted">افصل المسارات بعلامة ،</div></div>`:''}
+        </div>`;
+      }).join('');
+  }
   window.addAcademicStage=function(){const name=safe($('structureStageType')?.value);if(!name){setStatus('اختر المرحلة الدراسية أولًا.','bad');return}const existing=academicStructure.stages.find(s=>s.name===name);if(name==='رياض الأطفال والطفولة المبكرة')academicStructure.stages=academicStructure.stages.filter(s=>!['رياض الأطفال','الطفولة المبكرة','رياض الأطفال والطفولة المبكرة'].includes(s.name));else if(['رياض الأطفال','الطفولة المبكرة'].includes(name))academicStructure.stages=academicStructure.stages.filter(s=>s.name!=='رياض الأطفال والطفولة المبكرة');const count=Math.max(1,Number($('structureGradesCount').value)||1),names=defaultGradeNames(name,count),sectionInputs=[...document.querySelectorAll('.stageGradeSectionsInput')],trackInputs=[...document.querySelectorAll('.stageGradeTracksInput')],grades=names.map((g,i)=>{const old=existing?.grades?.[i],sc=Math.max(1,Number(sectionInputs.find(x=>Number(x.dataset.index)===i)?.value)||1),tracks=name==='الثانوية'?safe(trackInputs.find(x=>Number(x.dataset.index)===i)?.value).split(/[،,]/).map(s=>safe(s)).filter(Boolean):[];return {id:old?.id||('grade_'+Date.now()+'_'+i),name:old?.name||g,sections:sectionNames(sc).map((n,j)=>({id:old?.sections?.[j]?.id||('section_'+Date.now()+'_'+i+'_'+j),name:n})),tracks}}),stage={id:existing?.id||('stage_'+Date.now()),name,grades};academicStructure.stages=academicStructure.stages.filter(s=>s.name!==name);academicStructure.stages.push(stage);renderAcademicStructure();setStatus('تمت إضافة المرحلة إلى الهيكل. اضغط حفظ الهيكل الدراسي لاعتمادها.','ok')}
   window.removeAcademicStage=function(id){if(confirm('حذف هذه المرحلة من الهيكل؟ لا يتم حذف الطلاب تلقائيًا.')){academicStructure.stages=academicStructure.stages.filter(s=>s.id!==id);renderAcademicStructure()}}
   window.changeGradeSections=function(stageId,gradeId,count){const s=academicStructure.stages.find(x=>x.id===stageId),g=s?.grades?.find(x=>x.id===gradeId);if(!g)return;g.sections=sectionNames(Math.max(1,Number(count)||1)).map((n,i)=>({id:g.sections?.[i]?.id||('section_'+Date.now()+'_'+i),name:n}));renderAcademicStructure()}

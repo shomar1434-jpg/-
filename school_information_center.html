@@ -146,18 +146,17 @@
 <div class="row" style="margin-top:12px;grid-template-columns:2fr 1fr auto">
 <div><label>المرحلة الدراسية</label><select id="structureStageType" onchange="document.getElementById('structureGradesCount').dataset.userSet='';prepareStageGradesEditor()">
 <option value="">اختر المرحلة</option>
-<option value="رياض الأطفال">رياض الأطفال</option>
-<option value="الطفولة المبكرة">الطفولة المبكرة</option>
-<option value="رياض الأطفال والطفولة المبكرة">رياض الأطفال والطفولة المبكرة (مدمجة)</option>
-<option value="الابتدائية">المرحلة الابتدائية</option>
-<option value="المتوسطة">المرحلة المتوسطة</option>
-<option value="الثانوية">المرحلة الثانوية</option>
+<option value="رياض أطفال">رياض أطفال</option>
+<option value="طفولة مبكرة">طفولة مبكرة</option>
+<option value="ابتدائية">ابتدائية</option>
+<option value="متوسطة">متوسطة</option>
+<option value="ثانوية">ثانوية</option>
 </select></div>
 <div><label>عدد الصفوف / المستويات</label><input id="structureGradesCount" type="number" min="1" max="12" value="1" onchange="this.dataset.userSet='1';prepareStageGradesEditor()"></div>
 <div style="align-self:end"><button type="button" class="btn secondary" onclick="prepareStageGradesEditor()">إظهار الصفوف</button></div></div>
 <div id="stageGradesEditor" style="margin-top:12px"></div>
 <div class="muted" style="margin-top:7px">
-رياض الأطفال: المستويات الأول–الثالث. الطفولة المبكرة: الصفوف الأول–الثالث. الابتدائية: الصفوف الرابع–السادس.
+رياض أطفال، طفولة مبكرة، متوسطة، ثانوية: الصفوف الأول والثاني والثالث. الابتدائية: الصفوف الرابع والخامس والسادس.
 </div>
 <div class="actions" style="margin-top:10px"><button type="button" class="btn" onclick="addAcademicStage()">إضافة / تحديث المرحلة</button><button type="button" class="btn" onclick="saveAcademicStructure()">حفظ الهيكل الدراسي</button><button type="button" class="btn secondary" onclick="loadAcademicStructure(true)">إعادة تحميل الهيكل</button></div>
 </div></div><div id="academicStructureView" class="structureGrid" style="margin-top:14px"></div>
@@ -504,48 +503,70 @@
   function phase2IsSystemAdmin(){return isVerifiedSystemAdmin()}
   function phase2SchoolInfoHeaders(){if(phase2IsSystemAdmin())return null;const token=(window.PlatformCloudSession?.token?.()||sessionStorage.getItem('platform_tab_session_token_v1')||localStorage.getItem('platform_file_session_token')||'');return token?{'x-platform-session':token}:null}
   async function phase2Call(action,body={}){await window.__PLATFORM_ACCESS_READY__;const headers={'content-type':'application/json','apikey':SUPABASE_KEY};if(phase2IsSystemAdmin()){const session=await adminAuthSession();headers.authorization='Bearer '+session.access_token;body=Object.assign({},body,{schoolId:currentSchool.id})}else{const ph=phase2SchoolInfoHeaders();if(!ph)throw new Error('جلسة المدرسة غير متاحة.');Object.assign(headers,ph)}const r=await fetch(SUPABASE_URL+'/functions/v1/school-information-structure',{method:'POST',headers,body:JSON.stringify(Object.assign({},body,{action}))});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'تعذر تنفيذ العملية');return j}
+  function canonicalStageName(v){
+    const s=safe(v);
+    if(['رياض أطفال','رياض الأطفال'].includes(s))return 'رياض أطفال';
+    if(['طفولة مبكرة','الطفولة المبكرة'].includes(s))return 'طفولة مبكرة';
+    if(['ابتدائية','الابتدائية','المرحلة الابتدائية'].includes(s))return 'ابتدائية';
+    if(['متوسطة','المتوسطة','المرحلة المتوسطة'].includes(s))return 'متوسطة';
+    if(['ثانوية','الثانوية','المرحلة الثانوية'].includes(s))return 'ثانوية';
+    return s;
+  }
   function defaultGradeNames(stage,count){
-    const n=Math.max(1,Number(count)||1);
+    stage=canonicalStageName(stage);
+    const n=Math.max(1,Math.min(3,Number(count)||3));
     let names=[];
-    if(stage==='رياض الأطفال') names=['المستوى الأول','المستوى الثاني','المستوى الثالث'];
-    else if(stage==='الطفولة المبكرة') names=['الصف الأول','الصف الثاني','الصف الثالث'];
-    else if(stage==='رياض الأطفال والطفولة المبكرة') names=['المستوى الأول','المستوى الثاني','المستوى الثالث','الصف الأول','الصف الثاني','الصف الثالث'];
-    else if(stage==='الابتدائية') names=['الصف الرابع','الصف الخامس','الصف السادس'];
-    else if(stage==='المتوسطة') names=['الصف الأول متوسط','الصف الثاني متوسط','الصف الثالث متوسط'];
-    else if(stage==='الثانوية') names=['الصف الأول ثانوي','الصف الثاني ثانوي','الصف الثالث ثانوي'];
-    return names.slice(0,Math.min(n,names.length));
+    if(stage==='ابتدائية') names=['الصف الرابع','الصف الخامس','الصف السادس'];
+    else names=['الصف الأول','الصف الثاني','الصف الثالث'];
+    return names.slice(0,n);
+  }
+  function normalizeAcademicStructureStages(structure){
+    const source=structure&&typeof structure==='object'?structure:{stages:[]};
+    const allowed=['رياض أطفال','طفولة مبكرة','ابتدائية','متوسطة','ثانوية'];
+    const out=[];
+    for(const raw of (Array.isArray(source.stages)?source.stages:[])){
+      let name=canonicalStageName(raw?.name);
+      if(name==='رياض الأطفال والطفولة المبكرة')continue;
+      if(!allowed.includes(name))continue;
+      const required=defaultGradeNames(name,3);
+      const oldGrades=Array.isArray(raw?.grades)?raw.grades:[];
+      const grades=required.map((gradeName,i)=>{
+        const old=oldGrades[i]||{};
+        const sections=(Array.isArray(old.sections)&&old.sections.length?old.sections:[{id:'section_'+Date.now()+'_'+i+'_0',name:'أ'}]).map((c,j)=>({id:c?.id||('section_'+Date.now()+'_'+i+'_'+j),name:safe(c?.name)||sectionNames(j+1)[j]}));
+        return {id:old.id||('grade_'+Date.now()+'_'+i),name:gradeName,sections,tracks:name==='ثانوية'?(Array.isArray(old.tracks)?old.tracks:defaultTracks()):[]};
+      });
+      const existing=out.find(x=>x.name===name);
+      if(existing){
+        grades.forEach((g,i)=>{if((g.sections||[]).length>(existing.grades[i]?.sections||[]).length)existing.grades[i]=g});
+      }else out.push({id:raw?.id||('stage_'+Date.now()+'_'+out.length),name,grades});
+    }
+    source.stages=out;return source;
   }
   function sectionNames(count){return Array.from({length:Math.max(1,Number(count)||1)},(_,i)=>sectionMap[String(i+1)]||String(i+1))}
   function defaultTracks(){return ['المسار العام','مسار علوم الحاسب والهندسة','مسار الصحة والحياة','مسار إدارة الأعمال','المسار الشرعي']}
   window.prepareStageGradesEditor=function(){
-    const stage=safe($('structureStageType')?.value),box=$('stageGradesEditor');
+    const stage=canonicalStageName($('structureStageType')?.value),box=$('stageGradesEditor');
     if(!box)return;
-    if(!stage){
-      box.innerHTML='<div class="muted">اختر المرحلة أولًا لتظهر الصفوف وتحدد عدد الفصول لكل صف.</div>';
-      return;
-    }
-    const existing=academicStructure.stages.find(s=>s.name===stage);
-    const maxCount=(stage==='رياض الأطفال والطفولة المبكرة'?6:3);
-    if(!existing || !$('structureGradesCount').dataset.userSet){
-      $('structureGradesCount').value=existing?.grades?.length||maxCount;
-    }
-    let count=Math.max(1,Number($('structureGradesCount').value)||maxCount);
-    count=Math.min(count,maxCount);
-    $('structureGradesCount').value=count;
-    const names=defaultGradeNames(stage,count);
-    box.innerHTML='<div class="muted" style="margin-bottom:7px">حدد عدد الفصول لكل صف بشكل مستقل:</div>'+
-      names.map((name,i)=>{
-        const old=existing?.grades?.[i],sections=old?.sections?.length||1;
-        const tracks=stage==='الثانوية'?(old?.tracks?.length?old.tracks:defaultTracks()):[];
-        return `<div class="structureGrade">
-          <div class="gradeHead"><b>${html(old?.name||name)}</b>
-            <label>عدد الفصول <input class="stageGradeSectionsInput" data-index="${i}" style="width:72px;padding:6px" type="number" min="1" max="30" value="${sections}"></label>
-          </div>
-          ${stage==='الثانوية'?`<div style="margin-top:8px"><label>المسارات لهذا الصف</label><input class="stageGradeTracksInput" data-index="${i}" value="${html(tracks.join('، '))}"><div class="muted">افصل المسارات بعلامة ،</div></div>`:''}
-        </div>`;
-      }).join('');
+    if(!stage){box.innerHTML='<div class="muted">اختر المرحلة أولًا لتظهر الصفوف وتحدد عدد الفصول لكل صف.</div>';return}
+    const existing=academicStructure.stages.find(s=>canonicalStageName(s.name)===stage);
+    $('structureGradesCount').value=3;
+    $('structureGradesCount').readOnly=true;
+    const names=defaultGradeNames(stage,3);
+    box.innerHTML='<div class="muted" style="margin-bottom:7px">حدد عدد الفصول لكل صف بشكل مستقل:</div>'+names.map((name,i)=>{
+      const old=existing?.grades?.[i],sections=old?.sections?.length||1;
+      const tracks=stage==='ثانوية'?(old?.tracks?.length?old.tracks:defaultTracks()):[];
+      return `<div class="structureGrade"><div class="gradeHead"><b>${html(name)}</b><label>عدد الفصول <input class="stageGradeSectionsInput" data-index="${i}" style="width:72px;padding:6px" type="number" min="1" max="30" value="${sections}"></label></div>${stage==='ثانوية'?`<div style="margin-top:8px"><label>المسارات لهذا الصف</label><input class="stageGradeTracksInput" data-index="${i}" value="${html(tracks.join('، '))}"><div class="muted">افصل المسارات بعلامة ،</div></div>`:''}</div>`;
+    }).join('');
   }
-  window.addAcademicStage=function(){const name=safe($('structureStageType')?.value);if(!name){setStatus('اختر المرحلة الدراسية أولًا.','bad');return}const existing=academicStructure.stages.find(s=>s.name===name);if(name==='رياض الأطفال والطفولة المبكرة')academicStructure.stages=academicStructure.stages.filter(s=>!['رياض الأطفال','الطفولة المبكرة','رياض الأطفال والطفولة المبكرة'].includes(s.name));else if(['رياض الأطفال','الطفولة المبكرة'].includes(name))academicStructure.stages=academicStructure.stages.filter(s=>s.name!=='رياض الأطفال والطفولة المبكرة');const count=Math.max(1,Number($('structureGradesCount').value)||1),names=defaultGradeNames(name,count),sectionInputs=[...document.querySelectorAll('.stageGradeSectionsInput')],trackInputs=[...document.querySelectorAll('.stageGradeTracksInput')],grades=names.map((g,i)=>{const old=existing?.grades?.[i],sc=Math.max(1,Number(sectionInputs.find(x=>Number(x.dataset.index)===i)?.value)||1),tracks=name==='الثانوية'?safe(trackInputs.find(x=>Number(x.dataset.index)===i)?.value).split(/[،,]/).map(s=>safe(s)).filter(Boolean):[];return {id:old?.id||('grade_'+Date.now()+'_'+i),name:old?.name||g,sections:sectionNames(sc).map((n,j)=>({id:old?.sections?.[j]?.id||('section_'+Date.now()+'_'+i+'_'+j),name:n})),tracks}}),stage={id:existing?.id||('stage_'+Date.now()),name,grades};academicStructure.stages=academicStructure.stages.filter(s=>s.name!==name);academicStructure.stages.push(stage);renderAcademicStructure();setStatus('تمت إضافة المرحلة إلى الهيكل. اضغط حفظ الهيكل الدراسي لاعتمادها.','ok')}
+  window.addAcademicStage=function(){
+    const name=canonicalStageName($('structureStageType')?.value);if(!name){setStatus('اختر المرحلة الدراسية أولًا.','bad');return}
+    const existing=academicStructure.stages.find(s=>canonicalStageName(s.name)===name),names=defaultGradeNames(name,3);
+    const sectionInputs=[...document.querySelectorAll('.stageGradeSectionsInput')],trackInputs=[...document.querySelectorAll('.stageGradeTracksInput')];
+    const grades=names.map((g,i)=>{const old=existing?.grades?.[i],sc=Math.max(1,Number(sectionInputs.find(x=>Number(x.dataset.index)===i)?.value)||1),tracks=name==='ثانوية'?safe(trackInputs.find(x=>Number(x.dataset.index)===i)?.value).split(/[،,]/).map(s=>safe(s)).filter(Boolean):[];return{id:old?.id||('grade_'+Date.now()+'_'+i),name:g,sections:sectionNames(sc).map((n,j)=>({id:old?.sections?.[j]?.id||('section_'+Date.now()+'_'+i+'_'+j),name:n})),tracks}});
+    academicStructure.stages=academicStructure.stages.filter(s=>canonicalStageName(s.name)!==name);
+    academicStructure.stages.push({id:existing?.id||('stage_'+Date.now()),name,grades});
+    renderAcademicStructure();setStatus('تمت إضافة / تحديث المرحلة. اضغط حفظ الهيكل الدراسي لاعتمادها.','ok');
+  }
   window.removeAcademicStage=function(id){if(confirm('حذف هذه المرحلة من الهيكل؟ لا يتم حذف الطلاب تلقائيًا.')){academicStructure.stages=academicStructure.stages.filter(s=>s.id!==id);renderAcademicStructure()}}
   window.changeGradeSections=function(stageId,gradeId,count){const s=academicStructure.stages.find(x=>x.id===stageId),g=s?.grades?.find(x=>x.id===gradeId);if(!g)return;g.sections=sectionNames(Math.max(1,Number(count)||1)).map((n,i)=>({id:g.sections?.[i]?.id||('section_'+Date.now()+'_'+i),name:n}));renderAcademicStructure()}
   function renderAcademicStructure(){
@@ -565,7 +586,7 @@
             <input style="width:62px;padding:5px" type="number" min="1" max="30" value="${(g.sections||[]).length||1}" onchange="changeGradeSections('${html(s.id)}','${html(g.id)}',this.value)">
           </label>
         </div>
-        ${s.name==='الثانوية'&&g.tracks?.length?`<div class="muted" style="margin-top:7px">المسارات: ${html(g.tracks.join('، '))}</div>`:''}
+        ${canonicalStageName(s.name)==='ثانوية'&&g.tracks?.length?`<div class="muted" style="margin-top:7px">المسارات: ${html(g.tracks.join('، '))}</div>`:''}
         <div class="structureSections" style="margin-top:9px">
           ${(g.sections||[]).map(c=>`<div class="sectionChip" style="display:flex;align-items:center;gap:7px">
             <span>${html(c.name)}</span>
@@ -583,7 +604,7 @@
     if($('scopeStage')){$('scopeStage').value=stage;rebuildScopeSelectors('grade')}
     if($('scopeGrade')){$('scopeGrade').value=grade;rebuildScopeSelectors('section')}
     if($('scopeSection'))$('scopeSection').value=section;
-    if(stage==='الثانوية'){
+    if(canonicalStageName(stage)==='ثانوية'){
       const st=(academicStructure.stages||[]).find(x=>x.name===stage),gr=st?.grades?.find(x=>x.name===grade);
       const firstTrack=(gr?.tracks||[])[0]||'';
       if($('scopeTrack'))$('scopeTrack').value=firstTrack;
@@ -592,10 +613,10 @@
     $('classImportPanel')?.scrollIntoView({behavior:'smooth',block:'start'});
     setStatus('تم تحديد '+stage+' — '+grade+' — الفصل '+section+'. اختر ملف نور لهذا الفصل فقط.','note');
   }
-  window.loadAcademicStructure=async function(force=false){try{if(!currentSchool.id)await detectSchool();const year=safe($('academicYear')?.value||$('scopeAcademicYear')?.value)||'1447',r=await phase2Call('structure-get',{academicYear:year});academicStructure=r.structure||{academicYear:year,stages:[],updatedAt:''};if($('scopeAcademicYear'))$('scopeAcademicYear').value=year;renderAcademicStructure();if(force)setStatus('تم تحديث الهيكل الدراسي من السحابة.','ok')}catch(e){setStatus('تعذر تحميل الهيكل الدراسي: '+(e.message||e),'bad')}}
-  window.saveAcademicStructure=async function(){try{const year=safe($('academicYear')?.value||$('scopeAcademicYear')?.value)||'1447';academicStructure.academicYear=year;const r=await phase2Call('structure-save',{academicYear:year,structure:academicStructure});academicStructure=r.structure||academicStructure;renderAcademicStructure();setStatus('تم حفظ الهيكل الدراسي لهذه المدرسة والعام فقط.','ok')}catch(e){setStatus('تعذر حفظ الهيكل: '+(e.message||e),'bad')}}
-  window.rebuildScopeSelectors=function(){const st=$('scopeStage'),gr=$('scopeGrade'),sec=$('scopeSection'),trk=$('scopeTrack'),wrap=$('scopeTrackWrap');if(!st||!gr||!sec)return;const stages=academicStructure.stages||[],os=st.value,og=gr.value,oc=sec.value,ot=trk?.value||'';st.innerHTML='<option value="">اختر المرحلة</option>'+stages.map(s=>`<option value="${html(s.name)}">${html(s.name)}</option>`).join('');if(stages.some(s=>s.name===os))st.value=os;const stage=stages.find(s=>s.name===st.value);gr.innerHTML='<option value="">اختر الصف</option>'+((stage?.grades)||[]).map(g=>`<option value="${html(g.name)}">${html(g.name)}</option>`).join('');if(stage?.grades?.some(g=>g.name===og))gr.value=og;const grade=stage?.grades?.find(g=>g.name===gr.value);sec.innerHTML='<option value="">اختر الفصل</option>'+((grade?.sections)||[]).map(c=>`<option value="${html(c.name)}">${html(c.name)}</option>`).join('');if(grade?.sections?.some(c=>c.name===oc))sec.value=oc;const secondary=stage?.name==='الثانوية';wrap?.classList.toggle('hidden',!secondary);if(trk){trk.innerHTML='<option value="">اختر المسار</option>'+((grade?.tracks)||defaultTracks()).map(x=>`<option value="${html(x)}">${html(x)}</option>`).join('');if([...trk.options].some(o=>o.value===ot))trk.value=ot}}
-  function scopedStudentScope(){return{stage:safe($('scopeStage').value),grade:safe($('scopeGrade').value),track_name:safe($('scopeTrack')?.value),section_name:safe($('scopeSection').value)}}function validateScope(){const s=scopedStudentScope();if(!s.stage||!s.grade||!s.section_name)throw new Error('حدد المرحلة والصف والفصل أولًا.');if(s.stage==='الثانوية'&&!s.track_name)throw new Error('حدد المسار للمرحلة الثانوية.');return s}
+  window.loadAcademicStructure=async function(force=false){try{if(!currentSchool.id)await detectSchool();const year=safe($('academicYear')?.value||$('scopeAcademicYear')?.value)||'1447',r=await phase2Call('structure-get',{academicYear:year});academicStructure=normalizeAcademicStructureStages(r.structure||{academicYear:year,stages:[],updatedAt:''});if($('scopeAcademicYear'))$('scopeAcademicYear').value=year;renderAcademicStructure();if(force)setStatus('تم تحديث الهيكل الدراسي من السحابة.','ok')}catch(e){setStatus('تعذر تحميل الهيكل الدراسي: '+(e.message||e),'bad')}}
+  window.saveAcademicStructure=async function(){try{const year=safe($('academicYear')?.value||$('scopeAcademicYear')?.value)||'1447';academicStructure=normalizeAcademicStructureStages(academicStructure);academicStructure.academicYear=year;const r=await phase2Call('structure-save',{academicYear:year,structure:academicStructure});academicStructure=r.structure||academicStructure;renderAcademicStructure();setStatus('تم حفظ الهيكل الدراسي لهذه المدرسة والعام فقط.','ok')}catch(e){setStatus('تعذر حفظ الهيكل: '+(e.message||e),'bad')}}
+  window.rebuildScopeSelectors=function(){const st=$('scopeStage'),gr=$('scopeGrade'),sec=$('scopeSection'),trk=$('scopeTrack'),wrap=$('scopeTrackWrap');if(!st||!gr||!sec)return;const stages=academicStructure.stages||[],os=st.value,og=gr.value,oc=sec.value,ot=trk?.value||'';st.innerHTML='<option value="">اختر المرحلة</option>'+stages.map(s=>`<option value="${html(s.name)}">${html(s.name)}</option>`).join('');if(stages.some(s=>s.name===os))st.value=os;const stage=stages.find(s=>s.name===st.value);gr.innerHTML='<option value="">اختر الصف</option>'+((stage?.grades)||[]).map(g=>`<option value="${html(g.name)}">${html(g.name)}</option>`).join('');if(stage?.grades?.some(g=>g.name===og))gr.value=og;const grade=stage?.grades?.find(g=>g.name===gr.value);sec.innerHTML='<option value="">اختر الفصل</option>'+((grade?.sections)||[]).map(c=>`<option value="${html(c.name)}">${html(c.name)}</option>`).join('');if(grade?.sections?.some(c=>c.name===oc))sec.value=oc;const secondary=canonicalStageName(stage?.name)==='ثانوية';wrap?.classList.toggle('hidden',!secondary);if(trk){trk.innerHTML='<option value="">اختر المسار</option>'+((grade?.tracks)||defaultTracks()).map(x=>`<option value="${html(x)}">${html(x)}</option>`).join('');if([...trk.options].some(o=>o.value===ot))trk.value=ot}}
+  function scopedStudentScope(){return{stage:safe($('scopeStage').value),grade:safe($('scopeGrade').value),track_name:safe($('scopeTrack')?.value),section_name:safe($('scopeSection').value)}}function validateScope(){const s=scopedStudentScope();if(!s.stage||!s.grade||!s.section_name)throw new Error('حدد المرحلة والصف والفصل أولًا.');if(s.canonicalStageName(stage)==='ثانوية'&&!s.track_name)throw new Error('حدد المسار للمرحلة الثانوية.');return s}
   async function parseExcelStudentFile(file){const data=await file.arrayBuffer(),wb=XLSX.read(data,{type:'array'}),sheet=wb.Sheets[wb.SheetNames[0]];return XLSX.utils.sheet_to_json(sheet,{defval:''}).map(cleanStudent).filter(r=>r.student_name)}
   async function parsePdfStudentFile(file){if(!window.pdfjsLib)throw new Error('مكتبة قراءة PDF غير متاحة.');pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';const doc=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;let lines=[];for(let p=1;p<=doc.numPages;p++){const page=await doc.getPage(p),tc=await page.getTextContent(),items=(tc.items||[]).map(x=>({text:safe(x.str),x:Number(x.transform?.[4]||0),y:Number(x.transform?.[5]||0)})).filter(x=>x.text),groups=new Map();items.forEach(it=>{const y=Math.round(it.y/3)*3,a=groups.get(y)||[];a.push(it);groups.set(y,a)});[...groups.entries()].sort((a,b)=>b[0]-a[0]).forEach(([,arr])=>lines.push(arr.sort((a,b)=>b.x-a.x).map(x=>x.text).join(' ').replace(/\s+/g,' ').trim()))}const textAll=lines.join('\n').trim();if(textAll.length<30)throw new Error('ملف PDF يبدو ممسوحًا ضوئيًا أو لا يحتوي نصًا قابلًا للاستخراج.');const out=[];let seq=0;for(const line of lines){if(!line)continue;const id=(line.match(/\b[12]\d{9}\b/)||[])[0]||'',nums=line.match(/\b\d{3,10}\b/g)||[];let name=line.replace(/\b\d+\b/g,' ').replace(/[|،,:;]+/g,' ').replace(/\s+/g,' ').trim();const arabic=(name.match(/[\u0600-\u06FF]/g)||[]).length;if(arabic<4||name.length<5||/اسم الطالب|السجل المدني|رقم الهوية|الصف|الفصل|الشعبة/.test(name))continue;out.push({student_name:name,student_number:(nums.find(n=>n!==id&&n.length<10)||String(++seq)),national_id:id,stage:'',grade:'',track_name:'',section_name:'',noor_section_code:''})}const ded=new Map();out.forEach(r=>{const k=(r.national_id||r.student_name).trim();if(k&&!ded.has(k))ded.set(k,r)});return [...ded.values()]}
   

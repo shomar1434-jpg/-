@@ -1,6 +1,9 @@
 <!doctype html>
 <html lang="ar" dir="rtl">
 <head>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <style id="platform-protected-page-gate">html{visibility:hidden!important}
   .modal:not(.hidden){display:flex!important}
   .studentActions{display:flex;gap:6px;flex-wrap:wrap}
@@ -8,6 +11,14 @@
 
   .structureSections .sectionChip{padding:6px 8px}
   .structureSections .sectionChip .btn{box-shadow:none}
+
+  #academicStructureCard{overflow:visible}
+  #academicStructureView{width:100%;min-width:0}
+  #academicStructureView .structureStage{min-width:0}
+  #stageGradesEditor{width:100%;min-width:0}
+  #stageGradesEditor .structureGrade{width:100%;box-sizing:border-box}
+  #studentsTab.grid>*{min-width:0}
+  .structureGrid{align-items:start}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="platform-cloud-session.js?v=20260829-security-isolation-final"></script>
@@ -99,6 +110,7 @@
 <script src="platform-persistence-guard.js"></script>
 <script defer src="school-base-settings-source.js"></script>
 <link rel="stylesheet" href="responsive-layout.css?v=20260818-responsive-1">
+<!-- SCHOOL_INFORMATION_GRADE_NORMALIZATION_V1_20260902 -->
 </head>
 <body>
   <header class="top noPrint">
@@ -141,25 +153,46 @@
     <section id="studentsTab" class="infoTab grid" style="margin-top:16px">
       
       <div class="card span12" id="academicStructureCard">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap"><div><h2 style="margin-bottom:5px">الهيكل الدراسي للمدرسة</h2><p class="muted">يحدد مدير النظام المراحل والصفوف وعدد الفصول لكل صف. يستخدم هذا الهيكل لتحديث فصل واحد دون الحاجة إلى إعادة استيراد جميع طلاب المدرسة.</p></div><span id="structureRoleBadge" class="pill">عرض الهيكل</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+          <div>
+            <h2 style="margin-bottom:5px">الهيكل الدراسي للمدرسة</h2>
+            <p class="muted">اختر المرحلة، ثم حدّد عدد الفصول لكل صف. الصفوف ثابتة حسب المرحلة الدراسية، ويكون الاستيراد لاحقًا لكل فصل بصورة مستقلة.</p>
+          </div>
+          <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
+<span id="structureRoleBadge" class="pill">إدارة الهيكل الدراسي</span>
+<span class="pill" id="structureBuildBadge" title="للتأكد أن المتصفح حمّل النسخة الجديدة">الإصدار R3 — 2026/09/02</span>
+</div>
+        </div>
+
         <div id="structureEditor">
-<div class="row" style="margin-top:12px;grid-template-columns:2fr 1fr auto">
-<div><label>المرحلة الدراسية</label><select id="structureStageType" onchange="document.getElementById('structureGradesCount').dataset.userSet='';prepareStageGradesEditor()">
+          <div class="row" style="margin-top:12px;grid-template-columns:minmax(260px,1fr) auto">
+            <div>
+              <label>المرحلة الدراسية</label>
+              <select id="structureStageType" onchange="prepareStageGradesEditor()">
 <option value="">اختر المرحلة</option>
 <option value="رياض أطفال">رياض أطفال</option>
 <option value="طفولة مبكرة">طفولة مبكرة</option>
 <option value="ابتدائية">ابتدائية</option>
 <option value="متوسطة">متوسطة</option>
 <option value="ثانوية">ثانوية</option>
-</select></div>
-<div><label>عدد الصفوف / المستويات</label><input id="structureGradesCount" type="number" min="1" max="12" value="1" onchange="this.dataset.userSet='1';prepareStageGradesEditor()"></div>
-<div style="align-self:end"><button type="button" class="btn secondary" onclick="prepareStageGradesEditor()">إظهار الصفوف</button></div></div>
-<div id="stageGradesEditor" style="margin-top:12px"></div>
-<div class="muted" style="margin-top:7px">
-رياض أطفال، طفولة مبكرة، متوسطة، ثانوية: الصفوف الأول والثاني والثالث. الابتدائية: الصفوف الرابع والخامس والسادس.
-</div>
-<div class="actions" style="margin-top:10px"><button type="button" class="btn" onclick="addAcademicStage()">إضافة / تحديث المرحلة</button><button type="button" class="btn" onclick="saveAcademicStructure()">حفظ الهيكل الدراسي</button><button type="button" class="btn secondary" onclick="loadAcademicStructure(true)">إعادة تحميل الهيكل</button></div>
-</div></div><div id="academicStructureView" class="structureGrid" style="margin-top:14px"></div>
+</select>
+            </div>
+            <div style="align-self:end">
+              <button type="button" class="btn" onclick="addAcademicStage()">إضافة / تحديث المرحلة</button>
+            </div>
+          </div>
+
+          <div id="stageGradesEditor" style="margin-top:12px">
+            <div class="muted">اختر المرحلة لتظهر الصفوف الثلاثة وتحدد عدد الفصول لكل صف.</div>
+          </div>
+
+          <div class="actions" style="margin-top:12px">
+            <button type="button" class="btn" onclick="saveAcademicStructure()">حفظ الهيكل الدراسي</button>
+            <button type="button" class="btn secondary" onclick="loadAcademicStructure(true)">إعادة تحميل الهيكل</button>
+          </div>
+        </div>
+
+        <div id="academicStructureView" class="structureGrid" style="margin-top:14px"></div>
       </div>
       <div class="card span12" id="classImportPanel"><h2>استيراد بيانات فصل محدد من نور</h2><div class="scopeImport"><div class="row"><div><label>المرحلة</label><select id="scopeStage" onchange="rebuildScopeSelectors('grade')"></select></div><div><label>الصف</label><select id="scopeGrade" onchange="rebuildScopeSelectors('section')"></select></div><div><label>الفصل / الشعبة</label><select id="scopeSection" onchange="loadScopedClassRoster()"></select></div><div id="scopeTrackWrap" class="hidden"><label>المسار</label><select id="scopeTrack" onchange="loadScopedClassRoster()"></select></div><div><label>العام الدراسي</label><input id="scopeAcademicYear" value="1447"></div></div><div class="row" style="margin-top:12px;grid-template-columns:2fr 1fr 1fr auto"><div><label>ملف نور للصف والفصل المحددين</label><input id="scopeStudentFile" type="file" accept=".xlsx,.xls,.csv,.pdf"></div><div><label>صيغة الملف</label><select id="scopeFileFormat"><option value="auto">تلقائي</option><option value="excel">Excel / CSV</option><option value="pdf">PDF نصي</option></select></div><div><label>طريقة التحديث</label><select id="scopeSaveMode"><option value="replace_scope" selected>استبدال هذا الفصل فقط</option><option value="append_scope">إضافة الجديد لهذا الفصل</option></select></div><div style="align-self:end"><button class="btn" onclick="readScopedStudentFile()">معاينة الفصل</button></div></div><div class="pdfHint">يدعم PDF النصي مثل الكشوف القابلة لتحديد النص. إذا كان الملف صورة ممسوحة ضوئيًا فسيظهر تنبيه بدل حفظ بيانات غير موثوقة.</div><div id="scopePreviewBox" class="preview hidden"></div><div class="footerbar"><span class="pill" id="scopePreviewCount">لم تتم قراءة ملف للفصل</span><button id="scopeSaveBtn" class="btn hidden" onclick="saveScopedPreview()">اعتماد بيانات هذا الفصل فقط</button></div></div></div>
 
@@ -441,7 +474,7 @@
     r=r||{};
     const pick=(...keys)=>{for(const k of keys){if(r[k]!==undefined&&r[k]!==null&&safe(r[k])!=='')return safe(r[k])}return ''};
     const identity=pick('national_id','student_national_id','nationalId','identity','identity_no','identity_number','id_number','civil_id','رقم الهوية','رقم الهوية الوطنية','الهوية','السجل المدني','رقم السجل المدني');
-    return {
+    return canonicalStudentLocation({
       id:pick('id'),
       student_name:pick('student_name','name','full_name','اسم الطالب','الاسم','اسم الطالب/ة','اسم الطالب / الطالبة'),
       student_number:pick('student_number','student_no','رقم الطالب','الرقم'),
@@ -451,7 +484,7 @@
       track_name:pick('track_name','track','المسار'),
       section_name:pick('section_name','section','classroom','الفصل','الشعبة','الفصل الدراسي'),
       noor_section_code:pick('noor_section_code','section_code','رمز الفصل')
-    };
+    });
   }
   function dedupeKey(r){
     const year=safe(r.academic_year)||safe($('academicYear').value)||'1447';
@@ -503,69 +536,160 @@
   function phase2IsSystemAdmin(){return isVerifiedSystemAdmin()}
   function phase2SchoolInfoHeaders(){if(phase2IsSystemAdmin())return null;const token=(window.PlatformCloudSession?.token?.()||sessionStorage.getItem('platform_tab_session_token_v1')||localStorage.getItem('platform_file_session_token')||'');return token?{'x-platform-session':token}:null}
   async function phase2Call(action,body={}){await window.__PLATFORM_ACCESS_READY__;const headers={'content-type':'application/json','apikey':SUPABASE_KEY};if(phase2IsSystemAdmin()){const session=await adminAuthSession();headers.authorization='Bearer '+session.access_token;body=Object.assign({},body,{schoolId:currentSchool.id})}else{const ph=phase2SchoolInfoHeaders();if(!ph)throw new Error('جلسة المدرسة غير متاحة.');Object.assign(headers,ph)}const r=await fetch(SUPABASE_URL+'/functions/v1/school-information-structure',{method:'POST',headers,body:JSON.stringify(Object.assign({},body,{action}))});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'تعذر تنفيذ العملية');return j}
-  function canonicalStageName(v){
-    const s=safe(v);
-    if(['رياض أطفال','رياض الأطفال'].includes(s))return 'رياض أطفال';
-    if(['طفولة مبكرة','الطفولة المبكرة'].includes(s))return 'طفولة مبكرة';
-    if(['ابتدائية','الابتدائية','المرحلة الابتدائية'].includes(s))return 'ابتدائية';
-    if(['متوسطة','المتوسطة','المرحلة المتوسطة'].includes(s))return 'متوسطة';
-    if(['ثانوية','الثانوية','المرحلة الثانوية'].includes(s))return 'ثانوية';
-    return s;
+  function normalizeStageName(stage){
+    return canonicalStageLabel(stage);
   }
-  function defaultGradeNames(stage,count){
-    stage=canonicalStageName(stage);
-    const n=Math.max(1,Math.min(3,Number(count)||3));
-    let names=[];
-    if(stage==='ابتدائية') names=['الصف الرابع','الصف الخامس','الصف السادس'];
-    else names=['الصف الأول','الصف الثاني','الصف الثالث'];
-    return names.slice(0,n);
+  
+  const GRADE_CANONICAL_MAP={
+    'اول':'grade_1','أول':'grade_1','الأول':'grade_1','الاول':'grade_1','1':'grade_1','١':'grade_1',
+    'ثاني':'grade_2','الثاني':'grade_2','الثانى':'grade_2','2':'grade_2','٢':'grade_2',
+    'ثالث':'grade_3','الثالث':'grade_3','3':'grade_3','٣':'grade_3',
+    'رابع':'grade_4','الرابع':'grade_4','4':'grade_4','٤':'grade_4',
+    'خامس':'grade_5','الخامس':'grade_5','5':'grade_5','٥':'grade_5',
+    'سادس':'grade_6','السادس':'grade_6','6':'grade_6','٦':'grade_6'
+  };
+  const GRADE_LABELS={
+    grade_1:'الأول',grade_2:'الثاني',grade_3:'الثالث',
+    grade_4:'الرابع',grade_5:'الخامس',grade_6:'السادس'
+  };
+  const STAGE_CANONICAL_MAP={
+    'رياض الأطفال':'kg','رياض اطفال':'kg','رياض أطفال':'kg','روضة':'kg',
+    'الطفولة المبكرة':'early_childhood','طفولة مبكرة':'early_childhood',
+    'الابتدائية':'primary','ابتدائية':'primary','ابتدائي':'primary',
+    'المتوسطة':'middle','متوسطة':'middle','متوسط':'middle',
+    'الثانوية':'secondary','ثانوية':'secondary','ثانوي':'secondary'
+  };
+  const STAGE_LABELS={
+    kg:'رياض أطفال',
+    early_childhood:'طفولة مبكرة',
+    primary:'ابتدائية',
+    middle:'متوسطة',
+    secondary:'ثانوية'
+  };
+  function normalizeArabicToken(v){
+    return safe(v).replace(/[ـ]/g,'').replace(/\s+/g,' ').trim();
   }
-  function normalizeAcademicStructureStages(structure){
-    const source=structure&&typeof structure==='object'?structure:{stages:[]};
-    const allowed=['رياض أطفال','طفولة مبكرة','ابتدائية','متوسطة','ثانوية'];
-    const out=[];
-    for(const raw of (Array.isArray(source.stages)?source.stages:[])){
-      let name=canonicalStageName(raw?.name);
-      if(name==='رياض الأطفال والطفولة المبكرة')continue;
-      if(!allowed.includes(name))continue;
-      const required=defaultGradeNames(name,3);
-      const oldGrades=Array.isArray(raw?.grades)?raw.grades:[];
-      const grades=required.map((gradeName,i)=>{
-        const old=oldGrades[i]||{};
-        const sections=(Array.isArray(old.sections)&&old.sections.length?old.sections:[{id:'section_'+Date.now()+'_'+i+'_0',name:'أ'}]).map((c,j)=>({id:c?.id||('section_'+Date.now()+'_'+i+'_'+j),name:safe(c?.name)||sectionNames(j+1)[j]}));
-        return {id:old.id||('grade_'+Date.now()+'_'+i),name:gradeName,sections,tracks:name==='ثانوية'?(Array.isArray(old.tracks)?old.tracks:defaultTracks()):[]};
-      });
-      const existing=out.find(x=>x.name===name);
-      if(existing){
-        grades.forEach((g,i)=>{if((g.sections||[]).length>(existing.grades[i]?.sections||[]).length)existing.grades[i]=g});
-      }else out.push({id:raw?.id||('stage_'+Date.now()+'_'+out.length),name,grades});
-    }
-    source.stages=out;return source;
+  function canonicalGradeId(v){
+    const raw=normalizeArabicToken(v);
+    if(GRADE_CANONICAL_MAP[raw])return GRADE_CANONICAL_MAP[raw];
+    const compact=raw.replace(/^ال/,'');
+    return GRADE_CANONICAL_MAP[compact]||'';
   }
-  function sectionNames(count){return Array.from({length:Math.max(1,Number(count)||1)},(_,i)=>sectionMap[String(i+1)]||String(i+1))}
+  function canonicalGradeLabel(v){
+    const id=canonicalGradeId(v);
+    return id?GRADE_LABELS[id]:normalizeArabicToken(v);
+  }
+  function canonicalStageId(v){
+    const raw=normalizeArabicToken(v);
+    return STAGE_CANONICAL_MAP[raw]||STAGE_CANONICAL_MAP[raw.replace(/^ال/,'')]||'';
+  }
+  function canonicalStageLabel(v){
+    const id=canonicalStageId(v);
+    return id?STAGE_LABELS[id]:normalizeArabicToken(v);
+  }
+  function canonicalStudentLocation(row){
+    const r={...(row||{})};
+    const stageId=canonicalStageId(r.stage);
+    const gradeId=canonicalGradeId(r.grade);
+    r.stage_id=stageId||safe(r.stage_id);
+    r.grade_id=gradeId||safe(r.grade_id);
+    r.stage=stageId?STAGE_LABELS[stageId]:canonicalStageLabel(r.stage);
+    r.grade=gradeId?GRADE_LABELS[gradeId]:canonicalGradeLabel(r.grade);
+    return r;
+  }
+function exactGradeNames(stage){
+    stage=normalizeStageName(stage);
+    if(stage==='ابتدائية')return ['الرابع','الخامس','السادس'];
+    return ['الأول','الثاني','الثالث'];
+  }
+  function defaultGradeNames(stage){return exactGradeNames(stage)}
+  function sectionNames(count){return Array.from({length:Math.max(1,Number(count)||1)},(_,i)=>String(i+1))}
   function defaultTracks(){return ['المسار العام','مسار علوم الحاسب والهندسة','مسار الصحة والحياة','مسار إدارة الأعمال','المسار الشرعي']}
+  function normalizeSavedAcademicStructure(raw){
+    const src=(raw&&typeof raw==='object')?raw:{academicYear:'1447',stages:[]};
+    const out={...src,stages:[]};
+    const pushStage=(name,grades)=>{
+      name=normalizeStageName(name);
+      if(!['رياض أطفال','طفولة مبكرة','ابتدائية','متوسطة','ثانوية'].includes(name))return;
+      const wanted=exactGradeNames(name);
+      const oldGrades=Array.isArray(grades)?grades:[];
+      const normalizedGrades=wanted.map((gradeName,i)=>{
+        const old=oldGrades[i]||{};
+        return {
+          id:old.id||('grade_'+Date.now()+'_'+name+'_'+i),
+          name:gradeName,
+          sections:(Array.isArray(old.sections)&&old.sections.length?old.sections:sectionNames(1).map((n,j)=>({id:'section_'+Date.now()+'_'+i+'_'+j,name:n}))).map((sec,j)=>({
+            id:sec.id||('section_'+Date.now()+'_'+i+'_'+j),
+            name:safe(sec.name)||String(j+1)
+          })),
+          tracks:name==='ثانوية'?(Array.isArray(old.tracks)&&old.tracks.length?old.tracks:defaultTracks()):[]
+        };
+      });
+      const existingIndex=out.stages.findIndex(x=>x.name===name);
+      const row={id:(oldGrades[0]?.stage_id)||('stage_'+name.replace(/\s+/g,'_')),name,grades:normalizedGrades};
+      if(existingIndex>=0)out.stages[existingIndex]=row;else out.stages.push(row);
+    };
+
+    (Array.isArray(src.stages)?src.stages:[]).forEach(stage=>{
+      const oldName=safe(stage?.name);
+      if(oldName==='رياض الأطفال والطفولة المبكرة'){
+        const grades=Array.isArray(stage.grades)?stage.grades:[];
+        pushStage('رياض أطفال',grades.slice(0,3));
+        pushStage('طفولة مبكرة',grades.slice(3,6));
+      }else{
+        pushStage(oldName,stage.grades);
+      }
+    });
+    return out;
+  }
   window.prepareStageGradesEditor=function(){
-    const stage=canonicalStageName($('structureStageType')?.value),box=$('stageGradesEditor');
+    const stage=normalizeStageName($('structureStageType')?.value),box=$('stageGradesEditor');
     if(!box)return;
-    if(!stage){box.innerHTML='<div class="muted">اختر المرحلة أولًا لتظهر الصفوف وتحدد عدد الفصول لكل صف.</div>';return}
-    const existing=academicStructure.stages.find(s=>canonicalStageName(s.name)===stage);
-    $('structureGradesCount').value=3;
-    $('structureGradesCount').readOnly=true;
-    const names=defaultGradeNames(stage,3);
-    box.innerHTML='<div class="muted" style="margin-bottom:7px">حدد عدد الفصول لكل صف بشكل مستقل:</div>'+names.map((name,i)=>{
-      const old=existing?.grades?.[i],sections=old?.sections?.length||1;
-      const tracks=stage==='ثانوية'?(old?.tracks?.length?old.tracks:defaultTracks()):[];
-      return `<div class="structureGrade"><div class="gradeHead"><b>${html(name)}</b><label>عدد الفصول <input class="stageGradeSectionsInput" data-index="${i}" style="width:72px;padding:6px" type="number" min="1" max="30" value="${sections}"></label></div>${stage==='ثانوية'?`<div style="margin-top:8px"><label>المسارات لهذا الصف</label><input class="stageGradeTracksInput" data-index="${i}" value="${html(tracks.join('، '))}"><div class="muted">افصل المسارات بعلامة ،</div></div>`:''}</div>`;
-    }).join('');
+    if(!stage){
+      box.innerHTML='<div class="muted">اختر المرحلة لتظهر الصفوف الثلاثة وتحدد عدد الفصول لكل صف.</div>';
+      return;
+    }
+    const existing=(academicStructure.stages||[]).find(s=>normalizeStageName(s.name)===stage);
+    const names=exactGradeNames(stage);
+    box.innerHTML='<div class="muted" style="margin-bottom:8px">حدد عدد الفصول لكل صف بشكل مستقل:</div>'+
+      names.map((name,i)=>{
+        const old=existing?.grades?.[i],sections=Math.max(1,(old?.sections||[]).length||1);
+        const tracks=stage==='ثانوية'?(old?.tracks?.length?old.tracks:defaultTracks()):[];
+        return `<div class="structureGrade">
+          <div class="gradeHead">
+            <b>الصف ${html(name)}</b>
+            <label>عدد الفصول
+              <input class="stageGradeSectionsInput" data-index="${i}" style="width:80px;padding:7px" type="number" min="1" max="30" value="${sections}">
+            </label>
+          </div>
+          ${stage==='ثانوية'?`<div style="margin-top:8px"><label>المسارات لهذا الصف</label><input class="stageGradeTracksInput" data-index="${i}" value="${html(tracks.join('، '))}"><div class="muted">افصل المسارات بعلامة ،</div></div>`:''}
+        </div>`;
+      }).join('');
   }
   window.addAcademicStage=function(){
-    const name=canonicalStageName($('structureStageType')?.value);if(!name){setStatus('اختر المرحلة الدراسية أولًا.','bad');return}
-    const existing=academicStructure.stages.find(s=>canonicalStageName(s.name)===name),names=defaultGradeNames(name,3);
-    const sectionInputs=[...document.querySelectorAll('.stageGradeSectionsInput')],trackInputs=[...document.querySelectorAll('.stageGradeTracksInput')];
-    const grades=names.map((g,i)=>{const old=existing?.grades?.[i],sc=Math.max(1,Number(sectionInputs.find(x=>Number(x.dataset.index)===i)?.value)||1),tracks=name==='ثانوية'?safe(trackInputs.find(x=>Number(x.dataset.index)===i)?.value).split(/[،,]/).map(s=>safe(s)).filter(Boolean):[];return{id:old?.id||('grade_'+Date.now()+'_'+i),name:g,sections:sectionNames(sc).map((n,j)=>({id:old?.sections?.[j]?.id||('section_'+Date.now()+'_'+i+'_'+j),name:n})),tracks}});
-    academicStructure.stages=academicStructure.stages.filter(s=>canonicalStageName(s.name)!==name);
-    academicStructure.stages.push({id:existing?.id||('stage_'+Date.now()),name,grades});
-    renderAcademicStructure();setStatus('تمت إضافة / تحديث المرحلة. اضغط حفظ الهيكل الدراسي لاعتمادها.','ok');
+    const name=normalizeStageName($('structureStageType')?.value);
+    if(!name){setStatus('اختر المرحلة الدراسية أولًا.','bad');return}
+    const existing=(academicStructure.stages||[]).find(s=>normalizeStageName(s.name)===name);
+    const names=exactGradeNames(name);
+    const sectionInputs=[...document.querySelectorAll('.stageGradeSectionsInput')];
+    const trackInputs=[...document.querySelectorAll('.stageGradeTracksInput')];
+    const grades=names.map((gradeName,i)=>{
+      const old=existing?.grades?.[i],sc=Math.max(1,Number(sectionInputs.find(x=>Number(x.dataset.index)===i)?.value)||1);
+      const tracks=name==='ثانوية'
+        ? safe(trackInputs.find(x=>Number(x.dataset.index)===i)?.value).split(/[،,]/).map(x=>safe(x)).filter(Boolean)
+        : [];
+      return {
+        id:old?.id||('grade_'+Date.now()+'_'+i),
+        name:gradeName,
+        sections:sectionNames(sc).map((n,j)=>({id:old?.sections?.[j]?.id||('section_'+Date.now()+'_'+i+'_'+j),name:n})),
+        tracks
+      };
+    });
+    const stage={id:existing?.id||('stage_'+Date.now()),name,grades};
+    academicStructure.stages=(academicStructure.stages||[]).filter(s=>normalizeStageName(s.name)!==name);
+    academicStructure.stages.push(stage);
+    renderAcademicStructure();
+    setStatus('تم إعداد مرحلة '+name+'. اضغط «حفظ الهيكل الدراسي» لاعتمادها.','ok');
   }
   window.removeAcademicStage=function(id){if(confirm('حذف هذه المرحلة من الهيكل؟ لا يتم حذف الطلاب تلقائيًا.')){academicStructure.stages=academicStructure.stages.filter(s=>s.id!==id);renderAcademicStructure()}}
   window.changeGradeSections=function(stageId,gradeId,count){const s=academicStructure.stages.find(x=>x.id===stageId),g=s?.grades?.find(x=>x.id===gradeId);if(!g)return;g.sections=sectionNames(Math.max(1,Number(count)||1)).map((n,i)=>({id:g.sections?.[i]?.id||('section_'+Date.now()+'_'+i),name:n}));renderAcademicStructure()}
@@ -577,7 +701,7 @@
     const stages=academicStructure.stages||[];
     box.innerHTML=stages.length?stages.map(s=>`<div class="structureStage">
       <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
-        <h3>${html(s.name)}</h3>
+        <h3>${html(normalizeStageName(s.name))}</h3>
         <button type="button" class="btn danger" style="padding:6px 9px" onclick="removeAcademicStage('${html(s.id)}')">حذف</button>
       </div>
       ${(s.grades||[]).map(g=>`<div class="structureGrade">
@@ -586,11 +710,11 @@
             <input style="width:62px;padding:5px" type="number" min="1" max="30" value="${(g.sections||[]).length||1}" onchange="changeGradeSections('${html(s.id)}','${html(g.id)}',this.value)">
           </label>
         </div>
-        ${canonicalStageName(s.name)==='ثانوية'&&g.tracks?.length?`<div class="muted" style="margin-top:7px">المسارات: ${html(g.tracks.join('، '))}</div>`:''}
+        ${normalizeStageName(s.name)==='ثانوية'&&g.tracks?.length?`<div class="muted" style="margin-top:7px">المسارات: ${html(g.tracks.join('، '))}</div>`:''}
         <div class="structureSections" style="margin-top:9px">
           ${(g.sections||[]).map(c=>`<div class="sectionChip" style="display:flex;align-items:center;gap:7px">
             <span>${html(c.name)}</span>
-            <button type="button" class="btn secondary" style="padding:4px 8px;font-size:10px" onclick="openImportForClass('${html(s.name)}','${html(g.name)}','${html(c.name)}')">استيراد بيانات الفصل</button>
+            <button type="button" class="btn secondary" style="padding:4px 8px;font-size:10px" onclick="openImportForClass('${html(normalizeStageName(s.name))}','${html(g.name)}','${html(c.name)}')">استيراد بيانات الفصل</button>
           </div>`).join('')}
         </div>
       </div>`).join('')}
@@ -604,7 +728,7 @@
     if($('scopeStage')){$('scopeStage').value=stage;rebuildScopeSelectors('grade')}
     if($('scopeGrade')){$('scopeGrade').value=grade;rebuildScopeSelectors('section')}
     if($('scopeSection'))$('scopeSection').value=section;
-    if(canonicalStageName(stage)==='ثانوية'){
+    if(normalizeStageName(stage)==='ثانوية'){
       const st=(academicStructure.stages||[]).find(x=>x.name===stage),gr=st?.grades?.find(x=>x.name===grade);
       const firstTrack=(gr?.tracks||[])[0]||'';
       if($('scopeTrack'))$('scopeTrack').value=firstTrack;
@@ -613,10 +737,10 @@
     $('classImportPanel')?.scrollIntoView({behavior:'smooth',block:'start'});
     setStatus('تم تحديد '+stage+' — '+grade+' — الفصل '+section+'. اختر ملف نور لهذا الفصل فقط.','note');
   }
-  window.loadAcademicStructure=async function(force=false){try{if(!currentSchool.id)await detectSchool();const year=safe($('academicYear')?.value||$('scopeAcademicYear')?.value)||'1447',r=await phase2Call('structure-get',{academicYear:year});academicStructure=normalizeAcademicStructureStages(r.structure||{academicYear:year,stages:[],updatedAt:''});if($('scopeAcademicYear'))$('scopeAcademicYear').value=year;renderAcademicStructure();if(force)setStatus('تم تحديث الهيكل الدراسي من السحابة.','ok')}catch(e){setStatus('تعذر تحميل الهيكل الدراسي: '+(e.message||e),'bad')}}
-  window.saveAcademicStructure=async function(){try{const year=safe($('academicYear')?.value||$('scopeAcademicYear')?.value)||'1447';academicStructure=normalizeAcademicStructureStages(academicStructure);academicStructure.academicYear=year;const r=await phase2Call('structure-save',{academicYear:year,structure:academicStructure});academicStructure=r.structure||academicStructure;renderAcademicStructure();setStatus('تم حفظ الهيكل الدراسي لهذه المدرسة والعام فقط.','ok')}catch(e){setStatus('تعذر حفظ الهيكل: '+(e.message||e),'bad')}}
-  window.rebuildScopeSelectors=function(){const st=$('scopeStage'),gr=$('scopeGrade'),sec=$('scopeSection'),trk=$('scopeTrack'),wrap=$('scopeTrackWrap');if(!st||!gr||!sec)return;const stages=academicStructure.stages||[],os=st.value,og=gr.value,oc=sec.value,ot=trk?.value||'';st.innerHTML='<option value="">اختر المرحلة</option>'+stages.map(s=>`<option value="${html(s.name)}">${html(s.name)}</option>`).join('');if(stages.some(s=>s.name===os))st.value=os;const stage=stages.find(s=>s.name===st.value);gr.innerHTML='<option value="">اختر الصف</option>'+((stage?.grades)||[]).map(g=>`<option value="${html(g.name)}">${html(g.name)}</option>`).join('');if(stage?.grades?.some(g=>g.name===og))gr.value=og;const grade=stage?.grades?.find(g=>g.name===gr.value);sec.innerHTML='<option value="">اختر الفصل</option>'+((grade?.sections)||[]).map(c=>`<option value="${html(c.name)}">${html(c.name)}</option>`).join('');if(grade?.sections?.some(c=>c.name===oc))sec.value=oc;const secondary=canonicalStageName(stage?.name)==='ثانوية';wrap?.classList.toggle('hidden',!secondary);if(trk){trk.innerHTML='<option value="">اختر المسار</option>'+((grade?.tracks)||defaultTracks()).map(x=>`<option value="${html(x)}">${html(x)}</option>`).join('');if([...trk.options].some(o=>o.value===ot))trk.value=ot}}
-  function scopedStudentScope(){return{stage:safe($('scopeStage').value),grade:safe($('scopeGrade').value),track_name:safe($('scopeTrack')?.value),section_name:safe($('scopeSection').value)}}function validateScope(){const s=scopedStudentScope();if(!s.stage||!s.grade||!s.section_name)throw new Error('حدد المرحلة والصف والفصل أولًا.');if(s.canonicalStageName(stage)==='ثانوية'&&!s.track_name)throw new Error('حدد المسار للمرحلة الثانوية.');return s}
+  window.loadAcademicStructure=async function(force=false){try{if(!currentSchool.id)await detectSchool();const year=safe($('academicYear')?.value||$('scopeAcademicYear')?.value)||'1447',r=await phase2Call('structure-get',{academicYear:year});academicStructure=normalizeSavedAcademicStructure(r.structure||{academicYear:year,stages:[],updatedAt:''});if($('scopeAcademicYear'))$('scopeAcademicYear').value=year;renderAcademicStructure();if(force)setStatus('تم تحديث الهيكل الدراسي من السحابة.','ok')}catch(e){setStatus('تعذر تحميل الهيكل الدراسي: '+(e.message||e),'bad')}}
+  window.saveAcademicStructure=async function(){try{const year=safe($('academicYear')?.value||$('scopeAcademicYear')?.value)||'1447';academicStructure.academicYear=year;const r=await phase2Call('structure-save',{academicYear:year,structure:academicStructure});academicStructure=r.structure||academicStructure;renderAcademicStructure();setStatus('تم حفظ الهيكل الدراسي لهذه المدرسة والعام فقط.','ok')}catch(e){setStatus('تعذر حفظ الهيكل: '+(e.message||e),'bad')}}
+  window.rebuildScopeSelectors=function(){const st=$('scopeStage'),gr=$('scopeGrade'),sec=$('scopeSection'),trk=$('scopeTrack'),wrap=$('scopeTrackWrap');if(!st||!gr||!sec)return;const stages=academicStructure.stages||[],os=canonicalStageLabel(st.value),og=canonicalGradeLabel(gr.value),oc=sec.value,ot=trk?.value||'';st.innerHTML='<option value="">اختر المرحلة</option>'+stages.map(s=>`<option value="${html(normalizeStageName(s.name))}">${html(normalizeStageName(s.name))}</option>`).join('');if(stages.some(s=>canonicalStageLabel(s.name)===os))st.value=os;const stage=stages.find(s=>canonicalStageLabel(s.name)===canonicalStageLabel(st.value));gr.innerHTML='<option value="">اختر الصف</option>'+((stage?.grades)||[]).map(g=>`<option value="${html(canonicalGradeLabel(g.name))}">${html(canonicalGradeLabel(g.name))}</option>`).join('');if(stage?.grades?.some(g=>canonicalGradeLabel(g.name)===og))gr.value=og;const grade=stage?.grades?.find(g=>canonicalGradeLabel(g.name)===canonicalGradeLabel(gr.value));sec.innerHTML='<option value="">اختر الفصل</option>'+((grade?.sections)||[]).map(c=>`<option value="${html(c.name)}">${html(c.name)}</option>`).join('');if(grade?.sections?.some(c=>c.name===oc))sec.value=oc;const secondary=normalizeStageName(stage?.name)==='ثانوية';wrap?.classList.toggle('hidden',!secondary);if(trk){trk.innerHTML='<option value="">اختر المسار</option>'+((grade?.tracks)||defaultTracks()).map(x=>`<option value="${html(x)}">${html(x)}</option>`).join('');if([...trk.options].some(o=>o.value===ot))trk.value=ot}}
+  function scopedStudentScope(){return{stage:safe($('scopeStage').value),grade:safe($('scopeGrade').value),track_name:safe($('scopeTrack')?.value),section_name:safe($('scopeSection').value)}}function validateScope(){const s=scopedStudentScope();if(!s.stage||!s.grade||!s.section_name)throw new Error('حدد المرحلة والصف والفصل أولًا.');if(s.normalizeStageName(stage)==='ثانوية'&&!s.track_name)throw new Error('حدد المسار للمرحلة الثانوية.');return s}
   async function parseExcelStudentFile(file){const data=await file.arrayBuffer(),wb=XLSX.read(data,{type:'array'}),sheet=wb.Sheets[wb.SheetNames[0]];return XLSX.utils.sheet_to_json(sheet,{defval:''}).map(cleanStudent).filter(r=>r.student_name)}
   async function parsePdfStudentFile(file){if(!window.pdfjsLib)throw new Error('مكتبة قراءة PDF غير متاحة.');pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';const doc=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;let lines=[];for(let p=1;p<=doc.numPages;p++){const page=await doc.getPage(p),tc=await page.getTextContent(),items=(tc.items||[]).map(x=>({text:safe(x.str),x:Number(x.transform?.[4]||0),y:Number(x.transform?.[5]||0)})).filter(x=>x.text),groups=new Map();items.forEach(it=>{const y=Math.round(it.y/3)*3,a=groups.get(y)||[];a.push(it);groups.set(y,a)});[...groups.entries()].sort((a,b)=>b[0]-a[0]).forEach(([,arr])=>lines.push(arr.sort((a,b)=>b.x-a.x).map(x=>x.text).join(' ').replace(/\s+/g,' ').trim()))}const textAll=lines.join('\n').trim();if(textAll.length<30)throw new Error('ملف PDF يبدو ممسوحًا ضوئيًا أو لا يحتوي نصًا قابلًا للاستخراج.');const out=[];let seq=0;for(const line of lines){if(!line)continue;const id=(line.match(/\b[12]\d{9}\b/)||[])[0]||'',nums=line.match(/\b\d{3,10}\b/g)||[];let name=line.replace(/\b\d+\b/g,' ').replace(/[|،,:;]+/g,' ').replace(/\s+/g,' ').trim();const arabic=(name.match(/[\u0600-\u06FF]/g)||[]).length;if(arabic<4||name.length<5||/اسم الطالب|السجل المدني|رقم الهوية|الصف|الفصل|الشعبة/.test(name))continue;out.push({student_name:name,student_number:(nums.find(n=>n!==id&&n.length<10)||String(++seq)),national_id:id,stage:'',grade:'',track_name:'',section_name:'',noor_section_code:''})}const ded=new Map();out.forEach(r=>{const k=(r.national_id||r.student_name).trim();if(k&&!ded.has(k))ded.set(k,r)});return [...ded.values()]}
   
@@ -638,7 +762,7 @@
     try{
       const scope=validateScope(),year=safe($('scopeAcademicYear')?.value||$('academicYear')?.value)||'1447';
       const r=await phase2Call('students-list-scope',{academicYear:year,scope});
-      scopedClassStudents=(r.students||[]).map(cleanStudent);
+      scopedClassStudents=(r.students||[]).map(cleanStudent).map(canonicalStudentLocation);
       renderClassRoster();
       if(force)setStatus('تم تحديث قائمة الفصل المحدد.','ok');
     }catch(e){scopedClassStudents=[];renderClassRoster();if(force)setStatus('تعذر تحميل الفصل: '+(e.message||e),'bad')}
@@ -686,7 +810,7 @@
     }catch(e){setStatus('تعذر حذف الطالب: '+(e.message||e),'bad')}
   }
 window.readScopedStudentFile=async function(){try{const scope=validateScope(),file=$('scopeStudentFile').files[0];if(!file)throw new Error('اختر ملف الطلاب.');const fmt=$('scopeFileFormat').value,ext=(file.name.split('.').pop()||'').toLowerCase(),rows=(fmt==='pdf'||(fmt==='auto'&&ext==='pdf'))?await parsePdfStudentFile(file):await parseExcelStudentFile(file);scopedPreviewRows=rows.map(r=>Object.assign({},r,{stage:scope.stage,grade:scope.grade,track_name:scope.track_name,section_name:scope.section_name}));const box=$('scopePreviewBox');box.classList.remove('hidden');box.innerHTML='<b>معاينة '+html(scope.stage)+' — '+html(scope.grade)+' — الفصل '+html(scope.section_name)+'</b><div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>م</th><th>الاسم</th><th>رقم الهوية</th><th>المرحلة</th><th>الصف</th><th>الفصل</th></tr></thead><tbody>'+scopedPreviewRows.slice(0,100).map((r,i)=>`<tr><td>${i+1}</td><td>${html(r.student_name)}</td><td>${html(r.national_id||'—')}</td><td>${html(scope.stage)}</td><td>${html(scope.grade)}</td><td>${html(scope.section_name)}</td></tr>`).join('')+'</tbody></table></div>';$('scopePreviewCount').textContent=scopedPreviewRows.length+' طالبًا في المعاينة';$('scopeSaveBtn').classList.toggle('hidden',!scopedPreviewRows.length)}catch(e){scopedPreviewRows=[];$('scopeSaveBtn').classList.add('hidden');setStatus('تعذر قراءة ملف الفصل: '+(e.message||e),'bad')}}
-  window.saveScopedPreview=async function(){try{const scope=validateScope(),year=safe($('scopeAcademicYear').value)||'1447';if(!scopedPreviewRows.length)throw new Error('لا توجد بيانات للمعاينة.');const students=scopedPreviewRows.map(r=>({student_name:r.student_name,student_number:r.student_number||null,national_id:r.national_id||null,stage:scope.stage,grade:scope.grade,track_name:scope.track_name,section_name:scope.section_name,noor_section_code:r.noor_section_code||''})),result=await phase2Call('students-import-scope',{academicYear:year,mode:$('scopeSaveMode').value,scope,students});scopedPreviewRows=[];$('scopeSaveBtn').classList.add('hidden');$('scopePreviewCount').textContent='تم حفظ الفصل المحدد';if(window.SchoolInformationSource?.notifyStudentsUpdated)await SchoolInformationSource.notifyStudentsUpdated(scope,'import');await loadScopedClassRoster(false);await loadStudents();setStatus('تم تحديث '+scope.grade+' / الفصل '+scope.section_name+' فقط: حُفظ '+Number(result.saved||0)+' طالبًا.','ok')}catch(e){setStatus('تعذر حفظ الفصل المحدد: '+(e.message||e),'bad')}}
+  window.saveScopedPreview=async function(){try{const scope=validateScope(),year=safe($('scopeAcademicYear').value)||'1447';if(!scopedPreviewRows.length)throw new Error('لا توجد بيانات للمعاينة.');const students=scopedPreviewRows.map(r=>({student_name:r.student_name,student_number:r.student_number||null,national_id:r.national_id||null,stage:canonicalStageLabel(scope.stage),grade:canonicalGradeLabel(scope.grade),stage_id:canonicalStageId(scope.stage),grade_id:canonicalGradeId(scope.grade),track_name:scope.track_name,section_name:scope.section_name,noor_section_code:r.noor_section_code||''})),result=await phase2Call('students-import-scope',{academicYear:year,mode:$('scopeSaveMode').value,scope,students});scopedPreviewRows=[];$('scopeSaveBtn').classList.add('hidden');$('scopePreviewCount').textContent='تم حفظ الفصل المحدد';if(window.SchoolInformationSource?.notifyStudentsUpdated)await SchoolInformationSource.notifyStudentsUpdated(scope,'import');await loadScopedClassRoster(false);await loadStudents();setStatus('تم تحديث '+scope.grade+' / الفصل '+scope.section_name+' فقط: حُفظ '+Number(result.saved||0)+' طالبًا.','ok')}catch(e){setStatus('تعذر حفظ الفصل المحدد: '+(e.message||e),'bad')}}
 window.readExcel = async function(){
     try{
       if(!currentSchool.id) detectSchool(); if(!currentSchool.id) throw new Error('فعّل وضع التجربة المحلية أو افتح المركز من حساب مدير مدرسة مستقلة قبل الاستيراد.');
@@ -741,9 +865,9 @@ window.readExcel = async function(){
   window.rebuildFilters = function(initial){
     const st=$('filterStage'), gr=$('filterGrade'), tr=$('filterTrack'), sec=$('filterSection');
     fill(st,unique(allStudents.map(x=>x.stage)),!initial);
-    const stage=st.value; fill(gr,unique(allStudents.filter(x=>!stage||x.stage===stage).map(x=>x.grade)),!initial);
-    const grade=gr.value; fill(tr,unique(allStudents.filter(x=>(!stage||x.stage===stage)&&(!grade||x.grade===grade)).map(x=>x.track_name||'غير محدد')),!initial);
-    const track=tr.value; fill(sec,unique(allStudents.filter(x=>(!stage||x.stage===stage)&&(!grade||x.grade===grade)&&(!track||(x.track_name||'غير محدد')===track)).map(x=>x.section_name)),!initial);
+    const stage=st.value; fill(gr,unique(allStudents.filter(x=>!stage||canonicalStageLabel(x.stage)===canonicalStageLabel(stage)).map(x=>x.grade)),!initial);
+    const grade=gr.value; fill(tr,unique(allStudents.filter(x=>(!stage||canonicalStageLabel(x.stage)===canonicalStageLabel(stage))&&(!grade||canonicalGradeLabel(x.grade)===canonicalGradeLabel(grade))).map(x=>x.track_name||'غير محدد')),!initial);
+    const track=tr.value; fill(sec,unique(allStudents.filter(x=>(!stage||canonicalStageLabel(x.stage)===canonicalStageLabel(stage))&&(!grade||canonicalGradeLabel(x.grade)===canonicalGradeLabel(grade))&&(!track||(x.track_name||'غير محدد')===track)).map(x=>x.section_name)),!initial);
   }
   function structureMetrics(){
     const stages=academicStructure.stages||[];
@@ -762,10 +886,10 @@ window.readExcel = async function(){
     const stages=academicStructure.stages||[];
     if(!stages.length){$('treeBox').innerHTML='<div class="muted">لم يتم اعتماد الهيكل الدراسي بعد.</div>';return}
     $('treeBox').innerHTML=stages.map(stage=>{
-      const stageStudents=allStudents.filter(x=>x.stage===stage.name);
+      const stageStudents=allStudents.filter(x=>canonicalStageLabel(x.stage)===canonicalStageLabel(stage.name));
       return `<div class="treeItem"><div class="treeHead"><span>${html(stage.name)}</span><span class="pill">${stageStudents.length} طالب</span></div>`+
       (stage.grades||[]).map(g=>{
-        const gradeStudents=stageStudents.filter(x=>x.grade===g.name);
+        const gradeStudents=stageStudents.filter(x=>canonicalGradeLabel(x.grade)===canonicalGradeLabel(g.name));
         const tracks=(stage.name==='الثانوية'?(g.tracks||[]):[]);
         return `<div style="margin-top:10px;font-weight:900">${html(g.name)} <span class="pill">${gradeStudents.length}</span></div>`+
         (tracks.length?`<div class="muted" style="margin-top:6px">المسارات: ${tracks.map(html).join(' — ')}</div>`:'')+
@@ -780,12 +904,12 @@ window.readExcel = async function(){
   window.clearFilters=function(){$('filterStage').value=''; rebuildFilters(); $('filterGrade').value=''; rebuildFilters(); $('filterTrack').value=''; rebuildFilters(); $('filterSection').value=''; $('searchName').value=''; renderStudents();}
   window.renderStudents=function(){
     const st=$('filterStage').value, gr=$('filterGrade').value, tr=$('filterTrack').value, sec=$('filterSection').value, q=safe($('searchName').value);
-    const rows=allStudents.filter(x=>(!st||x.stage===st)&&(!gr||x.grade===gr)&&(!tr||(x.track_name||'غير محدد')===tr)&&(!sec||x.section_name===sec)&&(!q||safe(x.student_name).includes(q)));
+    const rows=allStudents.filter(x=>(!st||canonicalStageLabel(x.stage)===canonicalStageLabel(st))&&(!gr||canonicalGradeLabel(x.grade)===canonicalGradeLabel(gr))&&(!tr||(x.track_name||'غير محدد')===tr)&&(!sec||x.section_name===sec)&&(!q||safe(x.student_name).includes(q)));
     $('shownCount').textContent=rows.length+' طالب';
     $('studentsBody').innerHTML=rows.map((r,i)=>`<tr><td>${i+1}</td><td><input value="${html(r.student_name)}" id="name_${r.id}"></td><td><input value="${html(r.student_number||'')}" id="snum_${r.id}"></td><td><input value="${html(r.stage)}" id="stage_${r.id}"></td><td><input value="${html(r.grade)}" id="grade_${r.id}"></td><td><input value="${html(r.track_name||'')}" id="track_${r.id}"></td><td><input value="${html(r.section_name)}" id="section_${r.id}"></td><td><input value="${html(r.noor_section_code||'')}" id="code_${r.id}"></td><td><input value="${html(r.national_id||'')}" id="nid_${r.id}"></td><td class="noPrint"><div class="actions"><button class="btn small" onclick="updateStudent('${r.id}')">حفظ/نقل</button><button class="btn small indigo" onclick="studentCard('${r.id}')">بطاقة</button><button class="btn small danger" onclick="deleteStudent('${r.id}')">حذف</button></div></td></tr>`).join('') || '<tr><td colspan="10" class="muted">لا توجد بيانات مطابقة.</td></tr>';
   }
   window.updateStudent=async function(id){
-    try{const row={student_name:safe($('name_'+id).value),student_number:safe($('snum_'+id).value)||null,stage:safe($('stage_'+id).value)||'غير محدد',grade:safe($('grade_'+id).value)||'غير محدد',track_name:safe($('track_'+id).value)||'',section_name:safe($('section_'+id).value)||'غير محدد',noor_section_code:safe($('code_'+id).value),national_id:safe($('nid_'+id).value)||null};await secureSchoolInfo('student-update',{id,student:row});setStatus('تم تحديث بيانات الطالب داخل المدرسة الحالية.','ok');await loadStudents();}catch(e){setStatus('تعذر التحديث: '+(e.message||e),'bad')}
+    try{const row={student_name:safe($('name_'+id).value),student_number:safe($('snum_'+id).value)||null,stage:canonicalStageLabel($('stage_'+id).value)||'غير محدد',grade:canonicalGradeLabel($('grade_'+id).value)||'غير محدد',stage_id:canonicalStageId($('stage_'+id).value),grade_id:canonicalGradeId($('grade_'+id).value),track_name:safe($('track_'+id).value)||'',section_name:safe($('section_'+id).value)||'غير محدد',noor_section_code:safe($('code_'+id).value),national_id:safe($('nid_'+id).value)||null};await secureSchoolInfo('student-update',{id,student:row});setStatus('تم تحديث بيانات الطالب داخل المدرسة الحالية.','ok');await loadStudents();}catch(e){setStatus('تعذر التحديث: '+(e.message||e),'bad')}
   }
   window.deleteStudent=async function(id){
     if(!confirm('حذف الطالب من العرض؟ سيتم الحذف بشكل منطقي داخل المدرسة الحالية فقط.')) return;

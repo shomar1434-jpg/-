@@ -5638,21 +5638,10 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
       return !!(r&&r.ok!==false);
     }catch(e){console.error('[manager canonical archive hydrate]',e);return false;}
   }
-  async function showArchive(kind){
-    var v=document.getElementById(viewId(kind));
-    if(!v){alert('واجهة '+title(kind)+' غير موجودة.');return;}
-    hideAllManagerViews();
-    v.style.display='block'; if(v.classList)v.classList.remove('hidden');
-    var loadingBox=document.getElementById(contentId(kind));
-    if(loadingBox) loadingBox.innerHTML='<div class="bg-white/90 rounded-[28px] p-8 text-center text-slate-500 font-bold">جاري استعادة الأرشيف السحابي والتحقق من بيانات المدرسة...</div>';
-    await hydrateCanonicalManagerArchive(kind);
-    if(kind==='manager'){
-      // حتى على جهاز جديد: اجلب قرارات المدرسة من المصدر السحابي قبل بناء العدادات.
-      await syncDecisionsArchiveFromCloud();
-    }
-    renderFolders(kind);
-  }
-  function flattenLegacySelfEvaluationArchive(){
+  async function showArchive(kind){ var v=document.getElementById(viewId(kind)); if(!v){alert('واجهة '+title(kind)+' غير موجودة.');return;} hideAllManagerViews(); v.style.display='block'; if(v.classList)v.classList.remove('hidden'); var loadingBox=document.getElementById(contentId(kind)); if(loadingBox) loadingBox.innerHTML='<div class="bg-white/90 rounded-[28px] p-8 text-center text-slate-500 font-bold">جاري استعادة الأرشيف السحابي والتحقق من بيانات المدرسة...</div>'; await hydrateCanonicalManagerArchive(kind); renderFolders(kind); if(kind==='manager'){ // لا نؤخر فتح مجلدات السجلات بتحميل عشرات ملفات القرارات واحدًا واحدًا.
+ Promise.resolve().then(function(){return syncDecisionsArchiveFromCloud();}).then(function(){renderFolders(kind);}).catch(function(e){console.warn('[manager decisions background sync]',e);});
+ } }
+ function flattenLegacySelfEvaluationArchive(){
     var out=[];
     try{
       var obj=JSON.parse(localStorage.getItem('self_evaluation_archive_v1')||'{}')||{};

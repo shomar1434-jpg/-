@@ -3940,17 +3940,56 @@ async function legacyPerformanceSave_DISABLED() {
     var selected=(users()||[]).find(function(u){return String(u.id)===String(userId)})||{};
     var email=String(selected.email||'').trim().toLowerCase();
     if(!email){alert('لا يمكن الدخول للمتابعة لأن هذا الحساب لا يحتوي على بريد منصة مدرستي.');return;}
-    try{sessionStorage.setItem(NS+'_last_follow_target',JSON.stringify(selected));}catch(e){}
     var cfg=(typeof followRoleConfig==='function'?followRoleConfig().find(function(x){return x.role===role;}):null);
-    var file = (cfg&&cfg.file) ? cfg.file : (role==='agent' ? 'agent.html' : (role==='student_advisor' ? 'student_advisor.html' : (role==='activity_leader' ? 'activity_leader.html' : (role==='teacher'?'teacher.html':(role==='health_advisor'?'health_advisor.html':(role==='kindergarten_teacher'?'kindergarten_teacher.html':''))))));
+    var file=(cfg&&cfg.file)?cfg.file:(role==='agent'?'agent.html':(role==='student_advisor'?'student_advisor.html':(role==='activity_leader'?'activity_leader.html':(role==='teacher'?'teacher.html':(role==='health_advisor'?'health_advisor.html':(role==='kindergarten_teacher'?'kindergarten_teacher.html':''))))));
     if(!file){alert('لم يتم ربط ملف هذا القسم بعد.');return;}
-    var __qp=new URLSearchParams(location.search||''); var __sid=__qp.get('schoolId')||__qp.get('school_id')||currentSchoolId()||'';
+
+    var qp=new URLSearchParams(location.search||'');
+    var sid=qp.get('schoolId')||qp.get('school_id')||currentSchoolId()||'';
+    if(!sid){alert('تعذر تحديد المدرسة الحالية. أعد فتح قسم المدير من نفس المدرسة ثم حاول مرة أخرى.');return;}
+
+    var followContext={
+      mode:'manager_follow',
+      readonly:true,
+      managerReturn:'manager.html?sectionReturn=1',
+      schoolId:sid,
+      targetUserId:String(userId||''),
+      targetEmail:email,
+      targetRole:String(role||''),
+      viewerRole:'manager',
+      createdAt:new Date().toISOString()
+    };
+    try{
+      sessionStorage.setItem(NS+'_last_follow_target',JSON.stringify(selected));
+      sessionStorage.setItem('manager_follow_context_v2',JSON.stringify(followContext));
+      sessionStorage.setItem('manager_follow_school_id_v2',sid);
+    }catch(e){}
+
     if(role==='administrative_employee'){
-      var ap='?mode=follow&follow=1&readonly=1&viewer='+encodeURIComponent(ROLE||'manager')+'&emp='+encodeURIComponent(email)+'&owner_uid='+encodeURIComponent(userId)+'&uid='+encodeURIComponent(userId)+'&school='+encodeURIComponent(__sid)+'&schoolId='+encodeURIComponent(__sid);
-      window.location.href='administrative_employee_portal.html'+ap;return;
+      var ap='?mode=follow&follow=1&readonly=1&managerFollow=1&viewer=manager&returnRole=manager'
+        +'&emp='+encodeURIComponent(email)
+        +'&owner_uid='+encodeURIComponent(userId)
+        +'&uid='+encodeURIComponent(userId)
+        +'&school='+encodeURIComponent(sid)
+        +'&schoolId='+encodeURIComponent(sid);
+      window.location.href='administrative_employee_portal.html'+ap;
+      return;
     }
-    var params = '?follow=1&readonly=1&mode=supervisor_readonly&viewer='+encodeURIComponent(ROLE||'manager')+'&viewerRole='+encodeURIComponent(ROLE||'manager')+'&returnRole='+encodeURIComponent(ROLE||'manager')+'&targetRole='+encodeURIComponent(role)+'&followEmail='+encodeURIComponent(email)+'&targetEmail='+encodeURIComponent(email)+'&targetUser='+encodeURIComponent(userId)+'&followUserId='+encodeURIComponent(userId)+'&userId='+encodeURIComponent(userId)+'&uid='+encodeURIComponent(userId)+'&schoolId='+encodeURIComponent(__sid)+'&schoolMode=independent&independent=true&loginMode=direct&direct=1&blockNewReport=true&archiveReadOnly=true&agency_type='+encodeURIComponent((selected.agent_categories||selected.agency_categories||selected.agency_type||selected.agencyType||[]));
-    window.location.href = file + params;
+
+    // مهم: لا نرسل معاملات الدخول المباشر الخاصة ببوابة المدرسة المستقلة؛ المتابعة تبقى داخل سياق المدير والمدرسة الحالية.
+    var params='?follow=1&readonly=1&managerFollow=1&mode=supervisor_readonly'
+      +'&viewer=manager&viewerRole=manager&returnRole=manager'
+      +'&targetRole='+encodeURIComponent(role)
+      +'&followEmail='+encodeURIComponent(email)
+      +'&targetEmail='+encodeURIComponent(email)
+      +'&targetUser='+encodeURIComponent(userId)
+      +'&followUserId='+encodeURIComponent(userId)
+      +'&userId='+encodeURIComponent(userId)
+      +'&uid='+encodeURIComponent(userId)
+      +'&schoolId='+encodeURIComponent(sid)
+      +'&blockNewReport=true&archiveReadOnly=true'
+      +'&agency_type='+encodeURIComponent((selected.agent_categories||selected.agency_categories||selected.agency_type||selected.agencyType||[]));
+    window.location.href=file+params;
   }
   window.ssOpenFollow = ssOpenFollow;
   async function showActivation(){try{await hydrateUsersFromSupabase();}catch(e){panel('إدارة الحسابات','<div class="ss-card red"><b>تعذر تحميل الحسابات الفعلية</b><div class="ss-muted">'+esc(e.message||e)+'</div></div>');return}await resolveManagerSchoolContext(); var u=users(); panel('تنشيط المستخدمين وإدارة الصلاحيات','<div class="ss-grid"><div class="ss-field"><label>الاسم</label><input id="uName" placeholder="اسم المستخدم"></div><div class="ss-field"><label>البريد</label><input id="uEmail" placeholder="بريد منصة مدرستي"></div><div class="ss-field"><label>الرقم السري</label><input id="uPass" placeholder="الرقم السري"></div><div class="ss-field"><label>الدور</label><select id="uRole"><option value="agent">وكيل/وكيلة</option><option value="student_advisor">موجه/موجهة طلابية</option><option value="teacher">معلم/ة</option><option value="health_advisor">الموجه الصحي</option><option value="kindergarten_teacher">معلمة رياض الأطفال</option><option value="activity_leader">رائد/ة النشاط</option></select></div><div class="ss-field" id="uAgencyField"><label>تصنيفات الوكيل/الوكيلة</label>'+agencyCheckboxes('uAgency',[])+'</div><div class="ss-field" id="uTeacherExtraField"><label>التكليفات الإضافية للمعلم/المعلمة</label>'+teacherExtraRoleCheckboxes('uTeacherExtra',[])+'<div class="ss-muted">تظهر المجلدات والسجلات المرتبطة داخل مكتبة قسم المعلم/المعلمة عند تفعيل التكليف.</div></div><div class="ss-field"><label>الحالة</label><select id="uStatus"><option value="pending">بانتظار التفعيل</option><option value="active">مفعل</option></select></div></div><div class="ss-field"><label>الصلاحيات</label><input id="uPerm" placeholder="مثال: alerts, meetings, archive-view"></div><div class="ss-actions"><button class="ss-action" id="addUser">إضافة/حفظ مستخدم</button><button class="ss-action blue" id="refreshUsers">تحديث المستخدمين من السحابة</button></div><hr style="margin:14px 0;border:0;border-top:1px solid #e5e7eb"><div id="userList">'+renderUserList(u)+'</div>');

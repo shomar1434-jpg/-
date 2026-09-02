@@ -573,6 +573,12 @@ function archiveWrite(rows){
      recordName:DECISIONS_FOLDER_NAME
    }));
    localStorage.setItem(DECISIONS_ARCHIVE_KEY,JSON.stringify(clean));
+   try{
+     const sid=localStorage.getItem('activeSchoolId')||localStorage.getItem('school_id')||localStorage.getItem('currentSchoolId')||'';
+     const detail={schoolId:sid,count:clean.length,updatedAt:new Date().toISOString()};
+     window.dispatchEvent(new CustomEvent('manager-decisions-archive-updated',{detail}));
+     localStorage.setItem('manager_decisions_archive_version_v1:'+sid,detail.updatedAt);
+   }catch(_){}
    // V6: manager records are a separate canonical domain. Decisions are merged at render-time only.
    return true;
  }catch(e){console.error('decision archive save failed',e);return false}
@@ -698,6 +704,14 @@ async function loadArchiveRecordForEdit(){
 }
 
 async function init(){
+  // REGRESSION_LOCK_DECISIONS_MIGRATION_20260902
+  // استعادة السجلات القديمة المعلقة قبل عرض النموذج، دون حذف أي سجل قائم.
+  try{
+    migrateLegacyDecisionRecords();
+    const recovered=recoverLastLegacyDecisionDraft_MANUAL_ONLY();
+    if(recovered&&recovered.recovered)console.info('[decisions] recovered legacy pending decision',recovered.id);
+  }catch(e){console.warn('[decisions legacy migration]',e)}
+
  $('type').innerHTML=decisions.map((d,i)=>`<option value="${i}">${d.title}</option>`).join('');
  fields.forEach(id=>{$(id).addEventListener('input',render);$(id).addEventListener('change',render)});
  $('signatureFile').addEventListener('change',e=>readAsset(e,'signature'));

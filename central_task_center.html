@@ -276,7 +276,36 @@ function closeModal(){document.getElementById('modal').classList.add('hidden');d
 function openReassign(id){let t=getTask(id); if(!t)return; if(!canTransition(t,'transferred','owner')){alert('لا يمكن نقل هذا التكليف في حالته الحالية.');return} let users=collectUsers().filter(u=>String(u.id)!==String(t.assignee_id)); openModal('نقل التكليف',`<div class="space-y-3"><p class="text-sm text-slate-600 font-bold">سيبقى عمل المكلف السابق محفوظًا في الأرشيف، وتُسحب صلاحياته تلقائيًا.</p><select id="newAssignee" class="w-full rounded-2xl border px-4 py-3 text-sm">${users.map(u=>`<option value="${esc(u.id)}">${esc(u.name)} — ${esc(roleLabel(u.role))}</option>`).join('')}</select><textarea id="transferNote" class="w-full rounded-2xl border px-4 py-3 text-sm" placeholder="سبب النقل"></textarea><button onclick="reassignTask('${id}')" class="w-full bg-blue-600 text-white rounded-2xl py-3 font-black">تأكيد النقل</button></div>`)}
 function reassignTask(id){let t=getTask(id); let users=collectUsers(); let nu=users.find(u=>String(u.id)===String(document.getElementById('newAssignee').value)); if(!t||!nu)return; let old=assigneeTarget(t); let reason=document.getElementById('transferNote').value||'نقل التكليف'; t.previous_assignees=t.previous_assignees||[]; t.previous_assignees.unshift({id:t.assignee_id,email:t.assignee_email,name:t.assignee_name,role:t.assignee_role,ended_at:new Date().toISOString(),reason:reason,preserved_updates:t.pending_updates||[],preserved_evidence:t.evidence||[]}); t.access_revoked=t.access_revoked||[]; t.access_revoked.unshift({id:old.id,email:old.email,name:old.name,role:old.role,at:new Date().toISOString(),reason:reason}); t.assignee_id=nu.id;t.assignee_email=nu.email;t.assignee_name=nu.name;t.assignee_role=nu.role; if(!safeTransition(t,'transferred','نقل التكليف','تم نقل التكليف إلى '+nu.name+' مع حفظ أعمال المنفذ السابق وسحب صلاحياته.','owner'))return; setTask(t); routeTaskToAssignee(t,old); pushNotice(old,'سحب صلاحية تكليف','تم نقل التكليف "'+t.title+'" إلى مكلف آخر، وبقي عملك السابق محفوظًا.',t.task_id,'revoked'); closeModal(); switchView('active')}
 function withdrawTask(id){let t=getTask(id); if(!t)return; if(!confirm('سيتم سحب التكليف وإلغاء وصول المكلف الحالي مع حفظ الأعمال السابقة. هل تريد المتابعة؟'))return; let old=assigneeTarget(t); removeTaskRoute(t); t.access_revoked=t.access_revoked||[]; t.access_revoked.unshift({id:old.id,email:old.email,name:old.name,role:old.role,at:new Date().toISOString(),reason:'سحب التكليف'}); if(!safeTransition(t,'withdrawn','سحب التكليف','تم سحب صلاحية المنفذ الحالي مع حفظ الأعمال السابقة.','owner'))return; setTask(t); pushNotice(old,'تم سحب التكليف','تم سحب التكليف "'+t.title+'" من واجهتك مع حفظ أعمالك السابقة.',t.task_id,'withdrawn'); switchView('withdrawn')}
-async function deleteTaskPermanentlyFromAssignee(id){const t=getTask(id);if(!t)return;if(!confirm('سيتم حذف التكليف من واجهة المكلف وإنهاء صلاحياته فورًا، مع إبقاء جميع الأعمال المنفذة داخل السجلات محفوظة. هل تريد المتابعة؟'))return;try{if(!window.CloudTaskEngine?.deleteTask)throw new Error('محرك حذف التكليف غير متاح');const r=await CloudTaskEngine.deleteTask(id,'حذف التكليف من مركز التكليفات');if(window.CentralTaskCloudAdapter?.refresh)await CentralTaskCloudAdapter.refresh();else{saveTasks(tasks().filter(x=>String(x.task_id)!==String(id)));renderAll()}if(r?.compatibilityFallback==='archived')alert('تم إنهاء التكليف وإخفاؤه من المكلف عبر وضع التوافق. سيصبح الحذف المنطقي الكامل متاحًا بعد نشر أحدث platform-tasks.');else alert('تم حذف التكليف من قائمة المكلف وإنهاء صلاحياته، مع بقاء التنفيذ السابق محفوظًا.');}catch(e){alert(e.message||'تعذر حذف التكليف')}}
+async function deleteTaskPermanentlyFromAssignee(id){
+ const t=getTask(id);if(!t)return;
+ if(!confirm('سيتم حذف التكليف من واجهة المكلف وإنهاء صلاحياته فورًا، مع إبقاء جميع الأعمال المنفذة داخل السجلات محفوظة. هل تريد المتابعة؟'))return;
+ const before=tasks().slice();
+ window.__centralTaskPendingDeletes=window.__centralTaskPendingDeletes||new Set();
+ window.__centralTaskPendingDeletes.add(String(id));
+
+ // استجابة فورية للواجهة: يختفي التكليف مباشرة ولا ينتظر الشبكة.
+ try{removeRouteIndex(t)}catch(_){}
+ saveTasks(before.filter(x=>String(x.task_id)!==String(id)));
+ renderAll();
+
+ try{
+   if(!window.CloudTaskEngine?.deleteTask)throw new Error('محرك حذف التكليف غير متاح');
+   const r=await CloudTaskEngine.deleteTask(id,'حذف التكليف من مركز التكليفات');
+   window.__centralTaskPendingDeletes.delete(String(id));
+   if(r?.compatibilityFallback==='archived'){
+     alert('تم إنهاء التكليف وإخفاؤه من المكلف عبر وضع التوافق.');
+   }else{
+     alert('تم حذف التكليف من قائمة المكلف وإنهاء صلاحياته، مع بقاء التنفيذ السابق محفوظًا.');
+   }
+   setTimeout(()=>{try{window.CentralTaskCloudAdapter?.refresh?.()}catch(_){}},250);
+ }catch(e){
+   window.__centralTaskPendingDeletes.delete(String(id));
+   saveTasks(before);
+   try{updateRouteIndex(t)}catch(_){}
+   renderAll();
+   alert((e&&e.message)||'تعذر حذف التكليف؛ تمت استعادته في القائمة.');
+ }
+}
 function approveTask(id){let t=getTask(id); if(!t)return; if(!canTransition(t,'approved','owner')){alert('لا يظهر زر الاعتماد إلا للتكليفات المرسلة بانتظار الاعتماد.');return} (t.pending_updates||[]).forEach(u=>{if(u.status!=='rejected')u.status='approved'}); t.approved_updates=(t.approved_updates||[]).concat((t.pending_updates||[]).filter(u=>u.status==='approved')); if(!safeTransition(t,'approved','اعتماد','تم اعتماد التكليف ودمج الأعمال المعتمدة في السجل الرسمي حسب الصلاحية.','owner'))return; setTask(t); pushNotice(assigneeTarget(t),'تم اعتماد التكليف','تم اعتماد التكليف "'+t.title+'".',t.task_id,'approved'); switchView('approved')}
 function returnTask(id){let t=getTask(id); if(!t)return; if(!canTransition(t,'returned','owner')){alert('إعادة التعديل متاحة فقط للتكليفات بانتظار الاعتماد.');return} let note=prompt('ملاحظات الإعادة للتعديل:')||''; if(!safeTransition(t,'returned','إعادة للتعديل',note,'owner'))return; setTask(t); pushNotice(assigneeTarget(t),'أعيد التكليف للتعديل',note||('أعيد التكليف "'+t.title+'" للتعديل.'),t.task_id,'returned'); switchView('returned')}
 function rejectTask(id){let t=getTask(id); if(!t)return; if(!canTransition(t,'rejected','owner')){alert('الرفض النهائي متاح فقط للتكليفات بانتظار الاعتماد.');return} let note=prompt('سبب الرفض النهائي:')||''; (t.pending_updates||[]).forEach(u=>{if(u.status!=='approved')u.status='rejected'}); if(!safeTransition(t,'rejected','رفض نهائي',note,'owner'))return; setTask(t); pushNotice(assigneeTarget(t),'تم رفض التكليف',note||('تم رفض التكليف "'+t.title+'".'),t.task_id,'rejected'); switchView('rejected')}

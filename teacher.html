@@ -3981,8 +3981,10 @@ body{overflow-x:hidden}
             if (targetLabel) targetLabel.innerText = 'الفئة المستهدفة';
             if (beneficiariesLabel) beneficiariesLabel.innerText = isPlcReport ? 'التخصص' : 'عدد المستفيدين';
             if (beneficiariesCell && isPlcReport) beneficiariesCell.innerHTML = buildPlcSpecializationControl();
-            if (beneficiariesCell && !isPlcReport && !document.getElementById('beneficiariesSelect')) {
-                beneficiariesCell.innerHTML = '<select id="beneficiariesSelect" class="w-full h-full text-center text-[11px] font-bold" onchange="updateReportProgress()"></select>';
+            if (beneficiariesCell && !isPlcReport) {
+                if (!document.getElementById('beneficiariesSelect')) {
+                    beneficiariesCell.innerHTML = '<select id="beneficiariesSelect" class="w-full h-full text-center text-[11px] font-bold" onchange="updateReportProgress()"></select>';
+                }
                 populateBeneficiaries();
             }
             if (related) {
@@ -4082,7 +4084,15 @@ body{overflow-x:hidden}
                 related.innerHTML = buildVisitExchangeFields().title;
             }
             updateReportProgress();
-        }
+        
+            // ضمان جاهزية حقلي التاريخ وعدد المستفيدين كلما فُتح أو تغير قالب التقرير.
+            if (document.getElementById('dateInputHeader') && !document.getElementById('dateInputHeader').options.length) {
+                setupDateDropdown();
+            } else {
+                syncDayFromDate();
+            }
+            if (!isPlcReport) populateBeneficiaries();
+}
         function updateRelatedElements() { 
             const cat = document.getElementById('categorySelect').value; 
             const target = document.getElementById('relatedElement'); 
@@ -4146,32 +4156,66 @@ body{overflow-x:hidden}
             }
         }
 
+        const TEACHER_DAY_NAMES = ['الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+
+        function normalizeTeacherDayName(value) {
+            const v = String(value || '').trim().replace('الأثنين','الإثنين');
+            return v;
+        }
+
         function syncDayFromDate() {
             const dateSelect = document.getElementById('dateInputHeader');
             const daySelect = document.getElementById('daySelectHeader');
             if (!dateSelect || !daySelect || dateSelect.selectedIndex < 0) return;
-            const selectedOption = dateSelect.options[dateSelect.selectedIndex];
-            const dayIndex = selectedOption ? selectedOption.getAttribute('data-day') : null;
-            if (dayIndex !== null && dayIndex !== '') {
-                const wanted = parseInt(dayIndex, 10);
-                if (!Number.isNaN(wanted) && daySelect.options[wanted]) daySelect.selectedIndex = wanted;
-            }
+
+            const option = dateSelect.options[dateSelect.selectedIndex];
+            const jsDay = Number(option?.dataset?.day);
+            if (!Number.isInteger(jsDay) || jsDay < 0 || jsDay > 6) return;
+
+            const wantedName = TEACHER_DAY_NAMES[jsDay];
+            const wantedIndex = Array.from(daySelect.options).findIndex(
+                opt => normalizeTeacherDayName(opt.value || opt.textContent) === wantedName
+            );
+            if (wantedIndex >= 0) daySelect.selectedIndex = wantedIndex;
         }
+
         function syncDateFromDay() {
             const dateSelect = document.getElementById('dateInputHeader');
             const daySelect = document.getElementById('daySelectHeader');
             if (!dateSelect || !daySelect || !dateSelect.options.length) return;
-            const wanted = daySelect.selectedIndex;
-            if (wanted < 0) return;
-            const start = Math.max(0, dateSelect.selectedIndex);
-            let best = -1, bestDistance = Number.POSITIVE_INFINITY;
+
+            const selectedDayName = normalizeTeacherDayName(
+                daySelect.options[daySelect.selectedIndex]?.value ||
+                daySelect.options[daySelect.selectedIndex]?.textContent
+            );
+            const wantedDay = TEACHER_DAY_NAMES.indexOf(selectedDayName);
+            if (wantedDay < 0) return;
+
+            const current = Math.max(0, dateSelect.selectedIndex);
+            let best = -1;
+            let bestDistance = Number.POSITIVE_INFINITY;
+            let bestIsFuture = false;
+
             for (let i = 0; i < dateSelect.options.length; i++) {
-                if (parseInt(dateSelect.options[i].getAttribute('data-day'), 10) !== wanted) continue;
-                const distance = Math.abs(i - start);
-                if (distance < bestDistance) { best = i; bestDistance = distance; }
+                if (Number(dateSelect.options[i]?.dataset?.day) !== wantedDay) continue;
+                const distance = Math.abs(i - current);
+                const isFuture = i >= current;
+                if (
+                    distance < bestDistance ||
+                    (distance === bestDistance && isFuture && !bestIsFuture)
+                ) {
+                    best = i;
+                    bestDistance = distance;
+                    bestIsFuture = isFuture;
+                }
             }
-            if (best >= 0) dateSelect.selectedIndex = best;
+
+            if (best >= 0) {
+                dateSelect.selectedIndex = best;
+                syncDayFromDate();
+            }
         }
+
         window.syncDayFromDate = syncDayFromDate;
         window.syncDateFromDay = syncDateFromDay;
 
@@ -4232,33 +4276,60 @@ body{overflow-x:hidden}
         }
 
         // --- تعديل إنشاء قائمة التاريخ لتكون ديناميكية ومتفاعلة مع اليوم الحالي ---
-        function setupDateDropdown() { 
-            const ds = document.getElementById('dateInputHeader'); 
-            let fmt; try { fmt = new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura', { day: 'numeric', month: 'long', year: 'numeric' }); } catch(_) { fmt = new Intl.DateTimeFormat('ar-SA', { day: 'numeric', month: 'long', year: 'numeric' }); } 
-            
-            // جعل التاريخ يبدأ من سنتين قبل التاريخ الحالي
-            const currentYear = new Date().getFullYear();
-            let d = new Date(currentYear - 2, 0, 1); 
-            
-            ds.innerHTML = ""; // تصفير القائمة
-            
-            // توليد 2500 يوم (حوالي 7 سنوات) لضمان عدم التوقف عند نهاية العام
-            for(let i=0; i<2500; i++) { 
-                const o = document.createElement('option'); 
-                o.text = fmt.format(d); 
-                o.value = fmt.format(d); // حفظ القيمة النصية لضمان الاسترجاع
-                o.setAttribute('data-day', d.getDay());
-                ds.add(o); d.setDate(d.getDate() + 1); 
-            } 
-            
-            // التحديد التلقائي لليوم الحالي
-            const todayStr = fmt.format(new Date()); 
-            for (let i = 0; i < ds.options.length; i++) { 
-                if (ds.options[i].text === todayStr) { 
-                    ds.selectedIndex = i; 
-                    break; 
-                } 
-            } 
+        function setupDateDropdown() {
+            const ds = document.getElementById('dateInputHeader');
+            if (!ds) return;
+
+            const previousValue = ds.value || '';
+            let fmt;
+            try {
+                fmt = new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura', {
+                    day: 'numeric', month: 'long', year: 'numeric'
+                });
+            } catch (_) {
+                fmt = new Intl.DateTimeFormat('ar-SA', {
+                    day: 'numeric', month: 'long', year: 'numeric'
+                });
+            }
+
+            const today = new Date();
+            const first = new Date(today);
+            first.setDate(first.getDate() - 730);   // سنتان قبل اليوم
+            const totalDays = 2557;                 // نحو 7 سنوات
+
+            const fragment = document.createDocumentFragment();
+            let selectedIndex = -1;
+            let todayIndex = -1;
+
+            for (let i = 0; i < totalDays; i++) {
+                const d = new Date(first);
+                d.setDate(first.getDate() + i);
+
+                const option = document.createElement('option');
+                const hijriText = fmt.format(d);
+                const iso = [
+                    d.getFullYear(),
+                    String(d.getMonth() + 1).padStart(2, '0'),
+                    String(d.getDate()).padStart(2, '0')
+                ].join('-');
+
+                option.textContent = hijriText;
+                option.value = hijriText;
+                option.dataset.day = String(d.getDay());
+                option.dataset.gregorian = iso;
+
+                if (previousValue && previousValue === hijriText) selectedIndex = i;
+                if (
+                    d.getFullYear() === today.getFullYear() &&
+                    d.getMonth() === today.getMonth() &&
+                    d.getDate() === today.getDate()
+                ) todayIndex = i;
+
+                fragment.appendChild(option);
+            }
+
+            ds.replaceChildren(fragment);
+            ds.selectedIndex = selectedIndex >= 0 ? selectedIndex : (todayIndex >= 0 ? todayIndex : 0);
             syncDayFromDate();
         }
 
@@ -4376,15 +4447,27 @@ body{overflow-x:hidden}
         function populateBeneficiaries() {
             const ben = document.getElementById('beneficiariesSelect');
             if (!ben) return;
-            ben.innerHTML = '';
+
+            const previous = String(ben.value || '');
+            const fragment = document.createDocumentFragment();
+
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = 'اختر العدد';
+            fragment.appendChild(placeholder);
+
             for (let i = 1; i <= 400; i++) {
                 const opt = document.createElement('option');
-                opt.text = i;
-                opt.value = i;
-                ben.add(opt);
+                opt.textContent = String(i);
+                opt.value = String(i);
+                fragment.appendChild(opt);
+            }
+
+            ben.replaceChildren(fragment);
+            if (previous && Number(previous) >= 1 && Number(previous) <= 400) {
+                ben.value = previous;
             }
         }
-
 
 
         const ASSISTANT_ALERTS_KEY = 'assistant_system_alerts_v1';

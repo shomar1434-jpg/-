@@ -194,7 +194,7 @@
 
         <div id="academicStructureView" class="structureGrid" style="margin-top:14px"></div>
       </div>
-      <div class="card span12" id="classImportPanel"><h2>استيراد بيانات فصل محدد من نور</h2><div class="scopeImport"><div class="row"><div><label>المرحلة</label><select id="scopeStage" onchange="rebuildScopeSelectors('grade')"></select></div><div><label>الصف</label><select id="scopeGrade" onchange="rebuildScopeSelectors('section')"></select></div><div><label>الفصل / الشعبة</label><select id="scopeSection" onchange="loadScopedClassRoster()"></select></div><div id="scopeTrackWrap" class="hidden"><label>المسار</label><select id="scopeTrack" onchange="loadScopedClassRoster()"></select></div><div><label>العام الدراسي</label><input id="scopeAcademicYear" value="1447"></div></div><div class="row" style="margin-top:12px;grid-template-columns:2fr 1fr 1fr auto"><div><label>ملف نور للصف والفصل المحددين</label><input id="scopeStudentFile" type="file" accept=".xlsx,.xls,.csv,.pdf"></div><div><label>صيغة الملف</label><select id="scopeFileFormat"><option value="auto">تلقائي</option><option value="excel">Excel / CSV</option><option value="pdf">PDF نصي</option></select></div><div><label>طريقة التحديث</label><select id="scopeSaveMode"><option value="replace_scope" selected>استبدال هذا الفصل فقط</option><option value="append_scope">إضافة الجديد لهذا الفصل</option></select></div><div style="align-self:end"><button class="btn" onclick="readScopedStudentFile()">معاينة الفصل</button></div></div><div class="pdfHint">يدعم PDF النصي مثل الكشوف القابلة لتحديد النص. إذا كان الملف صورة ممسوحة ضوئيًا فسيظهر تنبيه بدل حفظ بيانات غير موثوقة.</div><div id="scopePreviewBox" class="preview hidden"></div><div class="footerbar"><span class="pill" id="scopePreviewCount">لم تتم قراءة ملف للفصل</span><button id="scopeSaveBtn" class="btn hidden" onclick="saveScopedPreview()">اعتماد بيانات هذا الفصل فقط</button></div></div></div>
+      <div class="card span12" id="classImportPanel"><h2>استيراد بيانات فصل محدد من نور</h2><div class="scopeImport"><div class="row"><div><label>المرحلة</label><select id="scopeStage" onchange="rebuildScopeSelectors('grade')"></select></div><div><label>الصف</label><select id="scopeGrade" onchange="rebuildScopeSelectors('section')"></select></div><div><label>الفصل / الشعبة</label><select id="scopeSection" onchange="loadScopedClassRoster()"></select></div><div id="scopeTrackWrap" class="hidden"><label>المسار</label><select id="scopeTrack" onchange="loadScopedClassRoster()"></select></div><div><label>العام الدراسي</label><input id="scopeAcademicYear" value="1447"></div></div><div class="row" style="margin-top:12px;grid-template-columns:2fr 1fr 1fr auto"><div><label>ملف نور للصف والفصل المحددين</label><input id="scopeStudentFile" type="file" accept=".xlsx,.xls,.csv,.pdf,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" onchange="handleScopedClassFileSelected(this)"></div><div><label>صيغة الملف</label><select id="scopeFileFormat"><option value="auto">تلقائي</option><option value="excel">Excel / CSV</option><option value="pdf">PDF نصي</option></select></div><div><label>طريقة التحديث</label><select id="scopeSaveMode"><option value="replace_scope" selected>استبدال هذا الفصل فقط</option><option value="append_scope">إضافة الجديد لهذا الفصل</option></select></div><div style="align-self:end"><button class="btn" onclick="readScopedStudentFile()">معاينة الفصل</button></div></div><div class="pdfHint">يدعم PDF النصي مثل الكشوف القابلة لتحديد النص. إذا كان الملف صورة ممسوحة ضوئيًا فسيظهر تنبيه بدل حفظ بيانات غير موثوقة.</div><div id="scopePreviewBox" class="preview hidden"></div><div class="footerbar"><span class="pill" id="scopePreviewCount">لم تتم قراءة ملف للفصل</span><button id="scopeSaveBtn" class="btn hidden" onclick="saveScopedPreview()">اعتماد بيانات هذا الفصل فقط</button></div></div></div>
 
       <div class="card span12" id="classRosterManagementCard">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
@@ -677,7 +677,7 @@ window.prepareStageGradesEditor=function(){
         <div class="structureSections" style="margin-top:9px">
           ${(g.sections||[]).map(c=>`<div class="sectionChip" style="display:flex;align-items:center;gap:7px">
             <span>${html(c.name)}</span>
-            <button type="button" class="btn secondary" style="padding:4px 8px;font-size:10px" onclick="openImportForClass('${html(normalizeStageName(s.name))}','${html(g.name)}','${html(c.name)}')">استيراد بيانات الفصل</button>
+            <button type="button" class="btn secondary" style="padding:4px 8px;font-size:10px" onclick="openImportForClass('${html(normalizeStageName(s.name))}','${html(g.name)}','${html(c.name)}')">استيراد PDF / Excel</button>
           </div>`).join('')}
         </div>
       </div>`).join('')}
@@ -687,18 +687,45 @@ window.prepareStageGradesEditor=function(){
     renderStats();renderTree();
   }
   window.openImportForClass=function(stage,grade,section){
-    rebuildScopeSelectors('stage');
-    if($('scopeStage')){$('scopeStage').value=stage;rebuildScopeSelectors('grade')}
-    if($('scopeGrade')){$('scopeGrade').value=grade;rebuildScopeSelectors('section')}
-    if($('scopeSection'))$('scopeSection').value=section;
-    if(normalizeStageName(stage)==='ثانوية'){
-      const st=(academicStructure.stages||[]).find(x=>x.name===stage),gr=st?.grades?.find(x=>x.name===grade);
-      const firstTrack=(gr?.tracks||[])[0]||'';
-      if($('scopeTrack'))$('scopeTrack').value=firstTrack;
+    try{
+      rebuildScopeSelectors('stage');
+      if($('scopeStage')){$('scopeStage').value=canonicalStageLabel(stage);rebuildScopeSelectors('grade')}
+      if($('scopeGrade')){$('scopeGrade').value=canonicalGradeLabel(grade);rebuildScopeSelectors('section')}
+      if($('scopeSection'))$('scopeSection').value=section;
+      if(normalizeStageName(stage)==='ثانوية'){
+        const st=(academicStructure.stages||[]).find(x=>canonicalStageLabel(x.name)===canonicalStageLabel(stage));
+        const gr=st?.grades?.find(x=>canonicalGradeLabel(x.name)===canonicalGradeLabel(grade));
+        const firstTrack=(gr?.tracks||[])[0]||'';
+        if($('scopeTrack'))$('scopeTrack').value=firstTrack;
+      }
+      // Verify the exact class context before allowing a file to be selected.
+      validateScope();
+      loadScopedClassRoster(false);
+      const input=$('scopeStudentFile');
+      if(!input) throw new Error('حقل اختيار الملف غير متاح.');
+      input.value='';
+      setStatus('اختر ملف PDF أو Excel الخاص بـ '+canonicalStageLabel(stage)+' — '+canonicalGradeLabel(grade)+' — الفصل '+section+'.','note');
+      // Direct user gesture: opens the native file chooser instead of only scrolling.
+      input.click();
+    }catch(e){
+      $('classImportPanel')?.scrollIntoView({behavior:'smooth',block:'start'});
+      setStatus('تعذر فتح استيراد الفصل: '+(e.message||e),'bad');
     }
-    loadScopedClassRoster(false);
+  }
+  window.handleScopedClassFileSelected=async function(input){
+    const file=input?.files?.[0];
+    if(!file)return;
+    const ext=(file.name.split('.').pop()||'').toLowerCase();
+    const allowed=['xlsx','xls','csv','pdf'];
+    if(!allowed.includes(ext)){
+      input.value='';
+      setStatus('صيغة الملف غير مدعومة. استخدم PDF أو Excel (.xlsx / .xls) أو CSV.','bad');
+      return;
+    }
+    if($('scopeFileFormat')) $('scopeFileFormat').value=(ext==='pdf'?'pdf':'excel');
     $('classImportPanel')?.scrollIntoView({behavior:'smooth',block:'start'});
-    setStatus('تم تحديد '+stage+' — '+grade+' — الفصل '+section+'. اختر ملف نور لهذا الفصل فقط.','note');
+    setStatus('جارٍ قراءة ملف '+file.name+' للفصل المحدد...','note');
+    await window.readScopedStudentFile();
   }
   window.loadAcademicStructure=async function(force=false){try{if(!currentSchool.id)await detectSchool();const year=safe($('academicYear')?.value||$('scopeAcademicYear')?.value)||'1447',r=await phase2Call('structure-get',{academicYear:year});academicStructure=normalizeSavedAcademicStructure(r.structure||{academicYear:year,stages:[],updatedAt:''});if($('scopeAcademicYear'))$('scopeAcademicYear').value=year;renderAcademicStructure();if(force)setStatus('تم تحديث الهيكل الدراسي من السحابة.','ok')}catch(e){setStatus('تعذر تحميل الهيكل الدراسي: '+(e.message||e),'bad')}}
   window.saveAcademicStructure=async function(){try{const year=safe($('academicYear')?.value||$('scopeAcademicYear')?.value)||'1447';academicStructure.academicYear=year;const r=await phase2Call('structure-save',{academicYear:year,structure:academicStructure});academicStructure=r.structure||academicStructure;renderAcademicStructure();setStatus('تم حفظ الهيكل الدراسي لهذه المدرسة والعام فقط.','ok')}catch(e){setStatus('تعذر حفظ الهيكل: '+(e.message||e),'bad')}}

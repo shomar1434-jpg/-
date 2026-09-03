@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 if(window.SchoolInformationSource&&String(window.SchoolInformationSource.VERSION||'').includes('live-roster-v5'))return;
-const VERSION='8.1.0-noor-class-roster-live-propagation';
+const VERSION='8.0.0-persistent-cache-granular-student-scope';
 const SUPABASE_URL=(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'');
 const DEFAULT_SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
 const API_KEY=localStorage.getItem('smartSchoolSupabaseAnonKey')||DEFAULT_SUPABASE_KEY;
@@ -219,33 +219,9 @@ async function getStudentsByScope(scope={},force=false){
  if(force){try{const s=normalizeScope(scope),r=await call('students-list-scope',{academicYear:currentAcademicYear(),scope:s});if(Array.isArray(r.students))return r.students}catch(e){console.warn('[school-information scoped cloud fallback]',e)}}
  await ensureFresh(false);return state.students.filter(r=>studentMatchesScope(r,scope));
 }
-function broadcastStudentChange(scope={},operation='update'){
- const detail={schoolId:state.schoolId||targetSchoolId(),academicYear:state.academicYear||currentAcademicYear(),scope:normalizeScope(scope),operation,version:Date.now()};
- try{localStorage.setItem('school_information_students_change_v1',JSON.stringify(detail))}catch(_){}
- try{if('BroadcastChannel' in window){const ch=new BroadcastChannel('school-information-live-v1');ch.postMessage({type:'students-updated',detail});ch.close()}}catch(_){}
- return detail;
-}
-async function notifyStudentsUpdated(scope={},operation='update'){
- state.updatedAt='1970-01-01T00:00:00.000Z';
- const detail=broadcastStudentChange(scope,operation);
- try{window.dispatchEvent(new CustomEvent('school-information:students-updated',{detail}))}catch(_){}
- try{window.dispatchEvent(new CustomEvent('school-information-updated',{detail:{...detail,source:'student-mutation'}}))}catch(_){}
- // تحديث المصدر المركزي نفسه فورًا حتى تقرأ الأقسام التالية النسخة الجديدة بلا تحديث يدوي.
- try{await refresh()}catch(e){console.warn('[school-information student refresh]',e)}
- return detail;
-}
-function receiveExternalStudentChange(detail){
- if(!detail||safe(detail.schoolId)!==safe(targetSchoolId())||safe(detail.academicYear)!==safe(currentAcademicYear()))return;
- state.updatedAt='1970-01-01T00:00:00.000Z';
- revalidateInBackground().then(()=>{
-   try{window.dispatchEvent(new CustomEvent('school-information:students-updated',{detail:{...detail,source:'external'}}))}catch(_){}
-   try{window.dispatchEvent(new CustomEvent('school-information-updated',{detail:{...detail,source:'external'}}))}catch(_){}
- });
-}
-window.addEventListener('storage',e=>{if(e.key==='school_information_students_change_v1'&&e.newValue){try{receiveExternalStudentChange(JSON.parse(e.newValue))}catch(_){}}});
-try{if('BroadcastChannel' in window){const liveCh=new BroadcastChannel('school-information-live-v1');liveCh.onmessage=e=>{if(e.data?.type==='students-updated')receiveExternalStudentChange(e.data.detail)}}}catch(_){}
+function notifyStudentsUpdated(scope={}){state.updatedAt='1970-01-01T00:00:00.000Z';try{window.dispatchEvent(new CustomEvent('school-information:students-updated',{detail:{schoolId:state.schoolId||targetSchoolId(),academicYear:state.academicYear||currentAcademicYear(),scope:normalizeScope(scope),version:Date.now()}}))}catch(_){}revalidateInBackground()}
 function notifyUpdated(){state.updatedAt='1970-01-01T00:00:00.000Z';try{window.dispatchEvent(new CustomEvent('school-information-source-invalidated'))}catch(_){}}
 
-window.SchoolInformationSource={VERSION,refresh,getSnapshot,getStudents,getStudentsByScope,getStaff,getTeachers,getAdministrativeEmployees,request:call,notifyUpdated,notifyStudentsUpdated,hydratePersistentCache,revalidateInBackground,
+window.SchoolInformationSource={VERSION,refresh,load:getSnapshot,getSnapshot,getStudents,getStudentsByScope,getStaff,getTeachers,getAdministrativeEmployees,request:call,notifyUpdated,notifyStudentsUpdated,hydratePersistentCache,revalidateInBackground,
  context:()=>({systemAdmin:systemAdminRequested(),schoolId:targetSchoolId(),accessMode:systemAdminRequested()?'system_admin':'school_manager'})};
 })();

@@ -1472,7 +1472,7 @@ body{overflow-x:hidden}
 <h3 class="font-black text-xl text-slate-800">تحليل نتائج نافس</h3>
 <p class="text-[11px] text-slate-400 font-bold mt-2">تحليل بطاقة نافس، قراءة فجوات الأداء، وبناء خطة التحسين وقياس الأثر</p>
 </div>
-</div><div class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-teal-400 cursor-pointer transition-all flex flex-col items-center gap-4 group manager-section-card" onclick="window.location.href=(window.__VERIFIED_SYSTEM_ADMIN_CONTEXT__&&window.__VERIFIED_SYSTEM_ADMIN_CONTEXT__.verified)?'school_information_center_R7.html?systemAdmin=1&route=R7':'school_information_center_R7.html?route=R7'">
+</div><div class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-teal-400 cursor-pointer transition-all flex flex-col items-center gap-4 group manager-section-card" onclick="window.location.href=(window.__VERIFIED_SYSTEM_ADMIN_CONTEXT__&&window.__VERIFIED_SYSTEM_ADMIN_CONTEXT__.verified)?'school_information_center.html?systemAdmin=1':'school_information_center.html'">
 <div class="w-20 h-20 bg-gradient-to-br from-teal-600 to-emerald-700 text-white rounded-[26px] flex items-center justify-center shadow-xl text-3xl">🗄️</div>
 <div class="text-center">
 <h3 class="font-black text-xl text-slate-800">مركز المعلومات المدرسية</h3>
@@ -5614,16 +5614,25 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
     }
   }
   async function resolveDecisionCloudFileId(record){
-    if(record&&record.cloudFileId)return String(record.cloudFileId);
-    if(!decisionCloudReady())return '';
+    // لا نثق في cloudFileId المخزن محليًا وحده؛ نتحقق من قائمة المدرسة الحالية أولًا.
+    if(!decisionCloudReady())return {status:'unverified',fileId:'',reason:'cloud_not_ready'};
     try{
+      if(window.PlatformCloudSession&&typeof PlatformCloudSession.ensure==='function')await PlatformCloudSession.ensure();
       var r=await CloudFileEngine.list({ownershipScope:'school',moduleKey:DECISIONS_CLOUD_MODULE,recordType:DECISIONS_CLOUD_RECORD_TYPE,limit:1000});
-      var files=(r&&r.files)||[], id=String(record&&record.id||'');
-      var f=files.find(function(x){
-        return String(x&&x.metadata&&x.metadata.recordLocalId||'')===id || String(x&&x.record_id||'')===id;
+      var files=(r&&r.files)||[], localId=String(record&&record.id||''), hinted=String(record&&record.cloudFileId||'');
+      var exact=hinted?files.find(function(x){return String(x&&x.id||'')===hinted;}):null;
+      if(exact)return {status:'found',fileId:String(exact.id),reason:'cloud_id'};
+      var matches=files.filter(function(x){
+        var md=x&&x.metadata||{};
+        return localId && (String(md.recordLocalId||'')===localId || String(md.record_id||'')===localId || String(md.primary_record_id||'')===localId || String(x&&x.record_id||'')===localId);
       });
-      return f&&f.id?String(f.id):'';
-    }catch(e){return '';}
+      if(matches.length===1)return {status:'found',fileId:String(matches[0].id),reason:'metadata'};
+      if(matches.length>1)return {status:'ambiguous',fileId:'',reason:'multiple_cloud_matches'};
+      return {status:'missing',fileId:'',reason:'confirmed_missing'};
+    }catch(e){
+      console.warn('[manager decision cloud verify]',e);
+      return {status:'unverified',fileId:'',reason:String(e&&e.message||e)};
+    }
   }
   function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(ch){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];});}
   function readArray(keys){
@@ -5809,13 +5818,16 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
       try{
         if(!window.CloudFileEngine)throw new Error('محرك الملفات السحابي غير متاح');
         if(window.PlatformCloudSession&&typeof PlatformCloudSession.ensure==='function')await PlatformCloudSession.ensure();
-        var fileId=await resolveDecisionCloudFileId(item);
-        if(!fileId)throw new Error('تعذر تحديد ملف القرار السحابي');
-        await CloudFileEngine.trash(fileId);
-        // لا نحذف النسخة المحلية قبل نجاح الحذف السحابي.
+        var cloudCheck=await resolveDecisionCloudFileId(item);
+        if(cloudCheck.status==='ambiguous')throw new Error('وجدت المنصة أكثر من ملف سحابي مطابق؛ تم إيقاف الحذف لحماية البيانات.');
+        if(cloudCheck.status==='unverified')throw new Error('تعذر التحقق من السحابة؛ تم الإبقاء على النسخة المحلية لحماية البيانات.');
+        if(cloudCheck.status==='found'){
+          await CloudFileEngine.trash(cloudCheck.fileId);
+        }
+        // إذا أكدت السحابة عدم وجود الملف، فهذا سجل محلي يتيم ويمكن تنظيفه بأمان.
         var remaining=decisionRowsLocal().filter(function(r){return String(r.id)!==String(id);});
         mirrorDecisionRows(remaining);
-        alert('تم حذف قرار التكليف من الأرشيف السحابي بنجاح.');
+        alert(cloudCheck.status==='missing'?'تم تنظيف قرار التكليف المحلي بعد التأكد من عدم وجود ملفه في السحابة.':'تم حذف قرار التكليف من الأرشيف السحابي بنجاح.');
       }catch(e){
         console.error('[manager decision delete]',e);
         alert('تعذر حذف قرار التكليف سحابيًا: '+(e&&e.message||e)+'\nلم يتم حذف النسخة المحلية.');

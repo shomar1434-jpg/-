@@ -1,0 +1,23 @@
+RL6 — فحص تصحيح استيراد الفصول
+
+السبب الجذري الذي تم اكتشافه:
+- الدوال canonicalStageLabel / canonicalGradeLabel / canonicalStageId / canonicalGradeId / canonicalStudentLocation كانت مستخدمة في الصفحة وغير معرفة داخلها.
+- عند الضغط على زر الاستيراد كان التنفيذ يتوقف في أول canonicalStageLabel قبل الوصول إلى فتح نافذة الملف.
+- لذلك كانت تعديلات RL2/RL3/RL5 صحيحة من ناحية file picker لكنها لم تصل إليه أصلًا بسبب Runtime ReferenceError.
+
+التصحيح:
+1) إضافة دوال التطبيع القانونية محليًا داخل الصفحة.
+2) تغيير زر الفصل إلى input[type=file] أصلي يغطي الزر نفسه؛ لا يوجد programmatic click لفتح النافذة.
+3) onchange يحدد stage/grade/section من data-* ثم يقرأ الملف مباشرة.
+4) دعم xlsx/xls/csv/pdf النصي.
+5) عدم تعديل أي ملف آخر.
+
+QA:
+- 5 inline JavaScript blocks checked with node --check: PASS / 0 syntax errors.
+- canonicalStageLabel: 1 definition.
+- canonicalGradeLabel: 1 definition.
+- canonicalStageId: 1 definition.
+- canonicalGradeId: 1 definition.
+- canonicalStudentLocation: 1 definition.
+- handleDirectClassImport: 1 definition.
+- No changes to teacher/manager/staff_discipline/decisions or cloud data.

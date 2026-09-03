@@ -1,0 +1,24 @@
+RL4 — إصلاح نهائي لمسار متابعة المدير
+
+المشكلة الجذرية المكتشفة:
+1) manager.html أزيلت منه معاملات independent/direct سابقًا، لكن صفحات الأدوار نفسها كانت تتحقق من جلسة المستخدم الحالي كأن المدير دخل بحساب الهدف؛ فترفض جلسة المدير وتعيد التوجيه إلى school-login.html.
+2) school-exit-scope.js كان يعيد إضافة معاملات schoolMode=independent / independent=true / loginMode=direct / direct=1 عند العودة من المتابعة.
+3) agent.html في وضع المتابعة كان يستبدل currentUser وsmart_school_current_session بهوية الوكيل الهدف، ما يهدد سياق المدير ويخلط جلسة المتابعة مع جلسة المدرسة المستقلة.
+4) activity_leader.html كان يملك منطق خروج مستقل يمكن أن يعمل حتى في المتابعة إذا كانت جلسة المدرسة الأصلية مستقلة.
+
+التصحيح:
+- manager.html: حفظ Snapshot لسياق المدير قبل المتابعة، دون استبداله بهوية الهدف.
+- إضافة ManagerFollowAccessBridge لصفحات الأدوار.
+- teacher/health/kindergarten: بوابة الدخول تقبل متابعة المدير فقط بعد التحقق من أن الجلسة الحالية مدير وفي نفس school_id، وأن بيانات الهدف تطابق manager_follow_context_v2.
+- agent: منع استبدال جلسة المدير بهوية الوكيل الهدف أثناء المتابعة.
+- school-exit-scope.js: متابعة المدير لا تعتبر مدرسة مستقلة إطلاقًا، والعودة للمدير لا تضيف معاملات independent/direct.
+- activity_leader: تعطيل منطق الخروج المستقل داخل managerFollow.
+- زر العودة في جميع صفحات الأدوار المستهدفة يعيد إلى manager.html مع schoolId وsectionReturn=1 فقط.
+
+QA:
+- Manager follow URL: لا يحتوي schoolMode=independent / independent=true / loginMode=direct / direct=1.
+- ManagerFollowAccessBridge: Node syntax PASS.
+- school-exit-scope.js: Node syntax PASS.
+- محاكاة verify لمتابعة مدير -> teacher بنفس school_id: PASS.
+- Static regression checks: 16/16 PASS.
+- لم يتم تعديل school_information_center.html أو teacher business logic أو staff_discipline.html أو decisions_assignments.html في RL4.

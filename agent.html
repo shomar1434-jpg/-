@@ -41,6 +41,48 @@ html[data-agent-ui-ready="1"] body{visibility:visible!important;opacity:1!import
 })();
 </script>
 <script src="system-admin-context.js"></script>
+<script id="manager-follow-access-bridge-v3">
+(function(){
+  'use strict';
+  if(window.ManagerFollowAccessBridge) return;
+  function q(){try{return new URLSearchParams(location.search||'')}catch(_){return new URLSearchParams('')}}
+  function norm(v){return String(v||'').trim().toLowerCase()}
+  function same(a,b){return String(a||'').trim()===String(b||'').trim()}
+  function parse(v){try{return JSON.parse(v||'null')}catch(_){return null}}
+  function request(){
+    var p=q(), mode=norm(p.get('mode'));
+    var viewer=norm(p.get('viewerRole')||p.get('viewer')||p.get('returnRole'));
+    var active=(p.get('managerFollow')==='1'||viewer==='manager') && (p.get('follow')==='1'||p.get('readonly')==='1'||mode.indexOf('supervisor')>=0);
+    return {active:active,schoolId:String(p.get('schoolId')||p.get('school_id')||'').trim(),targetUserId:String(p.get('targetUser')||p.get('followUserId')||p.get('userId')||p.get('uid')||'').trim(),targetEmail:norm(p.get('followEmail')||p.get('targetEmail')||''),targetRole:norm(p.get('targetRole')||''),viewer:viewer};
+  }
+  function stored(){return parse(sessionStorage.getItem('manager_follow_context_v2'))||{}}
+  async function verify(expectedRoles){
+    var r=request(); if(!r.active) return null;
+    var c=stored();
+    if(!c || c.mode!=='manager_follow' || c.readonly!==true) throw new Error('MANAGER_FOLLOW_CONTEXT_MISSING');
+    if(!r.schoolId || !same(r.schoolId,c.schoolId)) throw new Error('MANAGER_FOLLOW_SCHOOL_MISMATCH');
+    if(r.targetUserId && c.targetUserId && !same(r.targetUserId,c.targetUserId)) throw new Error('MANAGER_FOLLOW_TARGET_MISMATCH');
+    if(r.targetEmail && c.targetEmail && norm(r.targetEmail)!==norm(c.targetEmail)) throw new Error('MANAGER_FOLLOW_EMAIL_MISMATCH');
+    var allowed=(expectedRoles||[]).map(norm).filter(Boolean);
+    if(allowed.length && r.targetRole && allowed.indexOf(r.targetRole)<0) throw new Error('MANAGER_FOLLOW_ROLE_MISMATCH');
+    if(!window.PlatformCloudSession || typeof PlatformCloudSession.ensure!=='function') throw new Error('MANAGER_SESSION_ENGINE_UNAVAILABLE');
+    await PlatformCloudSession.ensure();
+    var currentSchool=String(PlatformCloudSession.schoolId?.()||'').trim();
+    var currentRole=norm(PlatformCloudSession.role?.());
+    if(!same(currentSchool,r.schoolId)) throw new Error('MANAGER_SESSION_SCHOOL_MISMATCH');
+    if(!/^(manager|leadership|principal|school_manager|مدير)$/.test(currentRole)){
+      try{var payload=typeof PlatformCloudSession.memberships==='function'?await PlatformCloudSession.memberships():null;var cur=payload&&payload.current?payload.current:{};currentRole=norm(cur.role||currentRole)}catch(_){ }
+    }
+    if(!/^(manager|leadership|principal|school_manager|مدير)$/.test(currentRole)) throw new Error('MANAGER_FOLLOW_VIEWER_NOT_MANAGER');
+    window.__MANAGER_FOLLOW_VERIFIED__={schoolId:r.schoolId,targetUserId:r.targetUserId,targetEmail:r.targetEmail,targetRole:r.targetRole,viewerRole:'manager',readonly:true};
+    document.documentElement.setAttribute('data-manager-follow-verified','1');
+    return window.__MANAGER_FOLLOW_VERIFIED__;
+  }
+  function returnToManager(){var r=request(),n=new URLSearchParams();if(r.schoolId)n.set('schoolId',r.schoolId);n.set('sectionReturn','1');n.set('returnedFromFollow','1');location.href='manager.html?'+n.toString()}
+  window.ManagerFollowAccessBridge={request:request,verify:verify,returnToManager:returnToManager};
+})();
+</script>
+
 <style id="evidence-picker-prehide">#elsPicker[hidden],#elsPicker[style*="display:none"]{display:none!important;visibility:hidden!important}</style>
 <!-- SAFE_PATCH: bypass activation without touching archived data -->
 <style id="safe-activation-bypass-style">
@@ -84,7 +126,10 @@ html[data-agent-ui-ready="1"] body{visibility:visible!important;opacity:1!import
   var qAgency=qs.get('agency_type')||qs.get('agency_types')||qs.get('agent_categories')||'';
   var agencyCats=normalizeAgencyList(qAgency || profile.agent_categories || profile.agency_categories || profile.agency_types || profile.agency_type || profile.agencyType || '');
   if(agencyCats.length){profile.agent_categories=agencyCats; profile.agency_categories=agencyCats; profile.agency_types=agencyCats; profile.agency_type=agencyCats.join(','); profile.agencyType=profile.agency_type;}
-  try{rawSet('currentSchoolUser',JSON.stringify(profile)); rawSet('currentUser',JSON.stringify(profile)); rawSet('smart_school_current_session',JSON.stringify(profile));}catch(e){}
+  var managerFollowRequest=qs.get('managerFollow')==='1' || String(viewer||'').toLowerCase()==='manager';
+  if(!managerFollowRequest){
+    try{rawSet('currentSchoolUser',JSON.stringify(profile)); rawSet('currentUser',JSON.stringify(profile)); rawSet('smart_school_current_session',JSON.stringify(profile));}catch(e){}
+  }
   var accountEmail=normEmail(profile.email || targetEmail || '');
   var accountIdentity=accountEmail || String(profile.id || targetUser || 'unknown');
   window.FOLLOW_TARGET_USER=profile;
@@ -6829,4 +6874,14 @@ window.__AGENT_PERFORMANCE_ARCHIVE_SAVE_V2__={verifiedBeforeSuccess:true,folderB
   window.addEventListener('load',restoreMainSections,{once:true});
 })();
 </script>
+<script id="manager-follow-return-button-guard-v2">
+(function(){
+  function bind(){
+    if(!window.ManagerFollowAccessBridge || !ManagerFollowAccessBridge.request().active) return;
+    ['ssBack','uwHomeHeader'].forEach(function(id){var el=document.getElementById(id);if(!el||el.dataset.managerFollowBack==='1')return;el.dataset.managerFollowBack='1';el.addEventListener('click',function(ev){ev.preventDefault();ev.stopImmediatePropagation();ManagerFollowAccessBridge.returnToManager()},true)});
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bind);else bind();setTimeout(bind,300);setTimeout(bind,1200);
+})();
+</script>
+
 </body></html>

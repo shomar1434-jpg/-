@@ -20,6 +20,14 @@
     return q.get('follow')==='1' || q.get('readonly')==='1' || mode.indexOf('supervisor')>=0 || !!q.get('viewerRole') || !!q.get('returnRole');
   }
 
+  function isManagerFollowPage(){
+    var q=getParams();
+    var mode=String(q.get('mode')||'').toLowerCase();
+    var viewer=String(q.get('viewerRole')||q.get('viewer')||q.get('returnRole')||'').toLowerCase();
+    return (q.get('managerFollow')==='1' || (isFollowPage() && viewer==='manager')) &&
+      (mode.indexOf('supervisor')>=0 || q.get('follow')==='1' || q.get('readonly')==='1');
+  }
+
   function roleToFile(role){
     role=String(role||'').toLowerCase();
     if(role==='manager' || role==='leadership') return 'manager.html';
@@ -38,18 +46,17 @@
       var email=String(q.get('viewerEmail')||'').trim();
       if(sid) next.set('schoolId',sid);
       if(email) next.set('email',email);
-      next.set('role', viewer==='manager' ? 'leadership' : (viewer==='agent' ? 'agency' : viewer));
-      next.set('schoolMode','independent');
-      next.set('independent','true');
-      next.set('loginMode','direct');
-      next.set('direct','1');
       next.set('returnedFromFollow','1');
+      next.set('sectionReturn','1');
+      if(viewer==='manager') return 'manager.html?' + next.toString();
+      next.set('role', viewer==='agent' ? 'agency' : viewer);
       return roleToFile(viewer) + '?' + next.toString();
     }
     return schoolLoginUrl();
   }
 
   function isIndependentSchoolPage(){
+    if(isManagerFollowPage()) return false;
     var q = getParams();
     var independentFlag = String(q.get('independent') || '').toLowerCase() === 'true';
     var schoolMode = String(q.get('schoolMode') || '').toLowerCase() === 'independent';
@@ -161,6 +168,7 @@
 
   window.smartIndependentSchoolBackToUsersLogin = goBackToSchoolUsersLogin;
   window.smartIndependentSchoolFinalClose = finalClosePage;
+  window.smartManagerFollowReturnUrl = contextualReturnUrl;
 })();
 
 /* Light follow-up policy for independent schools only

@@ -160,7 +160,7 @@
           </div>
           <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
 <span id="structureRoleBadge" class="pill">إدارة الهيكل الدراسي</span>
-<span class="pill" id="structureBuildBadge" title="للتأكد أن المتصفح حمّل النسخة الجديدة">الإصدار المرجعي RL3 — استيراد مباشر للفصول</span>
+<span class="pill" id="structureBuildBadge" title="للتأكد أن المتصفح حمّل النسخة الجديدة">الإصدار RL5 — استيراد PDF / Excel مباشر</span>
 </div>
         </div>
 
@@ -728,18 +728,44 @@ window.prepareStageGradesEditor=function(){
     prepareStageGradesEditor();
     renderStats();renderTree();
   }
+  function launchClassImportPicker(){
+    // ننشئ input جديدًا داخل نفس حدث النقر. هذا أكثر موثوقية من النقر على input مخفي display:none
+    // في Chrome/Edge وبعض متصفحات الجوال التي قد تمنع file picker عند العناصر المخفية كليًا.
+    const picker=document.createElement('input');
+    picker.type='file';
+    picker.accept='.xlsx,.xls,.csv,.pdf,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv';
+    picker.setAttribute('aria-label','اختيار ملف PDF أو Excel لبيانات الفصل');
+    picker.style.position='fixed';
+    picker.style.left='-10000px';
+    picker.style.top='0';
+    picker.style.width='1px';
+    picker.style.height='1px';
+    picker.style.opacity='0.01';
+    document.body.appendChild(picker);
+    let settled=false;
+    const cleanup=()=>{if(settled)return;settled=true;setTimeout(()=>{try{picker.remove()}catch(_e){}},0)};
+    picker.addEventListener('change',async()=>{
+      const file=picker.files&&picker.files[0];
+      if(!file){cleanup();return}
+      const stable=$('scopeStudentFile');
+      // نقل الملف إلى الحقل الدائم كي تبقى بقية آلية المعاينة والحفظ كما هي دون تكرار منطق القراءة.
+      if(stable && typeof DataTransfer!=='undefined'){
+        try{const dt=new DataTransfer();dt.items.add(file);stable.files=dt.files}catch(_e){}
+      }
+      try{await handleScopedClassFileSelected(stable&&stable.files&&stable.files[0]?stable:picker)}finally{cleanup()}
+    },{once:true});
+    window.addEventListener('focus',()=>setTimeout(()=>{if(!picker.files?.length)cleanup()},400),{once:true});
+    picker.click();
+  }
+
   window.openImportForClass=function(stage,grade,section){
-    const input=$('scopeStudentFile');
-    if(!input){setStatus('تعذر فتح نافذة الاستيراد: حقل اختيار الملف غير متاح.','bad');return}
     const stageLabel=canonicalStageLabel(stage), gradeLabel=canonicalGradeLabel(grade);
     const st=(academicStructure.stages||[]).find(x=>canonicalStageLabel(x.name)===stageLabel);
     const gr=st?.grades?.find(x=>canonicalGradeLabel(x.name)===gradeLabel);
     const track=(normalizeStageName(stageLabel)==='ثانوية' ? ((gr?.tracks||[])[0]||'') : '');
     activeClassImportScope={stage:stageLabel,grade:gradeLabel,track_name:track,section_name:safe(section)};
-    input.value='';
-    // يجب فتح نافذة النظام مباشرة داخل نقرة المستخدم؛ لا نضع قبلها تحميلًا أو await أو تحققًا قد يمنع المتصفح من فتحها.
-    input.click();
-    // بعد إرسال أمر فتح النافذة نحدّث السياق المرئي دون التأثير على user gesture.
+    // لا يوجد await ولا تحميل قبل file picker: يبقى الاستدعاء ضمن user gesture نفسه.
+    launchClassImportPicker();
     setTimeout(()=>{
       applyActiveClassImportScopeToHiddenSelectors();
       if($('classImportPanel'))$('classImportPanel').classList.remove('hidden');
@@ -748,11 +774,8 @@ window.prepareStageGradesEditor=function(){
   }
 
   window.reopenActiveClassFilePicker=function(){
-    const input=$('scopeStudentFile');
     if(!activeClassImportScope){setStatus('اختر زر الاستيراد الموجود أمام الفصل المطلوب أولًا.','bad');return}
-    if(!input){setStatus('حقل اختيار الملف غير متاح.','bad');return}
-    input.value='';
-    input.click();
+    launchClassImportPicker();
   }
 
   window.handleScopedClassFileSelected=async function(input){
@@ -1221,7 +1244,7 @@ window.readExcel = async function(){
 <script src="openai-engine.js"></script>
 <script src="top-ai-center.js"></script>
 <script src="platform-page-navigation.js?v=20260818-nav1"></script>
-<div id="r6RouteProof" style="position:fixed;left:14px;bottom:14px;z-index:99999;background:#0f766e;color:white;padding:8px 12px;border-radius:999px;font-weight:900;font-size:12px;box-shadow:0 8px 24px #0002">RL1 / النسخة المرجعية المحمية</div>
+<div id="r6RouteProof" style="position:fixed;left:14px;bottom:14px;z-index:99999;background:#0f766e;color:white;padding:8px 12px;border-radius:999px;font-weight:900;font-size:12px;box-shadow:0 8px 24px #0002">RL5 / استيراد الفصول مباشر</div>
 
 <script>
 (function(){

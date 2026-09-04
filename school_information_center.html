@@ -222,14 +222,21 @@
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
           <div>
             <h2 style="margin-bottom:5px">طلاب الفصل المحدد</h2>
-            <p class="muted">الترتيب المعتمد: الاسم — رقم الهوية — المرحلة — الصف — الفصل. أي نقل أو حذف أو إضافة ينعكس مباشرة على مصدر المعلومات المركزي والأقسام المرتبطة.</p>
+            <p class="muted">واجهة سريعة لإدارة أي فصل: اختر المرحلة والصف والمسار والشعبة، ثم أضف أو عدّل أو انقل أو احذف. جميع العمليات تحفظ في المصدر السحابي نفسه وتنعكس على مركز المعلومات والأقسام المرتبطة.</p>
           </div>
           <div class="actions">
-            <button class="btn secondary" onclick="loadScopedClassRoster(true)">تحديث الفصل</button>
+            <button class="btn secondary" onclick="refreshActiveClassEverywhere()">تحديث الفصل</button>
             <button class="btn" onclick="openAddStudentDialog()">إضافة طالب لهذا الفصل</button>
           </div>
         </div>
-        <div id="classRosterScopeLabel" class="pill" style="margin-top:10px">اختر المرحلة والصف والفصل أعلاه</div>
+        <div class="row" id="classRosterNavigator" style="margin-top:12px;grid-template-columns:repeat(4,1fr) auto">
+          <div><label>المرحلة</label><select id="classRosterStage" onchange="rebuildClassRosterNavigator('grade')"></select></div>
+          <div><label>الصف</label><select id="classRosterGrade" onchange="rebuildClassRosterNavigator('track')"></select></div>
+          <div id="classRosterTrackWrap"><label>المسار</label><select id="classRosterTrack" onchange="rebuildClassRosterNavigator('section')"></select></div>
+          <div><label>الشعبة / الفصل</label><select id="classRosterSection" onchange="syncActiveScopeFromClassRosterNavigator(true)"></select></div>
+          <div style="align-self:end"><button class="btn secondary" onclick="syncActiveScopeFromClassRosterNavigator(true)">عرض الفصل</button></div>
+        </div>
+        <div id="classRosterScopeLabel" class="pill" style="margin-top:10px">اختر المرحلة والصف والفصل</div>
         <div class="tablewrap" style="margin-top:12px">
           <table>
             <thead><tr><th>م</th><th>الاسم</th><th>رقم الهوية</th><th>المرحلة</th><th>الصف</th><th>الفصل</th><th>الإجراءات</th></tr></thead>
@@ -274,8 +281,10 @@
           <div><label>المسار</label><select id="filterTrack" onchange="rebuildFilters();renderStudents()"></select></div>
           <div><label>الشعبة</label><select id="filterSection" onchange="renderStudents()"></select></div>
         </div>
-        <div class="row" style="margin-top:12px;grid-template-columns:2fr 1fr 1fr 1fr">
+        <div class="row" style="margin-top:12px;grid-template-columns:2fr auto auto auto auto">
           <div><label>بحث باسم الطالب</label><input id="searchName" placeholder="اكتب جزءًا من الاسم" oninput="renderStudents()"></div>
+          <div style="align-self:end"><button class="btn" onclick="openAddStudentFromFilter()">إضافة طالب</button></div>
+          <div style="align-self:end"><button class="btn secondary" onclick="refreshManagedClass()">تحديث الفصل / الشعبة</button></div>
           <div style="align-self:end"><button class="btn secondary" onclick="clearFilters()">إظهار الكل</button></div>
           <div style="align-self:end"><span class="pill" id="shownCount">0 طالب</span></div>
         </div>
@@ -751,6 +760,7 @@ window.prepareStageGradesEditor=function(){
       </div>`).join('')}
     </div>`).join(''):'<div class="muted">لم يُحدد الهيكل الدراسي بعد.</div>';
     rebuildScopeSelectors('stage');
+    rebuildClassRosterNavigator('stage');
     prepareStageGradesEditor();
     renderStats();renderTree();
   }
@@ -793,6 +803,7 @@ window.prepareStageGradesEditor=function(){
       const gr=st?.grades?.find(x=>canonicalGradeLabel(x.name)===grade);
       const track=normalizeStageName(stage)==='ثانوية'?((gr?.tracks||[])[0]||''):'';
       activeClassImportScope={stage,grade,track_name:track,section_name:section};
+      applyScopeToClassRosterNavigator(activeClassImportScope);
       applyActiveClassImportScopeToHiddenSelectors();
       if($('classImportPanel'))$('classImportPanel').classList.remove('hidden');
       const file=input?.files?.[0];
@@ -810,6 +821,7 @@ window.prepareStageGradesEditor=function(){
     const gr=st?.grades?.find(x=>canonicalGradeLabel(x.name)===gradeLabel);
     const track=(normalizeStageName(stageLabel)==='ثانوية' ? ((gr?.tracks||[])[0]||'') : '');
     activeClassImportScope={stage:stageLabel,grade:gradeLabel,track_name:track,section_name:safe(section)};
+    applyScopeToClassRosterNavigator(activeClassImportScope);
     // لا يوجد await ولا تحميل قبل file picker: يبقى الاستدعاء ضمن user gesture نفسه.
     launchClassImportPicker();
     setTimeout(()=>{
@@ -978,9 +990,71 @@ window.prepareStageGradesEditor=function(){
   
   let scopedImportFile=null;
   let scopedClassStudents=[],studentActionMode='add';
+
+  function classStructureStage(stageName){
+    return (academicStructure.stages||[]).find(s=>canonicalStageLabel(s.name)===canonicalStageLabel(stageName))||null;
+  }
+  function classStructureGrade(stageName,gradeName){
+    const st=classStructureStage(stageName);
+    return (st?.grades||[]).find(g=>canonicalGradeLabel(g.name)===canonicalGradeLabel(gradeName))||null;
+  }
+  window.rebuildClassRosterNavigator=function(level='stage'){
+    const st=$('classRosterStage'),gr=$('classRosterGrade'),tr=$('classRosterTrack'),sec=$('classRosterSection'),tw=$('classRosterTrackWrap');
+    if(!st||!gr||!tr||!sec)return;
+    const old={stage:canonicalStageLabel(st.value),grade:canonicalGradeLabel(gr.value),track:safe(tr.value),section:safe(sec.value)};
+    const stages=academicStructure.stages||[];
+    st.innerHTML='<option value="">اختر المرحلة</option>'+stages.map(s=>`<option value="${html(canonicalStageLabel(s.name))}">${html(canonicalStageLabel(s.name))}</option>`).join('');
+    const preferredStage=(activeClassImportScope?.stage||old.stage);
+    if([...st.options].some(o=>canonicalStageLabel(o.value)===canonicalStageLabel(preferredStage)))st.value=canonicalStageLabel(preferredStage);
+
+    const stageObj=classStructureStage(st.value);
+    gr.innerHTML='<option value="">اختر الصف</option>'+((stageObj?.grades)||[]).map(g=>`<option value="${html(canonicalGradeLabel(g.name))}">${html(canonicalGradeLabel(g.name))}</option>`).join('');
+    const preferredGrade=(activeClassImportScope?.grade||old.grade);
+    if([...gr.options].some(o=>canonicalGradeLabel(o.value)===canonicalGradeLabel(preferredGrade)))gr.value=canonicalGradeLabel(preferredGrade);
+
+    const gradeObj=classStructureGrade(st.value,gr.value);
+    const secondary=canonicalStageLabel(st.value)==='ثانوية';
+    if(tw)tw.classList.toggle('hidden',!secondary);
+    const tracks=secondary?((gradeObj?.tracks?.length?gradeObj.tracks:defaultTracks())):[];
+    tr.innerHTML='<option value="">'+(secondary?'اختر المسار':'لا يوجد مسار')+'</option>'+tracks.map(x=>`<option value="${html(x)}">${html(x)}</option>`).join('');
+    const preferredTrack=activeClassImportScope?.track_name||old.track||(!secondary?'':(tracks[0]||''));
+    if([...tr.options].some(o=>o.value===preferredTrack))tr.value=preferredTrack;
+
+    sec.innerHTML='<option value="">اختر الفصل / الشعبة</option>'+((gradeObj?.sections)||[]).map(c=>`<option value="${html(c.name)}">${html(c.name)}</option>`).join('');
+    const preferredSection=activeClassImportScope?.section_name||old.section;
+    if([...sec.options].some(o=>o.value===preferredSection))sec.value=preferredSection;
+  }
+  function classRosterNavigatorScope(){
+    const s={stage:canonicalStageLabel($('classRosterStage')?.value),grade:canonicalGradeLabel($('classRosterGrade')?.value),track_name:safe($('classRosterTrack')?.value),section_name:safe($('classRosterSection')?.value)};
+    if(!s.stage||!s.grade||!s.section_name)throw new Error('اختر المرحلة والصف والشعبة أولًا.');
+    if(s.stage==='ثانوية'&&!s.track_name)throw new Error('اختر المسار للمرحلة الثانوية.');
+    if(s.stage!=='ثانوية')s.track_name='';
+    return s;
+  }
+  function applyScopeToClassRosterNavigator(scope){
+    if(!scope)return;
+    activeClassImportScope={stage:canonicalStageLabel(scope.stage),grade:canonicalGradeLabel(scope.grade),track_name:safe(scope.track_name||''),section_name:safe(scope.section_name)};
+    rebuildClassRosterNavigator('stage');
+    const st=$('classRosterStage'),gr=$('classRosterGrade'),tr=$('classRosterTrack'),sec=$('classRosterSection');
+    if(st)st.value=activeClassImportScope.stage; rebuildClassRosterNavigator('grade');
+    if(gr)gr.value=activeClassImportScope.grade; rebuildClassRosterNavigator('track');
+    if(tr&&activeClassImportScope.track_name)tr.value=activeClassImportScope.track_name; rebuildClassRosterNavigator('section');
+    if(sec)sec.value=activeClassImportScope.section_name;
+    applyActiveClassImportScopeToHiddenSelectors();
+  }
+  window.syncActiveScopeFromClassRosterNavigator=async function(load=true){
+    try{
+      const scope=classRosterNavigatorScope();
+      activeClassImportScope=scope;
+      applyActiveClassImportScopeToHiddenSelectors();
+      if($('scopeImportContextLabel'))$('scopeImportContextLabel').textContent=classImportScopeLabel(scope);
+      if(load)await loadScopedClassRoster(true);
+      return scope;
+    }catch(e){setStatus(e.message||e,'bad');return null}
+  }
   function currentGradeObject(){
-    const st=(academicStructure.stages||[]).find(s=>s.name===safe($('scopeStage')?.value));
-    return st?.grades?.find(g=>g.name===safe($('scopeGrade')?.value))||null;
+    const scope=activeClassImportScope||{stage:safe($('scopeStage')?.value),grade:safe($('scopeGrade')?.value)};
+    return classStructureGrade(scope.stage,scope.grade);
   }
   function renderClassRoster(){
     const body=$('classRosterBody'),label=$('classRosterScopeLabel');if(!body)return;
@@ -988,7 +1062,7 @@ window.prepareStageGradesEditor=function(){
     if(label)label.textContent=scope.stage+' — '+scope.grade+' — الفصل '+scope.section_name+' — '+scopedClassStudents.length+' طالبًا';
     body.innerHTML=scopedClassStudents.length?scopedClassStudents.map((r,i)=>`<tr>
       <td>${i+1}</td><td>${html(r.student_name)}</td><td>${html(r.national_id||'—')}</td><td>${html(r.stage)}</td><td>${html(r.grade)}</td><td>${html(r.section_name)}</td>
-      <td><div class="studentActions"><button class="btn secondary" onclick="openTransferStudentDialog('${html(r.id)}')">نقل</button><button class="btn danger" onclick="deleteScopedStudent('${html(r.id)}')">حذف</button></div></td>
+      <td><div class="studentActions"><button class="btn secondary" onclick="openEditScopedStudentDialog('${html(r.id)}')">تعديل</button><button class="btn secondary" onclick="openTransferStudentDialog('${html(r.id)}')">نقل</button><button class="btn danger" onclick="deleteScopedStudent('${html(r.id)}')">حذف</button></div></td>
     </tr>`).join(''):'<tr><td colspan="7" class="muted">لا يوجد طلاب محفوظون في هذا الفصل.</td></tr>';
   }
   window.loadScopedClassRoster=async function(force=false){
@@ -1008,6 +1082,10 @@ window.prepareStageGradesEditor=function(){
   window.openAddStudentDialog=function(){
     try{const scope=validateScope();studentActionMode='add';$('studentActionTitle').textContent='إضافة طالب إلى '+scope.grade+' / الفصل '+scope.section_name;$('actionStudentId').value='';$('actionStudentName').value='';$('actionStudentNationalId').value='';fillActionSections(scope.section_name);$('actionStudentSection').disabled=true;$('studentActionHint').textContent='سيتم ربط الطالب مباشرة بهذا الفصل وتحديث الأقسام المرتبطة.';$('studentActionModal').classList.remove('hidden')}catch(e){setStatus(e.message||e,'bad')}
   }
+  window.openEditScopedStudentDialog=function(id){
+    const r=scopedClassStudents.find(x=>String(x.id)===String(id));if(!r)return;
+    studentActionMode='edit';$('studentActionTitle').textContent='تعديل بيانات الطالب';$('actionStudentId').value=r.id;$('actionStudentName').value=r.student_name||'';$('actionStudentNationalId').value=r.national_id||'';$('actionStudentName').disabled=false;$('actionStudentNationalId').disabled=false;fillActionSections(r.section_name);$('actionStudentSection').disabled=false;$('studentActionHint').textContent='يمكن تعديل الاسم والهوية ونقل الطالب إلى شعبة أخرى داخل الصف نفسه. يتم الحفظ سحابيًا ثم تحديث جميع الأقسام المرتبطة.';$('studentActionModal').classList.remove('hidden');
+  }
   window.openTransferStudentDialog=function(id){
     const r=scopedClassStudents.find(x=>String(x.id)===String(id));if(!r)return;
     studentActionMode='transfer';$('studentActionTitle').textContent='نقل الطالب بين فصول نفس الصف';$('actionStudentId').value=r.id;$('actionStudentName').value=r.student_name;$('actionStudentName').disabled=true;$('actionStudentNationalId').value=r.national_id||'';$('actionStudentNationalId').disabled=true;fillActionSections(r.section_name);$('actionStudentSection').disabled=false;$('studentActionHint').textContent='يسمح بالنقل بين فصول '+r.grade+' فقط، ولا يغير المرحلة أو الصف.';$('studentActionModal').classList.remove('hidden');
@@ -1015,8 +1093,26 @@ window.prepareStageGradesEditor=function(){
   window.closeStudentActionModal=function(){$('studentActionModal').classList.add('hidden');$('actionStudentName').disabled=false;$('actionStudentNationalId').disabled=false;$('actionStudentSection').disabled=false}
   async function reflectStudentMutation(scope,operation){
     if(window.SchoolInformationSource?.notifyStudentsUpdated)await SchoolInformationSource.notifyStudentsUpdated(scope,operation);
-    await loadScopedClassRoster(false);
     await loadStudents();
+    applyScopeToClassRosterNavigator(scope);
+    await loadScopedClassRoster(false);
+    try{selectGroup(canonicalStageLabel(scope.stage),canonicalGradeLabel(scope.grade),scope.track_name||'',scope.section_name)}catch(_e){}
+    renderTree();renderStats();renderStudents();
+  }
+  window.refreshActiveClassEverywhere=async function(){
+    try{
+      let scope=null;
+      try{scope=classRosterNavigatorScope()}catch(_e){scope=validateScope()}
+      activeClassImportScope=scope;applyActiveClassImportScopeToHiddenSelectors();
+      setStatus('جارٍ تحديث الفصل من السحابة ومزامنته مع جميع الأقسام...','note');
+      if(window.SchoolInformationSource?.notifyStudentsUpdated)await SchoolInformationSource.notifyStudentsUpdated(scope,'manual_refresh');
+      await loadStudents();
+      applyScopeToClassRosterNavigator(scope);
+      await loadScopedClassRoster(false);
+      try{selectGroup(scope.stage,scope.grade,scope.track_name||'',scope.section_name)}catch(_e){}
+      renderTree();renderStats();renderStudents();
+      setStatus('تم تحديث الفصل ومركز المعلومات والواجهات المرتبطة من المصدر السحابي.','ok');
+    }catch(e){setStatus('تعذر تحديث الفصل: '+(e.message||e),'bad')}
   }
   window.saveStudentAction=async function(){
     try{
@@ -1025,12 +1121,27 @@ window.prepareStageGradesEditor=function(){
         const name=safe($('actionStudentName').value),nid=safe($('actionStudentNationalId').value).replace(/\D/g,'');
         if(!name)throw new Error('أدخل اسم الطالب.');if(nid&&nid.length!==10)throw new Error('رقم الهوية يجب أن يتكون من 10 أرقام.');
         await phase2Call('student-add-scope',{academicYear:year,scope,student:{student_name:name,national_id:nid||null}});
-        closeStudentActionModal();await reflectStudentMutation(scope,'add');setStatus('تمت إضافة الطالب وانعكست البيانات على المصدر المركزي.','ok');
+        closeStudentActionModal();await reflectStudentMutation(scope,'add');setStatus('تمت إضافة الطالب وحفظه سحابيًا وانعكست البيانات على مركز المعلومات.','ok');
+      }else if(studentActionMode==='edit'){
+        const id=safe($('actionStudentId').value),target=safe($('actionStudentSection').value),name=safe($('actionStudentName').value),nid=safe($('actionStudentNationalId').value).replace(/\D/g,'');
+        const current=scopedClassStudents.find(x=>String(x.id)===String(id));if(!current)throw new Error('تعذر العثور على الطالب في الفصل الحالي.');
+        if(!name)throw new Error('أدخل اسم الطالب.');if(nid&&nid.length!==10)throw new Error('رقم الهوية يجب أن يتكون من 10 أرقام.');if(!target)throw new Error('اختر الشعبة.');
+        const updated={student_name:name,student_number:current.student_number||null,national_id:nid||null,stage:scope.stage,grade:scope.grade,track_name:scope.track_name||'',section_name:target,noor_section_code:current.noor_section_code||''};
+        await secureSchoolInfo('student-update',{academicYear:year,id,student:updated});
+        closeStudentActionModal();
+        const targetScope={...scope,section_name:target};
+        if(window.SchoolInformationSource?.notifyStudentsUpdated){await SchoolInformationSource.notifyStudentsUpdated(scope,'edit');if(target!==scope.section_name)await SchoolInformationSource.notifyStudentsUpdated(targetScope,'transfer')}
+        await loadStudents();applyScopeToClassRosterNavigator(targetScope);await loadScopedClassRoster(false);try{selectGroup(targetScope.stage,targetScope.grade,targetScope.track_name||'',targetScope.section_name)}catch(_e){}
+        renderTree();renderStats();renderStudents();setStatus('تم تعديل الطالب وحفظ التغيير سحابيًا وتحديث الفصل والهيكل والأقسام المرتبطة.','ok');
       }else{
         const id=safe($('actionStudentId').value),target=safe($('actionStudentSection').value);if(!target)throw new Error('اختر الفصل الجديد.');
         if(target===scope.section_name){closeStudentActionModal();return}
         await phase2Call('student-transfer-section',{academicYear:year,id,scope,targetSection:target});
-        closeStudentActionModal();await reflectStudentMutation(scope,'transfer');setStatus('تم نقل الطالب بين فصول نفس الصف وتحديث البيانات المرتبطة.','ok');
+        closeStudentActionModal();
+        const targetScope={...scope,section_name:target};
+        if(window.SchoolInformationSource?.notifyStudentsUpdated){await SchoolInformationSource.notifyStudentsUpdated(scope,'transfer_out');await SchoolInformationSource.notifyStudentsUpdated(targetScope,'transfer_in')}
+        await loadStudents();applyScopeToClassRosterNavigator(targetScope);await loadScopedClassRoster(false);try{selectGroup(targetScope.stage,targetScope.grade,targetScope.track_name||'',targetScope.section_name)}catch(_e){}
+        renderTree();renderStats();renderStudents();setStatus('تم نقل الطالب بين فصول نفس الصف وتحديث البيانات المرتبطة.','ok');
       }
     }catch(e){setStatus('تعذر تنفيذ الإجراء: '+(e.message||e),'bad')}
   }
@@ -1072,6 +1183,7 @@ window.readScopedStudentFile=async function(fileOverride){
   function reflectCommittedScopeImmediately(scope,rows){
     const committed=(Array.isArray(rows)?rows:[]).map(cleanStudent).map(canonicalStudentLocation);
     scopedClassStudents=committed;
+    applyScopeToClassRosterNavigator(scope);
     // استبدال نطاق الفصل فقط في الذاكرة الحالية، دون لمس أي فصل آخر.
     allStudents=allStudents.filter(r=>!sameStudentScope(r,scope)).concat(committed);
     renderClassRoster();
@@ -1163,17 +1275,55 @@ window.readExcel = async function(){
       if(!currentSchool.id) await detectSchool();
       const year=safe($('academicYear').value)||'1447';
       const q=await secureSchoolInfo('students-list',{academicYear:year});
-      allStudents=(q.students||[]).map(r=>cleanStudent(r));saveLocalCenterMirror(allStudents,year,'cloud_load');rebuildFilters(true);renderTree();renderStats();renderStudents();setStatus('تم تحميل بيانات المدرسة النشطة: '+allStudents.length+' طالبًا.','ok');
-    }catch(e){const localRows=readLocalCenterMirror(safe($('academicYear').value)||'1447');if(localRows.length){allStudents=localRows;rebuildFilters(true);renderTree();renderStats();renderStudents();setStatus('تم تحميل '+localRows.length+' طالبًا من النسخة المحلية الخاصة بهذه المدرسة.','ok');}else{setStatus('تعذر تحميل الطلاب: '+(e.message||e),'bad')}}
+      allStudents=(q.students||[]).map(r=>cleanStudent(r));saveLocalCenterMirror(allStudents,year,'cloud_load');rebuildFilters(false);rebuildClassRosterNavigator('stage');renderTree();renderStats();renderStudents();setStatus('تم تحميل بيانات المدرسة النشطة: '+allStudents.length+' طالبًا.','ok');
+    }catch(e){const localRows=readLocalCenterMirror(safe($('academicYear').value)||'1447');if(localRows.length){allStudents=localRows;rebuildFilters(false);rebuildClassRosterNavigator('stage');renderTree();renderStats();renderStudents();setStatus('تم تحميل '+localRows.length+' طالبًا من النسخة المحلية الخاصة بهذه المدرسة.','ok');}else{setStatus('تعذر تحميل الطلاب: '+(e.message||e),'bad')}}
   }
   function unique(arr){return [...new Set(arr.map(safe).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ar'))}
   function fill(sel,vals,keep){const old=keep?sel.value:''; sel.innerHTML='<option value="">الكل</option>'+vals.map(v=>`<option>${html(v)}</option>`).join(''); if(old && vals.includes(old)) sel.value=old;}
   window.rebuildFilters = function(initial){
     const st=$('filterStage'), gr=$('filterGrade'), tr=$('filterTrack'), sec=$('filterSection');
-    fill(st,unique(allStudents.map(x=>x.stage)),!initial);
-    const stage=st.value; fill(gr,unique(allStudents.filter(x=>!stage||canonicalStageLabel(x.stage)===canonicalStageLabel(stage)).map(x=>x.grade)),!initial);
-    const grade=gr.value; fill(tr,unique(allStudents.filter(x=>(!stage||canonicalStageLabel(x.stage)===canonicalStageLabel(stage))&&(!grade||canonicalGradeLabel(x.grade)===canonicalGradeLabel(grade))).map(x=>x.track_name||'غير محدد')),!initial);
-    const track=tr.value; fill(sec,unique(allStudents.filter(x=>(!stage||canonicalStageLabel(x.stage)===canonicalStageLabel(stage))&&(!grade||canonicalGradeLabel(x.grade)===canonicalGradeLabel(grade))&&(!track||(x.track_name||'غير محدد')===track)).map(x=>x.section_name)),!initial);
+    if(!st||!gr||!tr||!sec)return;
+    const prev={stage:canonicalStageLabel(st.value),grade:canonicalGradeLabel(gr.value),track:safe(tr.value),section:safe(sec.value)};
+    const structureStages=academicStructure.stages||[];
+    const stageVals=structureStages.length?structureStages.map(s=>canonicalStageLabel(s.name)):unique(allStudents.map(x=>x.stage));
+    fill(st,unique(stageVals),!initial);
+    if(!initial && prev.stage && [...st.options].some(o=>canonicalStageLabel(o.value)===prev.stage))st.value=prev.stage;
+
+    const stage=canonicalStageLabel(st.value);
+    const stageObj=classStructureStage(stage);
+    const gradeVals=(stageObj?.grades?.length?stageObj.grades.map(g=>canonicalGradeLabel(g.name)):unique(allStudents.filter(x=>!stage||canonicalStageLabel(x.stage)===stage).map(x=>x.grade)));
+    fill(gr,unique(gradeVals),!initial);
+    if(!initial && prev.grade && [...gr.options].some(o=>canonicalGradeLabel(o.value)===prev.grade))gr.value=prev.grade;
+
+    const grade=canonicalGradeLabel(gr.value),gradeObj=classStructureGrade(stage,grade);
+    const secondary=stage==='ثانوية';
+    const trackVals=secondary?(gradeObj?.tracks?.length?gradeObj.tracks:unique(allStudents.filter(x=>canonicalStageLabel(x.stage)===stage&&canonicalGradeLabel(x.grade)===grade).map(x=>x.track_name||'غير محدد'))):[];
+    fill(tr,unique(trackVals),!initial);
+    if(!secondary){tr.value='';tr.disabled=true}else{tr.disabled=false;if(!initial && prev.track && [...tr.options].some(o=>o.value===prev.track))tr.value=prev.track}
+
+    const track=safe(tr.value);
+    const sectionVals=(gradeObj?.sections?.length?gradeObj.sections.map(c=>c.name):unique(allStudents.filter(x=>(!stage||canonicalStageLabel(x.stage)===stage)&&(!grade||canonicalGradeLabel(x.grade)===grade)&&(!track||(x.track_name||'غير محدد')===track)).map(x=>x.section_name)));
+    fill(sec,unique(sectionVals),!initial);
+    if(!initial && prev.section && [...sec.options].some(o=>o.value===prev.section))sec.value=prev.section;
+  }
+  function filterManagementScope(){
+    const s={stage:canonicalStageLabel($('filterStage')?.value),grade:canonicalGradeLabel($('filterGrade')?.value),track_name:safe($('filterTrack')?.value),section_name:safe($('filterSection')?.value)};
+    if(!s.stage||!s.grade||!s.section_name)throw new Error('اختر المرحلة والصف والشعبة من أعلى نافذة عرض الطلاب أولًا.');
+    if(s.stage==='ثانوية'&&!s.track_name)throw new Error('اختر المسار للمرحلة الثانوية.');
+    if(s.stage!=='ثانوية')s.track_name='';
+    return s;
+  }
+  window.openAddStudentFromFilter=function(){
+    try{const scope=filterManagementScope();applyScopeToClassRosterNavigator(scope);openAddStudentDialog()}catch(e){setStatus(e.message||e,'bad')}
+  }
+  window.refreshManagedClass=async function(){
+    try{
+      const scope=filterManagementScope();
+      applyScopeToClassRosterNavigator(scope);
+      setStatus('جارٍ تحديث الفصل / الشعبة واعتماد أحدث البيانات من السحابة...','note');
+      await refreshActiveClassEverywhere();
+      try{selectGroup(scope.stage,scope.grade,scope.track_name||'',scope.section_name)}catch(_e){}
+    }catch(e){setStatus('تعذر تحديث الفصل / الشعبة: '+(e.message||e),'bad')}
   }
   function structureMetrics(){
     const stages=academicStructure.stages||[];
@@ -1206,7 +1356,7 @@ window.readExcel = async function(){
       }).join('')+`</div>`;
     }).join('');
   }
-  window.selectGroup=function(stage,grade,track,section){$('filterStage').value=stage; rebuildFilters(); $('filterGrade').value=grade; rebuildFilters(); $('filterTrack').value=track; rebuildFilters(); $('filterSection').value=section; renderStudents();}
+  window.selectGroup=function(stage,grade,track,section){rebuildFilters(false);$('filterStage').value=canonicalStageLabel(stage); rebuildFilters(false); $('filterGrade').value=canonicalGradeLabel(grade); rebuildFilters(false); if($('filterTrack')&&!$('filterTrack').disabled)$('filterTrack').value=track||''; rebuildFilters(false); $('filterSection').value=section||''; renderStudents();}
   window.clearFilters=function(){$('filterStage').value=''; rebuildFilters(); $('filterGrade').value=''; rebuildFilters(); $('filterTrack').value=''; rebuildFilters(); $('filterSection').value=''; $('searchName').value=''; renderStudents();}
   window.renderStudents=function(){
     const st=$('filterStage').value, gr=$('filterGrade').value, tr=$('filterTrack').value, sec=$('filterSection').value, q=safe($('searchName').value);
@@ -1215,11 +1365,27 @@ window.readExcel = async function(){
     $('studentsBody').innerHTML=rows.map((r,i)=>`<tr><td>${i+1}</td><td><input value="${html(r.student_name)}" id="name_${r.id}"></td><td><input value="${html(r.student_number||'')}" id="snum_${r.id}"></td><td><input value="${html(r.stage)}" id="stage_${r.id}"></td><td><input value="${html(r.grade)}" id="grade_${r.id}"></td><td><input value="${html(r.track_name||'')}" id="track_${r.id}"></td><td><input value="${html(r.section_name)}" id="section_${r.id}"></td><td><input value="${html(r.noor_section_code||'')}" id="code_${r.id}"></td><td><input value="${html(r.national_id||'')}" id="nid_${r.id}"></td><td class="noPrint"><div class="actions"><button class="btn small" onclick="updateStudent('${r.id}')">حفظ/نقل</button><button class="btn small indigo" onclick="studentCard('${r.id}')">بطاقة</button><button class="btn small danger" onclick="deleteStudent('${r.id}')">حذف</button></div></td></tr>`).join('') || '<tr><td colspan="10" class="muted">لا توجد بيانات مطابقة.</td></tr>';
   }
   window.updateStudent=async function(id){
-    try{const row={student_name:safe($('name_'+id).value),student_number:safe($('snum_'+id).value)||null,stage:canonicalStageLabel($('stage_'+id).value)||'غير محدد',grade:canonicalGradeLabel($('grade_'+id).value)||'غير محدد',stage_id:canonicalStageId($('stage_'+id).value),grade_id:canonicalGradeId($('grade_'+id).value),track_name:safe($('track_'+id).value)||'',section_name:safe($('section_'+id).value)||'غير محدد',noor_section_code:safe($('code_'+id).value),national_id:safe($('nid_'+id).value)||null};await secureSchoolInfo('student-update',{id,student:row});setStatus('تم تحديث بيانات الطالب داخل المدرسة الحالية.','ok');await loadStudents();}catch(e){setStatus('تعذر التحديث: '+(e.message||e),'bad')}
+    try{
+      const old=allStudents.find(x=>String(x.id)===String(id));if(!old)throw new Error('تعذر العثور على الطالب.');
+      const oldScope={stage:canonicalStageLabel(old.stage),grade:canonicalGradeLabel(old.grade),track_name:safe(old.track_name||''),section_name:safe(old.section_name)};
+      const row={student_name:safe($('name_'+id).value),student_number:safe($('snum_'+id).value)||null,stage:canonicalStageLabel($('stage_'+id).value)||'غير محدد',grade:canonicalGradeLabel($('grade_'+id).value)||'غير محدد',stage_id:canonicalStageId($('stage_'+id).value),grade_id:canonicalGradeId($('grade_'+id).value),track_name:safe($('track_'+id).value)||'',section_name:safe($('section_'+id).value)||'غير محدد',noor_section_code:safe($('code_'+id).value),national_id:safe($('nid_'+id).value)||null};
+      await secureSchoolInfo('student-update',{academicYear:safe($('academicYear').value)||'1447',id,student:row});
+      const newScope={stage:row.stage,grade:row.grade,track_name:row.track_name,section_name:row.section_name};
+      if(window.SchoolInformationSource?.notifyStudentsUpdated){await SchoolInformationSource.notifyStudentsUpdated(oldScope,'update');if(JSON.stringify(oldScope)!==JSON.stringify(newScope))await SchoolInformationSource.notifyStudentsUpdated(newScope,'move')}
+      await loadStudents();applyScopeToClassRosterNavigator(newScope);await loadScopedClassRoster(false);try{selectGroup(newScope.stage,newScope.grade,newScope.track_name,newScope.section_name)}catch(_e){}
+      renderTree();renderStats();renderStudents();setStatus('تم حفظ تعديل الطالب سحابيًا وتحديث الفصل والهيكل والسجلات المرتبطة.','ok');
+    }catch(e){setStatus('تعذر التحديث: '+(e.message||e),'bad')}
   }
   window.deleteStudent=async function(id){
+    const old=allStudents.find(x=>String(x.id)===String(id));if(!old)return;
     if(!confirm('حذف الطالب من العرض؟ سيتم الحذف بشكل منطقي داخل المدرسة الحالية فقط.')) return;
-    try{await secureSchoolInfo('student-delete',{id});setStatus('تم حذف الطالب من العرض بشكل آمن.','ok');await loadStudents();}catch(e){setStatus('تعذر الحذف: '+(e.message||e),'bad')}
+    const scope={stage:canonicalStageLabel(old.stage),grade:canonicalGradeLabel(old.grade),track_name:safe(old.track_name||''),section_name:safe(old.section_name)};
+    try{
+      await secureSchoolInfo('student-delete',{academicYear:safe($('academicYear').value)||'1447',id});
+      if(window.SchoolInformationSource?.notifyStudentsUpdated)await SchoolInformationSource.notifyStudentsUpdated(scope,'delete');
+      await loadStudents();applyScopeToClassRosterNavigator(scope);await loadScopedClassRoster(false);try{selectGroup(scope.stage,scope.grade,scope.track_name,scope.section_name)}catch(_e){}
+      renderTree();renderStats();renderStudents();setStatus('تم حذف الطالب منطقيًا وتحديث الفصل والهيكل والسجلات المرتبطة.','ok');
+    }catch(e){setStatus('تعذر الحذف: '+(e.message||e),'bad')}
   }
   window.studentCard=function(id){
     const r=allStudents.find(x=>String(x.id)===String(id)); if(!r) return;
@@ -1487,7 +1653,7 @@ window.readExcel = async function(){
 <script src="openai-engine.js"></script>
 <script src="top-ai-center.js"></script>
 <script src="platform-page-navigation.js?v=20260818-nav1"></script>
-<div id="r6RouteProof" style="position:fixed;left:14px;bottom:14px;z-index:99999;background:#0f766e;color:white;padding:8px 12px;border-radius:999px;font-weight:900;font-size:12px;box-shadow:0 8px 24px #0002">RL8 / قراءة ملفات نور المرنة</div>
+<div id="r6RouteProof" style="position:fixed;left:14px;bottom:14px;z-index:99999;background:#0f766e;color:white;padding:8px 12px;border-radius:999px;font-weight:900;font-size:12px;box-shadow:0 8px 24px #0002">RL12 / إدارة الطلاب المركزية والفصول</div>
 
 <script>
 (function(){

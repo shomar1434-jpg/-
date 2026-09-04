@@ -1,0 +1,37 @@
+RL12 — إدارة الطلاب المركزية والفصول — 2026-09-04
+
+Regression Lock:
+- البناء من RL10 لمركز المعلومات، دون تعديل manager/teacher/decisions/discipline.
+- لا حذف شامل للطلاب أو بيانات المدارس.
+- جميع عمليات الطالب تبقى school_id + academic_year scoped.
+- الحذف منطقي Soft Delete وفق backend الحالي.
+- school-information-source.js محفوظ من RL10 لضمان التحديث والبث للأقسام المرتبطة.
+
+التغييرات الوظيفية:
+1) طلاب الفصل المحدد:
+   - قائمة مرحلة + صف + مسار + شعبة مستقلة مبنية من الهيكل الدراسي نفسه حتى لو كان الفصل فارغاً.
+   - عرض الفصل، إضافة طالب، تعديل، نقل، حذف، تحديث الفصل.
+2) عرض طلاب الصف والشعبة:
+   - القوائم أصبحت تُبنى من الهيكل الدراسي المعتمد لا من الطلاب الموجودين فقط.
+   - إضافة طالب.
+   - تحديث الفصل / الشعبة.
+   - حفظ/نقل وتعديل وحذف كل طالب مع مزامنة سحابية.
+3) كل تغيير ناجح:
+   - يحفظ في Supabase.
+   - يستدعي SchoolInformationSource.notifyStudentsUpdated.
+   - يعيد قراءة الطلاب.
+   - يحدث طلاب الفصل + الهيكل + الإحصاءات + جدول الصف والشعبة.
+4) التحديث اليدوي للفصل ليس إعادة رسم فقط، بل إعادة مزامنة من المصدر السحابي ثم بث التغيير.
+
+QA:
+- 31 inline script blocks parsed.
+- 0 JavaScript syntax errors via node --check.
+- verified UI controls: classRosterStage/classRosterGrade/classRosterTrack/classRosterSection.
+- verified central add/update functions: openAddStudentFromFilter / refreshManagedClass.
+- verified class edit function: openEditScopedStudentDialog.
+- verified manual cloud refresh path: refreshActiveClassEverywhere + notifyStudentsUpdated.
+- version badge: RL12 / إدارة الطلاب المركزية والفصول.
+
+ملاحظة اختبار حي:
+- Edge Function school-information-structure كانت ACTIVE في Supabase قبل بناء RL12.
+- لم يتم إنشاء/حذف بيانات طلاب اختبارية في مدارس حقيقية أثناء QA حتى لا نلوث بيانات المدارس.

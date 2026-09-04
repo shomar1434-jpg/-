@@ -120,7 +120,7 @@ button{border:0;border-radius:9px;padding:10px 13px;font:700 12px 'Alyamama';cur
 <script src="cloud-file-engine.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js?v=20260830"></script>
 <script src="internal-messaging.js?v=20260829-decisions-send-v2"></script>
-<meta name="decisions-assignments-version" content="2026.08.30-no-auto-restore-v5">
+<meta name="decisions-assignments-version" content="2026.09.04-RL19-save-pdf-message-atomic">
 <script src="platform-page-navigation.js?v=20260830-nav2" defer></script>
 </head>
 <body>
@@ -700,19 +700,24 @@ function selectedAssigneeIdentity(){
  };
 }
 async function verifyCloudDecisionRecord(record){
- const f=await findCloudDecision(record?.id||'');
- if(!f)return null;
- const rec=await readCloudDecisionRecord(f);
- if(!rec)return null;
- const sameId=String(rec.id||'')===String(record.id||'');
- const sameType=String(rec.recordType||'')==='decision_assignment';
- const sameFolder=String(rec.folderId||DECISIONS_FOLDER_ID)===DECISIONS_FOLDER_ID;
- const sameAssignee=normalizePersonName(rec.assigneeName||'')===normalizePersonName(record.assigneeName||'');
- const sameVersion=String(rec.updatedAt||'')===String(record.updatedAt||'');
- if(!sameId||!sameType||!sameFolder||!sameAssignee||!sameVersion)return null;
- rec.cloudFileId=String(f.id||rec.cloudFileId||'');
- rec.cloudSynced=true;
- return rec;
+ if(!record?.id)return null;
+ // RL19: التحقق المرجعي المباشر من خدمة القرارات، لا من list الذي قد يتأخر في الفهرسة.
+ try{
+   const g=await DecisionArchiveService.get(String(record.id));
+   const rec=g?.record||null;
+   if(rec){
+     const sameId=String(rec.id||'')===String(record.id||'');
+     const sameType=String(rec.recordType||'')==='decision_assignment';
+     const sameFolder=String(rec.folderId||DECISIONS_FOLDER_ID)===DECISIONS_FOLDER_ID;
+     const sameAssignee=normalizePersonName(rec.assigneeName||'')===normalizePersonName(record.assigneeName||'');
+     if(sameId&&sameType&&sameFolder&&sameAssignee){
+       rec.cloudFileId=String(rec.cloudFileId||g.fileId||record.cloudFileId||'');
+       rec.cloudSynced=true;
+       return rec;
+     }
+   }
+ }catch(e){console.warn('[decision authoritative verify]',e);}
+ return null;
 }
 function findArchivedDecision(id){
  return archiveRead().find(r=>String(r.id)===String(id)&&r.recordType==='decision_assignment')||null;
@@ -793,7 +798,9 @@ function removeAsset(type){
  const inp=type==='signature'?$('signatureFile'):$('stampFile');
  if(inp) inp.value='';
 }
-async function saveData(){
+async function saveData(options={}){
+ const silent=!!options.silent;
+ const forSend=!!options.forSend;
  // البيانات الرسمية الأساسية مصدرها «إعدادات مخصصة» في قسم المدير، ولا نعتمد Snapshot قديمًا لها.
  syncDecisionBaseSettings({force:true});
  render();
@@ -804,7 +811,7 @@ async function saveData(){
 
  const rows=archiveRead();
  const editParam=new URLSearchParams(location.search||'').get('editAssignment')||'';
- const editingExisting=!!(editParam&&currentArchiveRecordId&&String(editParam)===String(currentArchiveRecordId));
+ const editingExisting=!!(currentArchiveRecordId && (forSend || (editParam&&String(editParam)===String(currentArchiveRecordId))));
  const old=editingExisting?rows.find(r=>String(r.id)===String(currentArchiveRecordId)):null;
  let sequence=old&&normalizePersonName(old.assigneeName)===assignee ? (Number(old.sequence)||1) : nextSequenceForAssignee(assignee,rows,editingExisting?currentArchiveRecordId:null);
  const id=editingExisting?String(currentArchiveRecordId):('decision_assignment_'+Date.now()+'_'+Math.random().toString(36).slice(2,8));
@@ -831,9 +838,9 @@ async function saveData(){
    try{localStorage.setItem('takleef1448_approved',JSON.stringify(o))}catch(_){ }
    // القرار الجديد يبقى محددًا للإرسال، لكن لا يدخل وضع «تعديل» إلا إذا فتحه المستخدم صراحةً من الأرشيف.
    if(!editingExisting){try{const u=new URL(location.href);u.searchParams.delete('editAssignment');history.replaceState(null,'',u)}catch(_){ }}
-   alert('تم الحفظ السحابي المؤكد في: أرشيف السجلات ← القرارات والتكليفات\nاسم السجل: '+finalRecord.displayName);
-   return true;
- }catch(e){console.error('[decision authoritative save]',e);alert('تعذر حفظ القرار سحابيًا: '+(e?.message||e)+'\nلم يتم اعتبار العملية ناجحة.');return false}
+   if(!silent)alert('تم الحفظ السحابي المؤكد في: أرشيف السجلات ← القرارات والتكليفات\nاسم السجل: '+finalRecord.displayName);
+   return finalRecord;
+ }catch(e){console.error('[decision authoritative save]',e);if(!silent)alert('تعذر حفظ القرار سحابيًا: '+(e?.message||e)+'\nلم يتم اعتبار العملية ناجحة.');return false}
 }
 function loadData(){
  try{const o=JSON.parse(localStorage.getItem('takleef1448_approved')||'{}');fields.forEach(id=>{if(o[id]!=null)$(id).value=o[id]})}catch(e){}
@@ -842,10 +849,17 @@ function normalizeAssigneeIdentity(v){
  return String(v||'').normalize('NFKC').replace(/[ًٌٍَُِّْـ]/g,'').replace(/ة/g,'ه').replace(/أ|إ|آ/g,'ا').replace(/ى/g,'ي').replace(/\s+/g,' ').trim().toLowerCase();
 }
 async function resolveSavedAssignmentRecipient(record){
- if(!window.SchoolInformationSource||typeof SchoolInformationSource.getStaff!=='function')throw new Error('مصدر مستخدمي المدرسة غير متاح');
- const staff=await SchoolInformationSource.getStaff();
  const savedId=String(record?.assigneeUserId||'').trim();
  const savedEmail=String(record?.assigneeEmail||'').trim().toLowerCase();
+ const wanted=normalizeAssigneeIdentity(record?.assigneeName);
+ let staff=[];
+ // المصدر الأول هو نفس دليل المستخدمين الذي تستخدمه المراسلات، حتى لا نختار حسابًا لا يمكن استقبال الرسالة.
+ if(window.InternalMessaging&&typeof InternalMessaging.call==='function'){
+   try{const r=await InternalMessaging.call('users',{});staff=Array.isArray(r?.users)?r.users:[]}catch(e){console.warn('[decision messaging users]',e)}
+ }
+ if(!staff.length&&window.SchoolInformationSource&&typeof SchoolInformationSource.getStaff==='function'){
+   staff=await SchoolInformationSource.getStaff();
+ }
  if(savedId){
    const byId=(staff||[]).find(u=>String(u.id||u.user_id||'').trim()===savedId);
    if(byId)return byId;
@@ -854,11 +868,10 @@ async function resolveSavedAssignmentRecipient(record){
    const byEmail=(staff||[]).filter(u=>String(u.email||u.user_email||u.microsoft_email||'').trim().toLowerCase()===savedEmail && (u.id||u.user_id));
    if(byEmail.length===1)return byEmail[0];
  }
- const wanted=normalizeAssigneeIdentity(record?.assigneeName);
  const matches=(staff||[]).filter(u=>normalizeAssigneeIdentity(u.name||u.full_name)===wanted && (u.id||u.user_id));
  if(matches.length===1)return matches[0];
- if(matches.length>1)throw new Error('يوجد أكثر من حساب مطابق لاسم المكلف؛ افتح القرار واختر المكلف مجددًا لتثبيت الحساب الصحيح');
- throw new Error('لم يتم العثور على حساب مستخدم مطابق للمكلف داخل المدرسة');
+ if(matches.length>1)throw new Error('يوجد أكثر من حساب مطابق لاسم المكلف؛ اختر المكلف من القائمة ثم أعد الإرسال لتثبيت الحساب الصحيح');
+ throw new Error('لم يتم العثور على حساب مراسلات نشط مطابق للمكلف داخل المدرسة');
 }
 async function buildDecisionPdfFile(record){
  if(!window.html2canvas)throw new Error('تعذر تحميل محرك رسم القرار. أعد تحميل الصفحة ثم حاول مرة أخرى.');
@@ -946,20 +959,27 @@ async function verifyMessagePdfAttachment(messageId,fileId){
  return rows.some(a=>String(a.file_id||a.fileId||'')===String(fileId)&&String(a.mime_type||'').toLowerCase()==='application/pdf');
 }
 async function sendSavedAssignmentToAssignee(){
- if(!currentArchiveRecordId){alert('احفظ قرار التكليف أولًا قبل إرساله للمكلف.');return false}
- let record=findArchivedDecision(currentArchiveRecordId);
- if(!record||!record.cloudSynced){alert('يجب أن يكون قرار التكليف محفوظًا ومؤكدًا سحابيًا قبل الإرسال.');return false}
  if(!window.InternalMessaging||typeof InternalMessaging.call!=='function'){alert('نظام المراسلات الداخلي غير متاح. أعد تحميل الصفحة ثم حاول مرة أخرى.');return false}
- const btn=$('sendAssignmentBtn');if(btn)btn.disabled=true;
- let pdfUpload=null;
+ const btn=$('sendAssignmentBtn');
+ const oldText=btn?btn.textContent:'';
+ if(btn){btn.disabled=true;btn.textContent='جارٍ حفظ القرار والتحقق...';}
+ let pdfUpload=null, messageConfirmed=false;
  try{
-   const cloudCopy=await verifyCloudDecisionRecord(record);
-   if(!cloudCopy)throw new Error('تعذر التحقق من القرار السحابي قبل الإرسال');
-   record=Object.assign({},record,cloudCopy,{cloudSynced:true});
+   // RL19: زر الإرسال يكمل الدورة بنفسه. لا يعتمد على سرعة ظهور القرار في list أو على ضغط زر الحفظ مسبقًا.
+   const savedRecord=await saveData({forSend:true,silent:true});
+   if(!savedRecord?.id)throw new Error('تعذر حفظ قرار التكليف سحابيًا قبل الإرسال. لم يتم إرسال أي رسالة.');
+   currentArchiveRecordId=String(savedRecord.id);
+   let record=await verifyCloudDecisionRecord(savedRecord);
+   if(!record)throw new Error('تمت محاولة الحفظ، لكن لم يتم تأكيد القرار من المصدر السحابي المرجعي. أُلغي الإرسال لحماية البيانات.');
+   record=Object.assign({},savedRecord,record,{cloudSynced:true});
+   if(btn)btn.textContent='جارٍ تحديد حساب المكلف...';
    const user=await resolveSavedAssignmentRecipient(record);
    if(record.sentMessageId && !confirm('سبق إرسال هذا القرار للمكلف. هل تريد إعادة إرساله؟'))return false;
-   // دورة القرار الرسمية: السجل السحابي -> نفس النسخة الرسمية للطباعة -> PDF -> مرفق مراسلات.
+
+   if(btn)btn.textContent='جارٍ إنشاء PDF مطابق للنموذج...';
+   // السجل المؤكد يحتوي officialHtml المأخوذ من نفس النموذج الرسمي الظاهر عند الحفظ.
    pdfUpload=await uploadDecisionPdfForMessage(record);
+   if(btn)btn.textContent='جارٍ إرسال التكليف في المراسلات...';
    const body=[
      'صدر لك قرار تكليف من إدارة المدرسة.',
      '',
@@ -967,7 +987,7 @@ async function sendSavedAssignmentToAssignee(){
      'رقم القرار: '+(record.decisionNo||'—'),
      'اسم المكلف: '+(record.assigneeName||''),
      '',
-     'مرفق بهذه الرسالة نسخة PDF الرسمية من قرار التكليف، مطابقة لنسخة القرار المعدّة للطباعة.',
+     'مرفق بهذه الرسالة نسخة PDF الرسمية من قرار التكليف، مطابقة للنموذج المعتمد.',
      'يرجى فتح المرفق والاطلاع على القرار.'
    ].join('\n');
    const r=await InternalMessaging.call('send',{
@@ -976,26 +996,32 @@ async function sendSavedAssignmentToAssignee(){
      body,priority:'important',messageType:'official',acknowledgementMode:'read_receipt',
      attachments:[{fileId:pdfUpload.fileId,name:pdfUpload.fileName,source:'device'}],
      linked:{module:'manager_decisions_assignments',recordType:'decision_assignment',recordId:String(record.id),title:'قرار تكليف — '+(record.assignmentTitle||record.displayName||'تكليف إداري')},
-     metadata:{source:'decisions_assignments',decisionId:String(record.id),assigneeUserId:String(user.id||user.user_id||''),pdfFileId:pdfUpload.fileId}
+     metadata:{source:'decisions_assignments',decisionId:String(record.id),assigneeUserId:String(user.id||user.user_id||''),pdfFileId:pdfUpload.fileId,cloudDecisionConfirmed:true}
    });
-   if(!r||!r.ok||!r.messageId)throw new Error('لم يرجع نظام المراسلات تأكيدًا صالحًا للإرسال');
+   if(!r||!r.ok||!r.messageId||r.attachmentsConfirmed===false)throw new Error('لم يرجع نظام المراسلات تأكيدًا كاملًا للإرسال والمرفق');
+   messageConfirmed=true;
+   if(btn)btn.textContent='جارٍ التحقق من المرفق...';
    const attachmentOk=await verifyMessagePdfAttachment(r.messageId,pdfUpload.fileId);
-   if(!attachmentOk)throw new Error('تم إنشاء الرسالة لكن لم يتم تأكيد ارتباط ملف PDF بها.');
+   if(!attachmentOk)throw new Error('تم إنشاء الرسالة لكن لم يتم تأكيد ارتباط ملف PDF بها. راجع المراسلات قبل إعادة المحاولة.');
+
    const updated=Object.assign({},record,{
      sentToAssigneeAt:new Date().toISOString(),sentMessageId:String(r.messageId),sentPdfFileId:pdfUpload.fileId,sentPdfFileName:pdfUpload.fileName,
      sentToUserId:String(user.id||user.user_id),assigneeUserId:String(user.id||user.user_id),
      assigneeEmail:String(user.email||user.user_email||record.assigneeEmail||'').trim().toLowerCase(),updatedAt:new Date().toISOString()
    });
+   if(btn)btn.textContent='جارٍ تسجيل حالة الإرسال...';
    const persisted=await DecisionArchiveService.save(updated,true);
    if(!persisted?.record)throw new Error('تم إرسال القرار وPDF، لكن تعذر تأكيد تحديث حالة الإرسال في أرشيف القرار');
    Object.assign(updated,persisted.record,{cloudFileId:String(persisted.fileId||persisted.record.cloudFileId||updated.cloudFileId||''),cloudSynced:true});
    const rows=archiveRead().filter(x=>String(x.id)!==String(updated.id));rows.unshift(updated);archiveWrite(rows);
-   alert('تم إرسال قرار التكليف إلى '+updated.assigneeName+' كمرفق PDF رسمي، وتم تأكيد المرفق وتسجيل الإرسال في الأرشيف ✅');return true;
+   try{localStorage.setItem('manager_decisions_archive_changed_v1',JSON.stringify({id:updated.id,ts:Date.now(),source:'decision-send-complete'}));}catch(_){ }
+   alert('تم حفظ قرار التكليف سحابيًا ثم إرساله إلى '+updated.assigneeName+' عبر المراسلات الداخلية كمرفق PDF رسمي، وتم تأكيد ارتباط المرفق بالرسالة ✅');
+   return true;
  }catch(e){
-   // إذا فشل الإرسال قبل إنشاء رسالة مؤكدة، لا نترك PDF يتيمًا في التخزين.
-   if(pdfUpload?.fileId){try{await CloudFileEngine.trash(pdfUpload.fileId)}catch(_){ }}
-   console.error('[decision pdf messaging]',e);alert(e?.message||'تعذر إرسال قرار التكليف كمرفق PDF.');return false;
- }finally{if(btn)btn.disabled=false}
+   // لا نحذف PDF بعد أن تؤكد خدمة المراسلات إنشاء الرسالة، لأن ذلك سيكسر مرفقًا موجودًا لدى المستلم.
+   if(pdfUpload?.fileId&&!messageConfirmed){try{await CloudFileEngine.trash(pdfUpload.fileId)}catch(_){ }}
+   console.error('[decision save+pdf+messaging]',e);alert(e?.message||'تعذر إكمال حفظ وإرسال قرار التكليف.');return false;
+ }finally{if(btn){btn.disabled=false;btn.textContent=oldText||'✉ إرسال القرار للمكلف';}}
 }
 function startNewAssignment(){
  if(currentArchiveRecordId){

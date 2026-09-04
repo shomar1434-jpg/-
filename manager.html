@@ -3309,7 +3309,9 @@ async function legacyPerformanceSave_DISABLED() {
         }
 
         async function migrateLegacyManagerRecordsToCloud() {
-            const flag='legacy_manager_records_migrated_v1';
+            const sid=(window.PlatformCloudSession&&PlatformCloudSession.schoolId?PlatformCloudSession.schoolId():'')||localStorage.getItem('activeSchoolId')||'';
+            const uid=(window.PlatformCloudSession&&PlatformCloudSession.userId?PlatformCloudSession.userId():'')||localStorage.getItem('currentUserId')||'';
+            const flag='legacy_manager_records_migrated_v2:'+sid+':'+uid;
             if(sessionStorage.getItem(flag)==='1'||!window.CloudFileEngine)return;
             sessionStorage.setItem(flag,'1');
             try{
@@ -3330,19 +3332,24 @@ async function legacyPerformanceSave_DISABLED() {
         async function getAllManagerLocalRecords() {
             if(!window.CloudFileEngine) throw new Error('الحفظ السحابي غير متاح');
             await migrateLegacyManagerRecordsToCloud();
-            const r=await CloudFileEngine.list({moduleKey:'manager_records_archive',recordType:'pdf_archive',limit:1000});
+            const r=await CloudFileEngine.list({ownershipScope:'user',moduleKey:'manager_records_archive',recordType:'pdf_archive',limit:1000});
             return (r.files||[]).map(f=>({id:f.id,name:f.display_name||f.original_name||'ملف',type:f.mime_type||'',size:Number(f.file_size||0),createdAt:f.created_at,updatedAt:f.updated_at,folder:(f.metadata&&f.metadata.folder)||'عام',kind:(f.metadata&&f.metadata.kind)||'',metadata:f.metadata||{},cloud:true}));
         }
 
         async function getManagerLocalRecord(id) {
             if(!window.CloudFileEngine) throw new Error('الحفظ السحابي غير متاح');
             const u=await CloudFileEngine.usage(String(id)); if(!u.file)return null;
+            const uid=(window.PlatformCloudSession&&PlatformCloudSession.userId?String(PlatformCloudSession.userId()||''):'');
+            if(String(u.file.ownership_scope||'')!=='user'||(uid&&String(u.file.owner_user_id||'')!==uid)) throw new Error('هذا الملف لا يتبع مكتبة المدير الحالي.');
             const file=await CloudFileEngine.getBlob(String(id));
             return {id:u.file.id,name:u.file.display_name||u.file.original_name||'ملف',type:u.file.mime_type||'',size:Number(u.file.file_size||0),createdAt:u.file.created_at,updatedAt:u.file.updated_at,folder:(u.file.metadata&&u.file.metadata.folder)||'عام',kind:(u.file.metadata&&u.file.metadata.kind)||'',metadata:u.file.metadata||{},file,cloud:true};
         }
 
         async function deleteManagerLocalRecord(id) {
             if(!window.CloudFileEngine) throw new Error('الحفظ السحابي غير متاح');
+            const u=await CloudFileEngine.usage(String(id)); if(!u.file) throw new Error('الملف غير موجود');
+            const uid=(window.PlatformCloudSession&&PlatformCloudSession.userId?String(PlatformCloudSession.userId()||''):'');
+            if(String(u.file.ownership_scope||'')!=='user'||(uid&&String(u.file.owner_user_id||'')!==uid)) throw new Error('لا يمكن حذف ملف مستخدم آخر.');
             return CloudFileEngine.trash(String(id));
         }
 

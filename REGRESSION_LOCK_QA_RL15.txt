@@ -1,0 +1,40 @@
+RL15 — توحيد مكتبات الأقسام وحفظها السحابي مع عزل المستخدمين
+
+النطاق:
+1) section-records-repository.js
+   - يغطي الوكيل، المعلم، الموجه الطلابي، الموجه الصحي، رائد النشاط، معلمة رياض الأطفال، الموظف الإداري.
+   - moduleKey مستقل لكل دور: section_library_<role>.
+   - ownershipScope=user إلزامي في الرفع والقائمة.
+   - التحقق من owner_user_id قبل المعاينة/التعديل/الحذف.
+   - تعديل/معاينة/طباعة/حذف كلها تقرأ الملف من السحابة.
+   - الاستبدال يستخدم replaceFileId لنفس الملف فقط.
+   - مجلدات الواجهة المحلية أصبحت scoped بواسطة school_id + user_id + role.
+   - قراءة توافقية للملفات القديمة ذات الدور الواضح بدون حذفها أو ترحيل الغامض منها.
+
+2) manager.html
+   - مكتبة المدير تبقى على بنيتها الحالية دون استبدال.
+   - قائمة الملفات أصبحت ownershipScope=user.
+   - التحقق من owner_user_id قبل فتح أو حذف أي ملف.
+   - migration flag أصبح scoped للمدرسة والمستخدم.
+
+3) administrative_employee_portal.html
+   - إضافة محرك مكتبة القسم السحابي للموظف الإداري.
+
+عزل التخزين المؤكد من platform-files:
+- bucket موحد: school-platform-files.
+- مسار ملفات ownershipScope=user:
+  schools/<school_id>/users/<user_id>/<moduleKey>/<slot>/<fileId>.<ext>
+- list مع ownershipScope=user يقيد owner_user_id بالمستخدم الحالي.
+- canManage يقيد الحذف/التعديل بالمالك أو المدير داخل نفس school_id.
+
+Regression Lock:
+- لا تعديل على teacher.html أو agent.html أو student_advisor.html أو health_advisor.html أو activity_leader.html أو kindergarten_teacher.html؛ هذه الصفحات تحمل الملف المشترك أصلًا.
+- لا تعديل على القرارات والتكليفات أو مركز المعلومات أو الانضباط.
+- لا DDL ولا حذف بيانات ولا تغيير bucket.
+- لا ترحيل تلقائي للملفات القديمة الغامضة بين الصحة والنشاط منعًا لخلط مكتبتين.
+
+QA:
+- section-records-repository.js: node --check PASS.
+- manager.html: 27 inline scripts / 0 syntax errors.
+- administrative_employee_portal.html: 5 inline scripts / 0 syntax errors.
+- verified ownershipScope=user in manager list and shared library list/upload.

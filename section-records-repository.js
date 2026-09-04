@@ -5,17 +5,35 @@
 
   const path = (location.pathname || '').toLowerCase();
   const ROLE =
+    path.includes('kindergarten_teacher') ? 'kindergarten_teacher' :
+    path.includes('activity_leader') ? 'activity_leader' :
+    path.includes('health_advisor') ? 'health_advisor' :
+    path.includes('student_advisor') ? 'student_advisor' :
+    path.includes('administrative_employee') ? 'administrative_employee' :
     path.includes('agent') ? 'agent' :
-    path.includes('teacher') ? 'teacher' :
-    path.includes('student_advisor') ? 'student_advisor' : 'section';
+    path.includes('teacher') ? 'teacher' : 'section';
 
-  const LABEL = path.includes('activity_leader') ? 'رائد/ة النشاط' : path.includes('health_advisor') ? 'الموجه/ة الصحي/ة' : path.includes('kindergarten_teacher') ? 'معلمة رياض الأطفال' : ROLE === 'agent' ? 'الوكيل/ة' : ROLE === 'teacher' ? 'المعلم/ة' : 'الموجه/ة الطلابية';
+  const ROLE_LABELS = {
+    manager:'المدير/ة', agent:'الوكيل/ة', teacher:'المعلم/ة',
+    student_advisor:'الموجه/ة الطلابية', health_advisor:'الموجه/ة الصحي/ة',
+    activity_leader:'رائد/ة النشاط', kindergarten_teacher:'معلمة رياض الأطفال',
+    administrative_employee:'الموظف/ة الإداري/ة', section:'القسم'
+  };
+  const LABEL = ROLE_LABELS[ROLE] || 'القسم';
   const DB_NAME = 'section_records_repository_safe_' + ROLE;
   const STORE = 'files';
-  const FOLDERS_KEY = DB_NAME + '_library_folders_v1';
   let currentId = null;
   let currentUrl = '';
-  let activeFolder = localStorage.getItem(FOLDERS_KEY + '_active') || 'عام';
+  let activeFolder = 'عام';
+  function localScopeSuffix(){
+    try{
+      const sid=String(window.PlatformCloudSession?.schoolId?.()||localStorage.getItem('activeSchoolId')||localStorage.getItem('school_id')||'school');
+      const uid=String(window.PlatformCloudSession?.userId?.()||localStorage.getItem('currentUserId')||'user');
+      return sid+':'+uid+':'+ROLE;
+    }catch(e){return 'school:user:'+ROLE}
+  }
+  function foldersKey(){return DB_NAME+'_library_folders_v2:'+localScopeSuffix();}
+  function loadActiveFolder(){try{activeFolder=localStorage.getItem(foldersKey()+'_active')||'عام'}catch(e){activeFolder='عام'}return activeFolder;}
 
   function css(){
     if(document.getElementById('sectionRecordsRepositorySafeStyle')) return;
@@ -47,59 +65,115 @@
   function icon(k){return ({pdf:'📕 PDF',word:'📝 Word',excel:'📊 Excel',pptx:'📽️ PPTX',image:'🖼️ صورة',file:'📎 ملف'})[k]||'📎 ملف';}
   function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
   function fmt(n){if(!n)return'0 KB'; if(n<1048576)return Math.round(n/1024)+' KB'; return (n/1048576).toFixed(1)+' MB';}
-  function folders(){try{const arr=JSON.parse(localStorage.getItem(FOLDERS_KEY)||'[]');return Array.from(new Set(['عام',...arr.filter(Boolean)]));}catch(e){return ['عام'];}}
-  function saveFolders(arr){localStorage.setItem(FOLDERS_KEY,JSON.stringify(Array.from(new Set(['عام',...arr.filter(Boolean)]))));}
-  function setActiveFolder(name){activeFolder=name||'عام';localStorage.setItem(FOLDERS_KEY+'_active',activeFolder);render();}
+  function folders(){try{const arr=JSON.parse(localStorage.getItem(foldersKey())||'[]');return Array.from(new Set(['عام',...arr.filter(Boolean)]));}catch(e){return ['عام'];}}
+  function saveFolders(arr){localStorage.setItem(foldersKey(),JSON.stringify(Array.from(new Set(['عام',...arr.filter(Boolean)]))));}
+  function setActiveFolder(name){activeFolder=name||'عام';localStorage.setItem(foldersKey()+'_active',activeFolder);render();}
 
   // Cloud-first repository. IndexedDB is read only once for migration of legacy files.
-  const CLOUD_MODULE='section_records_repository';
-  const CLOUD_RECORD_TYPE=ROLE+'_library';
+  // RL15: كل مكتبة قسم لها moduleKey مستقل، وكل ملف ownershipScope=user.
+  // المنصة تستخدم bucket موحداً للمدرسة، بينما platform-files يضع ملفات المستخدم فعلياً
+  // داخل schools/<school_id>/users/<user_id>/<module>/... ويمنع خلط مستخدمي المدرسة.
+  const CLOUD_MODULE='section_library_'+ROLE;
+  const CLOUD_RECORD_TYPE='library_file';
+  const LEGACY_MODULE='section_records_repository';
+  const LEGACY_RECORD_TYPES = ROLE==='agent' ? ['agent_library'] :
+    ROLE==='teacher' ? ['teacher_library'] :
+    ROLE==='student_advisor' ? ['student_advisor_library'] :
+    (ROLE==='health_advisor'||ROLE==='activity_leader') ? ['section_library'] :
+    ROLE==='kindergarten_teacher' ? ['teacher_library'] : [];
   function cloudReady(){return !!(window.CloudFileEngine&&window.PlatformCloudSession?.token&&window.PlatformCloudSession.token());}
+  function cloudUserId(){try{return String(window.PlatformCloudSession?.userId?.()||'').trim()}catch(e){return''}}
+  function cloudSchoolId(){try{return String(window.PlatformCloudSession?.schoolId?.()||'').trim()}catch(e){return''}}
+  function migrationFlag(){return 'section_repo_migrated_v3:'+cloudSchoolId()+':'+cloudUserId()+':'+ROLE;}
   function legacyDB(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB_NAME,1);r.onupgradeneeded=e=>{const db=e.target.result;if(!db.objectStoreNames.contains(STORE))db.createObjectStore(STORE,{keyPath:'id',autoIncrement:true});};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});}
   async function legacyAll(){const db=await legacyDB();return new Promise((resolve,reject)=>{const tx=db.transaction(STORE,'readonly');const rq=tx.objectStore(STORE).getAll();rq.onsuccess=()=>resolve(rq.result||[]);rq.onerror=()=>reject(rq.error);});}
   async function legacyClear(){const db=await legacyDB();return new Promise((resolve,reject)=>{const tx=db.transaction(STORE,'readwrite');const rq=tx.objectStore(STORE).clear();rq.onsuccess=()=>resolve();rq.onerror=()=>reject(rq.error);});}
-  function cloudShape(f,blob){const md=f.metadata||{};return {id:f.id,platformFileId:f.id,name:f.display_name||f.original_name||'ملف',type:f.mime_type||'',kind:md.kind||kind({name:f.display_name||f.original_name||'',type:f.mime_type||''}),size:Number(f.file_size||0),file:blob||null,folder:md.folder||'عام',createdAt:f.created_at||new Date().toISOString(),updatedAt:f.updated_at||null,role:ROLE,cloud:true};}
+  function cloudShape(f,blob){const md=f.metadata||{};return {id:f.id,platformFileId:f.id,name:f.display_name||f.original_name||'ملف',type:f.mime_type||'',kind:md.kind||kind({name:f.display_name||f.original_name||'',type:f.mime_type||''}),size:Number(f.file_size||0),file:blob||null,folder:md.folder||'عام',createdAt:f.created_at||new Date().toISOString(),updatedAt:f.updated_at||null,role:ROLE,moduleKey:f.module_key||'',ownerUserId:f.owner_user_id||'',cloud:true};}
   async function migrateLegacy(){
-    if(!cloudReady()||sessionStorage.getItem('section_repo_migrated:'+ROLE)==='1')return;
-    sessionStorage.setItem('section_repo_migrated:'+ROLE,'1');
-    try{const rows=await legacyAll();if(!rows.length)return;for(const r of rows){if(!r.file)continue;await CloudFileEngine.upload({file:r.file,ownershipScope:'user',moduleKey:CLOUD_MODULE,recordType:CLOUD_RECORD_TYPE,recordId:ROLE,relationType:'library_file',displayName:r.name||r.file.name,metadata:{folder:r.folder||'عام',kind:r.kind||kind(r.file),legacyId:r.id,role:ROLE,migratedFrom:'indexeddb'}});}await legacyClear();}
-    catch(e){console.warn('[SectionRepo] legacy migration deferred',e?.message||e);sessionStorage.removeItem('section_repo_migrated:'+ROLE);}
+    if(!cloudReady()||sessionStorage.getItem(migrationFlag())==='1')return;
+    sessionStorage.setItem(migrationFlag(),'1');
+    try{const rows=await legacyAll();if(!rows.length)return;for(const r of rows){if(!r.file)continue;await CloudFileEngine.upload({file:r.file,ownershipScope:'user',moduleKey:CLOUD_MODULE,recordType:CLOUD_RECORD_TYPE,recordId:ROLE,relationType:'library_file',displayName:r.name||r.file.name,metadata:{folder:r.folder||'عام',kind:r.kind||kind(r.file),legacyId:r.id,role:ROLE,libraryRole:ROLE,libraryOwnerUserId:cloudUserId(),migratedFrom:'indexeddb'}});}await legacyClear();}
+    catch(e){console.warn('[SectionRepo] legacy migration deferred',e?.message||e);sessionStorage.removeItem(migrationFlag());}
   }
   async function all(){
     if(!cloudReady())throw new Error('الحفظ السحابي غير متاح. سجّل الدخول مجددًا.');
     await migrateLegacy();
-    const r=await CloudFileEngine.list({moduleKey:CLOUD_MODULE,recordType:CLOUD_RECORD_TYPE,limit:1000});
-    return (r.files||[]).map(f=>cloudShape(f));
+    // ownershipScope=user إلزامي حتى لو كانت الجلسة لمدير أو مستخدم متعدد الأدوار.
+    const primary=await CloudFileEngine.list({ownershipScope:'user',moduleKey:CLOUD_MODULE,recordType:CLOUD_RECORD_TYPE,limit:1000});
+    let rows=(primary.files||[]).map(f=>cloudShape(f));
+    // توافق قراءة فقط مع الملفات القديمة ذات الدور الواضح. الملفات القديمة الغامضة
+    // لا تنقل آلياً حتى لا تختلط مكتبتا الصحة والنشاط لمستخدم متعدد الأدوار.
+    for(const rt of LEGACY_RECORD_TYPES){
+      try{
+        const legacy=await CloudFileEngine.list({ownershipScope:'user',moduleKey:LEGACY_MODULE,recordType:rt,limit:1000});
+        for(const f of (legacy.files||[])){
+          const md=f.metadata||{};
+          const oldRole=String(md.role||'');
+          const safeRole = (ROLE==='health_advisor'||ROLE==='activity_leader') ? oldRole===ROLE : true;
+          if(!safeRole) continue;
+          if(!rows.some(x=>String(x.id)===String(f.id))) rows.push(cloudShape(f));
+        }
+      }catch(e){console.warn('[SectionRepo] legacy list skipped',ROLE,rt,e?.message||e)}
+    }
+    return rows;
   }
   async function get(id){
     if(!cloudReady())throw new Error('الحفظ السحابي غير متاح.');
-    const u=await CloudFileEngine.usage(String(id));const f=u.file;if(!f)return null;const blob=await CloudFileEngine.getBlob(String(id));return cloudShape(f,blob);
+    const u=await CloudFileEngine.usage(String(id));const f=u.file;if(!f)return null;
+    const uid=cloudUserId();
+    if(String(f.ownership_scope||'')!=='user'||(uid&&String(f.owner_user_id||'')!==uid))throw new Error('هذا الملف لا يتبع مكتبة المستخدم الحالي.');
+    const allowedModule=String(f.module_key||'')===CLOUD_MODULE || String(f.module_key||'')===LEGACY_MODULE;
+    if(!allowedModule)throw new Error('الملف لا يتبع مكتبة هذا القسم.');
+    const blob=await CloudFileEngine.getBlob(String(id));return cloudShape(f,blob);
   }
   async function put(item){
     if(!cloudReady())throw new Error('الحفظ السحابي غير متاح.');
-    if(item&&item.cloud&&item.platformFileId&&item.file){const r=await CloudFileEngine.upload({file:item.file,ownershipScope:'user',moduleKey:CLOUD_MODULE,recordType:CLOUD_RECORD_TYPE,recordId:ROLE,relationType:'library_file',displayName:item.name||item.file.name,replaceFileId:item.platformFileId,metadata:{folder:item.folder||'عام',kind:item.kind||kind(item.file),role:ROLE,edited:true}});return r.file.id;}
+    if(item&&item.cloud&&item.platformFileId&&item.file){const r=await CloudFileEngine.upload({file:item.file,ownershipScope:'user',moduleKey:CLOUD_MODULE,recordType:CLOUD_RECORD_TYPE,recordId:ROLE,relationType:'library_file',displayName:item.name||item.file.name,replaceFileId:item.platformFileId,metadata:{folder:item.folder||'عام',kind:item.kind||kind(item.file),role:ROLE,libraryRole:ROLE,libraryOwnerUserId:cloudUserId(),edited:true}});return r.file.id;}
     if(item&&item.platformFileId&&!item.file){if(item.name)await CloudFileEngine.renameFile(item.platformFileId,item.name);return item.platformFileId;}
-    const file=item?.file;if(!file)throw new Error('الملف غير متاح للحفظ');const r=await CloudFileEngine.upload({file,ownershipScope:'user',moduleKey:CLOUD_MODULE,recordType:CLOUD_RECORD_TYPE,recordId:ROLE,relationType:'library_file',displayName:item.name||file.name,metadata:{folder:item.folder||'عام',kind:item.kind||kind(file),role:ROLE}});return r.file.id;
+    const file=item?.file;if(!file)throw new Error('الملف غير متاح للحفظ');const r=await CloudFileEngine.upload({file,ownershipScope:'user',moduleKey:CLOUD_MODULE,recordType:CLOUD_RECORD_TYPE,recordId:ROLE,relationType:'library_file',displayName:item.name||file.name,metadata:{folder:item.folder||'عام',kind:item.kind||kind(file),role:ROLE,libraryRole:ROLE,libraryOwnerUserId:cloudUserId()}});return r.file.id;
   }
-  async function del(id){if(!cloudReady())throw new Error('الحفظ السحابي غير متاح.');return CloudFileEngine.trash(String(id));}
+  async function del(id){
+    if(!cloudReady())throw new Error('الحفظ السحابي غير متاح.');
+    const u=await CloudFileEngine.usage(String(id)), f=u.file;
+    if(!f)throw new Error('الملف غير موجود.');
+    const uid=cloudUserId();
+    if(String(f.ownership_scope||'')!=='user'||(uid&&String(f.owner_user_id||'')!==uid))throw new Error('لا يمكن حذف ملف مستخدم آخر.');
+    return CloudFileEngine.trash(String(id));
+  }
 
   function ensureView(){
     if(document.getElementById('sectionRepoOfficeView')) return;
     const view=document.createElement('div'); view.id='sectionRepoOfficeView'; view.dir='rtl';
-    view.innerHTML=`<header class="repo-office-header"><div class="repo-office-title"><button onclick="window.closeSectionRecordsRepositorySafe()" class="repo-btn repo-back" title="العودة">←</button><h2 style="margin:0;font-size:18px">📚 مكتبة القسم</h2></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button onclick="window.createSectionRepoFolderSafe()" class="repo-btn repo-blue">+ مجلد جديد</button><button onclick="document.getElementById('sectionRepoUploadHidden').click()" class="repo-btn repo-add">+ إضافة ملفات</button></div></header><div class="repo-shell"><aside class="repo-sidebar"><div class="repo-side-head">مجلدات المكتبة</div><div id="sectionRepoFolders" class="repo-folder-list"></div></aside><main class="repo-card"><div class="repo-card-head"><div><h3 style="margin:0;font-weight:900;color:#334155;font-size:16px">مكتبة قسم ${LABEL}</h3><p style="margin:6px 0 0;color:#64748b;font-size:11px;font-weight:700">يحفظ ملفات PDF و Word و Excel و PowerPoint والصور داخل مجلدات مرنة.</p></div><span style="font-size:10px;font-weight:900;background:#fff7ed;color:#ea580c;border:1px solid #fed7aa;padding:8px 12px;border-radius:12px">الحفظ السحابي مفعّل</span></div><input type="file" multiple id="sectionRepoUploadHidden" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.gif,.webp,.bmp,.svg,.tif,.tiff,.heic,.heif,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/msword,application/vnd.ms-excel,application/vnd.ms-powerpoint,image/*" style="display:none"><div id="sectionRepoListView" class="repo-list"></div><div id="sectionRepoPreview" class="repo-preview"><div class="repo-preview-bar"><button onclick="window.closeSectionRepoPreviewSafe()" class="repo-btn repo-back">عودة للقائمة</button><button id="sectionRepoSaveBtn" onclick="window.saveSectionRepoEditsSafe()" class="repo-btn repo-blue" style="display:none">حفظ التعديل</button><button onclick="window.downloadCurrentSectionRepoSafe()" class="repo-btn repo-purple">تحميل</button></div><div id="sectionRepoPreviewBody" class="repo-preview-frame"></div></div></main></div>`;
+    view.innerHTML=`<header class="repo-office-header"><div class="repo-office-title"><button onclick="window.closeSectionRecordsRepositorySafe()" class="repo-btn repo-back" title="العودة">←</button><h2 style="margin:0;font-size:18px">📚 مكتبة القسم</h2></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button onclick="window.createSectionRepoFolderSafe()" class="repo-btn repo-blue">+ مجلد جديد</button><button onclick="document.getElementById('sectionRepoUploadHidden').click()" class="repo-btn repo-add">+ إضافة ملفات</button></div></header><div class="repo-shell"><aside class="repo-sidebar"><div class="repo-side-head">مجلدات المكتبة</div><div id="sectionRepoFolders" class="repo-folder-list"></div></aside><main class="repo-card"><div class="repo-card-head"><div><h3 style="margin:0;font-weight:900;color:#334155;font-size:16px">مكتبة قسم ${LABEL}</h3><p style="margin:6px 0 0;color:#64748b;font-size:11px;font-weight:700">يحفظ ملفات PDF و Word و Excel و PowerPoint والصور داخل مجلدات مرنة.</p></div><span style="font-size:10px;font-weight:900;background:#fff7ed;color:#ea580c;border:1px solid #fed7aa;padding:8px 12px;border-radius:12px">الحفظ السحابي مفعّل — ملفات المستخدم معزولة</span></div><input type="file" multiple id="sectionRepoUploadHidden" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.gif,.webp,.bmp,.svg,.tif,.tiff,.heic,.heif,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/msword,application/vnd.ms-excel,application/vnd.ms-powerpoint,image/*" style="display:none"><div id="sectionRepoListView" class="repo-list"></div><div id="sectionRepoPreview" class="repo-preview"><div class="repo-preview-bar"><button onclick="window.closeSectionRepoPreviewSafe()" class="repo-btn repo-back">عودة للقائمة</button><button id="sectionRepoSaveBtn" onclick="window.saveSectionRepoEditsSafe()" class="repo-btn repo-blue" style="display:none">حفظ التعديل</button><button onclick="window.downloadCurrentSectionRepoSafe()" class="repo-btn repo-purple">تحميل</button></div><div id="sectionRepoPreviewBody" class="repo-preview-frame"></div></div></main></div>`;
     document.body.appendChild(view); document.getElementById('sectionRepoUploadHidden').addEventListener('change', upload);
   }
 
   function renderFolders(){const wrap=document.getElementById('sectionRepoFolders'); if(!wrap)return; wrap.innerHTML=folders().map(f=>`<button class="repo-folder-btn ${f===activeFolder?'active':''}" onclick="window.selectSectionRepoFolderSafe('${esc(f).replace(/'/g,'&#39;')}')">📁 ${esc(f)}</button>`).join('');}
   function injectCard(){if(document.getElementById('sectionRecordsRepositoryCardSafe')) return; const card=document.createElement('div'); card.id='sectionRecordsRepositoryCardSafe'; card.className='section-records-repo-card'; card.innerHTML=`<div class="repo-icon">🗂️</div><h3 style="margin:0;color:#334155;font-size:21px;font-weight:900">مكتبة القسم</h3><p style="margin:8px 0 0;color:#64748b;font-size:12px;font-weight:700">مجلدات وملفات القسم</p><button type="button">فتح المكتبة</button>`; card.onclick=()=>window.openSectionRecordsRepositorySafe(); const textCards=Array.from(document.querySelectorAll('button,h2,h3,div')).filter(el=>/سجلات المدير|الأرشيف|الإحصائيات|إنشاء تقرير|متابعة التقويم|أرشيف السجلات|سجلات الموجه|مكتبة القسم/.test(el.innerText||el.textContent||'')); let grid=null; for(const el of textCards){let p=el.parentElement; for(let i=0;p&&i<6;i++,p=p.parentElement){const st=getComputedStyle(p); if(st.display==='grid'||/grid|cards|modules|dashboard|features/i.test(String(p.className||''))){grid=p;break;}} if(grid)break;} if(!grid)grid=document.querySelector('main .grid,.grid,[class*="grid"]')||document.querySelector('main')||document.body; grid.appendChild(card);}
 
-  async function render(){ensureView(); renderFolders(); const list=document.getElementById('sectionRepoListView'); document.getElementById('sectionRepoPreview').style.display='none'; list.style.display='grid'; list.innerHTML='<div style="padding:18px;color:#64748b;font-weight:900">جاري تحميل الملفات...</div>'; const allRows=await all(); const rows=allRows.filter(r=>(r.folder||'عام')===activeFolder).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)); if(!rows.length){list.innerHTML=`<div style="padding:28px;text-align:center;border:2px dashed #cbd5e1;border-radius:18px;color:#94a3b8;font-weight:900">لا توجد ملفات في مجلد ${esc(activeFolder)}.</div><button onclick="document.getElementById('sectionRepoUploadHidden').click()" style="margin-top:15px;width:100%;padding:14px;border:2px dashed #1e7b78;background:#f0fdfa;color:#1e7b78;cursor:pointer;border-radius:18px;font-weight:bold">+ إضافة ملفات إلى هذا المجلد</button>`;return;} list.innerHTML=rows.map(r=>{const k=r.kind||kind(r); return `<div class="repo-file"><div><div class="repo-file-title">${icon(k)} — ${esc(r.name)}</div><div class="repo-file-meta">${new Date(r.createdAt).toLocaleString('ar-SA')} — ${fmt(r.size)} — مجلد: ${esc(r.folder||'عام')}</div></div><div style="display:flex;gap:7px;flex-wrap:wrap"><button class="repo-btn repo-blue" data-section-repo-action="edit" data-section-repo-id="${esc(String(r.id))}">تعديل</button><button class="repo-btn repo-add" data-section-repo-action="preview" data-section-repo-id="${esc(String(r.id))}">معاينة</button><button class="repo-btn repo-purple" data-section-repo-action="print" data-section-repo-id="${esc(String(r.id))}">طباعة</button><button class="repo-btn repo-del" data-section-repo-action="delete" data-section-repo-id="${esc(String(r.id))}">حذف</button></div></div>`;}).join('')+`<button onclick="document.getElementById('sectionRepoUploadHidden').click()" style="margin-top:15px;width:100%;padding:14px;border:2px dashed #1e7b78;background:#f0fdfa;color:#1e7b78;cursor:pointer;border-radius:18px;font-weight:bold">+ إضافة ملفات إلى هذا المجلد</button>`;}
+  async function render(){ensureView(); const list=document.getElementById('sectionRepoListView'); document.getElementById('sectionRepoPreview').style.display='none'; list.style.display='grid'; list.innerHTML='<div style="padding:18px;color:#64748b;font-weight:900">جاري تحميل الملفات...</div>'; const allRows=await all(); const discovered=Array.from(new Set(allRows.map(r=>r.folder||'عام').filter(Boolean))); if(discovered.length){saveFolders(folders().concat(discovered)); if(!folders().includes(activeFolder))activeFolder='عام';} renderFolders(); const rows=allRows.filter(r=>(r.folder||'عام')===activeFolder).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)); if(!rows.length){list.innerHTML=`<div style="padding:28px;text-align:center;border:2px dashed #cbd5e1;border-radius:18px;color:#94a3b8;font-weight:900">لا توجد ملفات في مجلد ${esc(activeFolder)}.</div><button onclick="document.getElementById('sectionRepoUploadHidden').click()" style="margin-top:15px;width:100%;padding:14px;border:2px dashed #1e7b78;background:#f0fdfa;color:#1e7b78;cursor:pointer;border-radius:18px;font-weight:bold">+ إضافة ملفات إلى هذا المجلد</button>`;return;} list.innerHTML=rows.map(r=>{const k=r.kind||kind(r); return `<div class="repo-file"><div><div class="repo-file-title">${icon(k)} — ${esc(r.name)}</div><div class="repo-file-meta">${new Date(r.createdAt).toLocaleString('ar-SA')} — ${fmt(r.size)} — مجلد: ${esc(r.folder||'عام')}</div></div><div style="display:flex;gap:7px;flex-wrap:wrap"><button class="repo-btn repo-blue" data-section-repo-action="edit" data-section-repo-id="${esc(String(r.id))}">تعديل</button><button class="repo-btn repo-add" data-section-repo-action="preview" data-section-repo-id="${esc(String(r.id))}">معاينة</button><button class="repo-btn repo-purple" data-section-repo-action="print" data-section-repo-id="${esc(String(r.id))}">طباعة</button><button class="repo-btn repo-del" data-section-repo-action="delete" data-section-repo-id="${esc(String(r.id))}">حذف</button></div></div>`;}).join('')+`<button onclick="document.getElementById('sectionRepoUploadHidden').click()" style="margin-top:15px;width:100%;padding:14px;border:2px dashed #1e7b78;background:#f0fdfa;color:#1e7b78;cursor:pointer;border-radius:18px;font-weight:bold">+ إضافة ملفات إلى هذا المجلد</button>`;}
 
-  async function upload(e){const files=Array.from(e.target.files||[]); if(!files.length)return; const allowed=['pdf','doc','docx','xls','xlsx','ppt','pptx','jpg','jpeg','png','gif','webp','bmp','svg','tif','tiff','heic','heif']; let ok=0,bad=0; for(const file of files){if(!allowed.includes(ext(file.name))&&!/^image\//.test(file.type||'')){bad++;continue;} await put({name:file.name,type:file.type||'',kind:kind(file),size:file.size,file:file,folder:activeFolder||'عام',createdAt:new Date().toISOString(),role:ROLE}); ok++;} e.target.value=''; render(); if(bad) alert('تم تجاهل '+bad+' ملف/ملفات بصيغ غير مدعومة.');}
+  async function upload(e){
+    const files=Array.from(e.target.files||[]); if(!files.length)return;
+    const allowed=['pdf','doc','docx','xls','xlsx','ppt','pptx','jpg','jpeg','png','gif','webp','bmp','svg','tif','tiff','heic','heif'];
+    let ok=0,bad=0,failed=0;
+    for(const file of files){
+      if(!allowed.includes(ext(file.name))&&!/^image\//.test(file.type||'')){bad++;continue;}
+      try{
+        await put({name:file.name,type:file.type||'',kind:kind(file),size:file.size,file:file,folder:activeFolder||'عام',createdAt:new Date().toISOString(),role:ROLE});
+        ok++;
+      }catch(err){failed++;console.error('[SectionRepo upload]',err);}
+    }
+    e.target.value='';
+    await render();
+    if(ok) alert('تم حفظ '+ok+' ملف/ملفات سحابياً في مكتبة القسم.');
+    if(bad) alert('تم تجاهل '+bad+' ملف/ملفات بصيغ غير مدعومة.');
+    if(failed) alert('تعذر حفظ '+failed+' ملف/ملفات سحابياً. لم تُعرض كملفات محفوظة.');
+  }
   async function showWord(r,body,saveBtn){saveBtn.style.display='inline-block'; body.innerHTML='<div id="sectionRepoWordEditor" class="repo-editor" contenteditable="true">جاري فتح ملف Word...</div>'; const ed=document.getElementById('sectionRepoWordEditor'); if(r.editedHtml){ed.innerHTML=r.editedHtml;return;} if(window.mammoth&&ext(r.name)==='docx'){const result=await mammoth.convertToHtml({arrayBuffer:await r.file.arrayBuffer()}); ed.innerHTML=result.value||'<p></p>';}else{ed.innerHTML='<div style="padding:20px;color:#64748b;border:1px dashed #cbd5e1;border-radius:14px">التحرير المباشر مدعوم لملفات DOCX. يمكن تحميل ملفات DOC وفتحها خارجيًا.</div>';}}
   async function showExcel(r,body,saveBtn){saveBtn.style.display='inline-block'; if(!window.XLSX){body.innerHTML='<div style="padding:24px;color:#64748b">جاري تحميل محرر Excel، أعد المحاولة بعد لحظات.</div>';return;} const wb=r.editedWorkbookBase64?XLSX.read(r.editedWorkbookBase64,{type:'base64'}):XLSX.read(await r.file.arrayBuffer(),{type:'array'}); const sheet=wb.SheetNames[0]; const rows=XLSX.utils.sheet_to_json(wb.Sheets[sheet],{header:1,defval:''}); const tableRows=rows.length?rows:[['']]; body.innerHTML='<div style="padding:12px;color:#64748b;font-weight:900;font-size:12px">الورقة: '+esc(sheet)+'</div><table id="sectionRepoExcelTable" class="repo-xls">'+tableRows.map(row=>'<tr>'+row.map(c=>'<td contenteditable="true">'+esc(c)+'</td>').join('')+'</tr>').join('')+'</table>';}
 
-  window.openSectionRecordsRepositorySafe=function(){ensureView();document.getElementById('sectionRepoOfficeView').style.display='block';render();};
+  window.openSectionRecordsRepositorySafe=function(){loadActiveFolder();ensureView();document.getElementById('sectionRepoOfficeView').style.display='block';render();};
   window.closeSectionRecordsRepositorySafe=function(){document.getElementById('sectionRepoOfficeView').style.display='none'; if(currentUrl){URL.revokeObjectURL(currentUrl);currentUrl='';}};
   window.selectSectionRepoFolderSafe=function(name){setActiveFolder(String(name||'عام').replace(/&amp;/g,'&'));};
   window.createSectionRepoFolderSafe=function(){const name=prompt('اكتب اسم المجلد الجديد:'); if(!name||!name.trim())return; const arr=folders(); arr.push(name.trim()); saveFolders(arr); setActiveFolder(name.trim());};

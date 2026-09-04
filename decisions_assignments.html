@@ -114,6 +114,7 @@ button{border:0;border-radius:9px;padding:10px 13px;font:700 12px 'Alyamama';cur
 @media print{.manager-return-btn{display:none!important}}
 @media(max-width:1000px){.manager-return-btn{top:8px;left:8px;width:38px;height:38px;font-size:22px}}
 </style>
+<script src="school-base-settings-source.js?v=20260904-decisions-settings-v1"></script>
 <script src="school-information-source.js?v=20260830-authoritative-v6"></script>
 <script src="platform-cloud-session.js?v=20260829-manager-verify-access-v4"></script>
 <script src="cloud-file-engine.js"></script>
@@ -312,6 +313,49 @@ const DECISIONS_FOLDER_NAME='القرارات والتكليفات';
 const DECISIONS_CLOUD_MODULE='manager_decisions_assignments';
 const DECISIONS_CLOUD_RECORD_TYPE='decision_assignment_archive';
 const DECISIONS_CLOUD_RELATION='decision_record';
+
+const DECISIONS_SERVICE_VERSION='RL13-final-v1';
+const DecisionArchiveService={
+  async call(action,payload={}){
+    if(window.PlatformCloudSession?.ensure)await window.PlatformCloudSession.ensure();
+    const token=window.PlatformCloudSession?.token?.()||sessionStorage.getItem('platform_tab_session_token_v1')||localStorage.getItem('platform_file_session_token')||'';
+    if(!token)throw new Error('تعذر استعادة جلسة المدرسة السحابية');
+    const base=(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'');
+    const anon=localStorage.getItem('smartSchoolSupabaseAnonKey')||'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
+    const r=await fetch(base+'/functions/v1/manager-decisions',{method:'POST',headers:{'content-type':'application/json','apikey':anon,'x-platform-session':token},body:JSON.stringify({action,...payload})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||j.ok===false)throw new Error(j.error||('فشلت خدمة القرارات ('+r.status+')'));
+    return j;
+  },
+  list(){return this.call('list')},
+  get(id){return this.call('get',{id:String(id||'')})},
+  save(record,editing=false){return this.call('save',{record,editing:!!editing,replaceFileId:String(record?.cloudFileId||'')})},
+  delete(id){return this.call('delete',{id:String(id||'')})}
+};
+window.ManagerDecisionArchiveService=DecisionArchiveService;
+
+function readDecisionBaseSettings(){
+  try{
+    if(window.SchoolBaseSettings?.read)return window.SchoolBaseSettings.read()||{};
+  }catch(_){ }
+  return {
+    school:String(localStorage.getItem('setting_school')||'').trim(),
+    education:String(localStorage.getItem('setting_region')||'').trim(),
+    manager:String(localStorage.getItem('def_m')||'').trim(),
+    signature:localStorage.getItem('setting_sig')||'',
+    stamp:localStorage.getItem('setting_stamp')||''
+  };
+}
+function syncDecisionBaseSettings({force=true}={}){
+  const s=readDecisionBaseSettings();
+  const set=(id,v)=>{const el=$(id);if(el&&v&&(force||!el.value)){el.value=v;el.dataset.baseSettingsSource='manager-custom-settings';}};
+  set('school',String(s.school||'').trim());
+  set('edu',String(s.education||s.region||'').trim());
+  set('manager',String(s.manager||'').trim());
+  if(s.signature){digitalAssets.signature=s.signature;}
+  if(s.stamp){digitalAssets.stamp=s.stamp;}
+  applyDigitalAssets();
+}
 
 function safe(v,f){return (v||'').trim()||f}
 function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
@@ -674,28 +718,22 @@ function findArchivedDecision(id){
  return archiveRead().find(r=>String(r.id)===String(id)&&r.recordType==='decision_assignment')||null;
 }
 async function loadArchiveRecordForEdit(){
- const id=new URLSearchParams(location.search).get('editAssignment')||'';
+ const id=new URLSearchParams(location.search||'').get('editAssignment');
  if(!id)return false;
- let r=findArchivedDecision(id);
- if(!r && cloudReady()){
-   const f=await findCloudDecision(id);
-   if(f)r=await readCloudDecisionRecord(f);
-   if(r){
-     const rows=archiveRead().filter(x=>String(x.id)!==String(r.id));
-     rows.unshift(r);archiveWrite(rows);
-   }
- }
- if(!r){alert('تعذر العثور على قرار التكليف المطلوب في الأرشيف السحابي أو المحلي.');return false}
+ let r=null;
+ try{const g=await DecisionArchiveService.get(id);r=g?.record||null;}catch(e){console.warn('[decision authoritative get]',e);}
+ if(!r)r=archiveRead().find(x=>String(x.id)===String(id)&&x.recordType==='decision_assignment')||null;
+ if(!r){alert('تعذر العثور على قرار التكليف المطلوب في الأرشيف السحابي.');return false}
  currentArchiveRecordId=r.id;
  const data=r.formData||{};
  await loadAssigneeNames(data.name||r.assigneeName||'');
  fields.forEach(fid=>{if(data[fid]!=null && $(fid))$(fid).value=data[fid]});
- if(r.digitalAssets&&typeof r.digitalAssets==='object'){
-   digitalAssets.signature=r.digitalAssets.signature||'';
-   digitalAssets.stamp=r.digitalAssets.stamp||'';
- }
+ // البيانات الأساسية الرسمية لا تُستعاد من نسخة القرار القديمة عند التعديل؛ بل من إعدادات المدير الحالية.
+ if(r.digitalAssets&&typeof r.digitalAssets==='object'){digitalAssets.signature=r.digitalAssets.signature||'';digitalAssets.stamp=r.digitalAssets.stamp||'';}
+ syncDecisionBaseSettings({force:true});
  applyDigitalAssets();render();
  document.title='تعديل '+(r.displayName||'قرار تكليف');
+ const rows=archiveRead().filter(x=>String(x.id)!==String(r.id));rows.unshift(r);archiveWrite(rows);
  return true;
 }
 
@@ -705,6 +743,12 @@ async function init(){
  $('signatureFile').addEventListener('change',e=>readAsset(e,'signature'));
  $('stampFile').addEventListener('change',e=>readAsset(e,'stamp'));
  loadData();
+ syncDecisionBaseSettings({force:true});
+ ['school','edu','manager'].forEach(id=>{const el=$(id);if(el){el.readOnly=true;el.title='تتم تعبئة هذا الحقل من إعدادات مخصصة في قسم المدير';}});
+ try{
+   const assets=document.querySelector('.digital-assets');
+   if(assets){assets.querySelectorAll('input[type=file],button').forEach(el=>el.style.display='none');const n=document.createElement('div');n.className='note';n.style.gridColumn='1/-1';n.textContent='التوقيع والختم الرقميان معتمدان من «إعدادات مخصصة» في قسم المدير.';assets.appendChild(n);}
+ }catch(_){ }
  // لا نعيد اسم مكلف من Snapshot قديم إلى قرار جديد؛ الأسماء الحالية تأتي من المصدر الحي فقط.
  if($('name'))$('name').value='';
  // V6: لا استعادة تلقائية للأسماء المحذوفة أو قوائم المستخدمين القديمة.
@@ -750,106 +794,46 @@ function removeAsset(type){
  if(inp) inp.value='';
 }
 async function saveData(){
+ // البيانات الرسمية الأساسية مصدرها «إعدادات مخصصة» في قسم المدير، ولا نعتمد Snapshot قديمًا لها.
+ syncDecisionBaseSettings({force:true});
  render();
  const o={};fields.forEach(id=>o[id]=$(id)?.value||'');
  const assignee=normalizePersonName(o.name);
- if(!assignee){alert('اختر اسم المكلف من قائمة معلمي المدرسة أولاً.');return}
- if(!window.CloudFileEngine){alert('الحفظ السحابي غير متاح في هذه الجلسة. لم يتم حفظ القرار.');return}
- try{
-   if(window.PlatformCloudSession?.ensure)await window.PlatformCloudSession.ensure();
- }catch(e){alert('تعذر استعادة جلسة المدرسة السحابية. لم يتم حفظ القرار.');return}
+ if(!assignee){alert('اختر اسم المكلف من قائمة منسوبي المدرسة أولاً.');return false}
+ try{if(window.PlatformCloudSession?.ensure)await window.PlatformCloudSession.ensure();}catch(e){alert('تعذر استعادة جلسة المدرسة السحابية. لم يتم حفظ القرار.');return false}
 
  const rows=archiveRead();
- const old=currentArchiveRecordId?rows.find(r=>String(r.id)===String(currentArchiveRecordId)):null;
- const editingExisting=!!old;
- let sequence=old&&normalizePersonName(old.assigneeName)===assignee
-   ? (Number(old.sequence)||1)
-   : nextSequenceForAssignee(assignee,rows,currentArchiveRecordId);
- const id=currentArchiveRecordId||('decision_assignment_'+Date.now()+'_'+Math.random().toString(36).slice(2,8));
+ const editParam=new URLSearchParams(location.search||'').get('editAssignment')||'';
+ const editingExisting=!!(editParam&&currentArchiveRecordId&&String(editParam)===String(currentArchiveRecordId));
+ const old=editingExisting?rows.find(r=>String(r.id)===String(currentArchiveRecordId)):null;
+ let sequence=old&&normalizePersonName(old.assigneeName)===assignee ? (Number(old.sequence)||1) : nextSequenceForAssignee(assignee,rows,editingExisting?currentArchiveRecordId:null);
+ const id=editingExisting?String(currentArchiveRecordId):('decision_assignment_'+Date.now()+'_'+Math.random().toString(36).slice(2,8));
  const now=new Date().toISOString();
  const d=decisions[+$('type').value||0];
  const role=isCustomDecision()?safe($('customTitle').value,'تكليف مخصص'):cleanRole(d.title);
  const assigneeIdentity=selectedAssigneeIdentity();
- if(!currentArchiveRecordId&&!assigneeIdentity.userId){
-   alert('اختر مكلفًا نشطًا من القائمة الحالية للمدرسة. لا يمكن إنشاء قرار جديد باسم مستخدم محذوف أو غير نشط.');
-   return false;
- }
+ if(!editingExisting&&!assigneeIdentity.userId){alert('اختر مكلفًا نشطًا من القائمة الحالية للمدرسة. لا يمكن إنشاء قرار جديد باسم مستخدم محذوف أو غير نشط.');return false}
  const record={
-   id,
-   recordType:'decision_assignment',
-   folderId:DECISIONS_FOLDER_ID,
-   folderName:DECISIONS_FOLDER_NAME,
-   recordName:DECISIONS_FOLDER_NAME,
-   title:assignee+' - '+sequence,
-   displayName:assignee+' - '+sequence,
-   assigneeName:assignee,
-   assigneeUserId:assigneeIdentity.userId||old?.assigneeUserId||'',
-   assigneeEmail:assigneeIdentity.email||old?.assigneeEmail||'',
-   sequence,
-   assignmentTitle:role,
-   decisionNo:o.decisionNo||'',
-   createdAt:old?.createdAt||now,
-   updatedAt:now,
-   savedAt:now,
-   formData:o,
-   digitalAssets:{...digitalAssets},
-   officialHtml:buildArchivedOfficialHtml(),
-   notes:'قرار تكليف: '+role+' — المكلف: '+assignee
+   id,recordType:'decision_assignment',folderId:DECISIONS_FOLDER_ID,folderName:DECISIONS_FOLDER_NAME,recordName:DECISIONS_FOLDER_NAME,
+   title:assignee+' - '+sequence,displayName:assignee+' - '+sequence,assigneeName:assignee,
+   assigneeUserId:assigneeIdentity.userId||old?.assigneeUserId||'',assigneeEmail:assigneeIdentity.email||old?.assigneeEmail||'',sequence,
+   assignmentTitle:role,decisionNo:o.decisionNo||'',createdAt:old?.createdAt||now,updatedAt:now,savedAt:now,
+   formData:o,digitalAssets:{...digitalAssets},officialHtml:buildArchivedOfficialHtml(),notes:'قرار تكليف: '+role+' — المكلف: '+assignee,
+   baseSettingsSource:'manager-custom-settings'
  };
-
  try{
-   let cloudFileId=old?.cloudFileId||'';
-   if(!cloudFileId && currentArchiveRecordId){
-     const f=await findCloudDecision(currentArchiveRecordId);
-     if(f)cloudFileId=String(f.id);
-   }
-   const fid=await uploadDecisionRecordToCloud(record,cloudFileId);
-   if(!fid)throw new Error('لم يرجع محرك الملفات معرفًا للسجل السحابي');
-   record.cloudFileId=String(fid);
-   record.cloudSynced=true;
-
-   // تحقق سحابي حقيقي بقراءة السجل نفسه قبل تحديث أي Cache محلي.
-   const verifiedRecord=await verifyCloudDecisionRecord(record);
-   if(!verifiedRecord)throw new Error('تعذر التحقق من تطابق القرار المحفوظ سحابيًا مع النسخة الحالية');
-   record.cloudFileId=String(verifiedRecord.cloudFileId||fid);
-   record.cloudSynced=true;
-   record.cloudConfirmedAt=new Date().toISOString();
-
-   // Cache محلي بعد اكتمال التحقق السحابي فقط.
-   const next=rows.filter(r=>String(r.id)!==String(id));
-   next.unshift(record);
-   if(!archiveWrite(next))console.warn('تعذر تحديث Cache المحلي، لكن السجل تم التحقق منه سحابيًا.');
-   // إشعار فوري لواجهة أرشيف المدير في أي تبويب مفتوح. لا يعتمد ظهور القرار على
-   // تأخر فهرسة CloudFileEngine.list بعد أن تم التحقق من الملف نفسه سحابيًا.
-   try{
-     const change={id:String(record.id),cloudFileId:String(record.cloudFileId||''),updatedAt:record.updatedAt||record.savedAt||now,ts:Date.now()};
-     localStorage.setItem('manager_decisions_archive_changed_v1',JSON.stringify(change));
-     if(typeof BroadcastChannel==='function'){
-       const bc=new BroadcastChannel('manager_decisions_archive_v1');bc.postMessage(change);bc.close();
-     }
-   }catch(e){console.warn('[decision archive notify]',e);}
-
-   const url=new URL(location.href);
-   if(editingExisting){
-     currentArchiveRecordId=id;
-     url.searchParams.set('editAssignment',id);
-   }else{
-     currentArchiveRecordId='';
-     url.searchParams.delete('editAssignment');
-   }
-   history.replaceState(null,'',url);
-   try{
-     const tombKey='manager_decisions_archive_tombstones_v2';
-     const tomb=JSON.parse(localStorage.getItem(tombKey)||'{}');
-     if(tomb&&typeof tomb==='object'&&tomb[id]){delete tomb[id];localStorage.setItem(tombKey,JSON.stringify(tomb));}
-   }catch(_){}
-   try{localStorage.setItem('takleef1448_approved',JSON.stringify(o))}catch(e){}
-   persistAssets();
-   alert('تم الحفظ السحابي بنجاح في: أرشيف السجلات ← القرارات والتكليفات\\nاسم السجل: '+record.displayName);
- }catch(e){
-   console.error('[decision cloud save]',e);
-   alert('تعذر حفظ القرار سحابيًا: '+(e?.message||e)+'\\nلم يتم اعتبار العملية ناجحة.');
- }
+   const saved=await DecisionArchiveService.save(record,editingExisting);
+   if(!saved?.record?.id||String(saved.record.id)!==String(id))throw new Error('تعذر التحقق من القرار المحفوظ في الخدمة السحابية');
+   const finalRecord=Object.assign({},record,saved.record,{cloudSynced:true,cloudFileId:String(saved.fileId||saved.record.cloudFileId||''),cloudConfirmedAt:new Date().toISOString()});
+   const next=rows.filter(r=>String(r.id)!==String(id));next.unshift(finalRecord);archiveWrite(next);
+   currentArchiveRecordId=id;
+   try{localStorage.setItem('manager_decisions_archive_changed_v1',JSON.stringify({id,ts:Date.now(),source:'manager-decisions-service'}));if(typeof BroadcastChannel==='function'){const bc=new BroadcastChannel('manager_decisions_archive_v1');bc.postMessage({id,ts:Date.now()});bc.close();}}catch(_){ }
+   try{localStorage.setItem('takleef1448_approved',JSON.stringify(o))}catch(_){ }
+   // القرار الجديد يبقى محددًا للإرسال، لكن لا يدخل وضع «تعديل» إلا إذا فتحه المستخدم صراحةً من الأرشيف.
+   if(!editingExisting){try{const u=new URL(location.href);u.searchParams.delete('editAssignment');history.replaceState(null,'',u)}catch(_){ }}
+   alert('تم الحفظ السحابي المؤكد في: أرشيف السجلات ← القرارات والتكليفات\nاسم السجل: '+finalRecord.displayName);
+   return true;
+ }catch(e){console.error('[decision authoritative save]',e);alert('تعذر حفظ القرار سحابيًا: '+(e?.message||e)+'\nلم يتم اعتبار العملية ناجحة.');return false}
 }
 function loadData(){
  try{const o=JSON.parse(localStorage.getItem('takleef1448_approved')||'{}');fields.forEach(id=>{if(o[id]!=null)$(id).value=o[id]})}catch(e){}
@@ -1002,9 +986,10 @@ async function sendSavedAssignmentToAssignee(){
      sentToUserId:String(user.id||user.user_id),assigneeUserId:String(user.id||user.user_id),
      assigneeEmail:String(user.email||user.user_email||record.assigneeEmail||'').trim().toLowerCase(),updatedAt:new Date().toISOString()
    });
-   const fid=await uploadDecisionRecordToCloud(updated,updated.cloudFileId||'');updated.cloudFileId=String(fid||updated.cloudFileId||'');
-   const verified=await verifyCloudDecisionRecord(updated);if(!verified)throw new Error('تم إرسال القرار وPDF، لكن تعذر تأكيد تحديث حالة الإرسال في أرشيف القرار');
-   updated.cloudSynced=true;const rows=archiveRead().filter(x=>String(x.id)!==String(updated.id));rows.unshift(updated);archiveWrite(rows);
+   const persisted=await DecisionArchiveService.save(updated,true);
+   if(!persisted?.record)throw new Error('تم إرسال القرار وPDF، لكن تعذر تأكيد تحديث حالة الإرسال في أرشيف القرار');
+   Object.assign(updated,persisted.record,{cloudFileId:String(persisted.fileId||persisted.record.cloudFileId||updated.cloudFileId||''),cloudSynced:true});
+   const rows=archiveRead().filter(x=>String(x.id)!==String(updated.id));rows.unshift(updated);archiveWrite(rows);
    alert('تم إرسال قرار التكليف إلى '+updated.assigneeName+' كمرفق PDF رسمي، وتم تأكيد المرفق وتسجيل الإرسال في الأرشيف ✅');return true;
  }catch(e){
    // إذا فشل الإرسال قبل إنشاء رسالة مؤكدة، لا نترك PDF يتيمًا في التخزين.
@@ -1057,6 +1042,8 @@ function preparePrint(){
  render();document.documentElement.scrollTop=0;document.body.scrollTop=0;
  requestAnimationFrame(()=>requestAnimationFrame(()=>window.print()));
 }
+window.addEventListener('schoolBaseSettingsUpdated',()=>{syncDecisionBaseSettings({force:true});render();});
+window.addEventListener('platformSettingsUpdated',()=>{syncDecisionBaseSettings({force:true});render();});
 init();
 </script>
 </body>

@@ -1,31 +1,38 @@
-RL11 — الانضباط الوظيفي: مراجعة المسار من البداية للنهاية
+RL13 — القرارات والتكليفات / الأرشيف السحابي المرجعي
+تاريخ البناء: 2026-09-04
 
-سبب العطل الجذري:
-- الواجهة أزالت نموذج staffModal/staffForm اليدوي، لكن JavaScript بقي ينفذ:
-  document.getElementById('staffForm').onsubmit = ...
-- staffForm غير موجود في DOM، فتحدث TypeError أثناء تحميل الصفحة.
-- الخطأ يوقف بقية تهيئة القسم قبل ربط حدث submit الخاص بـ recordForm وقبل boot cloud/renderAll.
-- نتيجة ذلك: زر حفظ الحركة يعود لسلوك form الافتراضي ويعيد تحميل الصفحة، ولا تعمل دورة التحميل/الرسم/الإحصاءات كما ينبغي.
+التغييرات المباشرة:
+1) decisions_assignments.html
+- الحفظ الجديد عبر خدمة manager-decisions السحابية المرجعية.
+- القرار الجديد لا يستبدل أي قرار سابق.
+- التعديل فقط عند فتح editAssignment صراحة من الأرشيف.
+- رسالة النجاح لا تظهر إلا بعد رجوع السجل المحفوظ من الخدمة السحابية.
+- تحميل القرار للتعديل من السحابة أولًا.
+- تحديث حالة الإرسال للمكلف عبر نفس خدمة القرار.
+- اسم المدرسة / الإدارة التعليمية / اسم المدير / التوقيع / الختم تقرأ من SchoolBaseSettings (إعدادات مخصصة في قسم المدير).
+- حقول المدرسة/الإدارة/المدير للقراءة فقط في نموذج القرار.
+- رفع توقيع/ختم منفصل داخل نموذج القرار مخفي حتى لا ينشأ مصدر ثانٍ يناقض إعدادات المدير.
 
-التصحيح:
-1) حماية جميع مراجع نموذج المنسوبين القديم وعدم السماح لها بإيقاف تهيئة الصفحة.
-2) ربط recordForm بحدث submit آمن صريح + preventDefault + stopPropagation.
-3) إضافة type=submit وحماية form/submit من platform-page-navigation.
-4) تحديث المنسوبين من School Information Center في كل boot بعد تحميل الحالة السحابية، وليس فقط عندما تكون القائمة فارغة.
-5) لا تظهر رسالة نجاح حفظ المنسوبين إلا بعد تأكيد platform-discipline save؛ وإذا فشل السحاب يبقى المحلي مع تنبيه واضح.
-6) persistLocal لا يسمح لخطأ localStorage quota بإيقاف الحفظ السحابي؛ يستخدم snapshot مخففًا عند الحاجة.
-7) بعد حفظ الحركة: upsert_movement ثم save state ثم تحقق من وجود الحركة في state ثم تحديث السجل + لوحة اليوم + الإحصائية.
-8) نفس التصحيح طبق على staff_discipline.html و wakil_staff_discipline.html لأنهما مرتبطان بنفس دورة الانضباط.
+2) manager.html
+- مجلد القرارات والتكليفات يأخذ قائمته من manager-decisions مباشرة.
+- لا دمج بين السحابة وكاش قديم؛ قائمة السحابة Active هي الحقيقة الوحيدة.
+- عند فشل التحقق السحابي لا يعاد عرض كاش قديم قد يحتوي قرارًا محذوفًا.
+- الحذف يرسل إلى الخدمة التي تحذف جميع النسخ Active لنفس logical decision id ثم تتحقق من عدم بقائه.
+- المعاينة تجلب النسخة الكاملة من السحابة عند الطلب، مع إبقاء فتح الأرشيف سريعًا عبر قائمة ملخصات فقط.
+
+3) Supabase
+- Edge Function manager-decisions منشورة ACTIVE version 2.
+- القائمة السريعة تعيد كل القرارات Active للمدرسة الحالية فقط وتستبعد trashed/archived.
+- الحفظ الجديد مستقل لكل قرار.
+- التعديل يؤرشف النسخ السابقة لنفس القرار فقط.
+- الحذف يشمل جميع النسخ Active لنفس القرار ويعيد تحققًا بعد الحذف.
 
 Regression Lock:
-- لا تعديل على manager.html أو teacher.html أو school_information_center.html أو decisions_assignments.html.
-- لا تغيير في school_id أو مفاتيح العزل الحالية.
-- لا حذف لبيانات مدارس مستقلة أو حركات قديمة.
-- لا حذف للسجلات المحلية عند فشل السحابة.
+- manager_follow_context_v2 موجود في manager.html.
+- لا توجد معاملات schoolMode=independent في مسار متابعة المدير المعدل.
+- لم يتم تعديل teacher.html أو مركز المعلومات أو الانضباط.
+- لا توجد عملية حذف جماعي لقرارات مدارس أخرى؛ جميع عمليات الخدمة مقيدة بجلسة school_id الحالية.
 
 QA:
-- JavaScript syntax errors: 0 في الملفين.
-- Direct DOM references to missing IDs: 0 بعد التصحيح.
-- recordForm محمي من default navigation.
-- staffForm legacy أصبح اختياريًا ولا يوقف التهيئة.
-- no redirect from movement save path.
+- decisions_assignments.html: JavaScript syntax = PASS (0 errors).
+- manager.html: 27 inline scripts, JavaScript syntax = PASS (0 errors).

@@ -1,7 +1,7 @@
 (function(){
 'use strict';
-if(window.SchoolInformationSource&&String(window.SchoolInformationSource.VERSION||'').includes('live-roster-v5'))return;
-const VERSION='8.0.0-persistent-cache-granular-student-scope';
+if(window.SchoolInformationSource&&String(window.SchoolInformationSource.VERSION||'')==='10.0.0-live-commit-broadcast')return;
+const VERSION='10.0.0-live-commit-broadcast';
 const SUPABASE_URL=(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'');
 const DEFAULT_SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
 const API_KEY=localStorage.getItem('smartSchoolSupabaseAnonKey')||DEFAULT_SUPABASE_KEY;
@@ -12,6 +12,24 @@ const CACHE_DB='smart_school_information_cache_v1';
 const CACHE_STORE='snapshots';
 const CACHE_SCHEMA_VERSION=1;
 const CACHE_MAX_AGE_MS=5*60*1000;
+const UPDATE_CHANNEL='school-information-updates-v2';
+const UPDATE_KEY='school_information_global_update_v2';
+let updateChannel=null;
+try{if('BroadcastChannel' in window)updateChannel=new BroadcastChannel(UPDATE_CHANNEL)}catch(_e){}
+function publishCrossPageUpdate(detail){
+ const payload={...(detail||{}),schoolId:safe(detail?.schoolId||targetSchoolId()),academicYear:safe(detail?.academicYear||currentAcademicYear()),at:Date.now()};
+ try{updateChannel?.postMessage(payload)}catch(_e){}
+ try{localStorage.setItem(UPDATE_KEY,JSON.stringify(payload))}catch(_e){}
+ return payload;
+}
+function acceptsUpdate(detail){const sid=safe(detail?.schoolId),year=safe(detail?.academicYear);return !!sid&&sid===safe(targetSchoolId())&&(!year||year===safe(currentAcademicYear()))}
+async function consumeCrossPageUpdate(detail){
+ if(!acceptsUpdate(detail))return;
+ state.updatedAt='1970-01-01T00:00:00.000Z';state.cacheHydrated=false;
+ try{await refresh()}catch(e){console.warn('[school-information cross-page refresh]',e)}
+}
+try{if(updateChannel)updateChannel.onmessage=e=>consumeCrossPageUpdate(e.data||{})}catch(_e){}
+window.addEventListener('storage',e=>{if(e.key!==UPDATE_KEY||!e.newValue)return;try{consumeCrossPageUpdate(JSON.parse(e.newValue))}catch(_e){}});
 function cacheIdentity(sid,year){return safe(sid)+'::'+safe(year||'1448')}
 function openCacheDb(){
  return new Promise((resolve,reject)=>{
@@ -216,11 +234,24 @@ function normalizeScope(scope){
 }
 function studentMatchesScope(r,scope){const s=normalizeScope(scope);return (!s.stage||safe(r.stage)===s.stage)&&(!s.grade||safe(r.grade)===s.grade)&&(!s.track_name||safe(r.track_name)===s.track_name)&&(!s.section_name||safe(r.section_name)===s.section_name)}
 async function getStudentsByScope(scope={},force=false){
- if(force){try{const s=normalizeScope(scope),r=await call('students-list-scope',{academicYear:currentAcademicYear(),scope:s});if(Array.isArray(r.students))return r.students}catch(e){console.warn('[school-information scoped cloud fallback]',e)}}
- await ensureFresh(false);return state.students.filter(r=>studentMatchesScope(r,scope));
+ if(force)await refresh();else await ensureFresh(false);
+ return state.students.filter(r=>studentMatchesScope(r,scope));
 }
-function notifyStudentsUpdated(scope={}){state.updatedAt='1970-01-01T00:00:00.000Z';try{window.dispatchEvent(new CustomEvent('school-information:students-updated',{detail:{schoolId:state.schoolId||targetSchoolId(),academicYear:state.academicYear||currentAcademicYear(),scope:normalizeScope(scope),version:Date.now()}}))}catch(_){}revalidateInBackground()}
-function notifyUpdated(){state.updatedAt='1970-01-01T00:00:00.000Z';try{window.dispatchEvent(new CustomEvent('school-information-source-invalidated'))}catch(_){}}
+async function notifyStudentsUpdated(scope={},operation='update'){
+ const detail={schoolId:state.schoolId||targetSchoolId(),academicYear:state.academicYear||currentAcademicYear(),scope:normalizeScope(scope),operation,version:Date.now()};
+ state.updatedAt='1970-01-01T00:00:00.000Z';state.cacheHydrated=false;
+ try{window.dispatchEvent(new CustomEvent('school-information:students-updated',{detail}))}catch(_){}
+ // حدّث الصفحة الحالية أولًا وانتظر السحابة؛ لا نكتفي بإبطال الكاش.
+ const snap=await refresh();
+ publishCrossPageUpdate(detail);
+ return snap;
+}
+function notifyUpdated(){
+ const detail={schoolId:state.schoolId||targetSchoolId(),academicYear:state.academicYear||currentAcademicYear(),operation:'general',version:Date.now()};
+ state.updatedAt='1970-01-01T00:00:00.000Z';state.cacheHydrated=false;
+ try{window.dispatchEvent(new CustomEvent('school-information-source-invalidated',{detail}))}catch(_){}
+ publishCrossPageUpdate(detail);
+}
 
 window.SchoolInformationSource={VERSION,refresh,load:getSnapshot,getSnapshot,getStudents,getStudentsByScope,getStaff,getTeachers,getAdministrativeEmployees,request:call,notifyUpdated,notifyStudentsUpdated,hydratePersistentCache,revalidateInBackground,
  context:()=>({systemAdmin:systemAdminRequested(),schoolId:targetSchoolId(),accessMode:systemAdminRequested()?'system_admin':'school_manager'})};

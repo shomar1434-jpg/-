@@ -161,7 +161,7 @@
           </div>
           <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
 <span id="structureRoleBadge" class="pill">إدارة الهيكل الدراسي</span>
-<span class="pill" id="structureBuildBadge" title="للتأكد أن المتصفح حمّل النسخة الجديدة">الإصدار RL8 — قراءة ذكية لملفات نور PDF / Excel</span>
+<span class="pill" id="structureBuildBadge" title="للتأكد أن المتصفح حمّل النسخة الجديدة">الإصدار RL10 — اعتماد الفصل وانعكاس الطلاب المباشر</span>
 </div>
         </div>
 
@@ -214,7 +214,7 @@
           </div>
           <div class="pdfHint">اختر من زر الفصل ملف Excel (.xlsx / .xls / .csv) أو PDF نصيًا. لا توجد عملية استيراد عامة منفصلة؛ كل ملف يرتبط بالفصل الذي اخترته فقط.</div>
           <div id="scopePreviewBox" class="preview hidden"></div>
-          <div class="footerbar"><span class="pill" id="scopePreviewCount">لم تتم قراءة ملف للفصل</span><button id="scopeSaveBtn" class="btn hidden" onclick="saveScopedPreview()">اعتماد بيانات هذا الفصل فقط</button></div>
+          <div class="footerbar"><span class="pill" id="scopePreviewCount">لم تتم قراءة ملف للفصل</span><button id="scopeSaveBtn" class="btn hidden" onclick="saveScopedPreview()">اعتماد طلاب هذا الفصل وحفظهم</button></div>
         </div>
       </div>
 
@@ -1063,7 +1063,60 @@ window.readScopedStudentFile=async function(fileOverride){
       setStatus('تعذر قراءة ملف الفصل: '+(e.message||e),'bad');
     }
   }
-  window.saveScopedPreview=async function(){try{const scope=validateScope(),year=safe($('scopeAcademicYear').value)||'1447';if(!scopedPreviewRows.length)throw new Error('لا توجد بيانات للمعاينة.');const students=scopedPreviewRows.map(r=>({student_name:r.student_name,student_number:r.student_number||null,national_id:r.national_id||null,stage:canonicalStageLabel(scope.stage),grade:canonicalGradeLabel(scope.grade),stage_id:canonicalStageId(scope.stage),grade_id:canonicalGradeId(scope.grade),track_name:scope.track_name,section_name:scope.section_name,noor_section_code:r.noor_section_code||''})),result=await phase2Call('students-import-scope',{academicYear:year,mode:$('scopeSaveMode').value,scope,students});scopedPreviewRows=[];$('scopeSaveBtn').classList.add('hidden');$('scopePreviewCount').textContent='تم حفظ الفصل المحدد';if(window.SchoolInformationSource?.notifyStudentsUpdated)await SchoolInformationSource.notifyStudentsUpdated(scope,'import');await loadScopedClassRoster(false);await loadStudents();setStatus('تم تحديث '+scope.grade+' / الفصل '+scope.section_name+' فقط: حُفظ '+Number(result.saved||0)+' طالبًا.','ok')}catch(e){setStatus('تعذر حفظ الفصل المحدد: '+(e.message||e),'bad')}}
+  function sameStudentScope(row,scope){
+    return canonicalStageLabel(row?.stage)===canonicalStageLabel(scope?.stage)
+      && canonicalGradeLabel(row?.grade)===canonicalGradeLabel(scope?.grade)
+      && safe(row?.track_name||'')===safe(scope?.track_name||'')
+      && safe(row?.section_name||'')===safe(scope?.section_name||'');
+  }
+  function reflectCommittedScopeImmediately(scope,rows){
+    const committed=(Array.isArray(rows)?rows:[]).map(cleanStudent).map(canonicalStudentLocation);
+    scopedClassStudents=committed;
+    // استبدال نطاق الفصل فقط في الذاكرة الحالية، دون لمس أي فصل آخر.
+    allStudents=allStudents.filter(r=>!sameStudentScope(r,scope)).concat(committed);
+    renderClassRoster();
+    rebuildFilters(true);renderTree();renderStats();renderStudents();
+    try{
+      $('filterStage').value=canonicalStageLabel(scope.stage);rebuildFilters();
+      $('filterGrade').value=canonicalGradeLabel(scope.grade);rebuildFilters();
+      if($('filterTrack')){$('filterTrack').value=scope.track_name||'';rebuildFilters();}
+      $('filterSection').value=scope.section_name;renderStudents();
+    }catch(_e){}
+  }
+  window.saveScopedPreview=async function(){
+    const btn=$('scopeSaveBtn');
+    try{
+      const scope=validateScope(),year=safe($('scopeAcademicYear').value)||'1447';
+      if(!scopedPreviewRows.length)throw new Error('لا توجد بيانات للمعاينة.');
+      const students=scopedPreviewRows.map(r=>({student_name:r.student_name,student_number:r.student_number||null,national_id:r.national_id||null,stage:canonicalStageLabel(scope.stage),grade:canonicalGradeLabel(scope.grade),stage_id:canonicalStageId(scope.stage),grade_id:canonicalGradeId(scope.grade),track_name:scope.track_name,section_name:scope.section_name,noor_section_code:r.noor_section_code||''}));
+      if(btn){btn.disabled=true;btn.textContent='جارٍ اعتماد طلاب الفصل...'}
+      setStatus('جارٍ اعتماد '+students.length+' طالبًا في '+scope.grade+' / الفصل '+scope.section_name+' وحفظهم سحابيًا...','note');
+      const result=await phase2Call('students-import-scope',{academicYear:year,mode:$('scopeSaveMode').value,scope,students});
+      if(!result?.ok)throw new Error('لم يؤكد الخادم اعتماد بيانات الفصل.');
+      // لا نعتمد رسالة النجاح قبل أن يعيد الخادم قائمة الفصل المحفوظة نفسها.
+      const committed=Array.isArray(result.students)?result.students:[];
+      if(!committed.length && students.length)throw new Error('تمت عملية الحفظ دون أن يعيد الخادم طلاب الفصل المعتمدين. لم يتم إغلاق المعاينة حفاظًا على البيانات.');
+      reflectCommittedScopeImmediately(scope,committed);
+      scopedPreviewRows=[];
+      $('scopePreviewCount').textContent='تم اعتماد '+committed.length+' طالبًا في الفصل';
+      $('scopeSaveBtn').classList.add('hidden');
+      // تحديث المصدر المركزي وانتظار اكتماله فعليًا، حتى ترى جميع الأقسام البيانات الجديدة فور فتحها أو تحديثها.
+      if(window.SchoolInformationSource?.notifyStudentsUpdated){
+        await SchoolInformationSource.notifyStudentsUpdated(scope,'import');
+      }
+      // تحقق ثانٍ من المصدر المركزي نفسه، لا من المعاينة المحلية.
+      await loadStudents();
+      await loadScopedClassRoster(false);
+      renderTree();renderStats();renderStudents();
+      setStatus('تم اعتماد '+committed.length+' طالبًا في '+scope.grade+' / الفصل '+scope.section_name+'، وانعكست البيانات على الفصل والهيكل المدرسي ومصدر المعلومات المركزي.','ok');
+    }catch(e){
+      setStatus('تعذر اعتماد طلاب الفصل: '+(e.message||e),'bad');
+      // نبقي المعاينة وزر الاعتماد ظاهرين حتى لا يفقد المدير الملف الذي قرأه.
+      if(scopedPreviewRows.length){$('scopeSaveBtn').classList.remove('hidden');$('scopePreviewCount').textContent=scopedPreviewRows.length+' طالبًا في المعاينة — لم يتم الاعتماد بعد';}
+    }finally{
+      if(btn){btn.disabled=false;btn.textContent='اعتماد طلاب هذا الفصل وحفظهم'}
+    }
+  }
 window.readExcel = async function(){
     try{
       if(!currentSchool.id) detectSchool(); if(!currentSchool.id) throw new Error('فعّل وضع التجربة المحلية أو افتح المركز من حساب مدير مدرسة مستقلة قبل الاستيراد.');
@@ -1381,7 +1434,7 @@ window.readExcel = async function(){
 <script src="delegated-access-guard.js"></script>
   <script src="evidence-library-source.js"></script>
 
-<script src="school-information-source.js?v=20260830-authoritative-v6"></script>
+<script src="school-information-source.js?v=20260904-rl10-live-commit"></script>
 <script src="internal-messaging.js"></script>
 
 <script id="central-information-provider-ui">

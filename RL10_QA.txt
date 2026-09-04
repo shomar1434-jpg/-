@@ -1,0 +1,20 @@
+RL10 — اعتماد طلاب الفصل وانعكاسهم المباشر
+
+Regression Lock:
+- لا تعديل على teacher.html أو manager.html أو decisions_assignments.html أو staff_discipline.html.
+- لا حذف مادي لطلاب المدارس؛ replace_scope يستخدم student_status=محذوف فقط للغائبين من الفصل المحدد.
+- جميع عمليات الحفظ مقيدة بـ school_id + academic_year، والفصل المحدد فقط.
+- الطالب الموجود سابقًا في نفس المدرسة/العام يُحدّث بنفس id عند التطابق بالهوية أو رقم الطالب، ولا يُنشأ له سجل جديد عشوائيًا.
+
+التصحيح:
+1. تم نشر Edge Function school-information-structure إصدار 3.0.0-live-class-commit فعليًا في Supabase.
+2. بعد اعتماد المعاينة لا تظهر رسالة النجاح إلا إذا أعاد الخادم قائمة طلاب الفصل المحفوظة.
+3. قائمة طلاب الفصل والهيكل والإحصاءات تتحدث فورًا من نتيجة الحفظ السحابي.
+4. ثم تتم إعادة القراءة من school-information المركزي للتحقق الثاني.
+5. school-information-source.js أصبح ينتظر refresh الحقيقي بعد التغيير، ويحدّث IndexedDB، وينشر invalidation عبر BroadcastChannel/localStorage لبقية الصفحات والتبويبات.
+6. زر تحديث المعلومات الفعلية يعيد bootstrap من السحابة، بما فيه الطلاب والمنسوبون.
+
+QA:
+- school_information_center.html: جميع inline scripts = 0 syntax errors.
+- school-information-source.js: 0 syntax errors.
+- Backend deployed ACTIVE on project cijhgvbtrvmmlcssgxht.

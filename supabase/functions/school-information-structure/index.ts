@@ -34,7 +34,8 @@ Deno.serve(async(req)=>{
   }
   const structureKey='academic_structure:'+year;
   const structureGet=async()=>{const q=await sb.from('platform_module_state').select('payload,updated_at').eq('school_id',schoolId).eq('owner_key','school').eq('module_key','school_information').eq('state_key',structureKey).is('deleted_at',null).limit(1).maybeSingle();if(q.error)throw q.error;return q.data?.payload||{academicYear:year,stages:[],updatedAt:q.data?.updated_at||''}};
-  if(action==='health')return json({ok:true,service:'school-information-structure',version:'2.0.0-regression-lock',schoolId,accessMode,requestId});
+  const listScope=async(s:any)=>{let q=sb.from('students').select('*').eq('school_id',schoolId).eq('academic_year',year).neq('student_status','محذوف');q=applyScope(q,s);const r=await q.order('student_name',{ascending:true}).limit(5000);if(r.error)throw r.error;return r.data||[]};
+  if(action==='health')return json({ok:true,service:'school-information-structure',version:'3.0.0-live-class-commit',schoolId,accessMode,requestId});
   if(action==='structure-get')return json({structure:await structureGet(),schoolId,accessMode,requestId});
   if(action==='structure-save'){
    if(!canWrite)return json({error:'STRUCTURE_WRITE_ROLE_DENIED',requestId},403);
@@ -44,45 +45,48 @@ Deno.serve(async(req)=>{
    return json({ok:true,structure:q.data.payload,schoolId,accessMode,requestId});
   }
   if(action==='students-list-scope'){
-   const s=scopeOf(body.scope||{});let q=sb.from('students').select('*').eq('school_id',schoolId).eq('academic_year',year).neq('student_status','محذوف');q=applyScope(q,s);
-   const r=await q.order('student_name',{ascending:true}).limit(5000);if(r.error)throw r.error;return json({students:r.data||[],scope:s,schoolId,accessMode,requestId});
+   const s=scopeOf(body.scope||{});return json({students:await listScope(s),scope:s,schoolId,accessMode,requestId});
   }
   if(['students-import-scope','student-add-scope','student-transfer-section','student-delete-scope'].includes(action)&&!canWrite)return json({error:'WRITE_ROLE_DENIED',requestId},403);
   if(action==='students-import-scope'){
    const mode=text(body.mode||'replace_scope'),s=scopeOf(body.scope||{}),rows=Array.isArray(body.students)?body.students:[];
    if(!s.stage||!s.grade||!s.section_name)return json({error:'STUDENT_SCOPE_REQUIRED',requestId},400);if(rows.length>5000)return json({error:'IMPORT_TOO_LARGE',requestId},413);
-   let eq=sb.from('students').select('*').eq('school_id',schoolId).eq('academic_year',year);eq=applyScope(eq,s);const er=await eq.limit(5000);if(er.error)throw er.error;const existing:any[]=er.data||[];
-   const existingByKey=new Map(existing.map(r=>[studentKey(r),r]));const incomingKeys=new Set<string>();let saved=0,updated=0,restored=0,skippedPreview=0;const seen=new Set<string>();
+   let eq=sb.from('students').select('*').eq('school_id',schoolId).eq('academic_year',year);eq=applyScope(eq,s);const er=await eq.limit(5000);if(er.error)throw er.error;const existingScope:any[]=er.data||[];
+   const schoolRowsQ=await sb.from('students').select('*').eq('school_id',schoolId).eq('academic_year',year).limit(10000);if(schoolRowsQ.error)throw schoolRowsQ.error;const schoolRows:any[]=schoolRowsQ.data||[];
+   const byNid=new Map<string,any>(),byNum=new Map<string,any>(),byName=new Map<string,any[]>();
+   for(const r of schoolRows){const nid=text(r.national_id),num=text(r.student_number),nm=norm(r.student_name);if(nid&&!byNid.has(nid))byNid.set(nid,r);if(num&&!byNum.has(num))byNum.set(num,r);if(nm){const a=byName.get(nm)||[];a.push(r);byName.set(nm,a)}}
+   const incomingIds=new Set<string>();let saved=0,updated=0,restored=0,moved=0,skippedPreview=0;const seen=new Set<string>();
    for(const rawRow of rows){
     const row:any={school_id:schoolId,student_name:text(rawRow.student_name),student_number:text(rawRow.student_number)||null,stage:s.stage,grade:s.grade,track_name:s.track_name,noor_section_code:text(rawRow.noor_section_code),section_name:s.section_name,national_id:text(rawRow.national_id)||null,student_status:'نشط',academic_year:year};
-    if(!row.student_name)continue;const k=studentKey(row);if(seen.has(k)){skippedPreview++;continue}seen.add(k);incomingKeys.add(k);const old:any=existingByKey.get(k);
-    if(old?.id){const q=await sb.from('students').update(row).eq('id',old.id).eq('school_id',schoolId);if(q.error)throw q.error;updated++;if(text(old.student_status)==='محذوف')restored++;}
-    else{const q=await sb.from('students').insert(row);if(q.error)throw q.error;saved++;}
+    if(!row.student_name)continue;const k=studentKey(row);if(seen.has(k)){skippedPreview++;continue}seen.add(k);
+    let old:any=null;if(row.national_id)old=byNid.get(row.national_id)||null;if(!old&&row.student_number)old=byNum.get(row.student_number)||null;if(!old){const sameName=byName.get(norm(row.student_name))||[];if(sameName.length===1)old=sameName[0]}
+    if(old?.id){incomingIds.add(String(old.id));const wasDeleted=text(old.student_status)==='محذوف';const wasMoved=text(old.stage)!==s.stage||text(old.grade)!==s.grade||text(old.track_name)!==s.track_name||text(old.section_name)!==s.section_name;const q=await sb.from('students').update(row).eq('id',old.id).eq('school_id',schoolId);if(q.error)throw q.error;updated++;if(wasDeleted)restored++;if(wasMoved)moved++;}
+    else{const q=await sb.from('students').insert(row).select('id').single();if(q.error)throw q.error;saved++;incomingIds.add(String(q.data.id));}
    }
    let archived=0;
    if(mode==='replace_scope'){
-    // لا نحذف أي طالب فعليًا: نحافظ على الصف والسجل والـ id السابق ونحوّل غير الموجود في ملف نور إلى محذوف منطقيًا فقط.
-    for(const old of existing){const k=studentKey(old);if(incomingKeys.has(k)||text(old.student_status)==='محذوف')continue;const q=await sb.from('students').update({student_status:'محذوف'}).eq('id',old.id).eq('school_id',schoolId);if(q.error)throw q.error;archived++;}
+    for(const old of existingScope){if(incomingIds.has(String(old.id))||text(old.student_status)==='محذوف')continue;const q=await sb.from('students').update({student_status:'محذوف'}).eq('id',old.id).eq('school_id',schoolId);if(q.error)throw q.error;archived++;}
    }
-   return json({ok:true,saved,updated,restored,archived,skippedPreview,scope:s,schoolId,accessMode,requestId});
+   const students=await listScope(s);const totalQ=await sb.from('students').select('id',{count:'exact',head:true}).eq('school_id',schoolId).eq('academic_year',year).neq('student_status','محذوف');if(totalQ.error)throw totalQ.error;
+   return json({ok:true,saved,updated,restored,moved,archived,skippedPreview,students,totalActive:Number(totalQ.count||0),scope:s,schoolId,accessMode,requestId});
   }
   if(action==='student-add-scope'){
    const s=scopeOf(body.scope||{}),student=body.student||{};if(!s.stage||!s.grade||!s.section_name||!text(student.student_name))return json({error:'STUDENT_SCOPE_REQUIRED',requestId},400);
    const row={school_id:schoolId,student_name:text(student.student_name),national_id:text(student.national_id)||null,student_number:text(student.student_number)||null,stage:s.stage,grade:s.grade,track_name:s.track_name,section_name:s.section_name,noor_section_code:text(student.noor_section_code),student_status:'نشط',academic_year:year};
-   const q=await sb.from('students').insert(row).select('*').single();if(q.error)throw q.error;return json({ok:true,student:q.data,schoolId,scope:s,requestId});
+   const q=await sb.from('students').insert(row).select('*').single();if(q.error)throw q.error;return json({ok:true,student:q.data,students:await listScope(s),schoolId,scope:s,requestId});
   }
   if(action==='student-transfer-section'){
    const id=text(body.id),s=scopeOf(body.scope||{}),target=text(body.targetSection);if(!id||!target)return json({error:'STUDENT_TRANSFER_REQUIRED',requestId},400);
    let check=sb.from('students').select('id,school_id,academic_year,stage,grade,track_name,section_name').eq('id',id).eq('school_id',schoolId).eq('academic_year',year).limit(1).maybeSingle();const cr=await check;if(cr.error)throw cr.error;if(!cr.data)return json({error:'STUDENT_NOT_FOUND',requestId},404);
    if(s.stage&&text(cr.data.stage)!==s.stage||s.grade&&text(cr.data.grade)!==s.grade||s.track_name&&text(cr.data.track_name)!==s.track_name)return json({error:'STUDENT_SCOPE_MISMATCH',requestId},409);
-   const q=await sb.from('students').update({section_name:target,student_status:'نشط'}).eq('id',id).eq('school_id',schoolId).select('*').single();if(q.error)throw q.error;return json({ok:true,student:q.data,schoolId,requestId});
+   const q=await sb.from('students').update({section_name:target,student_status:'نشط'}).eq('id',id).eq('school_id',schoolId).select('*').single();if(q.error)throw q.error;const targetScope={...s,section_name:target};return json({ok:true,student:q.data,students:await listScope(targetScope),schoolId,requestId});
   }
   if(action==='student-delete-scope'){
    const id=text(body.id),s=scopeOf(body.scope||{});if(!id)return json({error:'STUDENT_ID_REQUIRED',requestId},400);
    let check=sb.from('students').select('*').eq('id',id).eq('school_id',schoolId).eq('academic_year',year).limit(1).maybeSingle();const cr=await check;if(cr.error)throw cr.error;if(!cr.data)return json({error:'STUDENT_NOT_FOUND',requestId},404);
    if(s.stage&&text(cr.data.stage)!==s.stage||s.grade&&text(cr.data.grade)!==s.grade||s.section_name&&text(cr.data.section_name)!==s.section_name)return json({error:'STUDENT_SCOPE_MISMATCH',requestId},409);
    // حذف منطقي فقط لضمان عدم فقدان بيانات المدرسة السابقة أو المراجع التاريخية.
-   const q=await sb.from('students').update({student_status:'محذوف'}).eq('id',id).eq('school_id',schoolId);if(q.error)throw q.error;return json({ok:true,softDeleted:true,id,schoolId,requestId});
+   const q=await sb.from('students').update({student_status:'محذوف'}).eq('id',id).eq('school_id',schoolId);if(q.error)throw q.error;return json({ok:true,softDeleted:true,id,students:await listScope(s),schoolId,requestId});
   }
   return json({error:'ACTION_UNSUPPORTED',requestId},400);
  }catch(e){console.error('[school-information-structure]',requestId,e);return json({error:e instanceof Error?e.message:String(e),requestId},500)}

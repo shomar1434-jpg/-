@@ -16,6 +16,11 @@
   
   <!-- PDF.js Library for Client-Side PDF Reading -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <!-- School-scoped cloud persistence for independent schools -->
+  <script src="active_school_scope.js"></script>
+  <script src="school_isolation_guard.js?v=nonblock20260614"></script>
+  <script src="platform-cloud-session.js"></script>
+  <script src="platform-state-engine.js?v=20260828-school-isolation-v8"></script>
 
   <script>
     tailwind.config = {
@@ -1045,20 +1050,123 @@
 
     // GLOBAL STATE (Only Official Nafs Subjects: القراءة, العلوم, الرياضيات)
     let appData = {
-      schoolName: "مدرسة الريادة المتوسطة للبنين",
-      gender: "بنين",
-      stage: "المتوسطة",
-      grade: "الثالث المتوسط",
+      schoolName: "",
+      gender: "",
+      stage: "",
+      grade: "",
       subject: "القراءة",
-      academicYear: "1447هـ",
-      dashboardStyle: 1, // 1: Standard Dashboard, 2: Math/Reading Card, 3: Support Monitor, 4: Science/Subject Map
-      skills: [
-        { name: "فهم المقروء", score: 68, benchmark: 74 },
-        { name: "استنتاج المعنى", score: 61, benchmark: 72 },
-        { name: "الفكرة الرئيسة والتفاصيل", score: 75, benchmark: 73 },
-        { name: "توظيف المفردات", score: 64, benchmark: 71 }
-      ]
+      academicYear: "",
+      dashboardStyle: 1,
+      skills: []
     };
+
+    const NAFS_MODULE_KEY = 'nafs_results_analysis';
+    const NAFS_STATE_KEY = 'latest_school_analysis_v1';
+    let nafsCloudHydrated = false;
+    let nafsCurrentSourceFile = '';
+
+    function nafsSchoolId(){
+      return String(
+        window.PlatformCloudSession?.schoolId?.() ||
+        localStorage.getItem('active_school_id') ||
+        localStorage.getItem('current_school_id') ||
+        localStorage.getItem('school_id') ||
+        localStorage.getItem('smart_school_id') || ''
+      ).trim();
+    }
+
+    function nafsCacheKey(){
+      const sid=nafsSchoolId();
+      return sid ? `nafs_results_analysis_cache_v1:${sid}` : '';
+    }
+
+    function nafsClone(v){ return v==null?v:JSON.parse(JSON.stringify(v)); }
+
+    function setNafsPersistenceBadge(type,message){
+      const badge=document.getElementById('pdfStatusBadge');
+      if(!badge) return;
+      const cls=type==='ok'?'bg-emerald-100 text-emerald-800':type==='warn'?'bg-amber-100 text-amber-800':type==='error'?'bg-red-100 text-red-800':'bg-blue-100 text-blue-800';
+      badge.className=cls+' font-bold text-[10px] px-2.5 py-0.5 rounded-full';
+      badge.innerHTML=message;
+    }
+
+    async function ensureNafsCloud(){
+      if(window.PlatformCloudSession&&typeof PlatformCloudSession.ensure==='function') await PlatformCloudSession.ensure();
+      let tries=0;
+      while(!window.PlatformStateEngine&&tries++<60) await new Promise(r=>setTimeout(r,50));
+      if(!window.PlatformStateEngine||typeof PlatformStateEngine.pull!=='function'||typeof PlatformStateEngine.bulkUpsert!=='function') throw new Error('محرك الحفظ السحابي غير متاح');
+      const sid=nafsSchoolId();
+      if(!sid) throw new Error('تعذر تحديد المدرسة الحالية');
+      const tokenSid=String(window.PlatformCloudSession?.schoolId?.()||'').trim();
+      if(tokenSid&&tokenSid!==sid) throw new Error('جلسة السحابة لا تطابق المدرسة الحالية');
+      return sid;
+    }
+
+    function buildNafsSavedPayload(){
+      return {
+        schemaVersion:2,
+        schoolId:nafsSchoolId(),
+        savedAt:new Date().toISOString(),
+        sourceFileName:nafsCurrentSourceFile||'',
+        appData:nafsClone(appData),
+        extractedPdfData:nafsClone(extractedPdfData)
+      };
+    }
+
+    async function persistNafsAnalysis(reason='analysis'){
+      const sid=await ensureNafsCloud();
+      const payload=buildNafsSavedPayload();
+      if(payload.schoolId!==sid) throw new Error('تم إيقاف الحفظ بسبب اختلاف المدرسة');
+      await PlatformStateEngine.bulkUpsert(NAFS_MODULE_KEY,'school',[{key:NAFS_STATE_KEY,value:JSON.stringify(payload),deleted:false}],{timeout:20000});
+      const verify=await PlatformStateEngine.pull(NAFS_MODULE_KEY,'school',[NAFS_STATE_KEY]);
+      const raw=verify&&verify.values?verify.values[NAFS_STATE_KEY]:verify?.[NAFS_STATE_KEY];
+      const cloud=typeof raw==='string'?JSON.parse(raw):raw;
+      if(!cloud||cloud.schoolId!==sid||!cloud.appData||String(cloud.appData.schoolName||'')!==String(appData.schoolName||'')) throw new Error('لم يكتمل التحقق من حفظ تحليل نافس سحابيًا');
+      const ck=nafsCacheKey();
+      if(ck){ try{ localStorage.setItem(ck,JSON.stringify(cloud)); }catch(_){ } }
+      setNafsPersistenceBadge('ok','<i class="fa-solid fa-cloud-arrow-up"></i> تم حفظ تحليل المدرسة سحابيًا');
+      window.dispatchEvent(new CustomEvent('nafs-analysis-saved',{detail:{schoolId:sid,reason,savedAt:cloud.savedAt}}));
+      return cloud;
+    }
+
+    function applyNafsSavedPayload(saved){
+      if(!saved||!saved.appData) return false;
+      const sid=nafsSchoolId();
+      if(saved.schoolId&&sid&&String(saved.schoolId)!==sid) return false;
+      appData={...appData,...nafsClone(saved.appData),skills:Array.isArray(saved.appData.skills)?nafsClone(saved.appData.skills):[]};
+      extractedPdfData=saved.extractedPdfData?nafsClone(saved.extractedPdfData):null;
+      nafsCurrentSourceFile=String(saved.sourceFileName||'');
+      return true;
+    }
+
+    async function hydrateNafsSavedState(){
+      let loaded=false;
+      try{
+        await ensureNafsCloud();
+        const r=await PlatformStateEngine.pull(NAFS_MODULE_KEY,'school',[NAFS_STATE_KEY]);
+        const raw=r&&r.values?r.values[NAFS_STATE_KEY]:r?.[NAFS_STATE_KEY];
+        if(raw!==undefined&&raw!==null&&raw!==''){
+          const saved=typeof raw==='string'?JSON.parse(raw):raw;
+          loaded=applyNafsSavedPayload(saved);
+          if(loaded){
+            const ck=nafsCacheKey(); if(ck){try{localStorage.setItem(ck,JSON.stringify(saved));}catch(_){}}
+            setNafsPersistenceBadge('ok','<i class="fa-solid fa-cloud"></i> تم استعادة آخر تحليل محفوظ لهذه المدرسة');
+          }
+        }
+        nafsCloudHydrated=true;
+      }catch(err){
+        console.warn('[NAFS hydrate]',err);
+        const ck=nafsCacheKey();
+        if(ck){
+          try{ const saved=JSON.parse(localStorage.getItem(ck)||'null'); loaded=applyNafsSavedPayload(saved)||loaded; }catch(_){ }
+        }
+        setNafsPersistenceBadge('warn','<i class="fa-solid fa-triangle-exclamation"></i> تعذر الاتصال بالسحابة؛ تم استخدام نسخة هذه المدرسة فقط إن وجدت');
+      }
+      populatePdfInputFormFromState();
+      renderAll();
+      if(!loaded) switchView('pdfInput');
+      return loaded;
+    }
 
     // SAMPLE PRESETS FOR OFFICIAL NAFS SUBJECTS
     const PRESETS = {
@@ -1109,10 +1217,9 @@
       }
     };
 
-    // INIT ON LOAD
-    window.onload = function() {
-      populatePdfInputFormFromState();
-      renderAll();
+    // INIT ON LOAD — cloud state is canonical; demo presets are never loaded automatically.
+    window.onload = async function() {
+      await hydrateNafsSavedState();
     };
 
     function loadPreset(presetNum) {
@@ -1139,6 +1246,7 @@
         
         populatePdfInputFormFromState();
         renderAll();
+        persistNafsAnalysis('subject-switch').catch(err=>{console.error('[NAFS subject save]',err);setNafsPersistenceBadge('error','<i class="fa-solid fa-triangle-exclamation"></i> تعذر حفظ تغيير المادة سحابيًا');});
       } else if (PRESETS[presetNum]) {
         // No uploaded PDF, load full preset
         appData = JSON.parse(JSON.stringify(PRESETS[presetNum]));
@@ -1427,14 +1535,15 @@ function switchView(viewId) {
       const subject = document.getElementById('pdfSubject').value;
       if (extractedPdfData.subjects && extractedPdfData.subjects[subject]) {
         renderPdfSkillsInputRows(extractedPdfData.subjects[subject].skills);
-        // Auto-apply subject change to all system segments
-        applyPdfDataToSystem();
+        // Auto-apply subject change and keep the same school's cloud state current.
+        applyPdfDataToSystem({persist:true,reason:'subject-change'}).catch(err=>{console.error('[NAFS subject change]',err);setNafsPersistenceBadge('error','<i class="fa-solid fa-triangle-exclamation"></i> تعذر حفظ تغيير المادة');});
       }
     }
 
     async function handlePdfUpload(event) {
       const file = event.target.files[0];
       if (!file) return;
+      nafsCurrentSourceFile = file.name || '';
 
       const badge = document.getElementById('pdfStatusBadge');
       badge.className = "bg-blue-100 text-blue-800 font-bold text-[10px] px-2.5 py-0.5 rounded-full";
@@ -1466,8 +1575,8 @@ function switchView(viewId) {
         badge.className = "bg-emerald-100 text-emerald-800 font-bold text-[10px] px-2.5 py-0.5 rounded-full";
         badge.innerHTML = `<i class="fa-solid fa-check"></i> تمت القراءة: ${availableSubjects.join(' - ')}`;
         
-        // Auto-apply extracted data to system segments instantly
-        applyPdfDataToSystem();
+        // Auto-apply + persist the uploaded school's analysis before considering the cycle complete.
+        await applyPdfDataToSystem({persist:true,reason:'pdf-upload'});
       } catch (err) {
         console.error(err);
         extractedPdfData = null;
@@ -1542,7 +1651,7 @@ function switchView(viewId) {
       tbody.appendChild(tr);
     }
 
-    function applyPdfDataToSystem() {
+    async function applyPdfDataToSystem(options={persist:true,reason:'manual-apply'}) {
       appData.schoolName = document.getElementById('pdfSchoolName').value || "المدرسة المعينة";
       appData.gender = document.getElementById('pdfGender').value;
       appData.stage = document.getElementById('pdfStage').value;
@@ -1583,7 +1692,17 @@ function switchView(viewId) {
         activeStyleBtn.classList.add('bg-moe-teal', 'text-white', 'shadow-sm');
       }
 
+      if(options.persist!==false){
+        try{
+          await persistNafsAnalysis(options.reason||'analysis');
+        }catch(err){
+          console.error('[NAFS persist]',err);
+          setNafsPersistenceBadge('error','<i class="fa-solid fa-circle-xmark"></i> تم التحليل محليًا لكن لم يتم حفظه سحابيًا');
+          throw err;
+        }
+      }
       switchView('visualDashboard');
+      return true;
     }
 
     function getSkillStatus(gap) {
@@ -2137,5 +2256,6 @@ function switchView(viewId) {
       renderAll();
     }
   </script>
+<div id="nafsPersistenceVersion" class="no-print" style="position:fixed;bottom:8px;left:8px;z-index:9999;background:#00675b;color:white;border-radius:999px;padding:5px 10px;font:700 10px Cairo,sans-serif;opacity:.9">RL18 / حفظ سحابي حسب المدرسة</div>
 </body>
 </html>

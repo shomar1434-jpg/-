@@ -5601,21 +5601,62 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
       return rec;
     }catch(e){console.warn('[manager decisions cloud read]',fileRow&&fileRow.id,e);return null;}
   }
+  function decisionRecordStamp(r){
+    var t=Date.parse(String(r&& (r.updatedAt||r.savedAt||r.createdAt) ||''));
+    return Number.isFinite(t)?t:0;
+  }
+  function mergeDecisionRowsSafe(localRows,cloudRows){
+    var map=new Map();
+    function put(r){
+      if(!r||r.recordType!=='decision_assignment')return;
+      var id=String(r.id||''); if(!id)return;
+      var prev=map.get(id);
+      if(!prev || decisionRecordStamp(r)>=decisionRecordStamp(prev))map.set(id,r);
+    }
+    (localRows||[]).forEach(put);
+    (cloudRows||[]).forEach(put);
+    return Array.from(map.values()).sort(function(a,b){return decisionRecordStamp(b)-decisionRecordStamp(a);});
+  }
+  async function verifyLocallyConfirmedDecisionStillExists(rec){
+    if(!rec||!rec.cloudSynced)return rec||null;
+    var fid=String(rec.cloudFileId||'');
+    // السجل المحلي في هذه الوحدة لا يُكتب إلا بعد تحقق سحابي ناجح. إذا كانت قائمة الملفات
+    // متأخرة في الفهرسة، نتحقق مباشرة من الملف بدل حذف السجل المحلي من العرض.
+    if(!fid)return rec;
+    try{
+      var direct=await readCloudDecisionFile({id:fid});
+      return direct||rec;
+    }catch(_){return rec;}
+  }
   async function syncDecisionsArchiveFromCloud(){
-    if(!decisionCloudReady())return decisionRowsLocal();
+    var localBefore=decisionRowsLocal();
+    if(!decisionCloudReady())return localBefore;
     try{
       if(window.PlatformCloudSession&&typeof PlatformCloudSession.ensure==='function')await PlatformCloudSession.ensure();
       var r=await CloudFileEngine.list({ownershipScope:'school',moduleKey:DECISIONS_CLOUD_MODULE,recordType:DECISIONS_CLOUD_RECORD_TYPE,limit:1000});
-      var files=(r&&r.files)||[], rows=[];
+      var files=(r&&r.files)||[], cloudRows=[];
       for(var i=0;i<files.length;i++){
         var rec=await readCloudDecisionFile(files[i]);
-        if(rec)rows.push(rec);
+        if(rec)cloudRows.push(rec);
       }
-      if(rows.length||files.length===0)mirrorDecisionRows(rows);
-      return rows;
+      var cloudIds=new Set(cloudRows.map(function(x){return String(x.id||'');}));
+      var cloudFileIds=new Set(files.map(function(x){return String(x&&x.id||'');}));
+      var preserved=[];
+      for(var j=0;j<localBefore.length;j++){
+        var lr=localBefore[j], lid=String(lr&&lr.id||''), lfid=String(lr&&lr.cloudFileId||'');
+        if((lid&&cloudIds.has(lid)) || (lfid&&cloudFileIds.has(lfid)))continue;
+        // لا نعتبر غياب القرار عن list دليلاً على الحذف؛ فالفهرس قد يتأخر بعد الرفع.
+        // نحافظ على النسخة المحلية المؤكدة، ونحاول قراءة الملف مباشرة متى توفر معرّفه.
+        var checked=await verifyLocallyConfirmedDecisionStillExists(lr);
+        if(checked)preserved.push(checked);
+      }
+      var merged=mergeDecisionRowsSafe(preserved,cloudRows);
+      mirrorDecisionRows(merged);
+      return merged;
     }catch(e){
       console.warn('[manager decisions cloud sync]',e);
-      return decisionRowsLocal();
+      // فشل المزامنة لا يسمح بمسح الكاش المحلي المؤكد.
+      return localBefore;
     }
   }
   async function resolveDecisionCloudFileId(record){
@@ -5692,7 +5733,9 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
     }catch(e){console.error('[manager canonical archive hydrate]',e);return false;}
   }
   async function showArchive(kind){ var v=document.getElementById(viewId(kind)); if(!v){alert('واجهة '+title(kind)+' غير موجودة.');return;} hideAllManagerViews(); v.style.display='block'; if(v.classList)v.classList.remove('hidden'); var loadingBox=document.getElementById(contentId(kind)); if(loadingBox) loadingBox.innerHTML='<div class="bg-white/90 rounded-[28px] p-8 text-center text-slate-500 font-bold">جاري استعادة الأرشيف السحابي والتحقق من بيانات المدرسة...</div>'; await hydrateCanonicalManagerArchive(kind); renderFolders(kind); if(kind==='manager'){ // لا نؤخر فتح مجلدات السجلات بتحميل عشرات ملفات القرارات واحدًا واحدًا.
- Promise.resolve().then(function(){return syncDecisionsArchiveFromCloud();}).then(function(){renderFolders(kind);}).catch(function(e){console.warn('[manager decisions background sync]',e);});
+ Promise.resolve().then(function(){return syncDecisionsArchiveFromCloud();}).then(function(){
+   if(currentArchiveFolder&&currentArchiveFolder.kind==='manager')openFolder('manager',currentArchiveFolder.id); else renderFolders(kind);
+ }).catch(function(e){console.warn('[manager decisions background sync]',e);});
  } }
  function flattenLegacySelfEvaluationArchive(){
     var out=[];
@@ -5860,6 +5903,18 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
       if(t.indexOf('أرشيف السجلات')>-1){card.onclick=function(e){e.preventDefault();showArchive('manager');};card.style.cursor='pointer';}
     });
   }
+  function refreshDecisionArchiveViewFromLocal(){
+    try{
+      var view=document.getElementById('manager-records-archive-view');
+      if(!view || view.style.display==='none' || view.classList.contains('hidden'))return;
+      if(currentArchiveFolder&&currentArchiveFolder.kind==='manager')openFolder('manager',currentArchiveFolder.id); else renderFolders('manager');
+    }catch(e){console.warn('[manager decisions instant refresh]',e);}
+  }
+  window.addEventListener('storage',function(e){if(e&&e.key==='manager_decisions_archive_changed_v1')refreshDecisionArchiveViewFromLocal();});
+  try{
+    var decisionArchiveChannel=new BroadcastChannel('manager_decisions_archive_v1');
+    decisionArchiveChannel.onmessage=function(){refreshDecisionArchiveViewFromLocal();};
+  }catch(_){ }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',bindCards); else bindCards();
 })();
 </script>

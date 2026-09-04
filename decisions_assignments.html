@@ -815,6 +815,15 @@ async function saveData(){
    const next=rows.filter(r=>String(r.id)!==String(id));
    next.unshift(record);
    if(!archiveWrite(next))console.warn('تعذر تحديث Cache المحلي، لكن السجل تم التحقق منه سحابيًا.');
+   // إشعار فوري لواجهة أرشيف المدير في أي تبويب مفتوح. لا يعتمد ظهور القرار على
+   // تأخر فهرسة CloudFileEngine.list بعد أن تم التحقق من الملف نفسه سحابيًا.
+   try{
+     const change={id:String(record.id),cloudFileId:String(record.cloudFileId||''),updatedAt:record.updatedAt||record.savedAt||now,ts:Date.now()};
+     localStorage.setItem('manager_decisions_archive_changed_v1',JSON.stringify(change));
+     if(typeof BroadcastChannel==='function'){
+       const bc=new BroadcastChannel('manager_decisions_archive_v1');bc.postMessage(change);bc.close();
+     }
+   }catch(e){console.warn('[decision archive notify]',e);}
 
    currentArchiveRecordId=id;
    try{localStorage.setItem('takleef1448_approved',JSON.stringify(o))}catch(e){}

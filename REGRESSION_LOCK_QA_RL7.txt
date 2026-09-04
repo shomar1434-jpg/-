@@ -1,0 +1,32 @@
+RL7 — QA / Regression Lock
+
+المشكلة المعالجة:
+بعد ظهور رسالة نجاح حفظ القرار سحابياً، كان مجلد «القرارات والتكليفات» في أرشيف المدير يتأخر في إظهار السجل الجديد.
+
+السبب الجذري:
+واجهة المدير كانت تبدأ من الكاش المحلي الصحيح، ثم تعمل مزامنة CloudFileEngine.list في الخلفية.
+قائمة الملفات السحابية قد تتأخر في فهرسة الملف الجديد رغم نجاح upload + getBlob verification،
+وكانت المزامنة تستبدل الكاش المحلي بنتيجة القائمة المتأخرة، فيختفي القرار مؤقتاً ثم يظهر لاحقاً.
+
+التصحيح:
+1. عدم استبدال الكاش المحلي المؤكد بقائمة سحابية متأخرة.
+2. دمج آمن بين السجلات المحلية والسحابية حسب id والتاريخ.
+3. إذا غاب ملف محلي مؤكد عن list، يجري التحقق المباشر من cloudFileId بدل إسقاطه من العرض.
+4. مزامنة الخلفية تحافظ على المجلد المفتوح ولا تعيد المستخدم إلى قائمة المجلدات.
+5. إشعار فوري عبر storage/BroadcastChannel بعد نجاح الحفظ لواجهات الأرشيف المفتوحة في تبويب آخر.
+
+Regression Lock:
+- لم يتغير manager_records canonical archive.
+- لم يتغير مسار حذف القرارات المحمي الذي يرفض الحذف عند فشل التحقق السحابي.
+- لم يتغير وضع متابعة المدير في RL4.
+- لم تمس ملفات المعلم أو مركز المعلومات أو الانضباط.
+- رسالة نجاح الحفظ تبقى بعد upload + verifyCloudDecisionRecord + cache update.
+
+QA:
+- manager.html: 27 script blocks / 0 JavaScript syntax errors.
+- decisions_assignments.html: 1 script block / 0 JavaScript syntax errors.
+- saveData: cloud verification occurs before local cache update.
+- local cache update occurs before success alert.
+- safe decision merge present.
+- direct cloud verification for list-lag present.
+- instant archive change notification present.

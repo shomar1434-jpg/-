@@ -502,6 +502,8 @@ async function uploadDecisionRecordToCloud(record, replaceFileId){
       folder:DECISIONS_FOLDER_NAME,
       folderId:DECISIONS_FOLDER_ID,
       recordLocalId:String(record.id),
+      logicalDecisionId:String(record.id),
+      archiveEntityId:String(record.id),
       recordType:'decision_assignment',
       assigneeName:record.assigneeName||'',
       sequence:Number(record.sequence)||1,
@@ -759,6 +761,7 @@ async function saveData(){
 
  const rows=archiveRead();
  const old=currentArchiveRecordId?rows.find(r=>String(r.id)===String(currentArchiveRecordId)):null;
+ const editingExisting=!!old;
  let sequence=old&&normalizePersonName(old.assigneeName)===assignee
    ? (Number(old.sequence)||1)
    : nextSequenceForAssignee(assignee,rows,currentArchiveRecordId);
@@ -810,6 +813,7 @@ async function saveData(){
    if(!verifiedRecord)throw new Error('تعذر التحقق من تطابق القرار المحفوظ سحابيًا مع النسخة الحالية');
    record.cloudFileId=String(verifiedRecord.cloudFileId||fid);
    record.cloudSynced=true;
+   record.cloudConfirmedAt=new Date().toISOString();
 
    // Cache محلي بعد اكتمال التحقق السحابي فقط.
    const next=rows.filter(r=>String(r.id)!==String(id));
@@ -825,10 +829,22 @@ async function saveData(){
      }
    }catch(e){console.warn('[decision archive notify]',e);}
 
-   currentArchiveRecordId=id;
+   const url=new URL(location.href);
+   if(editingExisting){
+     currentArchiveRecordId=id;
+     url.searchParams.set('editAssignment',id);
+   }else{
+     currentArchiveRecordId='';
+     url.searchParams.delete('editAssignment');
+   }
+   history.replaceState(null,'',url);
+   try{
+     const tombKey='manager_decisions_archive_tombstones_v2';
+     const tomb=JSON.parse(localStorage.getItem(tombKey)||'{}');
+     if(tomb&&typeof tomb==='object'&&tomb[id]){delete tomb[id];localStorage.setItem(tombKey,JSON.stringify(tomb));}
+   }catch(_){}
    try{localStorage.setItem('takleef1448_approved',JSON.stringify(o))}catch(e){}
    persistAssets();
-   const url=new URL(location.href);url.searchParams.set('editAssignment',id);history.replaceState(null,'',url);
    alert('تم الحفظ السحابي بنجاح في: أرشيف السجلات ← القرارات والتكليفات\\nاسم السجل: '+record.displayName);
  }catch(e){
    console.error('[decision cloud save]',e);

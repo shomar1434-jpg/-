@@ -1,24 +1,35 @@
-PASS | قفل عدم الرجوع teacher.html
-PASS | قفل عدم الرجوع staff_discipline.html
-PASS | JS manager.html
-PASS | JS school_information_center.html
-PASS | JS manager_records.html
-PASS | JS decisions_assignments.html
-PASS | JS deputy_weekly_teacher_followup.html
-PASS | JS school-information-source.js
-PASS | متابعة المدير بلا independent/direct
-PASS | سياق متابعة المدير محفوظ
-PASS | المراحل الخمس
-PASS | صفوف ابتدائية 4-6
-PASS | طفولة مبكرة 1-3
-PASS | كل إجراءات المركز لها خلفية
-PASS | لا حذف فعلي للطلاب
-PASS | حذف منطقي فقط
-PASS | استيراد يحافظ على id
-PASS | عزل school_id في عمليات الطلاب
-PASS | SchoolInformationSource متوافق مع جميع المستهلكين
-PASS | كاش معزول school+year
-PASS | حذف القرار يحمي حالات الفشل
-PASS | أرشيف المدير يبقي مزامنة القرارات بالخلفية
-PASS | سجلات المدير مرتبطة بالمركز
-PASS | القرارات لا تفرض تحديث كل فتح
+RL9 — القرارات والتكليفات / دورة الحفظ والأرشيف
+
+الملفات المعدلة فقط:
+- decisions_assignments.html
+- manager.html
+
+قفل عدم الرجوع:
+- لم يتم تعديل teacher.html
+- لم يتم تعديل school_information_center.html
+- لم يتم تعديل staff_discipline.html
+- لم يتم تعديل سجلات المدير الأساسية أو أرشيفها العام خارج دمج مجلد القرارات.
+- لم يتم تعديل منطق المدارس الأخرى أو school_id.
+
+الإصلاحات:
+1) القرار الجديد لا يبقى تلقائياً في edit mode بعد نجاح الحفظ؛ لذلك القرار التالي يحصل على recordId جديد.
+2) التعديل الصريح لسجل موجود فقط هو الذي يستخدم replaceFileId.
+3) إضافة logicalDecisionId / archiveEntityId / recordLocalId موحد لكل قرار جديد.
+4) Manager يقرأ metadata.recordLocalId كمعرف منطقي مصحح للسجلات التاريخية.
+5) نجاح Cloud list يصبح المصدر النهائي بعد مهلة فهرسة قصيرة فقط للقرار المحفوظ للتو.
+6) حذف القرار يكتب Tombstone محلياً 90 يوماً لمنع إعادته من Cache قديم.
+7) فشل السحابة لا يمس الكاش المحلي.
+8) عزل school_id يبقى من CloudFileEngine ownershipScope=school والجلسة الحالية.
+
+QA:
+- decisions_assignments.html: JavaScript syntax = PASS (0 errors)
+- manager.html: JavaScript syntax = PASS (0 errors)
+- duplicate active groups with different assignee/title after cloud repair = 0
+
+إصلاح سحابي منفذ على المشروع لجميع المدارس التي لديها manager_decisions_assignments:
+- قبل الإصلاح: active 249 / archived 175 / trashed 16
+- تم استعادة 146 نسخة archived كانت في الحقيقة قرارات مختلفة طُمست بسبب إعادة استخدام recordId.
+- تم فصل 55 سجل active متصادماً إلى معرفات مستقلة.
+- بعد الإصلاح: active 395 / archived 29 / trashed 16
+- لم يتم استعادة أي سجل trashed.
+- كل سجل تم إصلاحه يحمل metadata قابلة للتراجع: preRepairStatus, preRepairPrimaryRecordId, recoveredFromRecordLocalId, recoveryReason, recoveredAt.

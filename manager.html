@@ -5567,6 +5567,8 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
   var DECISIONS_FOLDER_NAME='القرارات والتكليفات';
   var DECISIONS_CLOUD_MODULE='manager_decisions_assignments';
   var DECISIONS_CLOUD_RECORD_TYPE='decision_assignment_archive';
+  var DECISIONS_TOMBSTONE_KEY='manager_decisions_archive_tombstones_v2';
+  var DECISION_RECENT_CONFIRM_GRACE_MS=2*60*1000;
 
   function decisionRowsLocal(){
     try{
@@ -5593,6 +5595,9 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
       var blob=await CloudFileEngine.getBlob(String(fileRow.id));
       var rec=JSON.parse(await blob.text());
       if(!rec||typeof rec!=='object'||rec.recordType!=='decision_assignment')return null;
+      var md=fileRow&&fileRow.metadata||{};
+      var logicalId=String(md.recordLocalId||md.logicalDecisionId||md.archiveEntityId||rec.id||'');
+      if(logicalId)rec.id=logicalId;
       rec.cloudFileId=String(fileRow.id);
       rec.cloudSynced=true;
       rec.folderId=DECISIONS_FOLDER_ID;
@@ -5601,6 +5606,18 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
       return rec;
     }catch(e){console.warn('[manager decisions cloud read]',fileRow&&fileRow.id,e);return null;}
   }
+  function readDecisionTombstones(){
+    try{var x=JSON.parse(localStorage.getItem(DECISIONS_TOMBSTONE_KEY)||'{}');return x&&typeof x==='object'?x:{};}catch(_){return {};}
+  }
+  function writeDecisionTombstones(x){try{localStorage.setItem(DECISIONS_TOMBSTONE_KEY,JSON.stringify(x||{}));}catch(_){} }
+  function addDecisionTombstone(rec,fileId){
+    var x=readDecisionTombstones(), id=String(rec&&rec.id||'');
+    if(id)x[id]={id:id,cloudFileId:String(fileId||(rec&&rec.cloudFileId)||''),deletedAt:new Date().toISOString(),schoolId:String(localStorage.getItem('activeSchoolId')||localStorage.getItem('school_id')||'')};
+    var cutoff=Date.now()-90*24*60*60*1000;
+    Object.keys(x).forEach(function(k){var t=Date.parse(String(x[k]&&x[k].deletedAt||''));if(Number.isFinite(t)&&t<cutoff)delete x[k];});
+    writeDecisionTombstones(x);
+  }
+  function isDecisionTombstoned(rec){var x=readDecisionTombstones(),id=String(rec&&rec.id||'');return !!(id&&x[id]);}
   function decisionRecordStamp(r){
     var t=Date.parse(String(r&& (r.updatedAt||r.savedAt||r.createdAt) ||''));
     return Number.isFinite(t)?t:0;
@@ -5629,7 +5646,7 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
     }catch(_){return rec;}
   }
   async function syncDecisionsArchiveFromCloud(){
-    var localBefore=decisionRowsLocal();
+    var localBefore=decisionRowsLocal().filter(function(r){return !isDecisionTombstoned(r);});
     if(!decisionCloudReady())return localBefore;
     try{
       if(window.PlatformCloudSession&&typeof PlatformCloudSession.ensure==='function')await PlatformCloudSession.ensure();
@@ -5637,25 +5654,22 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
       var files=(r&&r.files)||[], cloudRows=[];
       for(var i=0;i<files.length;i++){
         var rec=await readCloudDecisionFile(files[i]);
-        if(rec)cloudRows.push(rec);
+        if(rec&&!isDecisionTombstoned(rec))cloudRows.push(rec);
       }
       var cloudIds=new Set(cloudRows.map(function(x){return String(x.id||'');}));
       var cloudFileIds=new Set(files.map(function(x){return String(x&&x.id||'');}));
       var preserved=[];
       for(var j=0;j<localBefore.length;j++){
         var lr=localBefore[j], lid=String(lr&&lr.id||''), lfid=String(lr&&lr.cloudFileId||'');
-        if((lid&&cloudIds.has(lid)) || (lfid&&cloudFileIds.has(lfid)))continue;
-        // لا نعتبر غياب القرار عن list دليلاً على الحذف؛ فالفهرس قد يتأخر بعد الرفع.
-        // نحافظ على النسخة المحلية المؤكدة، ونحاول قراءة الملف مباشرة متى توفر معرّفه.
-        var checked=await verifyLocallyConfirmedDecisionStillExists(lr);
-        if(checked)preserved.push(checked);
+        if((lid&&cloudIds.has(lid))||(lfid&&cloudFileIds.has(lfid)))continue;
+        var confirmed=Date.parse(String((lr&&lr.cloudConfirmedAt)||(lr&&lr.updatedAt)||''));
+        if(lr&&lr.cloudSynced&&Number.isFinite(confirmed)&&(Date.now()-confirmed)<=DECISION_RECENT_CONFIRM_GRACE_MS)preserved.push(lr);
       }
-      var merged=mergeDecisionRowsSafe(preserved,cloudRows);
+      var merged=mergeDecisionRowsSafe(preserved,cloudRows).filter(function(r){return !isDecisionTombstoned(r);});
       mirrorDecisionRows(merged);
       return merged;
     }catch(e){
       console.warn('[manager decisions cloud sync]',e);
-      // فشل المزامنة لا يسمح بمسح الكاش المحلي المؤكد.
       return localBefore;
     }
   }
@@ -5872,6 +5886,7 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
         if(cloudCheck.status==='found'){
           await CloudFileEngine.trash(cloudCheck.fileId);
         }
+        addDecisionTombstone(item,cloudCheck.fileId||item.cloudFileId||'');
         // إذا أكدت السحابة عدم وجود الملف، فهذا سجل محلي يتيم ويمكن تنظيفه بأمان.
         var remaining=decisionRowsLocal().filter(function(r){return String(r.id)!==String(id);});
         mirrorDecisionRows(remaining);

@@ -222,9 +222,9 @@ aside{background:
         <form id="recordForm" data-platform-nav-ignore="1" class="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
           <label class="text-sm font-bold">الموظف<select id="recordEmployee" required class="mt-2 w-full border border-slate-200 rounded-xl p-3"><option value="">اختر من سجل المنسوبين</option></select></label>
           <label class="text-sm font-bold">نوع الحركة<select id="recordType" required class="mt-2 w-full border border-slate-200 rounded-xl p-3"><option value="حاضر">حاضر</option><option value="تأخر">تأخر</option><option value="غياب بعذر">غياب بعذر</option><option value="غياب بدون عذر">غياب بدون عذر</option><option value="استئذان">استئذان</option><option value="انصراف مبكر">انصراف مبكر</option></select></label>
-          <label id="minutesWrap" class="text-sm font-bold">المدة بالدقائق<input id="recordMinutes" type="number" min="0" value="0" class="mt-2 w-full border border-slate-200 rounded-xl p-3"></label>
-          <label class="text-sm font-bold">نوع الإجازة / العذر<select id="recordExcuse" class="mt-2 w-full border border-slate-200 rounded-xl p-3"><option value="">بدون تحديد</option><option>إجازة عادية</option><option>إجازة امتحان دراسي</option><option>إجازة دراسية</option><option>إجازة اضطرارية</option><option>إجازة مرضية</option><option>إجازة مرافقة مريض</option><option>إجازة استثنائية</option><option>إجازة وفاة</option><option>إجازة وضع</option><option>إجازة أمومة (رعاية مولود)</option><option>إجازة أبوة</option><option>إجازة مشاركة وطنية</option><option>إجازة تعويض</option><option>أخرى</option></select></label>
-          <label class="text-sm font-bold">حالة العذر<select id="recordExcuseStatus" class="mt-2 w-full border border-slate-200 rounded-xl p-3"><option value="">غير محدد</option><option>مقبول</option><option>غير مقبول</option><option>قيد المراجعة</option></select></label>
+          <label id="minutesWrap" class="text-sm font-bold"><span id="recordDurationLabel">المدة بالدقائق</span><input id="recordMinutes" type="number" min="0" step="1" value="0" class="mt-2 w-full border border-slate-200 rounded-xl p-3"></label>
+          <label id="excuseWrap" class="text-sm font-bold">نوع الإجازة / العذر<select id="recordExcuse" class="mt-2 w-full border border-slate-200 rounded-xl p-3"><option value="">بدون تحديد</option><option>إجازة عادية</option><option>إجازة امتحان دراسي</option><option>إجازة دراسية</option><option>إجازة اضطرارية</option><option>إجازة مرضية</option><option>إجازة مرافقة مريض</option><option>إجازة استثنائية</option><option>إجازة وفاة</option><option>إجازة عدة وفاة</option><option>إجازة وضع</option><option>إجازة أمومة (رعاية مولود)</option><option>إجازة أبوة</option><option>إجازة مشاركة وطنية</option><option>إجازة تعويض</option><option>أخرى</option></select></label>
+          <label id="excuseStatusWrap" class="text-sm font-bold">حالة العذر<select id="recordExcuseStatus" class="mt-2 w-full border border-slate-200 rounded-xl p-3"><option value="">غير محدد</option><option>مقبول</option><option>غير مقبول</option><option>قيد المراجعة</option></select></label>
           <label class="md:col-span-2 xl:col-span-3 text-sm font-bold">ملاحظات<textarea id="recordNotes" rows="2" class="mt-2 w-full border border-slate-200 rounded-xl p-3" placeholder="ملاحظات اختيارية"></textarea></label>
           <div class="xl:col-span-4 flex justify-end gap-2"><button type="button" id="cancelRecordEdit" onclick="cancelRecordEditing()" class="hidden bg-slate-100 text-slate-700 px-5 py-3 rounded-xl font-extrabold">إلغاء التعديل</button><button type="submit" id="recordSubmitBtn" data-platform-nav-ignore="1" class="bg-teal-700 hover:bg-teal-800 text-white px-7 py-3 rounded-xl font-extrabold">حفظ الحركة</button></div>
         </form>
@@ -443,7 +443,7 @@ let _disciplineCloudTimer=null,_disciplineBootPromise=null,_disciplineReady=fals
 function disciplineSessionToken(){return localStorage.getItem('platform_file_session_token')||sessionStorage.getItem('platform_tab_session_token_v1')||localStorage.getItem('platform_tab_session_token_v1')||sessionStorage.getItem('platform_file_session_token')||''}
 async function disciplineCloudCall(action,payload){const token=disciplineSessionToken();if(!token)throw new Error('جلسة المنصة غير متاحة لحفظ الانضباط سحابيًا');const url=(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'');const key=localStorage.getItem('smartSchoolSupabaseAnonKey')||'';const r=await fetch(url+'/functions/v1/platform-discipline?action='+encodeURIComponent(action),{method:'POST',headers:{'content-type':'application/json','apikey':key,'x-platform-session':token},body:JSON.stringify(payload||{})});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'تعذر مزامنة الانضباط');return j}
 function mergeById(localRows,cloudRows){const map=new Map();[...(cloudRows||[]),...(localRows||[])].forEach(r=>{if(!r)return;const id=String(r.id||'');if(!id)return;const prev=map.get(id);if(!prev){map.set(id,r);return}const a=Date.parse(prev.updatedAt||prev.updated_at||prev.createdAt||prev.created_at||0)||0,b=Date.parse(r.updatedAt||r.updated_at||r.createdAt||r.created_at||0)||0;if(b>=a)map.set(id,r)});return Array.from(map.values()).sort((a,b)=>String(b.date||b.start_at||'').localeCompare(String(a.date||a.start_at||'')))}
-function movementRowToRecord(r){return{id:r.id,date:String(r.start_at||'').slice(0,10),employeeId:r.user_id,type:r.movement_type||'حاضر',minutes:Number(r.minutes||0),notes:r.notes||'',excuse:'',excuseStatus:'',createdAt:r.created_at||'',updatedAt:r.updated_at||r.created_at||''}}
+function movementRowToRecord(r){return{id:r.id,date:String(r.start_at||'').slice(0,10),employeeId:r.user_id,type:r.movement_type||'حاضر',minutes:Number(r.minutes||0),days:Number(r.absence_days||0),notes:r.notes||'',excuse:r.excuse_type||'',excuseStatus:r.excuse_status||'',createdAt:r.created_at||'',updatedAt:r.updated_at||r.created_at||''}}
 function scheduleDisciplineCloudSave(){clearTimeout(_disciplineCloudTimer);_disciplineCloudTimer=setTimeout(()=>disciplineCloudCall('save',{academicYear:_ctx.academicYear||state.settings.year||'1448',state}).catch(e=>console.warn('[discipline cloud]',e.message)),700)}
 function persistLocal(){
   state._schoolId=_disciplineSchoolId;
@@ -465,6 +465,7 @@ function toast(m){const t=document.getElementById('toast');t.textContent=m;t.cla
 function showView(name){document.querySelectorAll('.view').forEach(v=>v.classList.add('hidden'));const target=document.getElementById('view-'+name);if(target)target.classList.remove('hidden');document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.view===name));document.querySelectorAll('.mobile-nav-btn').forEach(b=>{const on=b.dataset.view===name;b.classList.toggle('bg-teal-700',on);b.classList.toggle('text-white',on);b.classList.toggle('text-slate-200',!on)});if(name==='records')renderRecords();if(name==='monthly')renderMonthlyReport();if(name==='deductions')renderDeductions();if(name==='integration')renderIntegration();window.scrollTo({top:0,behavior:'smooth'});}
 document.querySelectorAll('.nav-btn').forEach(b=>b.onclick=()=>showView(b.dataset.view));
 document.querySelectorAll('.mobile-nav-btn').forEach(b=>b.onclick=()=>showView(b.dataset.view));
+document.getElementById('recordType')?.addEventListener('change',()=>updateMovementTypeUI(false));
 function openStaffModal(){const m=document.getElementById('staffModal');if(!m){toast('يتم جلب المنسوبين من مركز المعلومات المدرسية');return}m.classList.remove('hidden');m.classList.add('flex')}
 function closeStaffModal(){const m=document.getElementById('staffModal'),f=document.getElementById('staffForm');if(m){m.classList.add('hidden');m.classList.remove('flex')}if(f)f.reset()}
 const _legacyStaffForm=document.getElementById('staffForm');
@@ -472,20 +473,59 @@ if(_legacyStaffForm)_legacyStaffForm.onsubmit=e=>{e.preventDefault();const staff
 function renderStaff(){staffBody.innerHTML=state.staff.length?state.staff.map(s=>`<tr class="border-t"><td class="p-3">${esc(s.id)}</td><td class="p-3 font-bold">${esc(s.name)}</td><td class="p-3">${esc(s.title||'-')}</td><td class="p-3">${esc(s.dept||'-')}</td><td class="p-3"><span class="badge bg-emerald-50 text-emerald-700">${esc(s.status||'غير محدد')}</span></td><td class="p-3 text-left"><button onclick="removeStaff('${encodeURIComponent(s.id)}')" class="text-rose-600 text-xs font-bold">حذف</button></td></tr>`).join(''):`<tr><td colspan="6" class="p-12 text-center text-slate-400">لا يوجد منسوبون مسجلون بعد</td></tr>`;recordEmployee.innerHTML='<option value="">اختر من سجل المنسوبين</option>'+state.staff.map(s=>`<option value="${escAttr(s.id)}">${esc(s.name)} — ${esc(s.id)}</option>`).join('')}
 function removeStaff(x){const id=decodeURIComponent(x);if(confirm('حذف الموظف من السجل؟')){state.staff=state.staff.filter(s=>String(s.id)!==String(id));persist()}}
 let editingRecordId=null;
-function resetRecordForm(){document.getElementById('recordForm').reset();recordDate.value=today();recordMinutes.value=0;editingRecordId=null;if(window.recordSubmitBtn)recordSubmitBtn.textContent='حفظ الحركة';if(window.cancelRecordEdit)cancelRecordEdit.classList.add('hidden')}
+function resetRecordForm(){document.getElementById('recordForm').reset();document.getElementById('recordDate').value=today();document.getElementById('recordMinutes').value=0;editingRecordId=null;if(window.recordSubmitBtn)recordSubmitBtn.textContent='حفظ الحركة';if(window.cancelRecordEdit)cancelRecordEdit.classList.add('hidden');updateMovementTypeUI(false)}
+
+function isAbsenceType(type){return type==='غياب بعذر'||type==='غياب بدون عذر'}
+function isTimedType(type){return ['تأخر','استئذان','انصراف مبكر'].includes(type)}
+function updateMovementTypeUI(preserveValue=true){
+  const type=document.getElementById('recordType')?.value||'حاضر';
+  const amount=document.getElementById('recordMinutes');
+  const label=document.getElementById('recordDurationLabel');
+  const excuseWrap=document.getElementById('excuseWrap');
+  const excuseStatusWrap=document.getElementById('excuseStatusWrap');
+  if(!amount||!label)return;
+  if(isAbsenceType(type)){
+    label.textContent='عدد الأيام';
+    amount.min='1'; amount.step='1';
+    if(!preserveValue||Number(amount.value||0)<1)amount.value='1';
+    excuseWrap?.classList.remove('hidden'); excuseStatusWrap?.classList.remove('hidden');
+  }else if(isTimedType(type)){
+    label.textContent='المدة بالدقائق';
+    amount.min='0'; amount.step='1';
+    if(!preserveValue)amount.value='0';
+    excuseWrap?.classList.add('hidden'); excuseStatusWrap?.classList.add('hidden');
+    if(window.recordExcuse)recordExcuse.value='';
+    if(window.recordExcuseStatus)recordExcuseStatus.value='';
+  }else{
+    label.textContent='المدة بالدقائق';
+    amount.min='0'; amount.step='1'; amount.value='0';
+    excuseWrap?.classList.add('hidden'); excuseStatusWrap?.classList.add('hidden');
+    if(window.recordExcuse)recordExcuse.value='';
+    if(window.recordExcuseStatus)recordExcuseStatus.value='';
+  }
+}
+
 function cancelRecordEditing(){resetRecordForm();toast('تم إلغاء التعديل')}
-function editRecord(x){const id=decodeURIComponent(x),r=state.records.find(v=>String(v.id)===String(id));if(!r){toast('تعذر العثور على الحركة');return}editingRecordId=r.id;recordDate.value=r.date||today();recordEmployee.value=String(r.employeeId||'');recordType.value=r.type||'حاضر';recordMinutes.value=Number(r.minutes||0);recordExcuse.value=r.excuse||'';recordExcuseStatus.value=r.excuseStatus||'';recordNotes.value=r.notes||'';recordSubmitBtn.textContent='حفظ التعديل';cancelRecordEdit.classList.remove('hidden');showView('daily')}
-async function deleteRecord(x){const id=decodeURIComponent(x);if(!confirm('حذف هذه الحركة نهائيًا؟ سيتم تحديث الإحصاءات والحسم المرتبط بها.'))return;await ensureDisciplineReady();const previous=state.records.find(v=>String(v.id)===String(id));state.records=state.records.filter(v=>String(v.id)!==String(id));state.deductions=(state.deductions||[]).filter(d=>String(d.sourceRecordId||'')!==String(id));persistLocal();renderAll();try{await disciplineCloudCall('delete_movement',{id});await disciplineCloudCall('save',{academicYear:_ctx.academicYear||state.settings.year||'1448',state});if(document.getElementById('autoSyncDed')?.checked)syncDeductionsToPlatform(true);toast('تم حذف الحركة وتحديث الإحصاءات')}catch(err){if(previous)state.records.unshift(previous);persistLocal();renderAll();toast('تعذر تأكيد حذف الحركة سحابيًا');console.error('[discipline movement delete]',err)}}
+function editRecord(x){const id=decodeURIComponent(x),r=state.records.find(v=>String(v.id)===String(id));if(!r){toast('تعذر العثور على الحركة');return}editingRecordId=r.id;document.getElementById('recordDate').value=r.date||today();document.getElementById('recordEmployee').value=String(r.employeeId||'');document.getElementById('recordType').value=r.type||'حاضر';document.getElementById('recordMinutes').value=isAbsenceType(r.type)?Number(r.days||1):Number(r.minutes||0);document.getElementById('recordExcuse').value=r.excuse||'';document.getElementById('recordExcuseStatus').value=r.excuseStatus||'';document.getElementById('recordNotes').value=r.notes||'';updateMovementTypeUI(true);recordSubmitBtn.textContent='حفظ التعديل';cancelRecordEdit.classList.remove('hidden');showView('daily')}
+async function deleteRecord(x){const id=decodeURIComponent(x);if(!confirm('حذف هذه الحركة نهائيًا؟ سيتم تحديث الإحصاءات والحسم المرتبط بها.'))return;await ensureDisciplineReady();const previous=state.records.find(v=>String(v.id)===String(id));state.records=state.records.filter(v=>String(v.id)!==String(id));state.deductions=(state.deductions||[]).filter(d=>String(d.sourceRecordId||'')!==String(id));persistLocal();renderAll();try{await disciplineCloudCall('delete_movement',{id,academicYear:_ctx.academicYear||state.settings.year||'1448',state});if(document.getElementById('autoSyncDed')?.checked)syncDeductionsToPlatform(true);toast('تم حذف الحركة وتحديث الإحصاءات')}catch(err){if(previous)state.records.unshift(previous);persistLocal();renderAll();toast('تعذر تأكيد حذف الحركة سحابيًا');console.error('[discipline movement delete]',err)}}
 const _recordFormEl=document.getElementById('recordForm');
 if(_recordFormEl)_recordFormEl.addEventListener('submit',async e=>{
   e.preventDefault();e.stopPropagation();
   await ensureDisciplineReady();
-  const emp=state.staff.find(v=>String(v.id)===String(recordEmployee.value));
+  const employeeEl=document.getElementById('recordEmployee');
+  const typeEl=document.getElementById('recordType');
+  const amountEl=document.getElementById('recordMinutes');
+  const dateEl=document.getElementById('recordDate');
+  const excuseEl=document.getElementById('recordExcuse');
+  const excuseStatusEl=document.getElementById('recordExcuseStatus');
+  const notesEl=document.getElementById('recordNotes');
+  const emp=state.staff.find(v=>String(v.id)===String(employeeEl?.value||''));
   if(!emp){toast('اختر موظفًا');return}
   const submit=document.getElementById('recordSubmitBtn');
   if(submit?.dataset.saving==='1')return;
   if(submit){submit.dataset.saving='1';submit.disabled=true}
-  const base={date:recordDate.value,employeeId:emp.id,type:recordType.value,minutes:Number(recordMinutes.value||0),excuse:recordExcuse.value,excuseStatus:recordExcuseStatus.value,notes:recordNotes.value.trim(),updatedAt:new Date().toISOString()};
+  const type=typeEl?.value||'حاضر',absence=isAbsenceType(type),amount=Math.max(absence?1:0,Number(amountEl?.value||0)||0);
+  const base={date:dateEl?.value||today(),employeeId:emp.id,type,minutes:absence?0:amount,days:absence?amount:0,excuse:absence?(excuseEl?.value||''):'',excuseStatus:absence?(excuseStatusEl?.value||''):'',notes:(notesEl?.value||'').trim(),updatedAt:new Date().toISOString()};
   let rec,wasEdit=false,previousRecord=null;
   if(editingRecordId){
     const i=state.records.findIndex(v=>String(v.id)===String(editingRecordId));
@@ -498,9 +538,9 @@ if(_recordFormEl)_recordFormEl.addEventListener('submit',async e=>{
   createOrUpdateDeductionForRecord(rec);
   persistLocal();renderAll();
   try{
-    await disciplineCloudCall('upsert_movement',{movement:{id:rec.id,userId:rec.employeeId,type:rec.type,date:rec.date,minutes:rec.minutes,notes:rec.notes||'',source:'attendance-discipline'}});
-    await persistNow();
-    // تحقق من بقاء الحركة في الحالة التي تبني منها السجلات والإحصاءات قبل إعلان النجاح.
+    const saved=await disciplineCloudCall('save_movement',{academicYear:_ctx.academicYear||state.settings.year||'1448',movement:{id:rec.id,userId:rec.employeeId,type:rec.type,date:rec.date,minutes:rec.minutes,days:rec.days||0,excuse:rec.excuse||'',excuseStatus:rec.excuseStatus||'',notes:rec.notes||'',source:'attendance-discipline'},state});
+    if(!saved?.ok||!saved?.stateSaved||String(saved?.movement?.id||'')!==String(rec.id))throw new Error('MOVEMENT_CLOUD_CONFIRMATION_FAILED');
+    rec._cloudPending=false;persistLocal();
     if(!state.records.some(r=>String(r.id)===String(rec.id)))throw new Error('MOVEMENT_STATE_CONFIRMATION_FAILED');
     if(document.getElementById('autoSyncDed')?.checked)await Promise.resolve(syncDeductionsToPlatform(true));
     resetRecordForm();renderRecords();renderDashboard();renderMonthlyReport();
@@ -511,9 +551,9 @@ if(_recordFormEl)_recordFormEl.addEventListener('submit',async e=>{
     toast('تم إبقاء الحركة داخل القسم، وتعذر تأكيد الحفظ السحابي');
   }finally{if(submit){submit.disabled=false;submit.dataset.saving='0'}}
 });
-function renderRecords(){const q=(recordsSearch.value||'').trim().toLowerCase(),ty=recordsType.value,fr=recordsFrom.value,to=recordsTo.value;const rows=state.records.filter(r=>{const st=state.staff.find(x=>String(x.id)===String(r.employeeId));const txt=((st?.name||'')+' '+r.employeeId).toLowerCase();return(!q||txt.includes(q))&&(!ty||r.type===ty)&&(!fr||r.date>=fr)&&(!to||r.date<=to)});recordsBody.innerHTML=rows.length?rows.map(r=>{const st=state.staff.find(x=>String(x.id)===String(r.employeeId)),rid=encodeURIComponent(r.id);return`<tr class="border-t"><td class="p-3">${esc(r.date)}</td><td class="p-3"><b>${esc(st?.name||'غير موجود')}</b><div class="text-xs text-slate-400">${esc(r.employeeId)}</div></td><td class="p-3">${esc(r.type)}</td><td class="p-3">${r.minutes||0}</td><td class="p-3">${esc(r.excuse||'-')}</td><td class="p-3">${esc(r.excuseStatus||'-')}</td><td class="p-3">${esc(r.notes||'-')}</td><td class="p-3 text-center whitespace-nowrap"><button onclick="editRecord('${rid}')" class="text-teal-700 font-bold ml-3">تعديل</button><button onclick="deleteRecord('${rid}')" class="text-rose-600 font-bold">حذف</button></td></tr>`}).join(''):`<tr><td colspan="8" class="p-12 text-center text-slate-400">لا توجد حركات مطابقة</td></tr>`}
+function renderRecords(){const q=(recordsSearch.value||'').trim().toLowerCase(),ty=recordsType.value,fr=recordsFrom.value,to=recordsTo.value;const rows=state.records.filter(r=>{const st=state.staff.find(x=>String(x.id)===String(r.employeeId));const txt=((st?.name||'')+' '+r.employeeId).toLowerCase();return(!q||txt.includes(q))&&(!ty||r.type===ty)&&(!fr||r.date>=fr)&&(!to||r.date<=to)});recordsBody.innerHTML=rows.length?rows.map(r=>{const st=state.staff.find(x=>String(x.id)===String(r.employeeId)),rid=encodeURIComponent(r.id);return`<tr class="border-t"><td class="p-3">${esc(r.date)}</td><td class="p-3"><b>${esc(st?.name||'غير موجود')}</b><div class="text-xs text-slate-400">${esc(r.employeeId)}</div></td><td class="p-3">${esc(r.type)}</td><td class="p-3">${isAbsenceType(r.type)?((r.days||1)+' يوم'):(r.minutes||0)+' دقيقة'}</td><td class="p-3">${esc(r.excuse||'-')}</td><td class="p-3">${esc(r.excuseStatus||'-')}</td><td class="p-3">${esc(r.notes||'-')}</td><td class="p-3 text-center whitespace-nowrap"><button onclick="editRecord('${rid}')" class="text-teal-700 font-bold ml-3">تعديل</button><button onclick="deleteRecord('${rid}')" class="text-rose-600 font-bold">حذف</button></td></tr>`}).join(''):`<tr><td colspan="8" class="p-12 text-center text-slate-400">لا توجد حركات مطابقة</td></tr>`}
 ['recordsSearch','recordsType','recordsFrom','recordsTo'].forEach(id=>document.getElementById(id).addEventListener('input',renderRecords));
-function renderDashboard(){kpiStaff.textContent=state.staff.length;const tr=state.records.filter(r=>r.date===today());kpiToday.textContent=tr.length;kpiLate.textContent=state.records.filter(r=>['تأخر','انصراف مبكر','استئذان'].includes(r.type)&&(r.excuseStatus==='غير مقبول'||!r.excuseStatus)).reduce((a,r)=>a+(r.minutes||0),0);kpiAbsent.textContent=state.records.filter(r=>r.type==='غياب بدون عذر').length;todayList.innerHTML=tr.length?tr.slice(0,8).map(r=>{const s=state.staff.find(x=>String(x.id)===String(r.employeeId));return`<div class="flex justify-between gap-3 py-3 border-b last:border-0"><div><div class="font-bold">${esc(s?.name||'غير موجود')}</div><div class="text-xs text-slate-500">${esc(r.type)}${r.minutes?' · '+r.minutes+' دقيقة':''}</div></div><span class="badge bg-slate-100">${esc(r.date)}</span></div>`}).join(''):`<div class="py-10 text-center text-slate-400">لا توجد حركات مسجلة اليوم</div>`}
+function renderDashboard(){kpiStaff.textContent=state.staff.length;const tr=state.records.filter(r=>r.date===today());kpiToday.textContent=tr.length;kpiLate.textContent=state.records.filter(r=>['تأخر','انصراف مبكر','استئذان'].includes(r.type)&&(r.excuseStatus==='غير مقبول'||!r.excuseStatus)).reduce((a,r)=>a+(r.minutes||0),0);kpiAbsent.textContent=state.records.filter(r=>r.type==='غياب بدون عذر').length;todayList.innerHTML=tr.length?tr.slice(0,8).map(r=>{const s=state.staff.find(x=>String(x.id)===String(r.employeeId));return`<div class="flex justify-between gap-3 py-3 border-b last:border-0"><div><div class="font-bold">${esc(s?.name||'غير موجود')}</div><div class="text-xs text-slate-500">${esc(r.type)}${isAbsenceType(r.type)?' · '+(r.days||1)+' يوم':(r.minutes?' · '+r.minutes+' دقيقة':'')}</div></div><span class="badge bg-slate-100">${esc(r.date)}</span></div>`}).join(''):`<div class="py-10 text-center text-slate-400">لا توجد حركات مسجلة اليوم</div>`}
 function saveSettings(){state.settings={school:setSchool.value.trim(),year:setYear.value.trim(),startTime:setStartTime.value,workHours:Number(setWorkHours.value||7),lateAlert:Number(setLateAlert.value||60),lateDay:Number(setLateDay.value||7)};persist();toast('تم حفظ الإعدادات')}
 function renderSettings(){const s=state.settings||{};setSchool.value=s.school||'';setYear.value=s.year||'';setStartTime.value=s.startTime||'07:00';setWorkHours.value=s.workHours||7;setLateAlert.value=s.lateAlert||60;setLateDay.value=s.lateDay||7;schoolLabel.textContent=(s.school||'لم يتم إعداد بيانات الجهة بعد')+(s.year?' — '+s.year:'')}
 window.excelFile&&(excelFile.onchange=async e=>{const f=e.target.files[0];if(!f)return;const data=await f.arrayBuffer();const wb=XLSX.read(data,{type:'array'});const sh=wb.Sheets[wb.SheetNames[0]];const rows=XLSX.utils.sheet_to_json(sh,{defval:''});if(!rows.length){toast('لم يتم العثور على بيانات');return}importRows=rows;importHeaders=Object.keys(rows[0]);renderMapping()}
@@ -523,7 +563,7 @@ function commitImport(){const nameCol=mapName.value;if(!nameCol){toast('يجب �
 function deductionEligible(r){return r.type==='غياب بدون عذر'||['تأخر','انصراف مبكر','استئذان'].includes(r.type)&&(r.excuseStatus==='غير مقبول'||!r.excuseStatus)}
 function monthKey(date){return String(date||'').slice(0,7)}
 function createOrUpdateDeductionForRecord(r){if(!deductionEligible(r))return;const key=String(r.employeeId)+'|'+monthKey(r.date);let d=state.deductions.find(x=>x.key===key);if(!d){d={id:crypto.randomUUID?crypto.randomUUID():Date.now().toString(),key,employeeId:r.employeeId,period:monthKey(r.date),absenceDays:0,lateMinutes:0,reasons:[],recordIds:[],status:'مسودة',sharedId:'',updatedAt:new Date().toISOString()};state.deductions.unshift(d)}if(!d.recordIds.includes(r.id))d.recordIds.push(r.id);recalculateDeduction(d)}
-function recalculateDeduction(d){const rows=state.records.filter(r=>d.recordIds.includes(r.id)&&deductionEligible(r));d.absenceDays=rows.filter(r=>r.type==='غياب بدون عذر').length;d.lateMinutes=rows.filter(r=>['تأخر','انصراف مبكر','استئذان'].includes(r.type)).reduce((a,r)=>a+Number(r.minutes||0),0);d.reasons=[...new Set(rows.map(r=>r.type))];d.updatedAt=new Date().toISOString()}
+function recalculateDeduction(d){const rows=state.records.filter(r=>d.recordIds.includes(r.id)&&deductionEligible(r));d.absenceDays=rows.filter(r=>r.type==='غياب بدون عذر').reduce((a,r)=>a+Number(r.days||1),0);d.lateMinutes=rows.filter(r=>['تأخر','انصراف مبكر','استئذان'].includes(r.type)).reduce((a,r)=>a+Number(r.minutes||0),0);d.reasons=[...new Set(rows.map(r=>r.type))];d.updatedAt=new Date().toISOString()}
 function rebuildDeductions(){state.deductions=[];state.records.forEach(createOrUpdateDeductionForRecord);persist();toast('تمت إعادة احتساب مسودات الحسم')}
 function deductionPayload(d){const emp=state.staff.find(s=>String(s.id)===String(d.employeeId));const ctx=platformBridge()?.getContext?.()||{};return {localId:d.id,schoolId:ctx.schoolId||'',employeeId:d.employeeId,employeeName:emp?.name||'',jobTitle:emp?.title||'',department:emp?.dept||'',period:d.period,absenceDays:d.absenceDays,lateMinutes:d.lateMinutes,reasons:d.reasons,sourceRecordIds:d.recordIds,status:d.status,academicYear:ctx.academicYear||state.settings.year||'',generatedAt:new Date().toISOString(),sourceModule:'attendance-discipline'} }
 async function syncDeductionsToPlatform(silent=false){const b=platformBridge();if(!b?.upsertSharedDeduction){if(!silent)toast('تعذر الوصول إلى سجلات الوكيل الداخلية');return}let ok=0,fail=0;for(const d of state.deductions){try{const res=await b.upsertSharedDeduction(deductionPayload(d));d.sharedId=res?.id||d.sharedId;d.status=res?.status||'تمت المزامنة';ok++}catch(e){d.status='تعذر المزامنة';fail++}}persist();if(!silent)toast(`تمت مزامنة ${ok} مسودة${fail?`، وتعذر ${fail}`:''}`)}
@@ -544,7 +584,7 @@ function summaryForEmployee(employeeId,start,end){
   const ids=new Set(rs.map(r=>String(r.id)));
   const ds=(state.deductions||[]).filter(d=>(d.recordIds||[]).some(id=>ids.has(String(id))));
   const sum=t=>rs.filter(r=>r.type===t).reduce((a,r)=>a+Number(r.minutes||0),0);
-  return {excused:rs.filter(r=>r.type==='غياب بعذر').length,unexcused:rs.filter(r=>r.type==='غياب بدون عذر').length,lateCount:rs.filter(r=>r.type==='تأخر').length,lateMinutes:sum('تأخر'),permissionCount:rs.filter(r=>r.type==='استئذان').length,permissionMinutes:sum('استئذان'),earlyCount:rs.filter(r=>r.type==='انصراف مبكر').length,earlyMinutes:sum('انصراف مبكر'),deductionCases:ds.length,deductionDays:ds.reduce((a,d)=>a+Number(d.absenceDays||0),0),deductionMinutes:ds.reduce((a,d)=>a+Number(d.lateMinutes||0),0),movementCount:rs.length}
+  return {excused:rs.filter(r=>r.type==='غياب بعذر').reduce((a,r)=>a+Number(r.days||1),0),unexcused:rs.filter(r=>r.type==='غياب بدون عذر').reduce((a,r)=>a+Number(r.days||1),0),lateCount:rs.filter(r=>r.type==='تأخر').length,lateMinutes:sum('تأخر'),permissionCount:rs.filter(r=>r.type==='استئذان').length,permissionMinutes:sum('استئذان'),earlyCount:rs.filter(r=>r.type==='انصراف مبكر').length,earlyMinutes:sum('انصراف مبكر'),deductionCases:ds.length,deductionDays:ds.reduce((a,d)=>a+Number(d.absenceDays||0),0),deductionMinutes:ds.reduce((a,d)=>a+Number(d.lateMinutes||0),0),movementCount:rs.length}
 }
 function monthlySummaryForEmployee(employeeId,period){const r=monthRange(period);return summaryForEmployee(employeeId,r.start,r.end)}
 function updateStatsPeriodUI(){const m=statsMode.value;statsDate.classList.toggle('hidden',m!=='daily');statsWeekDate.classList.toggle('hidden',m!=='weekly');monthlyPeriod.classList.toggle('hidden',m!=='monthly');if(!statsDate.value)statsDate.value=today();if(!statsWeekDate.value)statsWeekDate.value=today();if(!monthlyPeriod.value)monthlyPeriod.value=today().slice(0,7)}
@@ -679,6 +719,7 @@ loadIdentityForm();
 <script src="openai-engine.js"></script>
 <script src="top-ai-center.js"></script>
 <script src="platform-page-navigation.js?v=20260818-nav1"></script>
-<!-- Discipline Regression Lock RL11: end-to-end staff + movement persistence -->
+<script>document.addEventListener('DOMContentLoaded',()=>{try{updateMovementTypeUI(false)}catch(_){}});</script>
+<!-- Discipline Regression Lock RL16: atomic cloud movement + absence days -->
 </body>
 </html>

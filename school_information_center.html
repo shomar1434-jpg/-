@@ -230,10 +230,10 @@
           </div>
         </div>
         <div class="row" id="classRosterNavigator" style="margin-top:12px;grid-template-columns:repeat(4,1fr) auto">
-          <div><label>المرحلة</label><select id="classRosterStage" onchange="rebuildClassRosterNavigator('grade')"></select></div>
-          <div><label>الصف</label><select id="classRosterGrade" onchange="rebuildClassRosterNavigator('track')"></select></div>
-          <div id="classRosterTrackWrap"><label>المسار</label><select id="classRosterTrack" onchange="rebuildClassRosterNavigator('section')"></select></div>
-          <div><label>الشعبة / الفصل</label><select id="classRosterSection" onchange="syncActiveScopeFromClassRosterNavigator(true)"></select></div>
+          <div><label>المرحلة</label><select id="classRosterStage" onchange="handleClassRosterStageChange()"></select></div>
+          <div><label>الصف</label><select id="classRosterGrade" onchange="handleClassRosterGradeChange()"></select></div>
+          <div id="classRosterTrackWrap"><label>المسار</label><select id="classRosterTrack" onchange="handleClassRosterTrackChange()"></select></div>
+          <div><label>الشعبة / الفصل</label><select id="classRosterSection" onchange="handleClassRosterSectionChange()"></select></div>
           <div style="align-self:end"><button class="btn secondary" onclick="syncActiveScopeFromClassRosterNavigator(true)">عرض الفصل</button></div>
         </div>
         <div id="classRosterScopeLabel" class="pill" style="margin-top:10px">اختر المرحلة والصف والفصل</div>
@@ -1001,29 +1001,73 @@ window.prepareStageGradesEditor=function(){
   window.rebuildClassRosterNavigator=function(level='stage'){
     const st=$('classRosterStage'),gr=$('classRosterGrade'),tr=$('classRosterTrack'),sec=$('classRosterSection'),tw=$('classRosterTrackWrap');
     if(!st||!gr||!tr||!sec)return;
-    const old={stage:canonicalStageLabel(st.value),grade:canonicalGradeLabel(gr.value),track:safe(tr.value),section:safe(sec.value)};
+    // RL14: اختيار المستخدم هو المصدر الأعلى أولوية. لا يجوز أن يعيد activeClassImportScope
+    // الصف السابق بعد أن يختار المدير صفاً جديداً من القائمة.
+    const chosen={stage:canonicalStageLabel(st.value),grade:canonicalGradeLabel(gr.value),track:safe(tr.value),section:safe(sec.value)};
+    const initial=(level==='stage' && !chosen.stage && activeClassImportScope)?{
+      stage:canonicalStageLabel(activeClassImportScope.stage),grade:canonicalGradeLabel(activeClassImportScope.grade),
+      track:safe(activeClassImportScope.track_name||''),section:safe(activeClassImportScope.section_name||'')
+    }:null;
+    const keep={
+      stage: chosen.stage || initial?.stage || '',
+      grade: level==='grade' ? '' : (chosen.grade || initial?.grade || ''),
+      track: (level==='grade'||level==='track') ? '' : (chosen.track || initial?.track || ''),
+      section: (level==='grade'||level==='track'||level==='section') ? '' : (chosen.section || initial?.section || '')
+    };
+    // عند onchange للمرحلة تكون level=grade: نحتفظ بالمرحلة التي اختارها المستخدم ونصفر ما دونها.
+    if(level==='grade') keep.stage=chosen.stage;
+    // عند onchange للصف تكون level=track: نحتفظ بالمرحلة والصف المختارين ونصفر المسار/الشعبة.
+    if(level==='track'){keep.stage=chosen.stage;keep.grade=chosen.grade;}
+    // عند onchange للمسار نحتفظ بالمرحلة/الصف/المسار ونصفر الشعبة.
+    if(level==='section'){keep.stage=chosen.stage;keep.grade=chosen.grade;keep.track=chosen.track;}
+
     const stages=academicStructure.stages||[];
-    st.innerHTML='<option value="">اختر المرحلة</option>'+stages.map(s=>`<option value="${html(canonicalStageLabel(s.name))}">${html(canonicalStageLabel(s.name))}</option>`).join('');
-    const preferredStage=(activeClassImportScope?.stage||old.stage);
-    if([...st.options].some(o=>canonicalStageLabel(o.value)===canonicalStageLabel(preferredStage)))st.value=canonicalStageLabel(preferredStage);
+    st.innerHTML='<option value="">اختر المرحلة</option>'+stages.map(x=>`<option value="${html(canonicalStageLabel(x.name))}">${html(canonicalStageLabel(x.name))}</option>`).join('');
+    if([...st.options].some(o=>canonicalStageLabel(o.value)===keep.stage))st.value=keep.stage;
 
     const stageObj=classStructureStage(st.value);
     gr.innerHTML='<option value="">اختر الصف</option>'+((stageObj?.grades)||[]).map(g=>`<option value="${html(canonicalGradeLabel(g.name))}">${html(canonicalGradeLabel(g.name))}</option>`).join('');
-    const preferredGrade=(activeClassImportScope?.grade||old.grade);
-    if([...gr.options].some(o=>canonicalGradeLabel(o.value)===canonicalGradeLabel(preferredGrade)))gr.value=canonicalGradeLabel(preferredGrade);
+    if([...gr.options].some(o=>canonicalGradeLabel(o.value)===keep.grade))gr.value=keep.grade;
 
     const gradeObj=classStructureGrade(st.value,gr.value);
     const secondary=canonicalStageLabel(st.value)==='ثانوية';
     if(tw)tw.classList.toggle('hidden',!secondary);
     const tracks=secondary?((gradeObj?.tracks?.length?gradeObj.tracks:defaultTracks())):[];
     tr.innerHTML='<option value="">'+(secondary?'اختر المسار':'لا يوجد مسار')+'</option>'+tracks.map(x=>`<option value="${html(x)}">${html(x)}</option>`).join('');
-    const preferredTrack=activeClassImportScope?.track_name||old.track||(!secondary?'':(tracks[0]||''));
-    if([...tr.options].some(o=>o.value===preferredTrack))tr.value=preferredTrack;
+    if([...tr.options].some(o=>o.value===keep.track))tr.value=keep.track;
+    if(!secondary){tr.value='';tr.disabled=true}else tr.disabled=false;
 
     sec.innerHTML='<option value="">اختر الفصل / الشعبة</option>'+((gradeObj?.sections)||[]).map(c=>`<option value="${html(c.name)}">${html(c.name)}</option>`).join('');
-    const preferredSection=activeClassImportScope?.section_name||old.section;
-    if([...sec.options].some(o=>o.value===preferredSection))sec.value=preferredSection;
+    if([...sec.options].some(o=>o.value===keep.section))sec.value=keep.section;
+
+    // لا نغير activeClassImportScope حتى يكتمل اختيار فصل صالح؛ هذا يمنع خلط طلاب صف قديم بالجديد.
+    if(st.value&&gr.value&&sec.value){
+      activeClassImportScope={stage:canonicalStageLabel(st.value),grade:canonicalGradeLabel(gr.value),track_name:secondary?safe(tr.value):'',section_name:safe(sec.value)};
+      applyActiveClassImportScopeToHiddenSelectors();
+    }
+    const label=$('classRosterScopeLabel');
+    if(label && (!st.value||!gr.value||!sec.value))label.textContent='أكمل اختيار المرحلة والصف والفصل ثم اضغط «عرض الفصل»';
   }
+  function selectFirstRealOption(sel){if(!sel)return false;const opt=[...sel.options].find(o=>safe(o.value));if(!opt)return false;sel.value=opt.value;return true}
+  async function loadNavigatorWhenComplete(){
+    const st=$('classRosterStage'),gr=$('classRosterGrade'),tr=$('classRosterTrack'),sec=$('classRosterSection');
+    if(!st?.value||!gr?.value||!sec?.value)return;
+    if(canonicalStageLabel(st.value)==='ثانوية'&&!tr?.value)return;
+    await syncActiveScopeFromClassRosterNavigator(true);
+  }
+  window.handleClassRosterStageChange=async function(){
+    rebuildClassRosterNavigator('grade');
+    const gr=$('classRosterGrade');if(selectFirstRealOption(gr))rebuildClassRosterNavigator('track');
+    const tr=$('classRosterTrack');if(canonicalStageLabel($('classRosterStage')?.value)==='ثانوية'){if(selectFirstRealOption(tr))rebuildClassRosterNavigator('section')}else rebuildClassRosterNavigator('section');
+    selectFirstRealOption($('classRosterSection'));await loadNavigatorWhenComplete();
+  }
+  window.handleClassRosterGradeChange=async function(){
+    rebuildClassRosterNavigator('track');
+    const tr=$('classRosterTrack');if(canonicalStageLabel($('classRosterStage')?.value)==='ثانوية'){if(selectFirstRealOption(tr))rebuildClassRosterNavigator('section')}else rebuildClassRosterNavigator('section');
+    selectFirstRealOption($('classRosterSection'));await loadNavigatorWhenComplete();
+  }
+  window.handleClassRosterTrackChange=async function(){rebuildClassRosterNavigator('section');selectFirstRealOption($('classRosterSection'));await loadNavigatorWhenComplete()}
+  window.handleClassRosterSectionChange=async function(){await loadNavigatorWhenComplete()}
   function classRosterNavigatorScope(){
     const s={stage:canonicalStageLabel($('classRosterStage')?.value),grade:canonicalGradeLabel($('classRosterGrade')?.value),track_name:safe($('classRosterTrack')?.value),section_name:safe($('classRosterSection')?.value)};
     if(!s.stage||!s.grade||!s.section_name)throw new Error('اختر المرحلة والصف والشعبة أولًا.');
@@ -1080,7 +1124,7 @@ window.prepareStageGradesEditor=function(){
     if(selected)sel.value=selected;
   }
   window.openAddStudentDialog=function(){
-    try{const scope=validateScope();studentActionMode='add';$('studentActionTitle').textContent='إضافة طالب إلى '+scope.grade+' / الفصل '+scope.section_name;$('actionStudentId').value='';$('actionStudentName').value='';$('actionStudentNationalId').value='';fillActionSections(scope.section_name);$('actionStudentSection').disabled=true;$('studentActionHint').textContent='سيتم ربط الطالب مباشرة بهذا الفصل وتحديث الأقسام المرتبطة.';$('studentActionModal').classList.remove('hidden')}catch(e){setStatus(e.message||e,'bad')}
+    try{let scope;try{scope=classRosterNavigatorScope();activeClassImportScope=scope;applyActiveClassImportScopeToHiddenSelectors()}catch(_e){scope=validateScope();}studentActionMode='add';$('studentActionTitle').textContent='إضافة طالب إلى '+scope.grade+' / الفصل '+scope.section_name;$('actionStudentId').value='';$('actionStudentName').value='';$('actionStudentNationalId').value='';fillActionSections(scope.section_name);$('actionStudentSection').disabled=true;$('studentActionHint').textContent='سيتم ربط الطالب مباشرة بهذا الفصل وتحديث الأقسام المرتبطة.';$('studentActionModal').classList.remove('hidden')}catch(e){setStatus(e.message||e,'bad')}
   }
   window.openEditScopedStudentDialog=function(id){
     const r=scopedClassStudents.find(x=>String(x.id)===String(id));if(!r)return;
@@ -1116,7 +1160,8 @@ window.prepareStageGradesEditor=function(){
   }
   window.saveStudentAction=async function(){
     try{
-      const scope=validateScope(),year=safe($('scopeAcademicYear').value)||'1447';
+      let scope;try{scope=classRosterNavigatorScope();activeClassImportScope=scope;applyActiveClassImportScopeToHiddenSelectors()}catch(_e){scope=validateScope();}
+      const year=safe($('scopeAcademicYear').value)||'1447';
       if(studentActionMode==='add'){
         const name=safe($('actionStudentName').value),nid=safe($('actionStudentNationalId').value).replace(/\D/g,'');
         if(!name)throw new Error('أدخل اسم الطالب.');if(nid&&nid.length!==10)throw new Error('رقم الهوية يجب أن يتكون من 10 أرقام.');
@@ -1147,7 +1192,8 @@ window.prepareStageGradesEditor=function(){
   }
   window.deleteScopedStudent=async function(id){
     try{
-      const scope=validateScope(),year=safe($('scopeAcademicYear').value)||'1447',r=scopedClassStudents.find(x=>String(x.id)===String(id));
+      let scope;try{scope=classRosterNavigatorScope();activeClassImportScope=scope;applyActiveClassImportScopeToHiddenSelectors()}catch(_e){scope=validateScope();}
+      const year=safe($('scopeAcademicYear').value)||'1447',r=scopedClassStudents.find(x=>String(x.id)===String(id));
       if(!r||!confirm('حذف الطالب «'+r.student_name+'» من هذا الصف؟'))return;
       await phase2Call('student-delete-scope',{academicYear:year,id,scope});
       await reflectStudentMutation(scope,'delete');setStatus('تم حذف الطالب وعكس التغيير على المصدر المركزي.','ok');
@@ -1653,7 +1699,7 @@ window.readExcel = async function(){
 <script src="openai-engine.js"></script>
 <script src="top-ai-center.js"></script>
 <script src="platform-page-navigation.js?v=20260818-nav1"></script>
-<div id="r6RouteProof" style="position:fixed;left:14px;bottom:14px;z-index:99999;background:#0f766e;color:white;padding:8px 12px;border-radius:999px;font-weight:900;font-size:12px;box-shadow:0 8px 24px #0002">RL12 / إدارة الطلاب المركزية والفصول</div>
+<div id="r6RouteProof" style="position:fixed;left:14px;bottom:14px;z-index:99999;background:#0f766e;color:white;padding:8px 12px;border-radius:999px;font-weight:900;font-size:12px;box-shadow:0 8px 24px #0002">RL14 / تفاعل الصفوف والفصول والإجراءات</div>
 
 <script>
 (function(){

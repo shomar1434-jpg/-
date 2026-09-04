@@ -1372,6 +1372,7 @@ body{overflow-x:hidden}
 #ssFinalBackdrop.uw-workspace-dialog .ss-final-head{position:sticky;top:0;background:#fff;z-index:5;padding-top:4px}
 </style>
 <link rel="stylesheet" href="responsive-layout.css?v=20260818-responsive-1">
+<meta name="manager-section-library-version" content="2026.09.04-RL29-expanded-recovery-user-isolation-actions">
 </head>
 <body class="global-app-bg" data-ss-role="manager">
 <script data-openai-engine="true" defer="" src="./openai-engine.js"></script>
@@ -3318,7 +3319,7 @@ async function legacyPerformanceSave_DISABLED() {
                 const db=await openManagerRecordsDB();
                 const rows=await new Promise((resolve,reject)=>{const tx=db.transaction(MANAGER_STORE_NAME,'readonly');const rq=tx.objectStore(MANAGER_STORE_NAME).getAll();rq.onsuccess=()=>resolve(rq.result||[]);rq.onerror=()=>reject(rq.error);});
                 if(!rows.length)return;
-                for(const rec of rows){if(!rec.file)continue;await CloudFileEngine.upload({file:rec.file,ownershipScope:'user',moduleKey:'manager_records_archive',recordType:'pdf_archive',recordId:'manager',relationType:'archive_file',displayName:rec.name||rec.file.name,metadata:{legacyId:rec.id,migratedFrom:'indexeddb'}});}
+                for(const rec of rows){if(!rec.file)continue;const up=await CloudFileEngine.upload({file:rec.file,ownershipScope:'user',moduleKey:'manager_records_archive',recordType:'pdf_archive',recordId:'manager',relationType:'archive_file',displayName:rec.name||rec.file.name,metadata:{legacyId:rec.id,migratedFrom:'indexeddb'}});await verifyManagerLibraryFile(up?.file?.id);}
                 await new Promise((resolve,reject)=>{const tx=db.transaction(MANAGER_STORE_NAME,'readwrite');const rq=tx.objectStore(MANAGER_STORE_NAME).clear();rq.onsuccess=()=>resolve();rq.onerror=()=>reject(rq.error);});
             }catch(e){console.warn('[ManagerRecords] legacy migration deferred',e?.message||e);sessionStorage.removeItem(flag);}
         }
@@ -3330,27 +3331,56 @@ async function legacyPerformanceSave_DISABLED() {
         }
 
         async function getAllManagerLocalRecords() {
-            if(!window.CloudFileEngine) throw new Error('الحفظ السحابي غير متاح');
+            await ensureManagerLibraryCloudContext();
             await migrateLegacyManagerRecordsToCloud();
+            await recoverManagerSectionLibraryCloud();
             const r=await CloudFileEngine.list({ownershipScope:'user',moduleKey:'manager_records_archive',recordType:'pdf_archive',limit:1000});
             return (r.files||[]).map(f=>({id:f.id,name:f.display_name||f.original_name||'ملف',type:f.mime_type||'',size:Number(f.file_size||0),createdAt:f.created_at,updatedAt:f.updated_at,folder:(f.metadata&&f.metadata.folder)||'عام',kind:(f.metadata&&f.metadata.kind)||'',metadata:f.metadata||{},cloud:true}));
         }
 
+        async function ensureManagerLibraryCloudContext() {
+            if(!window.CloudFileEngine) throw new Error('محرك الملفات السحابي غير متاح');
+            if(window.PlatformCloudSession&&typeof PlatformCloudSession.ensure==='function') await PlatformCloudSession.ensure();
+            const uid=(window.PlatformCloudSession&&PlatformCloudSession.userId?String(PlatformCloudSession.userId()||''):'');
+            const sid=(window.PlatformCloudSession&&PlatformCloudSession.schoolId?String(PlatformCloudSession.schoolId()||''):'');
+            if(!uid||!sid) throw new Error('تعذر تحديد المدرسة أو المستخدم الحالي لمكتبة المدير.');
+            return {uid,sid};
+        }
+        async function recoverManagerSectionLibraryCloud(){
+            if(!window.CloudFileEngine||typeof CloudFileEngine.request!=='function')return {ok:false,skipped:true};
+            try{if(window.PlatformCloudSession?.ensure)await window.PlatformCloudSession.ensure();}catch(_){ }
+            const sid=String(window.PlatformCloudSession?.schoolId?.()||'').trim();
+            const uid=String(window.PlatformCloudSession?.userId?.()||'').trim();
+            const flag='manager_section_library_recovered_v1:'+sid+':'+uid;
+            if(!sid||!uid||sessionStorage.getItem(flag)==='1')return {ok:true,skipped:true};
+            const r=await CloudFileEngine.request('recover-section-library',{body:{targetRole:'manager',targetModule:'manager_records_archive'}});
+            sessionStorage.setItem(flag,'1');
+            return r||{ok:true};
+        }
+        async function verifyManagerLibraryFile(id,expect={}) {
+            const ctx=await ensureManagerLibraryCloudContext();
+            const u=await CloudFileEngine.usage(String(id)); const f=u?.file||null;
+            if(!f) throw new Error('تعذر إعادة قراءة ملف مكتبة المدير من السحابة.');
+            if(String(f.ownership_scope||'')!=='user'||String(f.owner_user_id||'')!==ctx.uid||String(f.module_key||'')!=='manager_records_archive') throw new Error('فشل التحقق من عزل ملف مكتبة المدير.');
+            if(expect.status&&String(f.status||'')!==String(expect.status)) throw new Error('لم تتأكد حالة الملف السحابية.');
+            if(expect.name&&String(f.display_name||'')!==String(expect.name)) throw new Error('لم يتأكد تعديل اسم الملف سحابيًا.');
+            return f;
+        }
+
         async function getManagerLocalRecord(id) {
             if(!window.CloudFileEngine) throw new Error('الحفظ السحابي غير متاح');
-            const u=await CloudFileEngine.usage(String(id)); if(!u.file)return null;
-            const uid=(window.PlatformCloudSession&&PlatformCloudSession.userId?String(PlatformCloudSession.userId()||''):'');
-            if(String(u.file.ownership_scope||'')!=='user'||(uid&&String(u.file.owner_user_id||'')!==uid)) throw new Error('هذا الملف لا يتبع مكتبة المدير الحالي.');
+            const f=await verifyManagerLibraryFile(String(id));
             const file=await CloudFileEngine.getBlob(String(id));
+            const u={file:f};
             return {id:u.file.id,name:u.file.display_name||u.file.original_name||'ملف',type:u.file.mime_type||'',size:Number(u.file.file_size||0),createdAt:u.file.created_at,updatedAt:u.file.updated_at,folder:(u.file.metadata&&u.file.metadata.folder)||'عام',kind:(u.file.metadata&&u.file.metadata.kind)||'',metadata:u.file.metadata||{},file,cloud:true};
         }
 
         async function deleteManagerLocalRecord(id) {
             if(!window.CloudFileEngine) throw new Error('الحفظ السحابي غير متاح');
-            const u=await CloudFileEngine.usage(String(id)); if(!u.file) throw new Error('الملف غير موجود');
-            const uid=(window.PlatformCloudSession&&PlatformCloudSession.userId?String(PlatformCloudSession.userId()||''):'');
-            if(String(u.file.ownership_scope||'')!=='user'||(uid&&String(u.file.owner_user_id||'')!==uid)) throw new Error('لا يمكن حذف ملف مستخدم آخر.');
-            return CloudFileEngine.trash(String(id));
+            await verifyManagerLibraryFile(String(id));
+            await CloudFileEngine.trash(String(id));
+            await verifyManagerLibraryFile(String(id),{status:'trashed'});
+            return true;
         }
 
         async function renderManagerRecordsList() {
@@ -3431,10 +3461,10 @@ async function legacyPerformanceSave_DISABLED() {
                 return;
             }
             try {
-                await saveManagerPDFLocally(file);
-                if (MANAGER_CLOUD_SYNC_ENABLED) await uploadManagerPDFToCloud(file);
+                const fileId=await saveManagerPDFLocally(file);
+                await verifyManagerLibraryFile(fileId);
                 await renderManagerRecordsList();
-                showToast(MANAGER_CLOUD_SYNC_ENABLED ? 'تم حفظ السجل محليًا وسحابيًا ✅' : 'تم حفظ السجل محليًا ✅');
+                showToast('تم حفظ السجل سحابيًا في مكتبة القسم ✅');
             } catch (error) {
                 showToast(String(error));
             }
@@ -3442,7 +3472,7 @@ async function legacyPerformanceSave_DISABLED() {
         }
 
         async function removeManagerRecord(id) {
-            if (!confirm('هل تريد حذف هذا السجل من الحفظ المحلي؟')) return;
+            if (!confirm('هل تريد حذف هذا الملف من مكتبة القسم السحابية؟')) return;
             await deleteManagerLocalRecord(id);
             await renderManagerRecordsList();
             showToast('تم حذف السجل');
@@ -4669,11 +4699,12 @@ document.addEventListener("click", function(e){
   }
 
   async function updateManagerLocalRecord(record){
-    if(!window.CloudFileEngine) throw new Error('الحفظ السحابي غير متاح');
+    await ensureManagerLibraryCloudContext();
     if(record.file){
-      return CloudFileEngine.upload({file:record.file,replaceFileId:String(record.id),ownershipScope:'user',moduleKey:'manager_records_archive',recordType:'pdf_archive',recordId:'manager',relationType:'archive_file',displayName:record.name||record.file.name,metadata:{folder:record.folder||'عام',kind:record.kind||kindOf(record),source:'manager.html'}});
+      const r=await CloudFileEngine.upload({file:record.file,replaceFileId:String(record.id),ownershipScope:'user',moduleKey:'manager_records_archive',recordType:'pdf_archive',recordId:'manager',relationType:'archive_file',displayName:record.name||record.file.name,metadata:{folder:record.folder||'عام',kind:record.kind||kindOf(record),source:'manager.html'}});
+      const id=r?.file?.id||r?.fileId||record.id;await verifyManagerLibraryFile(id);return id;
     }
-    if(record.name) return CloudFileEngine.renameFile(String(record.id),record.name);
+    if(record.name){await CloudFileEngine.renameFile(String(record.id),record.name);await verifyManagerLibraryFile(String(record.id),{name:record.name});}
     return record.id;
   }
 
@@ -4821,10 +4852,10 @@ document.addEventListener("click", function(e){
               <div style="color:#334155;font-weight:bold;font-size:13px;">${kindIcon(kind)} — ${escapeManagerOfficeHTML(record.name)}</div>
               <div style="color:#94a3b8;font-size:10px;margin-top:4px;">${new Date(record.createdAt).toLocaleString('ar-SA')} - ${formatManagerFileSize(record.size)}</div>
             </div>
-            <button onclick="previewManagerLocalPDF(${record.id})" class="manager-record-btn" style="background:#0ea5e9;color:white;">معاينة</button>
-            ${canEdit ? `<button onclick="previewManagerLocalPDF(${record.id})" class="manager-record-btn" style="background:#2563eb;color:white;">تعديل</button>` : ''}
-            <button onclick="downloadManagerRecord(${record.id})" class="manager-record-btn" style="background:#7c3aed;color:white;">تحميل</button>
-            <button onclick="removeManagerRecord(${record.id})" class="manager-record-btn" style="background:#ef4444;color:white;">حذف</button>
+            <button onclick='previewManagerLocalPDF(${JSON.stringify(String(record.id))})' class="manager-record-btn" style="background:#0ea5e9;color:white;">معاينة</button>
+            ${canEdit ? `<button onclick='previewManagerLocalPDF(${JSON.stringify(String(record.id))})' class="manager-record-btn" style="background:#2563eb;color:white;">تعديل</button>` : ''}
+            <button onclick='downloadManagerRecord(${JSON.stringify(String(record.id))})' class="manager-record-btn" style="background:#7c3aed;color:white;">تحميل</button>
+            <button onclick='removeManagerRecord(${JSON.stringify(String(record.id))})' class="manager-record-btn" style="background:#ef4444;color:white;">حذف</button>
           </div>
         `;
       }).join('');
@@ -4834,42 +4865,16 @@ document.addEventListener("click", function(e){
   };
 
   window.handleManagerFileUpload = async function(event){
-    const file = event.target.files[0];
-    if(!file) return;
-
-    const allowed = ['pdf','doc','docx','xls','xlsx','ppt','pptx'];
-    if(!allowed.includes(extOf(file.name))){
-      showToast('نوع الملف غير مدعوم. الصيغ المدعومة: PDF / Word / Excel / PPTX');
-      event.target.value = '';
-      return;
-    }
-
-    try {
-      const db = await openManagerRecordsDB();
-      await new Promise((resolve, reject) => {
-        const transaction = db.transaction(MANAGER_STORE_NAME, 'readwrite');
-        const store = transaction.objectStore(MANAGER_STORE_NAME);
-        const record = {
-          name:file.name,
-          type:file.type || '',
-          kind:kindOf(file),
-          size:file.size,
-          file:file,
-          createdAt:new Date().toISOString(),
-          cloudStatus: MANAGER_CLOUD_SYNC_ENABLED ? 'pending' : 'local'
-        };
-        const request = store.add(record);
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject('تعذر حفظ الملف محليًا');
-      });
-
-      if(MANAGER_CLOUD_SYNC_ENABLED) await uploadManagerPDFToCloud(file);
-      await renderManagerRecordsList();
-      showToast(MANAGER_CLOUD_SYNC_ENABLED ? 'تم حفظ الملف محليًا وسحابيًا ✅' : 'تم حفظ الملف محليًا ✅');
-    } catch(error){
-      showToast(String(error));
-    }
-    event.target.value = '';
+    const file=event.target.files&&event.target.files[0];if(!file)return;
+    const allowed=['pdf','doc','docx','xls','xlsx','ppt','pptx','jpg','jpeg','png','gif','webp','bmp','svg','tif','tiff','heic','heif'];
+    if(!allowed.includes(extOf(file.name))&&!/^image\//.test(file.type||'')){showToast('نوع الملف غير مدعوم في مكتبة القسم');event.target.value='';return;}
+    try{
+      await ensureManagerLibraryCloudContext();
+      const up=await CloudFileEngine.upload({file,ownershipScope:'user',moduleKey:'manager_records_archive',recordType:'pdf_archive',recordId:'manager',relationType:'archive_file',displayName:file.name,metadata:{folder:'عام',kind:kindOf(file),source:'manager.html',rl27:true}});
+      await verifyManagerLibraryFile(up?.file?.id);
+      await renderManagerRecordsList();showToast('تم حفظ الملف سحابيًا في مكتبة القسم ✅');
+    }catch(error){showToast(String(error?.message||error));}
+    event.target.value='';
   };
 
   window.previewManagerLocalPDF = async function(id){
@@ -4951,7 +4956,8 @@ document.addEventListener("click", function(e){
     }
 
     record.updatedAt = new Date().toISOString();
-    await updateManagerLocalRecord(record);
+    const persistedId=await updateManagerLocalRecord(record);
+    managerCurrentRecordId=String(persistedId||managerCurrentRecordId);
     await renderManagerRecordsList();
     showToast('تم حفظ التعديل ✅');
   };
@@ -5197,9 +5203,25 @@ function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
       const records=await getAllManagerLocalRecords();
       const rows=records.filter(r=>(r.folder||'عام')===activeFolder).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
       if(!rows.length){list.innerHTML='<div style="padding:18px;background:#fff8e1;border:1px solid #ffe08a;border-radius:18px;color:#777;text-align:center;font-size:12px;font-weight:bold;">لا توجد ملفات داخل مجلد '+esc(activeFolder)+'.</div>';return;}
-      list.innerHTML=rows.map(record=>{const k=record.kind||kind(record); return '<div class="manager-record-item"><div style="flex:1;min-width:200px;"><div style="color:#334155;font-weight:bold;font-size:13px;">'+icon(k)+' — '+esc(record.name)+'</div><div style="color:#94a3b8;font-size:10px;margin-top:4px;">'+new Date(record.createdAt).toLocaleString('ar-SA')+' - '+fmt(record.size)+' - مجلد: '+esc(record.folder||'عام')+'</div></div><button onclick="editManagerRecordSafe('+record.id+')" class="manager-record-btn" style="background:#2563eb;color:white;">تعديل</button><button onclick="previewManagerLocalPDF('+record.id+')" class="manager-record-btn" style="background:#0ea5e9;color:white;">معاينة</button><button onclick="printManagerRecordSafe('+record.id+')" class="manager-record-btn" style="background:#7c3aed;color:white;">طباعة</button><button onclick="removeManagerRecord('+record.id+')" class="manager-record-btn" style="background:#ef4444;color:white;">حذف</button></div>';}).join('');
+      list.innerHTML=rows.map(record=>{const k=record.kind||kind(record),rid=esc(String(record.id)); return '<div class="manager-record-item"><div style="flex:1;min-width:200px;"><div style="color:#334155;font-weight:bold;font-size:13px;">'+icon(k)+' — '+esc(record.name)+'</div><div style="color:#94a3b8;font-size:10px;margin-top:4px;">'+new Date(record.createdAt).toLocaleString('ar-SA')+' - '+fmt(record.size)+' - مجلد: '+esc(record.folder||'عام')+'</div></div><button data-manager-library-action="edit" data-manager-library-id="'+rid+'" class="manager-record-btn" style="background:#2563eb;color:white;">تعديل</button><button data-manager-library-action="preview" data-manager-library-id="'+rid+'" class="manager-record-btn" style="background:#0ea5e9;color:white;">معاينة</button><button data-manager-library-action="print" data-manager-library-id="'+rid+'" class="manager-record-btn" style="background:#7c3aed;color:white;">طباعة</button><button data-manager-library-action="delete" data-manager-library-id="'+rid+'" class="manager-record-btn" style="background:#ef4444;color:white;">حذف</button></div>';}).join('');
     }catch(error){list.innerHTML='<div style="padding:15px;color:#dc2626;text-align:center;font-size:12px;">'+esc(error)+'</div>';}
   };
+
+  if(!window.__MANAGER_LIBRARY_ACTION_DELEGATION_RL27__){
+    window.__MANAGER_LIBRARY_ACTION_DELEGATION_RL27__=true;
+    document.addEventListener('click',async function(ev){
+      const btn=ev.target.closest('[data-manager-library-action][data-manager-library-id]');if(!btn)return;
+      ev.preventDefault();ev.stopPropagation();
+      const id=String(btn.getAttribute('data-manager-library-id')||''),action=btn.getAttribute('data-manager-library-action')||'';
+      if(!id)return;
+      try{
+        if(action==='edit')return await window.editManagerRecordSafe(id);
+        if(action==='preview')return await window.previewManagerLocalPDF(id);
+        if(action==='print')return await window.printManagerRecordSafe(id);
+        if(action==='delete')return await window.removeManagerRecord(id);
+      }catch(e){console.error('[Manager Library action]',action,id,e);showToast(e?.message||String(e));}
+    });
+  }
 
   window.handleManagerFileUpload=async function(event){
     const files=Array.from(event.target.files||[]); if(!files.length) return;
@@ -5208,7 +5230,8 @@ function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
       if(!window.CloudFileEngine) throw new Error('الحفظ السحابي غير متاح');
       for(const file of files){
         if(!allowed.includes(ext(file.name))&&!/^image\//.test(file.type||'')){bad++;continue;}
-        await CloudFileEngine.upload({file,ownershipScope:'user',moduleKey:'manager_records_archive',recordType:'pdf_archive',recordId:'manager',relationType:'archive_file',displayName:file.name,metadata:{folder:activeFolder||'عام',kind:kind(file),source:'manager_library'}}); ok++;
+        const up=await CloudFileEngine.upload({file,ownershipScope:'user',moduleKey:'manager_records_archive',recordType:'pdf_archive',recordId:'manager',relationType:'archive_file',displayName:file.name,metadata:{folder:activeFolder||'عام',kind:kind(file),source:'manager_library'}});
+        await verifyManagerLibraryFile(up?.file?.id); ok++;
       }
       await window.renderManagerRecordsList(); if(ok) showToast('تم حفظ الملفات سحابيًا داخل مكتبة القسم ✅'); if(bad) showToast('تم تجاهل بعض الملفات لأن صيغتها غير مدعومة');
     }catch(e){showToast(String(e));}
@@ -5234,9 +5257,9 @@ function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
     if(!window.CloudFileEngine) throw new Error('الحفظ السحابي غير متاح');
     if(record.file){
       const r=await CloudFileEngine.upload({file:record.file,replaceFileId:String(record.id),ownershipScope:'user',moduleKey:'manager_records_archive',recordType:'pdf_archive',recordId:'manager',relationType:'archive_file',displayName:record.name||record.file.name,metadata:{folder:record.folder||activeFolder||'عام',kind:record.kind||kind(record),source:'manager_library'}});
-      return r.file?.id||r.fileId||record.id;
+      const nid=r.file?.id||r.fileId||record.id;await verifyManagerLibraryFile(nid);return nid;
     }
-    if(record.name){await CloudFileEngine.renameFile(String(record.id),record.name);}
+    if(record.name){await CloudFileEngine.renameFile(String(record.id),record.name);await verifyManagerLibraryFile(String(record.id),{name:record.name});}
     return record.id;
   }
   window.editManagerRecordSafe=async function(id){
@@ -5244,7 +5267,7 @@ function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
     const k=record.kind||kind(record);
     if(['word','excel'].includes(k)){ return previewManagerLocalPDF(id); }
     const newName=prompt('تعديل اسم الملف:', record.name||'');
-    if(newName&&newName.trim()&&newName.trim()!==record.name){record.name=newName.trim(); record.updatedAt=new Date().toISOString(); await putManagerLocalRecordSafe(record); await window.renderManagerRecordsList();}
+    if(newName&&newName.trim()&&newName.trim()!==record.name){const cleanName=newName.trim();await CloudFileEngine.renameFile(String(record.id),cleanName);await verifyManagerLibraryFile(String(record.id),{name:cleanName});record.name=cleanName;record.updatedAt=new Date().toISOString();await window.renderManagerRecordsList();}
     if(confirm('هل تريد استبدال محتوى هذا الملف بملف آخر؟')){
       const inp=document.createElement('input'); inp.type='file'; inp.style.display='none'; inp.accept='.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.gif,.webp,.bmp,.svg,.tif,.tiff,.heic,.heif,application/pdf,application/msword,application/vnd.ms-excel,application/vnd.ms-powerpoint,image/*';
       inp.onchange=async function(){const file=inp.files&&inp.files[0]; inp.remove(); if(!file)return; record.name=file.name; record.type=file.type||''; record.kind=kind(file); record.size=file.size; record.file=file; record.updatedAt=new Date().toISOString(); record.folder=record.folder||activeFolder||'عام'; await putManagerLocalRecordSafe(record); await window.renderManagerRecordsList(); showToast('تم تحديث الملف');};

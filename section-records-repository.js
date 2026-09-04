@@ -2,6 +2,7 @@
 (function(){
   if(window.__SECTION_RECORDS_REPOSITORY_SAFE__) return;
   window.__SECTION_RECORDS_REPOSITORY_SAFE__ = true;
+  window.__SECTION_RECORDS_REPOSITORY_SAFE_VERSION__ = '2026.09.04-RL29-expanded-historical-recovery-isolation';
 
   const path = (location.pathname || '').toLowerCase();
   const ROLE =
@@ -81,22 +82,74 @@
     ROLE==='student_advisor' ? ['student_advisor_library'] :
     (ROLE==='health_advisor'||ROLE==='activity_leader') ? ['section_library'] :
     ROLE==='kindergarten_teacher' ? ['teacher_library'] : [];
-  function cloudReady(){return !!(window.CloudFileEngine&&window.PlatformCloudSession?.token&&window.PlatformCloudSession.token());}
+  function cloudReady(){return !!window.CloudFileEngine;}
   function cloudUserId(){try{return String(window.PlatformCloudSession?.userId?.()||'').trim()}catch(e){return''}}
   function cloudSchoolId(){try{return String(window.PlatformCloudSession?.schoolId?.()||'').trim()}catch(e){return''}}
+  async function ensureCloudContext(){
+    if(!window.CloudFileEngine)throw new Error('محرك الملفات السحابي غير متاح في هذه الصفحة.');
+    if(window.PlatformCloudSession&&typeof window.PlatformCloudSession.ensure==='function'){
+      await window.PlatformCloudSession.ensure();
+    }
+    const token=String(window.PlatformCloudSession?.token?.()||sessionStorage.getItem('platform_tab_session_token_v1')||localStorage.getItem('platform_file_session_token')||'').trim();
+    const uid=cloudUserId(), sid=cloudSchoolId();
+    if(!token)throw new Error('تعذر استعادة جلسة الملفات السحابية.');
+    if(!uid||!sid)throw new Error('تعذر تحديد المدرسة أو المستخدم الحالي لمكتبة القسم.');
+    return {token,userId:uid,schoolId:sid};
+  }
+  function isCurrentLibraryFile(f){
+    if(!f)return false;
+    const uid=cloudUserId();
+    if(String(f.ownership_scope||'')!=='user'||!uid||String(f.owner_user_id||'')!==uid)return false;
+    const module=String(f.module_key||'');
+    if(module===CLOUD_MODULE)return String(f.primary_record_type||'')===CLOUD_RECORD_TYPE;
+    if(module!==LEGACY_MODULE)return false;
+    const rt=String(f.primary_record_type||'');
+    if(LEGACY_RECORD_TYPES.length&&!LEGACY_RECORD_TYPES.includes(rt))return false;
+    const md=f.metadata||{}, oldRole=String(md.role||'');
+    if((ROLE==='health_advisor'||ROLE==='activity_leader')&&oldRole!==ROLE)return false;
+    return true;
+  }
+  async function verifyOwnedLibraryFile(fileId,expect={}){
+    const id=String(fileId||'').trim();if(!id)throw new Error('لم يرجع الحفظ السحابي معرفًا للملف.');
+    const u=await CloudFileEngine.usage(id), f=u?.file||null;
+    if(!f)throw new Error('تعذر إعادة قراءة الملف من السحابة بعد العملية.');
+    if(!isCurrentLibraryFile(f))throw new Error('فشل التحقق من عزل ملف مكتبة القسم للمستخدم الحالي.');
+    if(expect.status&&String(f.status||'')!==String(expect.status))throw new Error('لم تتأكد حالة الملف السحابية المطلوبة.');
+    if(expect.name&&String(f.display_name||'')!==String(expect.name))throw new Error('لم يتأكد تعديل اسم الملف سحابيًا.');
+    return f;
+  }
   function migrationFlag(){return 'section_repo_migrated_v3:'+cloudSchoolId()+':'+cloudUserId()+':'+ROLE;}
+  function cloudRecoveryFlag(){return 'section_repo_cloud_recovered_v2:'+cloudSchoolId()+':'+cloudUserId()+':'+ROLE;}
+  async function recoverHistoricalCloudFiles(){
+    if(!cloudReady()||sessionStorage.getItem(cloudRecoveryFlag())==='1')return {ok:true,skipped:true};
+    await ensureCloudContext();
+    try{
+      const r=await CloudFileEngine.request('recover-section-library',{body:{targetRole:ROLE,targetModule:CLOUD_MODULE}});
+      sessionStorage.setItem(cloudRecoveryFlag(),'1');
+      if(r&&Number(r.recovered||0)>0){
+        try{window.dispatchEvent(new CustomEvent('sectionlibrary:recovered',{detail:{role:ROLE,recovered:Number(r.recovered||0),unresolved:Number(r.unresolved||0)}}))}catch(_){ }
+      }
+      return r||{ok:true};
+    }catch(e){
+      console.warn('[SectionRepo] historical cloud recovery deferred',ROLE,e?.message||e);
+      sessionStorage.removeItem(cloudRecoveryFlag());
+      return {ok:false,error:e};
+    }
+  }
   function legacyDB(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB_NAME,1);r.onupgradeneeded=e=>{const db=e.target.result;if(!db.objectStoreNames.contains(STORE))db.createObjectStore(STORE,{keyPath:'id',autoIncrement:true});};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});}
   async function legacyAll(){const db=await legacyDB();return new Promise((resolve,reject)=>{const tx=db.transaction(STORE,'readonly');const rq=tx.objectStore(STORE).getAll();rq.onsuccess=()=>resolve(rq.result||[]);rq.onerror=()=>reject(rq.error);});}
   async function legacyClear(){const db=await legacyDB();return new Promise((resolve,reject)=>{const tx=db.transaction(STORE,'readwrite');const rq=tx.objectStore(STORE).clear();rq.onsuccess=()=>resolve();rq.onerror=()=>reject(rq.error);});}
   function cloudShape(f,blob){const md=f.metadata||{};return {id:f.id,platformFileId:f.id,name:f.display_name||f.original_name||'ملف',type:f.mime_type||'',kind:md.kind||kind({name:f.display_name||f.original_name||'',type:f.mime_type||''}),size:Number(f.file_size||0),file:blob||null,folder:md.folder||'عام',createdAt:f.created_at||new Date().toISOString(),updatedAt:f.updated_at||null,role:ROLE,moduleKey:f.module_key||'',ownerUserId:f.owner_user_id||'',cloud:true};}
   async function migrateLegacy(){
     if(!cloudReady()||sessionStorage.getItem(migrationFlag())==='1')return;
+    await ensureCloudContext();
     sessionStorage.setItem(migrationFlag(),'1');
-    try{const rows=await legacyAll();if(!rows.length)return;for(const r of rows){if(!r.file)continue;await CloudFileEngine.upload({file:r.file,ownershipScope:'user',moduleKey:CLOUD_MODULE,recordType:CLOUD_RECORD_TYPE,recordId:ROLE,relationType:'library_file',displayName:r.name||r.file.name,metadata:{folder:r.folder||'عام',kind:r.kind||kind(r.file),legacyId:r.id,role:ROLE,libraryRole:ROLE,libraryOwnerUserId:cloudUserId(),migratedFrom:'indexeddb'}});}await legacyClear();}
+    try{const rows=await legacyAll();if(!rows.length)return;for(const r of rows){if(!r.file)continue;const up=await CloudFileEngine.upload({file:r.file,ownershipScope:'user',moduleKey:CLOUD_MODULE,recordType:CLOUD_RECORD_TYPE,recordId:ROLE,relationType:'library_file',displayName:r.name||r.file.name,metadata:{folder:r.folder||'عام',kind:r.kind||kind(r.file),legacyId:r.id,role:ROLE,libraryRole:ROLE,libraryOwnerUserId:cloudUserId(),migratedFrom:'indexeddb'}});await verifyOwnedLibraryFile(up?.file?.id);}await legacyClear();}
     catch(e){console.warn('[SectionRepo] legacy migration deferred',e?.message||e);sessionStorage.removeItem(migrationFlag());}
   }
   async function all(){
-    if(!cloudReady())throw new Error('الحفظ السحابي غير متاح. سجّل الدخول مجددًا.');
+    await ensureCloudContext();
+    await recoverHistoricalCloudFiles();
     await migrateLegacy();
     // ownershipScope=user إلزامي حتى لو كانت الجلسة لمدير أو مستخدم متعدد الأدوار.
     const primary=await CloudFileEngine.list({ownershipScope:'user',moduleKey:CLOUD_MODULE,recordType:CLOUD_RECORD_TYPE,limit:1000});
@@ -118,27 +171,31 @@
     return rows;
   }
   async function get(id){
-    if(!cloudReady())throw new Error('الحفظ السحابي غير متاح.');
+    await ensureCloudContext();
     const u=await CloudFileEngine.usage(String(id));const f=u.file;if(!f)return null;
-    const uid=cloudUserId();
-    if(String(f.ownership_scope||'')!=='user'||(uid&&String(f.owner_user_id||'')!==uid))throw new Error('هذا الملف لا يتبع مكتبة المستخدم الحالي.');
-    const allowedModule=String(f.module_key||'')===CLOUD_MODULE || String(f.module_key||'')===LEGACY_MODULE;
-    if(!allowedModule)throw new Error('الملف لا يتبع مكتبة هذا القسم.');
+    if(!isCurrentLibraryFile(f))throw new Error('هذا الملف لا يتبع مكتبة القسم للمستخدم الحالي.');
     const blob=await CloudFileEngine.getBlob(String(id));return cloudShape(f,blob);
   }
   async function put(item){
-    if(!cloudReady())throw new Error('الحفظ السحابي غير متاح.');
-    if(item&&item.cloud&&item.platformFileId&&item.file){const r=await CloudFileEngine.upload({file:item.file,ownershipScope:'user',moduleKey:CLOUD_MODULE,recordType:CLOUD_RECORD_TYPE,recordId:ROLE,relationType:'library_file',displayName:item.name||item.file.name,replaceFileId:item.platformFileId,metadata:{folder:item.folder||'عام',kind:item.kind||kind(item.file),role:ROLE,libraryRole:ROLE,libraryOwnerUserId:cloudUserId(),edited:true}});return r.file.id;}
-    if(item&&item.platformFileId&&!item.file){if(item.name)await CloudFileEngine.renameFile(item.platformFileId,item.name);return item.platformFileId;}
-    const file=item?.file;if(!file)throw new Error('الملف غير متاح للحفظ');const r=await CloudFileEngine.upload({file,ownershipScope:'user',moduleKey:CLOUD_MODULE,recordType:CLOUD_RECORD_TYPE,recordId:ROLE,relationType:'library_file',displayName:item.name||file.name,metadata:{folder:item.folder||'عام',kind:item.kind||kind(file),role:ROLE,libraryRole:ROLE,libraryOwnerUserId:cloudUserId()}});return r.file.id;
+    await ensureCloudContext();
+    if(item&&item.cloud&&item.platformFileId&&item.file){
+      const r=await CloudFileEngine.upload({file:item.file,ownershipScope:'user',moduleKey:CLOUD_MODULE,recordType:CLOUD_RECORD_TYPE,recordId:ROLE,relationType:'library_file',displayName:item.name||item.file.name,replaceFileId:item.platformFileId,metadata:{folder:item.folder||'عام',kind:item.kind||kind(item.file),role:ROLE,libraryRole:ROLE,libraryOwnerUserId:cloudUserId(),edited:true}});
+      await verifyOwnedLibraryFile(r?.file?.id);return r.file.id;
+    }
+    if(item&&item.platformFileId&&!item.file){
+      if(item.name){await CloudFileEngine.renameFile(item.platformFileId,item.name);await verifyOwnedLibraryFile(item.platformFileId,{name:item.name});}
+      return item.platformFileId;
+    }
+    const file=item?.file;if(!file)throw new Error('الملف غير متاح للحفظ');
+    const r=await CloudFileEngine.upload({file,ownershipScope:'user',moduleKey:CLOUD_MODULE,recordType:CLOUD_RECORD_TYPE,recordId:ROLE,relationType:'library_file',displayName:item.name||file.name,metadata:{folder:item.folder||'عام',kind:item.kind||kind(file),role:ROLE,libraryRole:ROLE,libraryOwnerUserId:cloudUserId()}});
+    await verifyOwnedLibraryFile(r?.file?.id);return r.file.id;
   }
   async function del(id){
-    if(!cloudReady())throw new Error('الحفظ السحابي غير متاح.');
-    const u=await CloudFileEngine.usage(String(id)), f=u.file;
-    if(!f)throw new Error('الملف غير موجود.');
-    const uid=cloudUserId();
-    if(String(f.ownership_scope||'')!=='user'||(uid&&String(f.owner_user_id||'')!==uid))throw new Error('لا يمكن حذف ملف مستخدم آخر.');
-    return CloudFileEngine.trash(String(id));
+    await ensureCloudContext();
+    const f=await verifyOwnedLibraryFile(String(id));
+    await CloudFileEngine.trash(String(id));
+    await verifyOwnedLibraryFile(String(id),{status:'trashed'});
+    return true;
   }
 
   function ensureView(){
@@ -151,7 +208,7 @@
   function renderFolders(){const wrap=document.getElementById('sectionRepoFolders'); if(!wrap)return; wrap.innerHTML=folders().map(f=>`<button class="repo-folder-btn ${f===activeFolder?'active':''}" onclick="window.selectSectionRepoFolderSafe('${esc(f).replace(/'/g,'&#39;')}')">📁 ${esc(f)}</button>`).join('');}
   function injectCard(){if(document.getElementById('sectionRecordsRepositoryCardSafe')) return; const card=document.createElement('div'); card.id='sectionRecordsRepositoryCardSafe'; card.className='section-records-repo-card'; card.innerHTML=`<div class="repo-icon">🗂️</div><h3 style="margin:0;color:#334155;font-size:21px;font-weight:900">مكتبة القسم</h3><p style="margin:8px 0 0;color:#64748b;font-size:12px;font-weight:700">مجلدات وملفات القسم</p><button type="button">فتح المكتبة</button>`; card.onclick=()=>window.openSectionRecordsRepositorySafe(); const textCards=Array.from(document.querySelectorAll('button,h2,h3,div')).filter(el=>/سجلات المدير|الأرشيف|الإحصائيات|إنشاء تقرير|متابعة التقويم|أرشيف السجلات|سجلات الموجه|مكتبة القسم/.test(el.innerText||el.textContent||'')); let grid=null; for(const el of textCards){let p=el.parentElement; for(let i=0;p&&i<6;i++,p=p.parentElement){const st=getComputedStyle(p); if(st.display==='grid'||/grid|cards|modules|dashboard|features/i.test(String(p.className||''))){grid=p;break;}} if(grid)break;} if(!grid)grid=document.querySelector('main .grid,.grid,[class*="grid"]')||document.querySelector('main')||document.body; grid.appendChild(card);}
 
-  async function render(){ensureView(); const list=document.getElementById('sectionRepoListView'); document.getElementById('sectionRepoPreview').style.display='none'; list.style.display='grid'; list.innerHTML='<div style="padding:18px;color:#64748b;font-weight:900">جاري تحميل الملفات...</div>'; const allRows=await all(); const discovered=Array.from(new Set(allRows.map(r=>r.folder||'عام').filter(Boolean))); if(discovered.length){saveFolders(folders().concat(discovered)); if(!folders().includes(activeFolder))activeFolder='عام';} renderFolders(); const rows=allRows.filter(r=>(r.folder||'عام')===activeFolder).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)); if(!rows.length){list.innerHTML=`<div style="padding:28px;text-align:center;border:2px dashed #cbd5e1;border-radius:18px;color:#94a3b8;font-weight:900">لا توجد ملفات في مجلد ${esc(activeFolder)}.</div><button onclick="document.getElementById('sectionRepoUploadHidden').click()" style="margin-top:15px;width:100%;padding:14px;border:2px dashed #1e7b78;background:#f0fdfa;color:#1e7b78;cursor:pointer;border-radius:18px;font-weight:bold">+ إضافة ملفات إلى هذا المجلد</button>`;return;} list.innerHTML=rows.map(r=>{const k=r.kind||kind(r); return `<div class="repo-file"><div><div class="repo-file-title">${icon(k)} — ${esc(r.name)}</div><div class="repo-file-meta">${new Date(r.createdAt).toLocaleString('ar-SA')} — ${fmt(r.size)} — مجلد: ${esc(r.folder||'عام')}</div></div><div style="display:flex;gap:7px;flex-wrap:wrap"><button class="repo-btn repo-blue" data-section-repo-action="edit" data-section-repo-id="${esc(String(r.id))}">تعديل</button><button class="repo-btn repo-add" data-section-repo-action="preview" data-section-repo-id="${esc(String(r.id))}">معاينة</button><button class="repo-btn repo-purple" data-section-repo-action="print" data-section-repo-id="${esc(String(r.id))}">طباعة</button><button class="repo-btn repo-del" data-section-repo-action="delete" data-section-repo-id="${esc(String(r.id))}">حذف</button></div></div>`;}).join('')+`<button onclick="document.getElementById('sectionRepoUploadHidden').click()" style="margin-top:15px;width:100%;padding:14px;border:2px dashed #1e7b78;background:#f0fdfa;color:#1e7b78;cursor:pointer;border-radius:18px;font-weight:bold">+ إضافة ملفات إلى هذا المجلد</button>`;}
+  async function render(){ensureView(); const list=document.getElementById('sectionRepoListView'); document.getElementById('sectionRepoPreview').style.display='none'; list.style.display='grid'; list.innerHTML='<div style="padding:18px;color:#64748b;font-weight:900">جاري تحميل الملفات...</div>'; let allRows=[];try{allRows=await all();}catch(e){console.error('[SectionRepo render]',e);list.innerHTML='<div style="padding:22px;color:#b91c1c;background:#fff1f2;border:1px solid #fecdd3;border-radius:16px;font-weight:900">تعذر تحميل مكتبة القسم من السحابة.<br><small>'+esc(e?.message||e)+'</small></div>';return;} const discovered=Array.from(new Set(allRows.map(r=>r.folder||'عام').filter(Boolean))); if(discovered.length){saveFolders(folders().concat(discovered)); if(!folders().includes(activeFolder))activeFolder='عام';} renderFolders(); const rows=allRows.filter(r=>(r.folder||'عام')===activeFolder).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)); if(!rows.length){list.innerHTML=`<div style="padding:28px;text-align:center;border:2px dashed #cbd5e1;border-radius:18px;color:#94a3b8;font-weight:900">لا توجد ملفات في مجلد ${esc(activeFolder)}.</div><button onclick="document.getElementById('sectionRepoUploadHidden').click()" style="margin-top:15px;width:100%;padding:14px;border:2px dashed #1e7b78;background:#f0fdfa;color:#1e7b78;cursor:pointer;border-radius:18px;font-weight:bold">+ إضافة ملفات إلى هذا المجلد</button>`;return;} list.innerHTML=rows.map(r=>{const k=r.kind||kind(r); return `<div class="repo-file"><div><div class="repo-file-title">${icon(k)} — ${esc(r.name)}</div><div class="repo-file-meta">${new Date(r.createdAt).toLocaleString('ar-SA')} — ${fmt(r.size)} — مجلد: ${esc(r.folder||'عام')}</div></div><div style="display:flex;gap:7px;flex-wrap:wrap"><button class="repo-btn repo-blue" data-section-repo-action="edit" data-section-repo-id="${esc(String(r.id))}">تعديل</button><button class="repo-btn repo-add" data-section-repo-action="preview" data-section-repo-id="${esc(String(r.id))}">معاينة</button><button class="repo-btn repo-purple" data-section-repo-action="print" data-section-repo-id="${esc(String(r.id))}">طباعة</button><button class="repo-btn repo-del" data-section-repo-action="delete" data-section-repo-id="${esc(String(r.id))}">حذف</button></div></div>`;}).join('')+`<button onclick="document.getElementById('sectionRepoUploadHidden').click()" style="margin-top:15px;width:100%;padding:14px;border:2px dashed #1e7b78;background:#f0fdfa;color:#1e7b78;cursor:pointer;border-radius:18px;font-weight:bold">+ إضافة ملفات إلى هذا المجلد</button>`;}
 
   async function upload(e){
     const files=Array.from(e.target.files||[]); if(!files.length)return;
@@ -170,7 +227,7 @@
     if(bad) alert('تم تجاهل '+bad+' ملف/ملفات بصيغ غير مدعومة.');
     if(failed) alert('تعذر حفظ '+failed+' ملف/ملفات سحابياً. لم تُعرض كملفات محفوظة.');
   }
-  async function showWord(r,body,saveBtn){saveBtn.style.display='inline-block'; body.innerHTML='<div id="sectionRepoWordEditor" class="repo-editor" contenteditable="true">جاري فتح ملف Word...</div>'; const ed=document.getElementById('sectionRepoWordEditor'); if(r.editedHtml){ed.innerHTML=r.editedHtml;return;} if(window.mammoth&&ext(r.name)==='docx'){const result=await mammoth.convertToHtml({arrayBuffer:await r.file.arrayBuffer()}); ed.innerHTML=result.value||'<p></p>';}else{ed.innerHTML='<div style="padding:20px;color:#64748b;border:1px dashed #cbd5e1;border-radius:14px">التحرير المباشر مدعوم لملفات DOCX. يمكن تحميل ملفات DOC وفتحها خارجيًا.</div>';}}
+  async function showWord(r,body,saveBtn){saveBtn.style.display='inline-block'; body.innerHTML='<div id="sectionRepoWordEditor" class="repo-editor" contenteditable="true">جاري فتح ملف Word...</div>'; const ed=document.getElementById('sectionRepoWordEditor'); if(r.editedHtml){ed.innerHTML=r.editedHtml;return;} if(window.mammoth&&ext(r.name)==='docx'){const result=await mammoth.convertToHtml({arrayBuffer:await r.file.arrayBuffer()}); ed.innerHTML=result.value||'<p></p>';}else if(ext(r.name)==='doc'){try{const txt=await r.file.text();if(/<html|<body|<!doctype/i.test(txt)){const doc=new DOMParser().parseFromString(txt,'text/html');ed.innerHTML=doc.body?.innerHTML||txt;return;}}catch(_){ }}ed.innerHTML='<div style="padding:20px;color:#64748b;border:1px dashed #cbd5e1;border-radius:14px">التحرير المباشر مدعوم لملفات DOCX ولملفات Word المعدلة من داخل المكتبة. ملفات DOC القديمة يمكن استبدالها أو إعادة رفعها.</div>';}
   async function showExcel(r,body,saveBtn){saveBtn.style.display='inline-block'; if(!window.XLSX){body.innerHTML='<div style="padding:24px;color:#64748b">جاري تحميل محرر Excel، أعد المحاولة بعد لحظات.</div>';return;} const wb=r.editedWorkbookBase64?XLSX.read(r.editedWorkbookBase64,{type:'base64'}):XLSX.read(await r.file.arrayBuffer(),{type:'array'}); const sheet=wb.SheetNames[0]; const rows=XLSX.utils.sheet_to_json(wb.Sheets[sheet],{header:1,defval:''}); const tableRows=rows.length?rows:[['']]; body.innerHTML='<div style="padding:12px;color:#64748b;font-weight:900;font-size:12px">الورقة: '+esc(sheet)+'</div><table id="sectionRepoExcelTable" class="repo-xls">'+tableRows.map(row=>'<tr>'+row.map(c=>'<td contenteditable="true">'+esc(c)+'</td>').join('')+'</tr>').join('')+'</table>';}
 
   window.openSectionRecordsRepositorySafe=function(){loadActiveFolder();ensureView();document.getElementById('sectionRepoOfficeView').style.display='block';render();};
@@ -188,7 +245,10 @@
     const k=r.kind||kind(r);
     if(k==='word'||k==='excel') return window.previewSectionRepoSafe(id);
     const newName=prompt('تعديل اسم الملف:', r.name||'');
-    if(newName&&newName.trim()&&newName.trim()!==r.name){r.name=newName.trim(); r.updatedAt=new Date().toISOString(); await put(r); await render();}
+    if(newName&&newName.trim()&&newName.trim()!==r.name){
+      const cleanName=newName.trim();await CloudFileEngine.renameFile(String(r.platformFileId||r.id),cleanName);
+      await verifyOwnedLibraryFile(String(r.platformFileId||r.id),{name:cleanName});r.name=cleanName;r.updatedAt=new Date().toISOString();await render();
+    }
     if(confirm('هل تريد استبدال محتوى هذا الملف بملف آخر؟')){
       const inp=document.createElement('input'); inp.type='file'; inp.style.display='none'; inp.accept='.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.gif,.webp,.bmp,.svg,.tif,.tiff,.heic,.heif,application/pdf,application/msword,application/vnd.ms-excel,application/vnd.ms-powerpoint,image/*';
       inp.onchange=async function(){const file=inp.files&&inp.files[0]; inp.remove(); if(!file)return; r.name=file.name; r.type=file.type||''; r.kind=kind(file); r.size=file.size; r.file=file; r.updatedAt=new Date().toISOString(); r.folder=r.folder||activeFolder||'عام'; await put(r); await render(); alert('تم تحديث الملف');};

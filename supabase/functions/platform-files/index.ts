@@ -27,19 +27,132 @@ Deno.serve(async(req)=>{
   const action=new URL(req.url).searchParams.get('action')||'';
   const isManager=managers.has(String(s.role||'').toLowerCase())||managers.has(String(s.role||''));
   const body=req.method==='GET'?{}:await req.clone().json().catch(()=>({}));
-  const canRead=(row:any)=>row&&row.school_id===s.school_id&&(row.ownership_scope==='school'||row.owner_user_id===s.user_id||isManager);
+  const historicalPrivateLibraryModules=['section_records_repository','administrative_employee_library','vice_principal_library','manager_records_archive'];
+  const isPrivateLibraryModule=(mk:unknown)=>{const x=String(mk||'');return x.startsWith('section_library_')||historicalPrivateLibraryModules.includes(x)};
+  const isPrivateSectionLibrary=(row:any)=>isPrivateLibraryModule(row?.module_key);
+  const canRead=(row:any)=>row&&row.school_id===s.school_id&&(row.ownership_scope==='school'||row.owner_user_id===s.user_id||(isManager&&!isPrivateSectionLibrary(row)));
   const canReadFile=async(row:any)=>{if(canRead(row))return true;if(!row||row.school_id!==s.school_id)return false;const {data:links}=await sb.from('platform_file_links').select('record_id').eq('school_id',s.school_id).eq('file_id',row.id).eq('module_key','internal_messages').eq('record_type','internal_message').eq('relation_type','attachment');const mids=(links||[]).map((x:any)=>x.record_id).filter(isUuid);if(!mids.length)return false;let q=sb.from('internal_message_recipients').select('id').eq('school_id',s.school_id).in('message_id',mids);if(isUuid(s.user_id))q=q.eq('recipient_user_id',s.user_id);else if(s.user_email)q=q.eq('recipient_email',String(s.user_email).trim().toLowerCase());else return false;const {data:r}=await q.limit(1);return !!(r&&r.length)};
-  const canManage=(row:any)=>row&&row.school_id===s.school_id&&(row.ownership_scope==='school'?isManager:row.owner_user_id===s.user_id||isManager);
+  const canManage=(row:any)=>row&&row.school_id===s.school_id&&(row.ownership_scope==='school'?isManager:(row.owner_user_id===s.user_id||(isManager&&!isPrivateSectionLibrary(row))));
   const event=async(type:string,file:any,extra:any={})=>{await sb.from('platform_file_events').insert({school_id:s.school_id,file_id:file?.id||null,folder_id:extra.folder_id||file?.folder_id||null,user_id:s.user_id,event_type:type,module_key:file?.module_key||extra.module_key||null,old_values:extra.old_values||null,new_values:extra.new_values||null})};
   const getFile=async(id:string)=>{const {data}=await sb.from('platform_files').select('*').eq('id',id).eq('school_id',s.school_id).maybeSingle();return data};
   const getFolder=async(id:string)=>{const {data}=await sb.from('platform_folders').select('*').eq('id',id).eq('school_id',s.school_id).maybeSingle();return data};
-  if(action==='health')return json({ok:true,version:'3.2.0-readiness-evidence-modal',schoolId:s.school_id,userId:s.user_id,role:s.role});
+  if(action==='health')return json({ok:true,version:'3.5.0-RL29-expanded-section-library-recovery',schoolId:s.school_id,userId:s.user_id,role:s.role});
+  if(action==='recover-section-library'){
+   const allowedRoles=new Set(['manager','agent','teacher','student_advisor','health_advisor','activity_leader','kindergarten_teacher','administrative_employee','section']);
+   const targetRole=safeKey(body.targetRole||'section');
+   if(!allowedRoles.has(targetRole))return json({error:'دور مكتبة القسم غير صالح',code:'SECTION_LIBRARY_ROLE_INVALID',requestId},400);
+   const targetModule=targetRole==='manager'?'manager_records_archive':`section_library_${targetRole}`;
+   const requestedModule=safeKey(body.targetModule||targetModule);
+   if(requestedModule!==targetModule)return json({error:'مسار مكتبة القسم لا يطابق الدور الحالي',code:'SECTION_LIBRARY_MODULE_MISMATCH',requestId},400);
+
+   // RL29: المسارات التي استُخدمت فعلياً تاريخياً لمكتبات الأقسام في المدارس المستقلة.
+   // لا يتم اعتبار أي module عام آخر مكتبة خاصة حتى لا ننقل ملفات سجلات/تكليفات إلى المكتبة بالخطأ.
+   const recoveryModules=Array.from(new Set([targetModule,...historicalPrivateLibraryModules]));
+   const roleAliases:Record<string,string[]>= {
+    manager:['manager','principal','school_manager','owner','leadership','admin'],agent:['agent','vice_principal'],teacher:['teacher'],student_advisor:['student_advisor'],
+    health_advisor:['health_advisor'],activity_leader:['activity_leader'],kindergarten_teacher:['kindergarten_teacher'],administrative_employee:['administrative_employee','admin_employee'],section:['section']
+   };
+   const sessionRole=String(s.role||'').trim().toLowerCase();
+   const sessionRoleMatches=(roleAliases[targetRole]||[]).includes(sessionRole);
+   const candidatesQuery=await sb.from('platform_files').select('*').eq('school_id',s.school_id).neq('status','deleted').in('module_key',recoveryModules);
+   if(candidatesQuery.error)throw candidatesQuery.error;
+   const rows=candidatesQuery.data||[];
+   let recovered=0,alreadyCurrent=0,unresolved=0,skippedOwnership=0,skippedRole=0,linksReconciled=0;
+   const recoveredIds:string[]=[], unresolvedIds:string[]=[];
+
+   const roleFromRow=(f:any)=>{
+    const module=String(f?.module_key||'').trim();
+    // المسار التاريخي نفسه قرينة قوية لأنه كان مخصصاً لدور واحد فقط.
+    if(module==='administrative_employee_library')return 'administrative_employee';
+    if(module==='vice_principal_library')return 'agent';
+    if(module==='manager_records_archive')return 'manager';
+    if(module.startsWith('section_library_')){
+      const r=module.slice('section_library_'.length);
+      return allowedRoles.has(r)?r:'';
+    }
+    const md=f?.metadata&&typeof f.metadata==='object'?f.metadata:{};
+    const explicit=String(md.libraryRole||md.role||'').trim().toLowerCase();
+    if(allowedRoles.has(explicit)&&explicit!=='section')return explicit;
+    const rt=String(f?.primary_record_type||'').trim().toLowerCase();
+    if(rt==='agent_library'||rt==='vice_principal_library')return 'agent';
+    if(rt==='teacher_library')return explicit==='kindergarten_teacher'?'kindergarten_teacher':'teacher';
+    if(rt==='student_advisor_library')return 'student_advisor';
+    if(rt==='administrative_employee_library'||rt==='admin_employee_library'||rt==='library'&&module==='administrative_employee_library')return 'administrative_employee';
+    if(rt==='manager_library'||rt==='pdf_archive')return 'manager';
+    if(rt==='section_library'&&['health_advisor','activity_leader'].includes(explicit))return explicit;
+    // السجل القديم العام section_library لا يُحسم إلا إذا كان targetRole يطابق دور الجلسة
+    // أو كانت metadata نفسها تحمل الدور؛ هذا يمنع خلط الصحة والنشاط لمستخدم متعدد الأدوار.
+    if(rt==='section_library'&&explicit==='section'&&sessionRoleMatches&&['health_advisor','activity_leader','section'].includes(targetRole))return targetRole;
+    return '';
+   };
+   const pathOwner=(path:string)=>{const m=String(path||'').match(new RegExp('^schools/'+String(s.school_id).replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'/users/([0-9a-f-]{36})/','i'));return m?m[1]:''};
+   const reconcileLinks=async(fileId:string,oldModule:string)=>{
+    // نحدّث فقط روابط المكتبة القديمة لهذا الملف، ولا نمس روابطه في الرسائل/الشواهد/السجلات الأخرى.
+    const q=await sb.from('platform_file_links').select('*').eq('school_id',s.school_id).eq('file_id',fileId).in('module_key',recoveryModules);
+    if(q.error)throw q.error;
+    const libraryLinks=q.data||[];
+    let currentLink=libraryLinks.find((x:any)=>String(x.module_key)===targetModule&&String(x.record_type)==='library_file'&&String(x.record_id)===targetRole);
+    if(currentLink&&currentLink.deleted_at){
+      const restored=await sb.from('platform_file_links').update({deleted_at:null,linked_by:s.user_id,is_primary:true,relation_type:'library_file'}).eq('id',currentLink.id).eq('school_id',s.school_id).select('*').single();
+      if(restored.error)throw restored.error;
+      currentLink=restored.data;linksReconciled++;
+    }
+    if(!currentLink){
+      const ins=await sb.from('platform_file_links').insert({school_id:s.school_id,file_id:fileId,module_key:targetModule,record_type:'library_file',record_id:targetRole,relation_type:'library_file',linked_by:s.user_id,is_primary:true}).select('*').single();
+      if(ins.error)throw ins.error;
+      currentLink=ins.data;linksReconciled++;
+    }
+    for(const l of libraryLinks){
+      if(currentLink&&String(l.id)===String(currentLink.id))continue;
+      if(l.deleted_at)continue;
+      const upd=await sb.from('platform_file_links').update({deleted_at:now}).eq('id',l.id).eq('school_id',s.school_id);
+      if(upd.error)throw upd.error;
+      linksReconciled++;
+    }
+   };
+
+   for(const f of rows){
+    if(!f||!isPrivateLibraryModule(f.module_key))continue;
+    const owner=String(f.owner_user_id||'');const uploader=String(f.uploaded_by||'');const pOwner=pathOwner(String(f.storage_path||''));
+    // المالك الفعلي هو الدليل الأقوى. uploader وstorage path يجب ألا يناقضاه إن وُجدا.
+    const evidence=[owner,uploader,pOwner].filter(Boolean);
+    if(evidence.some(x=>x!==String(s.user_id))){skippedOwnership++;continue}
+    if(!evidence.length||!evidence.includes(String(s.user_id))){skippedOwnership++;continue}
+
+    const derived=roleFromRow(f);
+    if(derived!==targetRole){
+      if(!derived&&String(f.owner_user_id||'')===String(s.user_id)){unresolved++;unresolvedIds.push(String(f.id))}
+      else skippedRole++;
+      continue;
+    }
+
+    const isCurrent=String(f.module_key)===targetModule&&String(f.owner_user_id||'')===String(s.user_id)&&String(f.ownership_scope||'')==='user'&&
+      (targetRole==='manager'||(String(f.primary_record_type||'')==='library_file'&&String(f.primary_record_id||'')===targetRole));
+    if(isCurrent){
+      alreadyCurrent++;
+      await reconcileLinks(String(f.id),String(f.module_key||''));
+      continue;
+    }
+
+    const oldMeta=f.metadata&&typeof f.metadata==='object'?f.metadata:{};
+    const newMeta={...oldMeta,libraryRole:targetRole,role:targetRole,libraryOwnerUserId:String(s.user_id),recoveredFromModule:String(f.module_key||''),recoveredAt:now,recoveryVersion:'RL29-expanded'};
+    const update:any={ownership_scope:'user',owner_user_id:s.user_id,visibility:'private',module_key:targetModule,metadata:newMeta,updated_at:now};
+    if(targetRole!=='manager'){update.primary_record_type='library_file';update.primary_record_id=targetRole}
+    const u=await sb.from('platform_files').update(update).eq('id',f.id).eq('school_id',s.school_id).select('*').single();
+    if(u.error)throw u.error;
+    await reconcileLinks(String(f.id),String(f.module_key||''));
+    recovered++;recoveredIds.push(String(f.id));
+    await event('section_library_recovered',u.data,{old_values:{module_key:f.module_key,ownership_scope:f.ownership_scope,owner_user_id:f.owner_user_id,primary_record_type:f.primary_record_type,primary_record_id:f.primary_record_id},new_values:{module_key:targetModule,ownership_scope:'user',owner_user_id:s.user_id,target_role:targetRole,recovery_version:'RL29-expanded'}});
+   }
+   return json({ok:true,version:'RL29-expanded',targetRole,targetModule,recoveryModules,recovered,alreadyCurrent,unresolved,skippedOwnership,skippedRole,linksReconciled,recoveredIds,unresolvedIds});
+  }
   if(action==='upload'){
    const form=await req.formData(), file=form.get('file') as File;if(!file)return json({error:'لم يتم اختيار ملف'},400);
    if(file.size>MAX_FILE_SIZE)return json({error:'حجم الملف يتجاوز الحد المسموح (50 ميجابايت)',code:'FILE_TOO_LARGE',requestId},413);
    const mime=file.type||'application/octet-stream';if(!allowedMimeTypes.has(mime)&&!allowedMimePrefixes.some(x=>mime.startsWith(x)))return json({error:'نوع الملف غير مسموح',code:'FILE_TYPE_NOT_ALLOWED',requestId},415);
-   const scope=String(form.get('ownershipScope')||'user')==='school'?'school':'user';
+   let scope=String(form.get('ownershipScope')||'user')==='school'?'school':'user';
    const moduleKey=safeKey(form.get('moduleKey')), folderId=String(form.get('folderId')||'')||null, recordType=String(form.get('recordType')||'')||null, recordId=String(form.get('recordId')||'')||null;
+   if(isPrivateLibraryModule(moduleKey))scope='user';
    const relationType=String(form.get('relationType')||'attachment'), replaceFileId=String(form.get('replaceFileId')||'')||null;
    let metadata:any={};try{metadata=JSON.parse(String(form.get('metadata')||'{}'))}catch(_){metadata={}}
    // شواهد الجاهزية ملفات مدرسية مشتركة، لكن المكلف يحتاج الرفع حتى لو لم يكن مديراً.
@@ -104,7 +217,7 @@ Deno.serve(async(req)=>{
    if(body.moduleKey)q=q.eq('module_key',safeKey(body.moduleKey));if(Object.prototype.hasOwnProperty.call(body,'folderId'))q=body.folderId?q.eq('folder_id',body.folderId):q.is('folder_id',null);
    if(body.ownershipScope==='user')q=q.eq('owner_user_id',s.user_id);else if(body.ownershipScope==='school')q=q.eq('ownership_scope','school');else if(!isManager)q=q.or(`ownership_scope.eq.school,owner_user_id.eq.${s.user_id}`);
    if(body.recordType)q=q.eq('primary_record_type',body.recordType);if(body.recordId)q=q.eq('primary_record_id',body.recordId);if(body.search)q=q.ilike('display_name',`%${String(body.search).slice(0,100)}%`);
-   const {data,error}=await q;if(error)throw error;return json({files:data||[]});
+   const {data,error}=await q;if(error)throw error;const visible=(data||[]).filter((x:any)=>!isPrivateSectionLibrary(x)||String(x.owner_user_id||'')===String(s.user_id));return json({files:visible});
   }
   if(action==='list-by-link'){
    let q=sb.from('platform_file_links').select('id,relation_type,is_primary,created_at,platform_files(*)').eq('school_id',s.school_id).is('deleted_at',null).eq('module_key',safeKey(body.moduleKey)).eq('record_type',body.recordType).eq('record_id',body.recordId).order('created_at',{ascending:false});
@@ -112,13 +225,13 @@ Deno.serve(async(req)=>{
   }
   if(action==='list-folders'){
    let q=sb.from('platform_folders').select('*').eq('school_id',s.school_id).eq('module_key',safeKey(body.moduleKey)).order('sort_order').order('folder_name');
-   q=body.includeTrashed?q.eq('status','trashed'):q.eq('status','active').is('deleted_at',null);if(body.ownershipScope==='user')q=q.eq('owner_user_id',s.user_id);else if(body.ownershipScope==='school')q=q.eq('ownership_scope','school');else if(!isManager)q=q.or(`ownership_scope.eq.school,owner_user_id.eq.${s.user_id}`);if(!body.all)q=body.parentFolderId?q.eq('parent_folder_id',body.parentFolderId):q.is('parent_folder_id',null);
+   q=body.includeTrashed?q.eq('status','trashed'):q.eq('status','active').is('deleted_at',null);if(isPrivateLibraryModule(body.moduleKey))q=q.eq('owner_user_id',s.user_id);else if(body.ownershipScope==='user')q=q.eq('owner_user_id',s.user_id);else if(body.ownershipScope==='school')q=q.eq('ownership_scope','school');else if(!isManager)q=q.or(`ownership_scope.eq.school,owner_user_id.eq.${s.user_id}`);if(!body.all)q=body.parentFolderId?q.eq('parent_folder_id',body.parentFolderId):q.is('parent_folder_id',null);
    const {data,error}=await q;if(error)throw error;return json({folders:data||[]});
   }
   if(action==='create-folder'){
-   const name=String(body.folderName||'').trim().slice(0,160);if(!name)return json({error:'اسم المجلد مطلوب'},400);const scope=body.ownershipScope==='school'?'school':'user';if(scope==='school'&&!isManager)return json({error:'إنشاء المجلد المدرسي يتطلب صلاحية المدير'},403);
-   if(body.parentFolderId){const p=await getFolder(body.parentFolderId);if(!p||!canManage(p)||p.module_key!==safeKey(body.moduleKey))return json({error:'المجلد الأب غير صالح'},403)}
-   const {data,error}=await sb.from('platform_folders').insert({school_id:s.school_id,ownership_scope:scope,owner_user_id:scope==='user'?s.user_id:null,module_key:safeKey(body.moduleKey),parent_folder_id:body.parentFolderId||null,folder_name:name,created_by:s.user_id}).select('*').single();if(error)throw error;await event('folder_created',null,{folder_id:data.id,module_key:data.module_key,new_values:data});return json({folder:data});
+   const name=String(body.folderName||'').trim().slice(0,160);if(!name)return json({error:'اسم المجلد مطلوب'},400);const moduleKey=safeKey(body.moduleKey);const scope=isPrivateLibraryModule(moduleKey)?'user':(body.ownershipScope==='school'?'school':'user');if(scope==='school'&&!isManager)return json({error:'إنشاء المجلد المدرسي يتطلب صلاحية المدير'},403);
+   if(body.parentFolderId){const p=await getFolder(body.parentFolderId);if(!p||!canManage(p)||p.module_key!==moduleKey)return json({error:'المجلد الأب غير صالح'},403)}
+   const {data,error}=await sb.from('platform_folders').insert({school_id:s.school_id,ownership_scope:scope,owner_user_id:scope==='user'?s.user_id:null,module_key:moduleKey,parent_folder_id:body.parentFolderId||null,folder_name:name,created_by:s.user_id}).select('*').single();if(error)throw error;await event('folder_created',null,{folder_id:data.id,module_key:data.module_key,new_values:data});return json({folder:data});
   }
   if(['rename-folder','trash-folder','restore-folder'].includes(action)){
    const folder=await getFolder(body.folderId);if(!folder)return json({error:'المجلد غير موجود'},404);if(!canManage(folder))return json({error:'لا توجد صلاحية'},403);
@@ -178,7 +291,7 @@ Deno.serve(async(req)=>{
    let q=sb.from('platform_file_events').select('*').eq('school_id',s.school_id).order('created_at',{ascending:false}).limit(Math.min(Number(body.limit)||100,500));if(body.fileId)q=q.eq('file_id',body.fileId);if(body.moduleKey)q=q.eq('module_key',safeKey(body.moduleKey));if(!isManager)q=q.eq('user_id',s.user_id);const {data,error}=await q;if(error)throw error;return json({events:data||[]});
   }
   if(action==='stats'){
-   let q=sb.from('platform_files').select('file_size,status,ownership_scope,module_key').eq('school_id',s.school_id).neq('status','deleted');if(!isManager)q=q.eq('owner_user_id',s.user_id);if(body.moduleKey)q=q.eq('module_key',safeKey(body.moduleKey));const {data,error}=await q;if(error)throw error;const rows=data||[];return json({files:rows.length,bytes:rows.reduce((a:any,x:any)=>a+Number(x.file_size||0),0),active:rows.filter((x:any)=>x.status==='active').length,trashed:rows.filter((x:any)=>x.status==='trashed').length});
+   let q=sb.from('platform_files').select('file_size,status,ownership_scope,module_key,owner_user_id').eq('school_id',s.school_id).neq('status','deleted');if(isPrivateLibraryModule(body.moduleKey)||!isManager)q=q.eq('owner_user_id',s.user_id);if(body.moduleKey)q=q.eq('module_key',safeKey(body.moduleKey));const {data,error}=await q;if(error)throw error;const rows=(data||[]).filter((x:any)=>!isPrivateSectionLibrary(x)||String(x.owner_user_id||'')===String(s.user_id));return json({files:rows.length,bytes:rows.reduce((a:any,x:any)=>a+Number(x.file_size||0),0),active:rows.filter((x:any)=>x.status==='active').length,trashed:rows.filter((x:any)=>x.status==='trashed').length});
   }
   return json({error:'عملية غير مدعومة'},400);
  }catch(e){console.error('[platform-files]',requestId,'fatal',e);return json({error:e instanceof Error?e.message:String(e),code:'FILES_FATAL_ERROR',requestId},500)}

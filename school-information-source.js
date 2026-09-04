@@ -1,16 +1,16 @@
 (function(){
 'use strict';
-if(window.SchoolInformationSource&&String(window.SchoolInformationSource.VERSION||'')==='10.0.0-live-commit-broadcast')return;
-const VERSION='10.0.0-live-commit-broadcast';
+if(window.SchoolInformationSource&&String(window.SchoolInformationSource.VERSION||'')==='11.0.0-RL21-authoritative-structure-only')return;
+const VERSION='11.0.0-RL21-authoritative-structure-only';
 const SUPABASE_URL=(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'');
 const DEFAULT_SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
 const API_KEY=localStorage.getItem('smartSchoolSupabaseAnonKey')||DEFAULT_SUPABASE_KEY;
 const safe=v=>String(v==null?'':v).trim();
 const lower=v=>safe(v).toLowerCase();
 const state={school:null,students:[],staff:[],updatedAt:'',schoolId:'',accessMode:'',academicYear:'1448',loading:null,cacheHydrated:false,revalidating:null};
-const CACHE_DB='smart_school_information_cache_v1';
+const CACHE_DB='smart_school_information_cache_v2_rl21';
 const CACHE_STORE='snapshots';
-const CACHE_SCHEMA_VERSION=1;
+const CACHE_SCHEMA_VERSION=2;
 const CACHE_MAX_AGE_MS=5*60*1000;
 const UPDATE_CHANNEL='school-information-updates-v2';
 const UPDATE_KEY='school_information_global_update_v2';

@@ -55,9 +55,40 @@ Deno.serve(async(req)=>{
       const q=await sb.from('schools').select('id,school_name,school_code,status').eq('id',schoolId).limit(1).maybeSingle();
       if(q.error) throw q.error;if(!q.data) throw new Error('SCHOOL_NOT_FOUND');return q.data;
     };
+    const currentStructure=async()=>{
+      const key='academic_structure:'+year;
+      const q=await sb.from('platform_module_state').select('payload').eq('school_id',schoolId).eq('owner_key','school').eq('module_key','school_information').eq('state_key',key).is('deleted_at',null).limit(1).maybeSingle();
+      if(q.error)throw q.error;
+      const payload:any=q.data?.payload||null;
+      return payload&&Array.isArray(payload.stages)?payload:null;
+    };
     const listStudents=async()=>{
-      const q=await sb.from('students').select('*').eq('school_id',schoolId).eq('academic_year',year).neq('student_status','محذوف').order('stage',{ascending:true}).order('grade',{ascending:true}).order('track_name',{ascending:true}).order('section_name',{ascending:true}).order('student_name',{ascending:true}).limit(10000);
-      if(q.error) throw q.error;return q.data||[];
+      // RL21: الهيكل السحابي الحالي هو المصدر الوحيد المصرح له بإدخال طالب إلى التشغيل.
+      // لا نجلب سجلات العام القديمة العامة ثم نفلترها؛ نستعلم فقط عن الصفوف/الفصول المعرفة في الهيكل الحالي.
+      const structure:any=await currentStructure();
+      if(!structure)return [];
+      const byId=new Map<string,any>();
+      for(const st of structure.stages||[]){
+        const stage=text(st?.name);if(!stage)continue;
+        for(const gr of (Array.isArray(st?.grades)?st.grades:[])){
+          const grade=text(gr?.name);if(!grade)continue;
+          const sections=(Array.isArray(gr?.sections)?gr.sections:[]).map((x:any)=>text(x?.name)).filter(Boolean);
+          if(!sections.length)continue;
+          const tracks=(Array.isArray(gr?.tracks)?gr.tracks:[]).map((x:any)=>text(x)).filter(Boolean);
+          for(const section of sections){
+            if(stage==='ثانوية'&&tracks.length){
+              for(const track of tracks){
+                const q=await sb.from('students').select('*').eq('school_id',schoolId).eq('academic_year',year).neq('student_status','محذوف').eq('stage',stage).eq('grade',grade).eq('track_name',track).eq('section_name',section).order('student_name',{ascending:true}).limit(5000);
+                if(q.error)throw q.error;for(const r of q.data||[])byId.set(String(r.id),r);
+              }
+            }else{
+              const q=await sb.from('students').select('*').eq('school_id',schoolId).eq('academic_year',year).neq('student_status','محذوف').eq('stage',stage).eq('grade',grade).eq('section_name',section).order('student_name',{ascending:true}).limit(5000);
+              if(q.error)throw q.error;for(const r of q.data||[])byId.set(String(r.id),r);
+            }
+          }
+        }
+      }
+      return [...byId.values()].sort((a:any,b:any)=>text(a.stage).localeCompare(text(b.stage),'ar')||text(a.grade).localeCompare(text(b.grade),'ar')||text(a.track_name).localeCompare(text(b.track_name),'ar')||text(a.section_name).localeCompare(text(b.section_name),'ar')||text(a.student_name).localeCompare(text(b.student_name),'ar'));
     };
     const listStaff=async()=>{
       const mq=await sb.from('school_members').select('*').eq('school_id',schoolId).neq('status','deleted').limit(5000);if(mq.error)throw mq.error;
@@ -67,7 +98,7 @@ Deno.serve(async(req)=>{
       return members.map((m:any)=>{const u:any=by.get(String(m.user_id))||{};return {...u,id:m.user_id||u.id,user_id:m.user_id||u.id,email:m.email||u.email||'',school_id:schoolId,role:m.role||u.role||'',role_label:m.role_label||u.role_label||'',status:m.status||u.status||'active'};});
     };
 
-    if(action==='health') return json({ok:true,service:'school-information',version:'2.0.0-dual-access',schoolId,userId,role,accessMode,requestId});
+    if(action==='health') return json({ok:true,service:'school-information',version:'2.1.0-RL21-authoritative-structure-only',schoolId,userId,role,accessMode,requestId});
     if(action==='bootstrap') return json({school:await schoolQ(),students:await listStudents(),staff:await listStaff(),schoolId,accessMode,requestId});
     if(action==='school') return json({school:await schoolQ(),schoolId,accessMode,requestId});
     if(action==='students-list') return json({students:await listStudents(),schoolId,accessMode,requestId});

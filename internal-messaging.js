@@ -3,22 +3,22 @@
 const cfg={url:()=> (localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,''),key:()=>localStorage.getItem('smartSchoolSupabaseAnonKey')||'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaWpoZ3ZidHJ2bW1sY3NzZ3hodCIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzc4Njk2ODM1LCJleHAiOjIwOTQyNzI4MzV9.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM'};
 const token=()=>window.PlatformCloudSession?.token?.()||sessionStorage.getItem('platform_tab_session_token_v1')||localStorage.getItem('platform_file_session_token')||'';const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function ensureSession(){if(window.PlatformCloudSession?.ensure){await window.PlatformCloudSession.ensure()}if(!token())throw new Error('الجلسة السحابية غير متاحة')}
-async function call(action,body){await ensureSession();const send=async()=>{const r=await fetch(`${cfg.url()}/functions/v1/platform-messages?action=${encodeURIComponent(action)}`,{method:body!==undefined?'POST':'GET',headers:{apikey:cfg.key(),'content-type':'application/json','x-platform-session':token()},body:body!==undefined?JSON.stringify(body):undefined});const j=await r.json().catch(()=>({}));return {r,j}};let res=await send();if(res.r.status===401&&window.PlatformCloudSession?.recover){await window.PlatformCloudSession.recover();res=await send()}if(!res.r.ok)throw new Error(res.j.error||'تعذر الاتصال بالمراسلات');return res.j}
+const UNREAD_CHANNEL='school-platform-unread-v1',UNREAD_PULSE_KEY='school_platform_unread_pulse_v1';
+let unreadChannel=null,refreshInFlight=null;
+try{if('BroadcastChannel' in window)unreadChannel=new BroadcastChannel(UNREAD_CHANNEL)}catch(_){}
+function emitUnreadEvent(reason){const payload={type:'unread-changed',reason:String(reason||'update'),at:Date.now()};try{unreadChannel?.postMessage(payload)}catch(_){}try{localStorage.setItem(UNREAD_PULSE_KEY,JSON.stringify(payload))}catch(_){}}
+async function call(action,body){await ensureSession();const send=async()=>{const r=await fetch(`${cfg.url()}/functions/v1/platform-messages?action=${encodeURIComponent(action)}`,{method:body!==undefined?'POST':'GET',headers:{apikey:cfg.key(),'content-type':'application/json','x-platform-session':token()},body:body!==undefined?JSON.stringify(body):undefined});const j=await r.json().catch(()=>({}));return {r,j}};let res=await send();if(res.r.status===401&&window.PlatformCloudSession?.recover){await window.PlatformCloudSession.recover();res=await send()}if(!res.r.ok)throw new Error(res.j.error||'تعذر الاتصال بالمراسلات');const changed=new Set(['send','read','mark-unread','archive-message','unarchive-message','acknowledge','action-status']);if(changed.has(String(action||'')))emitUnreadEvent(action);return res.j}
 async function taskCall(action,body){await ensureSession();const send=async()=>{const r=await fetch(`${cfg.url()}/functions/v1/platform-tasks?action=${encodeURIComponent(action)}`,{method:'POST',headers:{apikey:cfg.key(),'content-type':'application/json','x-platform-session':token()},body:JSON.stringify(body||{})});const j=await r.json().catch(()=>({}));return {r,j}};let res=await send();if(res.r.status===401&&window.PlatformCloudSession?.recover){await window.PlatformCloudSession.recover();res=await send()}if(!res.r.ok)throw new Error(res.j.error||'تعذر إنشاء التكليف');return res.j}
 function isSystemAdmin(){const q=new URLSearchParams(location.search);if(q.get('systemAdmin')==='1')return true;try{return sessionStorage.getItem('system_admin_session')==='1'||sessionStorage.getItem('systemAdmin')==='1'||JSON.parse(sessionStorage.getItem('systemAdminSession')||'null')?.active===true}catch(_){return false}}
 function addStyles(){if(document.getElementById('im-style'))return;const st=document.createElement('style');st.id='im-style';st.textContent=`.im-fab{position:fixed;top:14px;left:78px;z-index:9000;width:42px;height:42px;border:1px solid #d5e8e6;border-radius:14px;background:#fff;color:#087f78;display:flex;align-items:center;justify-content:center;box-shadow:0 5px 18px #0b4b4518;cursor:pointer;font-size:20px}.im-badge{position:absolute;top:-6px;right:-6px;min-width:19px;height:19px;padding:0 4px;border-radius:10px;background:#d94a4a;color:#fff;font:700 11px/19px Tahoma;text-align:center;display:none}.im-panel{position:fixed;top:64px;left:18px;width:min(400px,calc(100vw - 36px));max-height:74vh;background:#fff;border:1px solid #d9e5e5;border-radius:20px;box-shadow:0 18px 50px #173a3a30;z-index:9001;display:none;direction:rtl;overflow:hidden;font-family:Tajawal,Arial,sans-serif}.im-head{padding:15px 17px;border-bottom:1px solid #edf2f2;display:flex;justify-content:space-between;align-items:center}.im-head b{color:#087f78}.im-list{max-height:48vh;overflow:auto}.im-item{padding:12px 16px;border-bottom:1px solid #f0f3f3;cursor:pointer}.im-item:hover{background:#f5fbfa}.im-item.unread{background:#effaf8}.im-sub{font-weight:700;color:#263b3a}.im-meta{font-size:12px;color:#7b8b8a;margin-top:4px}.im-actions{padding:12px;display:flex;flex-wrap:wrap;gap:8px}.im-actions button{border:0;border-radius:10px;padding:9px 12px;cursor:pointer}.im-open{background:#087f78;color:white}.im-new,.im-share{background:#e8f7f5;color:#087f78}
 .im-toolbar-btn{position:relative;display:inline-flex!important;align-items:center;gap:7px;white-space:nowrap}
 .im-toolbar-badge{position:absolute;top:-7px;left:-7px;min-width:18px;height:18px;padding:0 4px;border-radius:999px;background:#d94a4a;color:#fff;font:700 10px/18px Tahoma;text-align:center;display:none;box-shadow:0 1px 4px #0002}
 .im-admin-toolbar-btn{border:1px solid #cfe4d9;background:#fff;color:#0f6b4a;border-radius:13px;padding:10px 16px;font-family:inherit;font-weight:900;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:7px;position:relative}`;document.head.appendChild(st)}
-function setBadge(el,count){if(!el)return;const n=Math.max(0,Number(count)||0);el.textContent=String(n);el.style.display=n?'flex':'none';el.setAttribute('aria-label',n?'لديك '+n+' تنبيه غير مقروء':'لا توجد تنبيهات غير مقروءة')}
-function updateNotificationBadges(messages){
- const rows=Array.isArray(messages)?messages:[];
- const unreadNotices=rows.filter(m=>String(m.message_type||'')==='notice'&&!m.read_at).length;
- document.querySelectorAll('#ssInboxBadge,.ss-notification-badge,[data-notification-badge]').forEach(b=>setBadge(b,unreadNotices));
- const btn=document.getElementById('ssInbox');if(btn){btn.dataset.cloudNotificationCount=String(unreadNotices);btn.title=unreadNotices?'تلقي التنبيهات — '+unreadNotices+' جديد':'تلقي التنبيهات'}
- return unreadNotices;
-}
-async function refresh(){try{const d=await call('inbox',{}),rows=d.messages||[],badges=[...document.querySelectorAll('.im-toolbar-badge')];badges.forEach(b=>setBadge(b,d.unread||0));updateNotificationBadges(rows);render(rows)}catch(e){console.warn('[InternalMessaging]',e.message)}}
+function setBadge(el,count,label){if(!el)return;const n=Math.max(0,Number(count)||0);el.textContent=String(n);el.style.display=n?'flex':'none';el.setAttribute('aria-label',n?`لديك ${n} ${label||'عنصر'} غير مقروء`:`لا توجد ${label||'عناصر'} غير مقروءة`)}
+function unreadBreakdown(messages){const rows=Array.isArray(messages)?messages:[];const unread=rows.filter(m=>!m.read_at);return {notices:unread.filter(m=>String(m.message_type||'')==='notice').length,messages:unread.filter(m=>String(m.message_type||'')!=='notice').length,total:unread.length}}
+function updateNotificationBadges(messages){const c=unreadBreakdown(messages),n=c.notices;document.querySelectorAll('#ssInboxBadge,.ss-notification-badge,[data-notification-badge]').forEach(b=>setBadge(b,n,'تنبيهات'));const btn=document.getElementById('ssInbox');if(btn){btn.dataset.cloudNotificationCount=String(n);btn.title=n?'تلقي التنبيهات — '+n+' جديد':'تلقي التنبيهات'}return n}
+function updateMessageBadges(messages){const c=unreadBreakdown(messages),n=c.messages;document.querySelectorAll('.im-toolbar-badge,[data-message-badge]').forEach(b=>setBadge(b,n,'رسائل'));document.querySelectorAll('.im-static-messaging-btn,.im-toolbar-btn,[data-internal-messages-link]').forEach(btn=>{btn.dataset.cloudMessageCount=String(n);btn.title=n?'المراسلات الداخلية — '+n+' غير مقروءة':'فتح مركز المراسلات الداخلية'});return n}
+async function refresh(){if(refreshInFlight)return refreshInFlight;refreshInFlight=(async()=>{try{const d=await call('inbox',{}),rows=d.messages||[];updateMessageBadges(rows);updateNotificationBadges(rows);render(rows);return {ok:true,rows}}catch(e){console.warn('[InternalMessaging unread badges]',e.message);return {ok:false,error:e}}finally{refreshInFlight=null}})();return refreshInFlight}
 function currentRole(){return String(localStorage.getItem('platform_file_session_role')||localStorage.getItem('currentRole')||'').trim().toLowerCase()}
 function canSendSchoolAlerts(){return /^(manager|school_manager|principal|agent|deputy|deputy_admin|deputy_academic|deputy_students)$/.test(currentRole())}
 function validHttpUrl(v){return !v||/^https?:\/\//i.test(String(v).trim())}
@@ -81,8 +81,12 @@ function installNotificationBridge(){
    sendLegacyAlertThroughCloud().catch(e=>alert(e?.message||'تعذر إرسال التنبيه')).finally(()=>{send.dataset.cloudSending='0';send.disabled=false;send.textContent=old||'إرسال التنبيه'});
   }
  },true);
+ const onUnreadChanged=()=>{if(!document.hidden)refresh()};
+ try{if(unreadChannel)unreadChannel.addEventListener('message',e=>{if(e?.data?.type==='unread-changed')onUnreadChanged()})}catch(_){}
+ window.addEventListener('storage',e=>{if(e.key===UNREAD_PULSE_KEY)onUnreadChanged()});
  window.addEventListener('focus',refresh);document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh()});
 }
+
 
 function render(msgs){const list=document.querySelector('.im-list');if(!list)return;list.innerHTML=msgs.length?msgs.slice(0,8).map(m=>`<div class="im-item ${m.read_at?'':'unread'}" data-id="${esc(m.id)}"><div class="im-sub">${m.pinned_at?'📌 ':''}${esc(m.subject)}</div><div class="im-meta">من: ${esc(m.sender_name||'مستخدم')} · ${new Date(m.created_at).toLocaleString('ar-SA')}</div></div>`).join(''):'<div style="padding:28px;text-align:center;color:#84908f">لا توجد رسائل جديدة</div>';list.querySelectorAll('.im-item').forEach(x=>x.onclick=()=>location.href='internal_messages.html?message='+encodeURIComponent(x.dataset.id))}
 function roleHome(){
@@ -104,7 +108,8 @@ function mount(){
    btn.style.setProperty('opacity','1','important');
  });
  refresh();
- setInterval(refresh,60000);
+ [350,1500,5000].forEach(ms=>setTimeout(refresh,ms));
+ setInterval(refresh,20000);
 }
 window.InternalMessaging={call,taskCall,refresh,mount,currentLink,composeUrl,centerUrl,share:(o)=>location.href=composeUrl(o||{})};if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount);else mount();
 })();

@@ -120,7 +120,7 @@ button{border:0;border-radius:9px;padding:10px 13px;font:700 12px 'Alyamama';cur
 <script src="cloud-file-engine.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js?v=20260830"></script>
 <script src="internal-messaging.js?v=20260829-decisions-send-v2"></script>
-<meta name="decisions-assignments-version" content="2026.09.04-RL19-save-pdf-message-atomic">
+<meta name="decisions-assignments-version" content="2026.09.04-RL22-save-first-lazy-pdf-engine">
 <script src="platform-page-navigation.js?v=20260830-nav2" defer></script>
 </head>
 <body>
@@ -873,10 +873,42 @@ async function resolveSavedAssignmentRecipient(record){
  if(matches.length>1)throw new Error('يوجد أكثر من حساب مطابق لاسم المكلف؛ اختر المكلف من القائمة ثم أعد الإرسال لتثبيت الحساب الصحيح');
  throw new Error('لم يتم العثور على حساب مراسلات نشط مطابق للمكلف داخل المدرسة');
 }
+async function ensureDecisionPdfEngines(){
+ const loadScript=(src,test)=>new Promise((resolve,reject)=>{
+   try{if(test()){resolve(true);return}}catch(_){}
+   const old=[...document.scripts].find(x=>String(x.src||'')===src);
+   if(old){
+     const started=Date.now();
+     const timer=setInterval(()=>{try{if(test()){clearInterval(timer);resolve(true);return}}catch(_){}if(Date.now()-started>12000){clearInterval(timer);reject(new Error('timeout'))}},120);
+     return;
+   }
+   const sc=document.createElement('script');sc.src=src;sc.async=true;sc.crossOrigin='anonymous';
+   sc.onload=()=>{try{test()?resolve(true):reject(new Error('engine_missing'))}catch(e){reject(e)}};
+   sc.onerror=()=>reject(new Error('load_failed'));document.head.appendChild(sc);
+ });
+ const trySources=async(sources,test)=>{
+   try{if(test())return true}catch(_){}
+   let last=null;for(const src of sources){try{await loadScript(src,test);if(test())return true}catch(e){last=e}}
+   throw last||new Error('تعذر تحميل محرك PDF');
+ };
+ await trySources([
+   'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
+   'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js',
+   'https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js'
+ ],()=>typeof window.html2canvas==='function');
+ await trySources([
+   'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+   'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',
+   'https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js'
+ ],()=>!!((window.jspdf&&window.jspdf.jsPDF)||window.jsPDF));
+ return {html2canvas:window.html2canvas,jsPDF:(window.jspdf&&window.jspdf.jsPDF)||window.jsPDF};
+}
 async function buildDecisionPdfFile(record){
- if(!window.html2canvas)throw new Error('تعذر تحميل محرك رسم القرار. أعد تحميل الصفحة ثم حاول مرة أخرى.');
- const JsPDFCtor=(window.jspdf&&window.jspdf.jsPDF)||window.jsPDF;
- if(!JsPDFCtor)throw new Error('تعذر تحميل محرك إنشاء PDF. أعد تحميل الصفحة ثم حاول مرة أخرى.');
+ let engines;
+ try{engines=await ensureDecisionPdfEngines()}catch(e){
+   throw new Error('تم حفظ قرار التكليف سحابيًا، لكن تعذر تحميل محرك إنشاء PDF للإرسال. تحقق من الاتصال بالإنترنت ثم أعد الضغط على «إرسال القرار للمكلف»؛ لن يتم إنشاء قرار جديد أو فقد القرار المحفوظ.');
+ }
+ const JsPDFCtor=engines.jsPDF;
  const official=String(record?.officialHtml||'').trim();
  if(!official)throw new Error('النسخة الرسمية للقرار غير متاحة. افتح القرار واحفظه مجددًا أولًا.');
  const parsed=new DOMParser().parseFromString(official,'text/html');
@@ -916,7 +948,7 @@ async function buildDecisionPdfFile(record){
    for(let i=0;i<renderPages.length;i++){
      const page=renderPages[i],rect=page.getBoundingClientRect();
      if(rect.width<500||rect.height<700)throw new Error('تعذر تثبيت أبعاد صفحة القرار قبل الرسم.');
-     const canvas=await window.html2canvas(page,{scale:2,useCORS:true,allowTaint:false,backgroundColor:'#ffffff',logging:false,scrollX:0,scrollY:0,width:Math.ceil(rect.width),height:Math.ceil(rect.height),windowWidth:Math.max(document.documentElement.clientWidth,Math.ceil(rect.width)),windowHeight:Math.max(document.documentElement.clientHeight,Math.ceil(rect.height))});
+     const canvas=await engines.html2canvas(page,{scale:2,useCORS:true,allowTaint:false,backgroundColor:'#ffffff',logging:false,scrollX:0,scrollY:0,width:Math.ceil(rect.width),height:Math.ceil(rect.height),windowWidth:Math.max(document.documentElement.clientWidth,Math.ceil(rect.width)),windowHeight:Math.max(document.documentElement.clientHeight,Math.ceil(rect.height))});
      if(!canvas||canvas.width<500||canvas.height<700)throw new Error('تعذر رسم صفحة القرار رقم '+(i+1)+' قبل إنشاء PDF.');
      const ctx=canvas.getContext('2d',{willReadFrequently:true});
      if(ctx){const w=canvas.width,h=canvas.height;let nonWhite=0,samples=0;const stepX=Math.max(1,Math.floor(w/90)),stepY=Math.max(1,Math.floor(h/130));for(let y=0;y<h;y+=stepY){for(let x=0;x<w;x+=stepX){const px=ctx.getImageData(x,y,1,1).data;samples++;if(px[3]>0&&(px[0]<247||px[1]<247||px[2]<247))nonWhite++;}}if(samples&&nonWhite/samples<0.0015)throw new Error('صفحة القرار رقم '+(i+1)+' ظهرت فارغة أثناء الرسم؛ تم إيقاف الإرسال.');}

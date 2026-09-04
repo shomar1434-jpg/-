@@ -1,0 +1,31 @@
+RL22 — إصلاح إرسال قرار التكليف عند عدم تحميل محرك PDF
+
+المشكلة المثبتة من رسالة المتصفح:
+- زر الإرسال نجح في الوصول إلى مرحلة إنشاء PDF لكنه توقف لأن window.html2canvas لم يكن محملًا.
+- RL19 كان يفترض أن html2pdf.bundle يوفر html2canvas وjsPDF كمتغيرات عامة دائمًا، وهذا الافتراض غير مضمون.
+
+التصحيح:
+1) يبقى التسلسل كما هو: حفظ القرار سحابيًا أولًا ثم التحقق المباشر عبر manager-decisions.get.
+2) قبل إنشاء PDF يتم التأكد من وجود html2canvas وjsPDF.
+3) إذا لم يكونا موجودين، يحاول النظام تحميلهما ديناميكيًا من ثلاثة مصادر مستقلة:
+   cdnjs ثم jsDelivr ثم unpkg.
+4) لا يعود الزر للفشل فورًا لمجرد عدم وجود window.html2canvas لحظة الضغط.
+5) إذا تعذر تحميل المكتبات من جميع المصادر:
+   - القرار يبقى محفوظًا سحابيًا بنفس Logical Decision ID.
+   - لا تنشأ رسالة ناقصة.
+   - إعادة الضغط على زر الإرسال لا تنشئ قرارًا جديدًا؛ تستخدم السجل المحفوظ نفسه.
+6) بعد توفر المحركات تستمر الدورة:
+   PDF من officialHtml → رفع PDF → التحقق من %PDF → إرسال المراسلات → التحقق من المرفق → تحديث حالة الإرسال.
+
+Regression Lock:
+- تعديل decisions_assignments.html فقط.
+- لا تعديل manager.html.
+- لا تعديل manager-decisions أو platform-messages أو قاعدة البيانات.
+- لا تغيير في حذف القرارات أو الأرشيف أو بيانات المدرسة الرسمية.
+- لا تغيير في school_id أو recipient resolution.
+
+QA:
+- JavaScript syntax: PASS.
+- saveData(forSend=true) ما زال يسبق buildDecisionPdfFile.
+- verifyCloudDecisionRecord يستخدم manager-decisions.get مباشرة.
+- إعادة المحاولة بعد حفظ ناجح تستخدم currentArchiveRecordId نفسه.

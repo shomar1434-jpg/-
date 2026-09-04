@@ -1,35 +1,31 @@
-RL9 — القرارات والتكليفات / دورة الحفظ والأرشيف
+RL11 — الانضباط الوظيفي: مراجعة المسار من البداية للنهاية
 
-الملفات المعدلة فقط:
-- decisions_assignments.html
-- manager.html
+سبب العطل الجذري:
+- الواجهة أزالت نموذج staffModal/staffForm اليدوي، لكن JavaScript بقي ينفذ:
+  document.getElementById('staffForm').onsubmit = ...
+- staffForm غير موجود في DOM، فتحدث TypeError أثناء تحميل الصفحة.
+- الخطأ يوقف بقية تهيئة القسم قبل ربط حدث submit الخاص بـ recordForm وقبل boot cloud/renderAll.
+- نتيجة ذلك: زر حفظ الحركة يعود لسلوك form الافتراضي ويعيد تحميل الصفحة، ولا تعمل دورة التحميل/الرسم/الإحصاءات كما ينبغي.
 
-قفل عدم الرجوع:
-- لم يتم تعديل teacher.html
-- لم يتم تعديل school_information_center.html
-- لم يتم تعديل staff_discipline.html
-- لم يتم تعديل سجلات المدير الأساسية أو أرشيفها العام خارج دمج مجلد القرارات.
-- لم يتم تعديل منطق المدارس الأخرى أو school_id.
+التصحيح:
+1) حماية جميع مراجع نموذج المنسوبين القديم وعدم السماح لها بإيقاف تهيئة الصفحة.
+2) ربط recordForm بحدث submit آمن صريح + preventDefault + stopPropagation.
+3) إضافة type=submit وحماية form/submit من platform-page-navigation.
+4) تحديث المنسوبين من School Information Center في كل boot بعد تحميل الحالة السحابية، وليس فقط عندما تكون القائمة فارغة.
+5) لا تظهر رسالة نجاح حفظ المنسوبين إلا بعد تأكيد platform-discipline save؛ وإذا فشل السحاب يبقى المحلي مع تنبيه واضح.
+6) persistLocal لا يسمح لخطأ localStorage quota بإيقاف الحفظ السحابي؛ يستخدم snapshot مخففًا عند الحاجة.
+7) بعد حفظ الحركة: upsert_movement ثم save state ثم تحقق من وجود الحركة في state ثم تحديث السجل + لوحة اليوم + الإحصائية.
+8) نفس التصحيح طبق على staff_discipline.html و wakil_staff_discipline.html لأنهما مرتبطان بنفس دورة الانضباط.
 
-الإصلاحات:
-1) القرار الجديد لا يبقى تلقائياً في edit mode بعد نجاح الحفظ؛ لذلك القرار التالي يحصل على recordId جديد.
-2) التعديل الصريح لسجل موجود فقط هو الذي يستخدم replaceFileId.
-3) إضافة logicalDecisionId / archiveEntityId / recordLocalId موحد لكل قرار جديد.
-4) Manager يقرأ metadata.recordLocalId كمعرف منطقي مصحح للسجلات التاريخية.
-5) نجاح Cloud list يصبح المصدر النهائي بعد مهلة فهرسة قصيرة فقط للقرار المحفوظ للتو.
-6) حذف القرار يكتب Tombstone محلياً 90 يوماً لمنع إعادته من Cache قديم.
-7) فشل السحابة لا يمس الكاش المحلي.
-8) عزل school_id يبقى من CloudFileEngine ownershipScope=school والجلسة الحالية.
+Regression Lock:
+- لا تعديل على manager.html أو teacher.html أو school_information_center.html أو decisions_assignments.html.
+- لا تغيير في school_id أو مفاتيح العزل الحالية.
+- لا حذف لبيانات مدارس مستقلة أو حركات قديمة.
+- لا حذف للسجلات المحلية عند فشل السحابة.
 
 QA:
-- decisions_assignments.html: JavaScript syntax = PASS (0 errors)
-- manager.html: JavaScript syntax = PASS (0 errors)
-- duplicate active groups with different assignee/title after cloud repair = 0
-
-إصلاح سحابي منفذ على المشروع لجميع المدارس التي لديها manager_decisions_assignments:
-- قبل الإصلاح: active 249 / archived 175 / trashed 16
-- تم استعادة 146 نسخة archived كانت في الحقيقة قرارات مختلفة طُمست بسبب إعادة استخدام recordId.
-- تم فصل 55 سجل active متصادماً إلى معرفات مستقلة.
-- بعد الإصلاح: active 395 / archived 29 / trashed 16
-- لم يتم استعادة أي سجل trashed.
-- كل سجل تم إصلاحه يحمل metadata قابلة للتراجع: preRepairStatus, preRepairPrimaryRecordId, recoveredFromRecordLocalId, recoveryReason, recoveredAt.
+- JavaScript syntax errors: 0 في الملفين.
+- Direct DOM references to missing IDs: 0 بعد التصحيح.
+- recordForm محمي من default navigation.
+- staffForm legacy أصبح اختياريًا ولا يوقف التهيئة.
+- no redirect from movement save path.

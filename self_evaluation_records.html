@@ -2502,6 +2502,8 @@ async function selfEvalPdfUploadExact(htmlContent,title,rowId,folderId,folderNam
     const target=d.querySelector(&#x27;#self-eval-pdf-root&#x27;)||d.querySelector(&#x27;.recordShell,.officialRecord,.page-container,.page&#x27;)||d.body;
     const rect=target.getBoundingClientRect();
     const textLen=String(target.innerText||target.textContent||&#x27;&#x27;).replace(/\s+/g,&#x27;&#x27;).length;
+    const liveControls=target.querySelectorAll(&#x27;input,textarea,select&#x27;).length;
+    if(liveControls)throw new Error(&#x27;تم منع الأرشفة لأن نسخة الطباعة ما زالت تحتوي حقول إدخال تفاعلية&#x27;);
     if(rect.width&lt;100||rect.height&lt;100||textLen&lt;15)throw new Error(&#x27;محتوى النموذج غير ظاهر فعليًا قبل إنشاء PDF&#x27;);
 
     const canvas=await w.html2canvas(target,{
@@ -2563,6 +2565,7 @@ const SELF_EVAL_ARCHIVE_V5_PREFIX=&#x27;self_eval_archive_record_v5_&#x27;;
 const selfEvalV5ParseArray=v=&gt;{try{const x=typeof v===&#x27;string&#x27;?JSON.parse(v):v;return Array.isArray(x)?x:[]}catch(_){return []}};
 const selfEvalV5ParseObject=v=&gt;{try{const x=typeof v===&#x27;string&#x27;?JSON.parse(v):v;return x&amp;&amp;typeof x===&#x27;object&#x27;&amp;&amp;!Array.isArray(x)?x:null}catch(_){return null}};
 const selfEvalV5RecordKey=id=&gt;SELF_EVAL_ARCHIVE_V5_PREFIX+String(id||&#x27;&#x27;).replace(/[^a-zA-Z0-9_-]/g,&#x27;_&#x27;).slice(0,120);
+let selfEvalV5WriteQueue=Promise.resolve();
 async function selfEvalV5StateEngine(){
   const session=(window.parent&amp;&amp;window.parent!==window&amp;&amp;window.parent.PlatformCloudSession)||window.PlatformCloudSession;
   if(session&amp;&amp;typeof session.ensure===&#x27;function&#x27;)await session.ensure();
@@ -2580,7 +2583,7 @@ async function selfEvalV5Pull(keys){
 function selfEvalV5Meta(row){
   return {id:String(row.id),title:String(row.title||row.folderName||&#x27;سجل التقويم الذاتي&#x27;),type:String(row.type||&#x27;&#x27;),folderId:String(row.folderId||&#x27;&#x27;),folderName:String(row.folderName||&#x27;&#x27;),recordName:String(row.recordName||row.folderName||&#x27;&#x27;),source:String(row.source||&#x27;قسم التقويم الذاتي&#x27;),savedAt:String(row.savedAt||&#x27;&#x27;),updatedAt:String(row.updatedAt||&#x27;&#x27;),schoolName:String(row.schoolName||&#x27;&#x27;),academicYear:String(row.academicYear||&#x27;&#x27;),archivePdfFileId:String(row.archivePdfFileId||&#x27;&#x27;),archiveFormat:&#x27;self-evaluation-v5-pdf-cloud&#x27;,stateKey:selfEvalV5RecordKey(row.id),storageEngine:&#x27;SelfEvaluationArchiveV5&#x27;,archiveType:&#x27;selfEvaluationPdf&#x27;,readOnly:false};
 }
-async function selfEvalV5Upsert(row){
+async function selfEvalV5UpsertInner(row){
   const id=String(row?.id||&#x27;&#x27;);if(!id||!row?.archivePdfFileId||!row?.folderId)throw new Error(&#x27;بيانات سجل التقويم الذاتي V5 غير مكتملة&#x27;);
   const key=selfEvalV5RecordKey(id),vals=await selfEvalV5Pull([SELF_EVAL_ARCHIVE_V5_INDEX]),idx=selfEvalV5ParseArray(vals[SELF_EVAL_ARCHIVE_V5_INDEX]);
   const full={...row,stateKey:key,storageEngine:&#x27;SelfEvaluationArchiveV5&#x27;,archiveFormat:&#x27;self-evaluation-v5-pdf-cloud&#x27;};
@@ -2596,7 +2599,14 @@ async function selfEvalV5Upsert(row){
     if(record&amp;&amp;String(record.archivePdfFileId||&#x27;&#x27;)===String(full.archivePdfFileId)&amp;&amp;im&amp;&amp;String(im.archivePdfFileId||&#x27;&#x27;)===String(full.archivePdfFileId)&amp;&amp;String(im.folderId||&#x27;&#x27;)===String(full.folderId)){verify={record,index};break}
   }
   if(!verify)throw new Error(&#x27;فشل التحقق السحابي النهائي من سجل التقويم الذاتي V5&#x27;);
+  const vr=verify.record,vi=verify.index.find(x=&gt;String(x?.id)===id);
+  if(String(vr.type||&#x27;&#x27;)!==String(full.type||&#x27;&#x27;)||String(vr.folderId||&#x27;&#x27;)!==String(full.folderId||&#x27;&#x27;)||String(vr.title||&#x27;&#x27;)!==String(full.title||&#x27;&#x27;)||!vi||String(vi.type||&#x27;&#x27;)!==String(full.type||&#x27;&#x27;)||String(vi.folderId||&#x27;&#x27;)!==String(full.folderId||&#x27;&#x27;))throw new Error(&#x27;هوية سجل التقويم الذاتي لا تطابق المجلد أو النوع بعد إعادة القراءة&#x27;);
   return full;
+}
+function selfEvalV5Upsert(row){
+  const run=()=&gt;selfEvalV5UpsertInner(row);
+  selfEvalV5WriteQueue=selfEvalV5WriteQueue.then(run,run);
+  return selfEvalV5WriteQueue;
 }
 
     const { createApp } = Vue;
@@ -2900,7 +2910,8 @@ async function selfEvalV5Upsert(row){
                 srcControls.forEach((control,index)=&gt;{
                     const c=dstControls[index];if(!c)return;
                     const d=document.createElement(control.tagName===&#x27;TEXTAREA&#x27;?&#x27;div&#x27;:&#x27;span&#x27;);
-                    d.className=(c.className||&#x27;&#x27;)+&#x27; print-control-value archived-control-value&#x27;;
+                    d.className=&#x27;print-control-value archived-control-value&#x27;;
+                    d.setAttribute(&#x27;data-archive-static&#x27;,&#x27;1&#x27;);
                     if(control.tagName===&#x27;SELECT&#x27;)d.textContent=control.options[control.selectedIndex]?.text||&#x27;&#x27;;
                     else if(control.type===&#x27;radio&#x27;||control.type===&#x27;checkbox&#x27;)d.textContent=control.checked?&#x27;☑&#x27;:&#x27;☐&#x27;;
                     else d.textContent=control.value||&#x27;&#x27;;
@@ -2941,8 +2952,10 @@ body{direction:rtl;font-family:Cairo,Tajawal,Arial,sans-serif;color:#0f172a}
 table{width:100%!important;max-width:100%!important;border-collapse:collapse!important;table-layout:fixed!important}
 th,td{white-space:normal!important;overflow-wrap:anywhere!important;word-break:break-word!important;vertical-align:top!important;height:auto!important}
 tr{break-inside:avoid!important;page-break-inside:avoid!important}
-input,textarea,select{max-width:100%!important}
-*{box-sizing:border-box!important}
+input,textarea,select{display:none!important}
+.print-control-value,.archived-control-value{position:static!important;float:none!important;border:0!important;border-radius:0!important;box-shadow:none!important;background:transparent!important;overflow:visible!important;color:inherit!important;font:inherit!important}
+[data-archive-static=&quot;1&quot;]{display:block!important}
+*{box-sizing:border-box!important;max-height:none!important}
 &lt;/style&gt;&lt;/head&gt;&lt;body&gt;&lt;main id=&quot;self-eval-pdf-root&quot;&gt;${clone.outerHTML}&lt;/main&gt;${auto}&lt;/body&gt;&lt;/html&gt;`;
             },
             buildArchivePrintSnapshot(title,type,autoPrint=false){
@@ -2999,7 +3012,10 @@ input,textarea,select{max-width:100%!important}
                     const htmlContent=this.buildArchivePrintSnapshot(title,type,false);
                     this.isPrinting=prevPrinting;
                     if(!htmlContent||htmlContent.length&lt;300)throw new Error(&#x27;تعذر إنشاء مستند الطباعة المعزول لهذا السجل&#x27;);
-                    const editId=String(this._archiveEditId||&#x27;&#x27;),oldRow=this._archiveEditRow||{},id=editId||`${type}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,now=new Date().toISOString();
+                    const candidateEditId=String(this._archiveEditId||&#x27;&#x27;),candidateOld=this._archiveEditRow||{};
+                    const sameEditIdentity=!!candidateEditId&amp;&amp;String(candidateOld.id||&#x27;&#x27;)===candidateEditId&amp;&amp;String(candidateOld.type||&#x27;&#x27;)===String(type)&amp;&amp;String(candidateOld.folderId||&#x27;&#x27;)===String(folderId);
+                    const editId=sameEditIdentity?candidateEditId:&#x27;&#x27;,oldRow=sameEditIdentity?candidateOld:{},id=editId||`${type}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,now=new Date().toISOString();
+                    if(!sameEditIdentity){this._archiveEditId=&#x27;&#x27;;this._archiveEditRow=null;}
                     pdfFileId=await selfEvalPdfUploadExact(htmlContent,title,id,folderId,folderName);
                     const row={...oldRow,id,folderId,folderName,recordName:folderName,title,type,source:&#x27;قسم التقويم الذاتي&#x27;,savedAt:oldRow.savedAt||now,updatedAt:now,schoolName:this.schoolInfo?.name||&#x27;&#x27;,academicYear:this.schoolInfo?.hijriYear||&#x27;&#x27;,data:JSON.parse(JSON.stringify(payload||{})),printSourceHtml:htmlContent,archivePdfFileId:pdfFileId,archiveFormat:&#x27;self-evaluation-v5-pdf-cloud&#x27;,sourceFile:&#x27;self_evaluation_records.html&#x27;,editorTab:this.archiveTypeConfig(type).tab,previewMode:&#x27;pdf-cloud&#x27;,storageEngine:&#x27;SelfEvaluationArchiveV5&#x27;};
                     delete row.htmlContent;delete row.pdfHtml;delete row.officialHtml;delete row.templateHtml;
@@ -4119,6 +4135,8 @@ async function selfEvalPdfUploadExact(htmlContent,title,rowId,folderId,folderNam
     const target=d.querySelector(&#x27;#self-eval-pdf-root&#x27;)||d.querySelector(&#x27;.recordShell,.officialRecord,.page-container,.page&#x27;)||d.body;
     const rect=target.getBoundingClientRect();
     const textLen=String(target.innerText||target.textContent||&#x27;&#x27;).replace(/\s+/g,&#x27;&#x27;).length;
+    const liveControls=target.querySelectorAll(&#x27;input,textarea,select&#x27;).length;
+    if(liveControls)throw new Error(&#x27;تم منع الأرشفة لأن نسخة الطباعة ما زالت تحتوي حقول إدخال تفاعلية&#x27;);
     if(rect.width&lt;100||rect.height&lt;100||textLen&lt;15)throw new Error(&#x27;محتوى النموذج غير ظاهر فعليًا قبل إنشاء PDF&#x27;);
 
     const canvas=await w.html2canvas(target,{
@@ -4177,9 +4195,10 @@ async function selfEvalPdfUploadExact(htmlContent,title,rowId,folderId,folderNam
 
 function selfEvalFreezeArchiveNode(source){
   const clone=source.cloneNode(true),src=[...source.querySelectorAll(&#x27;input,textarea,select&#x27;)],dst=[...clone.querySelectorAll(&#x27;input,textarea,select&#x27;)];
-  src.forEach((c,i)=&gt;{const x=dst[i];if(!x)return;const tag=(c.tagName===&#x27;TEXTAREA&#x27;)?&#x27;div&#x27;:&#x27;span&#x27;,d=document.createElement(tag);d.className=(x.className||&#x27;&#x27;)+&#x27; archived-control-value print-control-value&#x27;;if(c.tagName===&#x27;SELECT&#x27;)d.textContent=c.options[c.selectedIndex]?.text||&#x27;&#x27;;else if(c.type===&#x27;checkbox&#x27;||c.type===&#x27;radio&#x27;)d.textContent=c.checked?&#x27;☑&#x27;:&#x27;☐&#x27;;else d.textContent=c.value||&#x27;&#x27;;x.replaceWith(d)});
-  clone.querySelectorAll(&#x27;.noPrint,.no-print,button,input[type=file]&#x27;).forEach(x=&gt;x.remove());
+  src.forEach((c,i)=&gt;{const x=dst[i];if(!x)return;const d=document.createElement(c.tagName===&#x27;TEXTAREA&#x27;?&#x27;div&#x27;:&#x27;span&#x27;);d.className=&#x27;archived-control-value print-control-value&#x27;;d.setAttribute(&#x27;data-archive-static&#x27;,&#x27;1&#x27;);if(c.tagName===&#x27;SELECT&#x27;)d.textContent=c.options[c.selectedIndex]?.text||&#x27;&#x27;;else if(c.type===&#x27;checkbox&#x27;||c.type===&#x27;radio&#x27;)d.textContent=c.checked?&#x27;✓&#x27;:&#x27;&#x27;;else d.textContent=c.value||&#x27;&#x27;;x.replaceWith(d)});
+  clone.querySelectorAll(&#x27;.noPrint,.no-print,button,input,textarea,select,input[type=file]&#x27;).forEach(x=&gt;x.remove());
   clone.querySelectorAll(&#x27;[contenteditable]&#x27;).forEach(x=&gt;x.removeAttribute(&#x27;contenteditable&#x27;));
+  clone.querySelectorAll(&#x27;[style]&#x27;).forEach(x=&gt;{const st=x.getAttribute(&#x27;style&#x27;)||&#x27;&#x27;;if(/position\s*:\s*(fixed|absolute)/i.test(st))x.style.position=&#x27;static&#x27;;x.style.transform=&#x27;none&#x27;;x.style.maxHeight=&#x27;none&#x27;;x.style.overflow=&#x27;visible&#x27;});
   return clone;
 }
 function buildCurrentSelfEvalArchiveHtml(title,type){
@@ -4190,7 +4209,7 @@ function buildCurrentSelfEvalArchiveHtml(title,type){
   if(!source)return &#x27;&#x27;;
   const clone=selfEvalFreezeArchiveNode(source),styles=[...document.querySelectorAll(&#x27;head style&#x27;)].map(x=&gt;x.outerHTML).join(&#x27;\\n&#x27;),links=[...document.querySelectorAll(&#x27;head link[rel=&quot;stylesheet&quot;]&#x27;)].map(x=&gt;x.outerHTML).join(&#x27;\\n&#x27;);
   const safe=String(title||&#x27;سجل التقويم الذاتي&#x27;).replace(/[&lt;&gt;]/g,&#x27;&#x27;);
-  return `&lt;!doctype html&gt;&lt;html lang=&quot;ar&quot; dir=&quot;rtl&quot;&gt;&lt;head&gt;&lt;meta charset=&quot;utf-8&quot;&gt;&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width,initial-scale=1&quot;&gt;&lt;title&gt;${safe}&lt;/title&gt;${links}${styles}&lt;style&gt;@page{size:A4 portrait;margin:8mm}html,body{margin:0!important;padding:0!important;background:#fff!important;overflow:visible!important}body{direction:rtl;font-family:Tajawal,Cairo,Arial,sans-serif}.recordShell,.officialRecord,.page{display:block!important;width:100%!important;max-width:none!important;margin:0!important;box-shadow:none!important;border:0!important}.noPrint,.no-print,button{display:none!important}.archived-control-value{display:block;min-height:24px;padding:5px 7px;border:1px solid #d7dee8;border-radius:6px;background:#fff;white-space:pre-wrap;overflow-wrap:anywhere}table{width:100%!important;border-collapse:collapse!important}tr{break-inside:avoid!important}&lt;/style&gt;&lt;/head&gt;&lt;body&gt;${clone.outerHTML}&lt;/body&gt;&lt;/html&gt;`;
+  return `&lt;!doctype html&gt;&lt;html lang=&quot;ar&quot; dir=&quot;rtl&quot;&gt;&lt;head&gt;&lt;meta charset=&quot;utf-8&quot;&gt;&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width,initial-scale=1&quot;&gt;&lt;title&gt;${safe}&lt;/title&gt;${links}${styles}&lt;style&gt;@page{size:A4 portrait;margin:8mm}html,body{margin:0!important;padding:0!important;background:#fff!important;overflow:visible!important}body{direction:rtl;font-family:Tajawal,Cairo,Arial,sans-serif}.recordShell,.officialRecord,.page{display:block!important;width:100%!important;max-width:none!important;margin:0!important;box-shadow:none!important;border:0!important}.noPrint,.no-print,button,input,textarea,select{display:none!important}.archived-control-value,.print-control-value{display:block!important;position:static!important;float:none!important;width:auto!important;max-width:100%!important;height:auto!important;min-height:0!important;margin:0!important;padding:2px 3px!important;border:0!important;border-radius:0!important;box-shadow:none!important;background:transparent!important;white-space:pre-wrap!important;overflow:visible!important;overflow-wrap:anywhere!important;word-break:break-word!important;line-height:1.55!important;color:inherit!important;font:inherit!important}table{width:100%!important;max-width:100%!important;border-collapse:collapse!important;table-layout:fixed!important}th,td{height:auto!important;white-space:normal!important;overflow:visible!important;overflow-wrap:anywhere!important;word-break:break-word!important;vertical-align:top!important}tr{break-inside:avoid!important;page-break-inside:avoid!important}*{box-sizing:border-box!important;max-height:none!important}&lt;/style&gt;&lt;/head&gt;&lt;body&gt;${clone.outerHTML}&lt;/body&gt;&lt;/html&gt;`;
 }
 
 
@@ -4199,6 +4218,7 @@ const SELF_EVAL_ARCHIVE_V5_PREFIX=&#x27;self_eval_archive_record_v5_&#x27;;
 const selfEvalV5ParseArray=v=&gt;{try{const x=typeof v===&#x27;string&#x27;?JSON.parse(v):v;return Array.isArray(x)?x:[]}catch(_){return []}};
 const selfEvalV5ParseObject=v=&gt;{try{const x=typeof v===&#x27;string&#x27;?JSON.parse(v):v;return x&amp;&amp;typeof x===&#x27;object&#x27;&amp;&amp;!Array.isArray(x)?x:null}catch(_){return null}};
 const selfEvalV5RecordKey=id=&gt;SELF_EVAL_ARCHIVE_V5_PREFIX+String(id||&#x27;&#x27;).replace(/[^a-zA-Z0-9_-]/g,&#x27;_&#x27;).slice(0,120);
+let selfEvalV5WriteQueue=Promise.resolve();
 async function selfEvalV5StateEngine(){
   const session=(window.parent&amp;&amp;window.parent!==window&amp;&amp;window.parent.PlatformCloudSession)||window.PlatformCloudSession;
   if(session&amp;&amp;typeof session.ensure===&#x27;function&#x27;)await session.ensure();
@@ -4216,7 +4236,7 @@ async function selfEvalV5Pull(keys){
 function selfEvalV5Meta(row){
   return {id:String(row.id),title:String(row.title||row.folderName||&#x27;سجل التقويم الذاتي&#x27;),type:String(row.type||&#x27;&#x27;),folderId:String(row.folderId||&#x27;&#x27;),folderName:String(row.folderName||&#x27;&#x27;),recordName:String(row.recordName||row.folderName||&#x27;&#x27;),source:String(row.source||&#x27;سجلات التقويم الذاتي والمؤشرات&#x27;),savedAt:String(row.savedAt||&#x27;&#x27;),updatedAt:String(row.updatedAt||&#x27;&#x27;),schoolName:String(row.schoolName||&#x27;&#x27;),academicYear:String(row.academicYear||&#x27;&#x27;),archivePdfFileId:String(row.archivePdfFileId||&#x27;&#x27;),archiveFormat:&#x27;self-evaluation-v5-pdf-cloud&#x27;,stateKey:selfEvalV5RecordKey(row.id),storageEngine:&#x27;SelfEvaluationArchiveV5&#x27;,archiveType:&#x27;selfEvaluationPdf&#x27;,readOnly:false};
 }
-async function selfEvalV5Upsert(row){
+async function selfEvalV5UpsertInner(row){
   const id=String(row?.id||&#x27;&#x27;);if(!id||!row?.archivePdfFileId||!row?.folderId)throw new Error(&#x27;بيانات سجل التقويم الذاتي V5 غير مكتملة&#x27;);
   const key=selfEvalV5RecordKey(id),vals=await selfEvalV5Pull([SELF_EVAL_ARCHIVE_V5_INDEX]),idx=selfEvalV5ParseArray(vals[SELF_EVAL_ARCHIVE_V5_INDEX]);
   const full={...row,stateKey:key,storageEngine:&#x27;SelfEvaluationArchiveV5&#x27;,archiveFormat:&#x27;self-evaluation-v5-pdf-cloud&#x27;};
@@ -4232,7 +4252,14 @@ async function selfEvalV5Upsert(row){
     if(record&amp;&amp;String(record.archivePdfFileId||&#x27;&#x27;)===String(full.archivePdfFileId)&amp;&amp;im&amp;&amp;String(im.archivePdfFileId||&#x27;&#x27;)===String(full.archivePdfFileId)&amp;&amp;String(im.folderId||&#x27;&#x27;)===String(full.folderId)){verify={record,index};break}
   }
   if(!verify)throw new Error(&#x27;فشل التحقق السحابي النهائي من سجل التقويم الذاتي V5&#x27;);
+  const vr=verify.record,vi=verify.index.find(x=&gt;String(x?.id)===id);
+  if(String(vr.type||&#x27;&#x27;)!==String(full.type||&#x27;&#x27;)||String(vr.folderId||&#x27;&#x27;)!==String(full.folderId||&#x27;&#x27;)||String(vr.title||&#x27;&#x27;)!==String(full.title||&#x27;&#x27;)||!vi||String(vi.type||&#x27;&#x27;)!==String(full.type||&#x27;&#x27;)||String(vi.folderId||&#x27;&#x27;)!==String(full.folderId||&#x27;&#x27;))throw new Error(&#x27;هوية سجل التقويم الذاتي لا تطابق المجلد أو النوع بعد إعادة القراءة&#x27;);
   return full;
+}
+function selfEvalV5Upsert(row){
+  const run=()=&gt;selfEvalV5UpsertInner(row);
+  selfEvalV5WriteQueue=selfEvalV5WriteQueue.then(run,run);
+  return selfEvalV5WriteQueue;
 }
 
 async function archiveSaveVerified(folderName,title,type,payload){

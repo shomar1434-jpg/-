@@ -6277,7 +6277,7 @@ const INDEX_KEY='agent_perf_index_v1';
 const REPORT_PREFIX='agent_perf_report_v1_';
 const LEGACY_SCHOOL_KEYS=['agent_performance_reports_clean_v3','agent_performance_reports_clean_v2','agent_performance_reports_clean_v1','school_reports','reports_archive','performance_reports_archive_v2'];
 const LEGACY_USER_KEYS=['school_reports','reports_archive','performance_reports_archive_v2'];
-let indexRows=[],legacyRows=[],view=[],indexLoaded=false,legacyLoaded=false,indexPromise=null;
+let indexRows=[],legacyRows=[],view=[],indexLoaded=false,legacyLoaded=false,indexPromise=null;let unifiedPromise=null;
 const parseArray=v=>{try{const x=typeof v==='string'?JSON.parse(v):v;return Array.isArray(x)?x:[]}catch(_){return []}};
 const parseObject=v=>{try{const x=typeof v==='string'?JSON.parse(v):v;return x&&typeof x==='object'?x:null}catch(_){return null}};
 const idOf=x=>String(x?.id??'').trim();
@@ -6297,6 +6297,59 @@ async function saveFast(report){await ensureIndex(false);const id=idOf(report),c
 async function fetchReport(id){const meta=view.find(x=>idOf(x)===String(id));if(!meta)return null;if(meta.__archiveSource==='legacy')return meta;const key=meta.stateKey||reportKey(id);const v=await pullSchool([key]);const full=parseObject(v[key]);return full?{...full,__archiveSource:'clean',readOnly:false}:null;}
 async function remove(id){await ensureIndex(false);const meta=indexRows.find(x=>idOf(x)===String(id));if(!meta)throw new Error('التقرير غير موجود في المسار الجديد');const key=meta.stateKey||reportKey(id);const next=indexRows.filter(x=>idOf(x)!==String(id));const E=await ensureEngine();await E.bulkUpsert(MODULE,'school',[{key,value:'',deleted:true},{key:INDEX_KEY,value:JSON.stringify(next),deleted:false}],{timeout:15000});indexRows=next;publish();const verify=(async()=>{const v=await pullSchool([key,INDEX_KEY]);if(Object.prototype.hasOwnProperty.call(v,key))throw new Error('لم يكتمل حذف التقرير السحابي');const idx=parseArray(v[INDEX_KEY]);if(idx.some(x=>idOf(x)===String(id)))throw new Error('لم يكتمل تحديث فهرس الأرشيف');indexRows=idx;publish();return true})();return {verification:verify};}
 async function hydrateLegacy(force=false){await ensureIndex(false);if(legacyLoaded&&!force)return publish();const G=window.PlatformPersistenceGuard;let school={},user={};try{if(G&&typeof G.readExactValues==='function'){const sr=await G.readExactValues({moduleKey:MODULE,scope:'school',keys:LEGACY_SCHOOL_KEYS});if(sr?.ok)school=sr.values||{};const ur=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:LEGACY_USER_KEYS});if(ur?.ok)user=ur.values||{}}}catch(e){console.warn('[Performance V5 legacy]',e)}legacyRows=[];for(const k of LEGACY_SCHOOL_KEYS)for(const x of parseArray(school[k]))legacyRows.push({...x,__meta:{__legacyKey:k,__legacyScope:'school'}});for(const k of LEGACY_USER_KEYS)for(const x of parseArray(user[k]))legacyRows.push({...x,__meta:{__legacyKey:k,__legacyScope:'user'}});legacyLoaded=true;return publish();}
+
+async function hydrateUnified(force=false){
+  if(unifiedPromise&&!force)return unifiedPromise;
+  unifiedPromise=(async()=>{
+    await ensureIndex(force);
+    await hydrateLegacy(force);
+    const existing=new Set(indexRows.map(idOf));
+    const missing=[];
+    for(const raw of legacyRows){
+      const n=normalizeLegacy(raw,raw.__meta||{});
+      if(!n||existing.has(idOf(n)))continue;
+      existing.add(idOf(n));
+      const id=idOf(n),cat=catOf(n),key=reportKey(id);
+      const full={...n,id,programName:titleOf(n),title:titleOf(n),category:cat,
+        categoryName:folderNameOf(n,cat),archiveFolderId:cat,archiveFolderName:folderNameOf(n,cat),
+        stateKey:key,storageEngine:'PerformanceArchiveCleanV5',persistenceMode:'cloud-record',
+        legacyWriteDisabled:true,migratedFromLegacy:true,migratedAt:new Date().toISOString(),
+        readOnly:false,__archiveSource:'clean'};
+      delete full.__meta;
+      missing.push(full);
+    }
+    if(missing.length){
+      let next=indexRows.slice();
+      for(const full of missing){
+        const meta=cleanMeta(full),i=next.findIndex(x=>idOf(x)===idOf(meta));
+        if(i>=0)next[i]={...next[i],...meta};else next.push(meta);
+      }
+      const E=await ensureEngine();
+      const writes=missing.map(full=>({key:full.stateKey||reportKey(idOf(full)),value:JSON.stringify(full),deleted:false}));
+      writes.push({key:INDEX_KEY,value:JSON.stringify(next),deleted:false});
+      await E.bulkUpsert(MODULE,'school',writes,{timeout:20000});
+      const keys=[INDEX_KEY,...missing.map(x=>x.stateKey||reportKey(idOf(x)))];
+      const v=await pullSchool(keys),idx=parseArray(v[INDEX_KEY]);
+      for(const full of missing){
+        const key=full.stateKey||reportKey(idOf(full)),cloud=parseObject(v[key]);
+        if(!cloud||idOf(cloud)!==idOf(full)||catOf(cloud)!==catOf(full))
+          throw new Error('لم يكتمل توحيد أحد التقارير التاريخية في الأرشيف السحابي');
+        if(!idx.some(x=>idOf(x)===idOf(full)&&catOf(x)===catOf(full)))
+          throw new Error('لم يكتمل تحديث فهرس الأرشيف الموحد');
+      }
+      indexRows=idx;indexLoaded=true;
+    }
+    // Legacy يبقى محفوظاً للاسترداد فقط؛ العرض والعدادات يقرآن V5 وحده.
+    legacyRows=[];legacyLoaded=true;
+    view=indexRows.map(cleanMeta).filter(Boolean);
+    window.__performanceArchiveCleanV5View=view;
+    window.__performanceArchiveRoleView=view;
+    window.__PERFORMANCE_ARCHIVE_UNIFIED_READY__=true;
+    return view.slice();
+  })().finally(()=>{unifiedPromise=null});
+  return unifiedPromise;
+}
+
 async function removeLegacy(id){
   const target=view.find(x=>idOf(x)===String(id)&&x.__archiveSource==='legacy');
   if(!target)throw new Error('التقرير التاريخي غير موجود');
@@ -6316,16 +6369,14 @@ async function removeLegacy(id){
   if(resurfaced)console.warn('[Performance V5 legacy delete] توجد نسخة تاريخية مكررة في مصدر Legacy آخر؛ ستبقى ظاهرة حتى حذفها من مصدرها.');
   return true;
 }
-window.PerformanceArchiveCleanV5={MODULE,INDEX_KEY,REPORT_PREFIX,LEGACY_SCHOOL_KEYS,LEGACY_USER_KEYS,ensureIndex,saveFast,fetchReport,remove,removeLegacy,hydrateLegacy,getView:()=>view.slice(),find:id=>view.find(x=>idOf(x)===String(id))||null};
+window.PerformanceArchiveCleanV5={MODULE,INDEX_KEY,REPORT_PREFIX,LEGACY_SCHOOL_KEYS,LEGACY_USER_KEYS,ensureIndex,saveFast,fetchReport,remove,removeLegacy,hydrateLegacy,hydrateUnified,getView:()=>view.slice(),find:id=>view.find(x=>idOf(x)===String(id))||null};
 window.performanceArchiveCleanView=()=>window.PerformanceArchiveCleanV5.getView();
 
 window.__performanceArchiveUnifiedReady=false;
 window.performanceArchiveUnifiedBootstrap=async function(force=false){
   if(!window.PerformanceArchiveCleanV5)return [];
-  await PerformanceArchiveCleanV5.ensureIndex(!!force);
-  await PerformanceArchiveCleanV5.hydrateLegacy(!!force);
+  const rows=await PerformanceArchiveCleanV5.hydrateUnified(!!force);
   window.__performanceArchiveUnifiedReady=true;
-  const rows=PerformanceArchiveCleanV5.getView();
   try{if(typeof refreshDashboardMetrics==='function')refreshDashboardMetrics()}catch(e){console.warn('[performance dashboard sync]',e)}
   try{
     const archive=document.getElementById('archive-view');
@@ -6337,22 +6388,8 @@ window.performanceArchiveUnifiedBootstrap=async function(force=false){
   }catch(e){console.warn('[performance archive view sync]',e)}
   return rows;
 };
-window.addEventListener('performance-archive-view-updated',function(ev){
-  if(!window.__performanceArchiveUnifiedReady)return;
-  try{if(ev?.detail?.module&&typeof MODULE!=='undefined'&&ev.detail.module!==MODULE)return}catch(_){}
-  try{if(typeof refreshDashboardMetrics==='function')refreshDashboardMetrics()}catch(_){}
-  try{
-    const archive=document.getElementById('archive-view');
-    if(archive&&archive.style.display==='block'){
-      const fid=window.__performanceV5CurrentArchiveFolder||(typeof currentArchiveFolder!=='undefined'?currentArchiveFolder:null);
-      if(fid&&typeof openArchiveFolder==='function')openArchiveFolder(fid);
-      else if(typeof renderArchiveFolders==='function')renderArchiveFolders();
-    }
-  }catch(_){}
-});
-
 window.__PERFORMANCE_ARCHIVE_CLEAN_V5__={role:MODULE,indexKey:INDEX_KEY,reportPrefix:REPORT_PREFIX,oneReportPerStateKey:true,legacyReadOnly:false,legacyDeleteSupported:true,userValuesWin:true,fastAppearance:true};
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(()=>window.performanceArchiveUnifiedBootstrap?.(false).catch(e=>console.warn('[Performance unified bootstrap]',e)),0),{once:true});else setTimeout(()=>window.performanceArchiveUnifiedBootstrap?.(false).catch(e=>console.warn('[Performance unified bootstrap]',e)),0);
+window.__PERFORMANCE_ARCHIVE_EARLY_BOOTSTRAP_DISABLED_RL61__=true;
 })();
 </script>
 <script id="PERFORMANCE_ARCHIVE_CLEAN_V5_OVERRIDES">
@@ -6917,4 +6954,5 @@ window.__AGENT_PERFORMANCE_ARCHIVE_SAVE_V2__={verifiedBeforeSuccess:true,folderB
 </script>
 
 <script id="PERFORMANCE_ARCHIVE_SYNC_ALL_ROLES_RL49">window.__PERFORMANCE_ARCHIVE_SYNC_ALL_ROLES_RL49__="2026.09.05";</script>
+<script id="PERFORMANCE_ARCHIVE_UNIFIED_RL61_AGENT">window.__PERFORMANCE_ARCHIVE_UNIFIED_RL61__=true;</script>
 </body></html>

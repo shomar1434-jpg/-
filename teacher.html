@@ -4753,7 +4753,11 @@ body{overflow-x:hidden}
         }, true);
 
         const __enhancedEnterApp = enterApp;
-        enterApp = function() { __enhancedEnterApp(); refreshDashboardMetrics(); };
+        enterApp = function() {
+            __enhancedEnterApp();
+            window.performanceArchiveUnifiedBootstrap(false)
+              .catch(e=>console.error('[Performance unified dashboard]',e));
+        };
         const __enhancedGoHome = goHome;
         goHome = function() { if (typeof teacherIsFollowMode === 'function' && teacherIsFollowMode()) { __enhancedGoHome(); refreshDashboardMetrics(); return; } saveDraftSnapshot(true); __enhancedGoHome(); refreshDashboardMetrics(); };
         const __enhancedSaveReportToArchive = saveReportToArchive;
@@ -5658,7 +5662,7 @@ const INDEX_KEY='teacher_perf_index_v1';
 const REPORT_PREFIX='teacher_perf_report_v1_';
 const LEGACY_SCHOOL_KEYS=['teacher_performance_reports_clean_v3','teacher_performance_reports_clean_v2','teacher_performance_reports_clean_v1','school_reports','reports_archive','performance_reports_archive_v2'];
 const LEGACY_USER_KEYS=['school_reports','reports_archive','performance_reports_archive_v2'];
-let indexRows=[],legacyRows=[],view=[],indexLoaded=false,legacyLoaded=false,indexPromise=null;
+let indexRows=[],legacyRows=[],view=[],indexLoaded=false,legacyLoaded=false,indexPromise=null;let unifiedPromise=null;
 const parseArray=v=>{try{const x=typeof v==='string'?JSON.parse(v):v;return Array.isArray(x)?x:[]}catch(_){return []}};
 const parseObject=v=>{try{const x=typeof v==='string'?JSON.parse(v):v;return x&&typeof x==='object'?x:null}catch(_){return null}};
 const idOf=x=>String(x?.id??'').trim();
@@ -5678,6 +5682,59 @@ async function saveFast(report){await ensureIndex(false);const id=idOf(report),c
 async function fetchReport(id){const meta=view.find(x=>idOf(x)===String(id));if(!meta)return null;if(meta.__archiveSource==='legacy')return meta;const key=meta.stateKey||reportKey(id);const v=await pullSchool([key]);const full=parseObject(v[key]);return full?{...full,__archiveSource:'clean',readOnly:false}:null;}
 async function remove(id){await ensureIndex(false);const meta=indexRows.find(x=>idOf(x)===String(id));if(!meta)throw new Error('التقرير غير موجود في المسار الجديد');const key=meta.stateKey||reportKey(id);const next=indexRows.filter(x=>idOf(x)!==String(id));const E=await ensureEngine();await E.bulkUpsert(MODULE,'school',[{key,value:'',deleted:true},{key:INDEX_KEY,value:JSON.stringify(next),deleted:false}],{timeout:15000});indexRows=next;publish();const verify=(async()=>{const v=await pullSchool([key,INDEX_KEY]);if(Object.prototype.hasOwnProperty.call(v,key))throw new Error('لم يكتمل حذف التقرير السحابي');const idx=parseArray(v[INDEX_KEY]);if(idx.some(x=>idOf(x)===String(id)))throw new Error('لم يكتمل تحديث فهرس الأرشيف');indexRows=idx;publish();return true})();return {verification:verify};}
 async function hydrateLegacy(force=false){await ensureIndex(false);if(legacyLoaded&&!force)return publish();const G=window.PlatformPersistenceGuard;let school={},user={};try{if(G&&typeof G.readExactValues==='function'){const sr=await G.readExactValues({moduleKey:MODULE,scope:'school',keys:LEGACY_SCHOOL_KEYS});if(sr?.ok)school=sr.values||{};const ur=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:LEGACY_USER_KEYS});if(ur?.ok)user=ur.values||{}}}catch(e){console.warn('[Performance V5 legacy]',e)}legacyRows=[];for(const k of LEGACY_SCHOOL_KEYS)for(const x of parseArray(school[k]))legacyRows.push({...x,__meta:{__legacyKey:k,__legacyScope:'school'}});for(const k of LEGACY_USER_KEYS)for(const x of parseArray(user[k]))legacyRows.push({...x,__meta:{__legacyKey:k,__legacyScope:'user'}});legacyLoaded=true;return publish();}
+
+async function hydrateUnified(force=false){
+  if(unifiedPromise&&!force)return unifiedPromise;
+  unifiedPromise=(async()=>{
+    await ensureIndex(force);
+    await hydrateLegacy(force);
+    const existing=new Set(indexRows.map(idOf));
+    const missing=[];
+    for(const raw of legacyRows){
+      const n=normalizeLegacy(raw,raw.__meta||{});
+      if(!n||existing.has(idOf(n)))continue;
+      existing.add(idOf(n));
+      const id=idOf(n),cat=catOf(n),key=reportKey(id);
+      const full={...n,id,programName:titleOf(n),title:titleOf(n),category:cat,
+        categoryName:folderNameOf(n,cat),archiveFolderId:cat,archiveFolderName:folderNameOf(n,cat),
+        stateKey:key,storageEngine:'PerformanceArchiveCleanV5',persistenceMode:'cloud-record',
+        legacyWriteDisabled:true,migratedFromLegacy:true,migratedAt:new Date().toISOString(),
+        readOnly:false,__archiveSource:'clean'};
+      delete full.__meta;
+      missing.push(full);
+    }
+    if(missing.length){
+      let next=indexRows.slice();
+      for(const full of missing){
+        const meta=cleanMeta(full),i=next.findIndex(x=>idOf(x)===idOf(meta));
+        if(i>=0)next[i]={...next[i],...meta};else next.push(meta);
+      }
+      const E=await ensureEngine();
+      const writes=missing.map(full=>({key:full.stateKey||reportKey(idOf(full)),value:JSON.stringify(full),deleted:false}));
+      writes.push({key:INDEX_KEY,value:JSON.stringify(next),deleted:false});
+      await E.bulkUpsert(MODULE,'school',writes,{timeout:20000});
+      const keys=[INDEX_KEY,...missing.map(x=>x.stateKey||reportKey(idOf(x)))];
+      const v=await pullSchool(keys),idx=parseArray(v[INDEX_KEY]);
+      for(const full of missing){
+        const key=full.stateKey||reportKey(idOf(full)),cloud=parseObject(v[key]);
+        if(!cloud||idOf(cloud)!==idOf(full)||catOf(cloud)!==catOf(full))
+          throw new Error('لم يكتمل توحيد أحد التقارير التاريخية في الأرشيف السحابي');
+        if(!idx.some(x=>idOf(x)===idOf(full)&&catOf(x)===catOf(full)))
+          throw new Error('لم يكتمل تحديث فهرس الأرشيف الموحد');
+      }
+      indexRows=idx;indexLoaded=true;
+    }
+    // Legacy يبقى محفوظاً للاسترداد فقط؛ العرض والعدادات يقرآن V5 وحده.
+    legacyRows=[];legacyLoaded=true;
+    view=indexRows.map(cleanMeta).filter(Boolean);
+    window.__performanceArchiveCleanV5View=view;
+    window.__performanceArchiveRoleView=view;
+    window.__PERFORMANCE_ARCHIVE_UNIFIED_READY__=true;
+    return view.slice();
+  })().finally(()=>{unifiedPromise=null});
+  return unifiedPromise;
+}
+
 async function removeLegacy(id){
   const target=view.find(x=>idOf(x)===String(id)&&x.__archiveSource==='legacy');
   if(!target)throw new Error('التقرير التاريخي غير موجود');
@@ -5697,8 +5754,16 @@ async function removeLegacy(id){
   if(resurfaced)console.warn('[Performance V5 legacy delete] توجد نسخة تاريخية مكررة في مصدر Legacy آخر؛ ستبقى ظاهرة حتى حذفها من مصدرها.');
   return true;
 }
-window.PerformanceArchiveCleanV5={MODULE,INDEX_KEY,REPORT_PREFIX,LEGACY_SCHOOL_KEYS,LEGACY_USER_KEYS,ensureIndex,saveFast,fetchReport,remove,removeLegacy,hydrateLegacy,getView:()=>view.slice(),find:id=>view.find(x=>idOf(x)===String(id))||null};
+window.PerformanceArchiveCleanV5={MODULE,INDEX_KEY,REPORT_PREFIX,LEGACY_SCHOOL_KEYS,LEGACY_USER_KEYS,ensureIndex,saveFast,fetchReport,remove,removeLegacy,hydrateLegacy,hydrateUnified,getView:()=>view.slice(),find:id=>view.find(x=>idOf(x)===String(id))||null};
 window.performanceArchiveCleanView=()=>window.PerformanceArchiveCleanV5.getView();
+window.__performanceArchiveUnifiedReady=false;
+window.performanceArchiveUnifiedBootstrap=async function(force=false){
+  if(!window.PerformanceArchiveCleanV5)return [];
+  const rows=await PerformanceArchiveCleanV5.hydrateUnified(!!force);
+  window.__performanceArchiveUnifiedReady=true;
+  try{if(typeof refreshDashboardMetrics==='function')refreshDashboardMetrics()}catch(e){console.warn('[performance dashboard sync]',e)}
+  return rows;
+};
 window.__PERFORMANCE_ARCHIVE_CLEAN_V5__={role:MODULE,indexKey:INDEX_KEY,reportPrefix:REPORT_PREFIX,oneReportPerStateKey:true,legacyReadOnly:false,legacyDeleteSupported:true,userValuesWin:true,fastAppearance:true};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(()=>ensureIndex(false).catch(()=>{}),0),{once:true});else setTimeout(()=>ensureIndex(false).catch(()=>{}),0);
 })();
@@ -5710,7 +5775,7 @@ function uniqueId(){return String(Date.now())+'_'+Math.random().toString(36).sli
 function programName(){return String(document.getElementById('field_prog_name')?.innerText||document.getElementById('field_prog_name')?.textContent||'').trim()}
 function rerender(cat){try{if(document.getElementById('archive-view')?.style.display==='block'){if(cat&&typeof openArchiveFolder==='function')openArchiveFolder(cat);else if(typeof renderArchiveFolders==='function')renderArchiveFolders()}}catch(_){}}
 window.saveReportToArchive=async function(){const selected=selectedPerformanceArchiveDomain(),cat=String(selected.id||'').trim();if(!cat){showToast('اختر المجال أولاً ⚠️');return false}const name=programName();if(!name){showToast('أدخل اسم البرنامج قبل الحفظ ⚠️');return false}const folderName=String(selected.name||(typeof performanceArchiveFolderName==='function'?performanceArchiveFolderName(cat):cat)||cat).trim();showToast('جاري إرسال «'+name+'» إلى «'+folderName+'»...');try{if(typeof freezeReportDOMForArchive==='function')freezeReportDOMForArchive();const editId=window.__performanceExplicitEditId?String(window.__performanceExplicitEditId):'';const existing=editId?PerformanceArchiveCleanV5.find(editId):null;const canEdit=!!(existing&&existing.__archiveSource==='clean');const data={id:canEdit?existing.id:uniqueId(),programName:name,title:name,category:cat,categoryName:folderName,archiveFolderId:cat,archiveFolderName:folderName,archiveRole:'teacher',archiveType:'performanceReport',createdAt:(canEdit&&existing.createdAt)||new Date().toLocaleDateString('ar-SA-u-ca-islamic-umalqura'),content:document.getElementById('report-content-container').innerHTML,updatedAt:new Date().toISOString()};const result=await PerformanceArchiveCleanV5.saveFast(data);currentEditingId=null;window.__performanceExplicitEditId=null;rerender(cat);showToast('تم حفظ «'+name+'» وظهر في الأرشيف ✅');result.verification.then(()=>{}).catch(e=>{console.error('[Performance V5 verify]',e);showToast('ظهر التقرير، لكن تعذر التحقق السحابي النهائي: '+String(e?.message||e))});return true}catch(e){console.error('[Performance V5 save]',e);showToast('تعذر حفظ التقرير: '+String(e?.message||e));return false}};
-window.openArchiveView=function(){const w=document.getElementById('welcome-dashboard');if(w)w.style.display='none';const a=document.getElementById('archive-view');if(a)a.style.display='block';PerformanceArchiveCleanV5.ensureIndex(false).then(()=>{if(typeof renderArchiveFolders==='function')renderArchiveFolders();return PerformanceArchiveCleanV5.hydrateLegacy(false)}).then(()=>{if(window.__performanceV5CurrentArchiveFolder&&typeof openArchiveFolder==='function')openArchiveFolder(window.__performanceV5CurrentArchiveFolder);else if(typeof renderArchiveFolders==='function')renderArchiveFolders()}).catch(e=>{console.error('[Performance V5 archive]',e);showToast('تعذر تحميل بعض محتويات الأرشيف: '+String(e?.message||e))});if(typeof renderArchiveFolders==='function')renderArchiveFolders()};
+window.openArchiveView=function(){const w=document.getElementById('welcome-dashboard');if(w)w.style.display='none';const a=document.getElementById('archive-view');if(a)a.style.display='block';window.performanceArchiveUnifiedBootstrap(false).then(()=>{if(window.__performanceV5CurrentArchiveFolder&&typeof openArchiveFolder==='function')openArchiveFolder(window.__performanceV5CurrentArchiveFolder);else if(typeof renderArchiveFolders==='function')renderArchiveFolders()}).catch(e=>{console.error('[Performance unified archive]',e);if(typeof showToast==='function')showToast('تعذر تحميل الأرشيف الموحد: '+String(e?.message||e))})};
 window.loadReport=async function(id){try{const r=await PerformanceArchiveCleanV5.fetchReport(id);if(!r){showToast('تعذر العثور على التقرير');return}if(r.__archiveSource==='legacy'){showToast('هذا تقرير تاريخي للقراءة فقط');return}document.getElementById('report-content-container').innerHTML=r.content||'';document.querySelectorAll('#report-content-container select[data-saved-value]').forEach(sel=>{const v=sel.getAttribute('data-saved-value');if(Array.from(sel.options).some(o=>o.value===v))sel.value=v});currentEditingId=r.id;window.__performanceExplicitEditId=String(r.id);document.getElementById('archive-view').style.display='none';document.getElementById('main-report-app').classList.remove('hidden');if(typeof updateReportProgress==='function')updateReportProgress()}catch(e){showToast('تعذر فتح التقرير: '+String(e?.message||e))}};
 window.previewArchivedReadOnly=async function(id){try{const r=await PerformanceArchiveCleanV5.fetchReport(id);if(!r){showToast('تعذر العثور على التقرير');return}const title=String(r.programName||r.title||'تقرير أداء').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));const win=window.open('','_blank');if(win){win.document.open();win.document.write('<!doctype html><html dir="rtl"><head><meta charset="utf-8"><title>'+title+'</title></head><body><div style="direction:rtl;padding:18px;font-family:Tajawal,Arial"><h3>'+title+'</h3><div style="color:#64748b;margin-bottom:12px">'+String(r.archiveFolderName||'')+'</div>'+(r.content||'')+'</div></body></html>');win.document.close()}}catch(e){showToast('تعذر معاينة التقرير: '+String(e?.message||e))}};
 window.requestDeleteReport=async function(id){if(!confirm('هل تريد حذف هذا التقرير نهائيًا من أرشيف هذه المدرسة؟'))return;try{const x=PerformanceArchiveCleanV5.find(id);if(!x)throw new Error('تعذر العثور على التقرير');if(x.__archiveSource==='legacy'){showToast('جاري حذف التقرير التاريخي من مصدره السحابي...');await PerformanceArchiveCleanV5.removeLegacy(id);rerender(window.__performanceV5CurrentArchiveFolder);if(typeof refreshDashboardMetrics==='function')refreshDashboardMetrics();showToast('تم حذف التقرير التاريخي والتحقق منه سحابيًا ✅');return}const result=await PerformanceArchiveCleanV5.remove(id);rerender(window.__performanceV5CurrentArchiveFolder);if(typeof refreshDashboardMetrics==='function')refreshDashboardMetrics();showToast('تم حذف التقرير من الأرشيف ✅');result.verification.catch(e=>showToast('تم تحديث العرض لكن تعذر التحقق النهائي من الحذف: '+String(e?.message||e)))}catch(e){showToast('تعذر حذف التقرير: '+String(e?.message||e))}};
@@ -5988,5 +6053,6 @@ window.__PERFORMANCE_ARCHIVE_CLEAN_V5_4__={pdfLikeReadonlyPreview:true,usesPrint
 
 <script id="TEACHER_PRE_RL48_DIAGNOSTIC_ROLLBACK_RL58">window.__TEACHER_PRE_RL48_DIAGNOSTIC_ROLLBACK_RL58__="2026.09.05";</script>
 <script id="TEACHER_INDEPENDENT_SESSION_COMPAT_RL60">window.__TEACHER_INDEPENDENT_SESSION_COMPAT_RL60__="2026.09.05";</script>
+<script id="PERFORMANCE_ARCHIVE_UNIFIED_RL61_TEACHER">window.__PERFORMANCE_ARCHIVE_UNIFIED_RL61__=true;</script>
 </body>
 </html>

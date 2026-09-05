@@ -106,7 +106,8 @@ h1{font-size:18px;margin:0;color:#0f3f75;font-weight:900}
 .uw-verified-title-back:hover{background:#e6fffb!important}
 @media print{.uw-verified-title-back{display:none!important}}
 </style><link href="responsive-layout.css?v=20260818-responsive-1" rel="stylesheet"/>
-<style id="self-eval-archive-runtime-preview-style">body.self-eval-archive-preview .topbar{display:none!important}body.self-eval-archive-preview .frameWrap{padding:0!important}body.self-eval-archive-preview .moduleFrame.active{border:0!important;border-radius:0!important;box-shadow:none!important;height:100vh!important}</style></head>
+<style id="self-eval-archive-runtime-preview-style">body.self-eval-archive-preview .topbar{display:none!important}body.self-eval-archive-preview .frameWrap{padding:0!important}body.self-eval-archive-preview .moduleFrame.active{border:0!important;border-radius:0!important;box-shadow:none!important;height:100vh!important}</style><meta name="self-evaluation-archive-version" content="2026.09.05-RL30-pdf-cloud-exact-archive">
+</head>
 <body>
 <div class="shell">
 <header class="topbar">
@@ -2448,6 +2449,38 @@ h1{font-size:18px;margin:0;color:#0f3f75;font-weight:900}
 
     const DEFAULT_STAMP_BASE64 = &quot;data:image/svg+xml;utf8,&lt;svg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'&gt;&lt;circle cx='60' cy='60' r='55' fill='none' stroke='%23059669' stroke-width='3' stroke-dasharray='1 0'/&gt;&lt;circle cx='60' cy='60' r='48' fill='none' stroke='%23059669' stroke-width='1'/&gt;&lt;text x='60' y='32' font-family='Cairo' font-size='8' font-weight='bold' fill='%23059669' text-anchor='middle'&gt;وزارة التعليم&lt;/text&gt;&lt;text x='60' y='46' font-family='Cairo' font-size='6' fill='%23059669' text-anchor='middle'&gt;الإدارة العامة&lt;/text&gt;&lt;path d='M30 60 H90' stroke='%23059669' stroke-width='1'/&gt;&lt;text x='60' y='72' font-family='Cairo' font-size='7' font-weight='bold' fill='%23059669' text-anchor='middle'&gt;الختم الرسمي&lt;/text&gt;&lt;text x='60' y='86' font-family='Cairo' font-size='6' fill='%23059669' text-anchor='middle'&gt;إدارة المدرسة&lt;/text&gt;&lt;circle cx='60' cy='60' r='4' fill='%23059669'/&gt;&lt;/svg&gt;&quot;;
 
+
+async function selfEvalPdfUploadExact(htmlContent,title,rowId,folderId,folderName){
+  const engine=(window.parent&amp;&amp;window.parent!==window&amp;&amp;window.parent.CloudFileEngine)||window.CloudFileEngine;
+  if(!engine||typeof engine.upload!==&#x27;function&#x27;||typeof engine.usage!==&#x27;function&#x27;)throw new Error(&#x27;محرك ملفات PDF السحابي غير متاح&#x27;);
+  const session=(window.parent&amp;&amp;window.parent!==window&amp;&amp;window.parent.PlatformCloudSession)||window.PlatformCloudSession;
+  if(session&amp;&amp;typeof session.ensure===&#x27;function&#x27;)await session.ensure();
+  if(!htmlContent||String(htmlContent).length&lt;300)throw new Error(&#x27;محتوى PDF فارغ أو غير مكتمل&#x27;);
+  const frame=document.createElement(&#x27;iframe&#x27;);
+  frame.setAttribute(&#x27;aria-hidden&#x27;,&#x27;true&#x27;);
+  frame.style.cssText=&#x27;position:fixed;left:-12000px;top:0;width:794px;height:1123px;border:0;opacity:.001;pointer-events:none;z-index:-1&#x27;;
+  let src=String(htmlContent);
+  const inject=`&lt;style id=&quot;self-eval-pdf-capture-fix&quot;&gt;html,body{background:#fff!important;margin:0!important;padding:0!important;overflow:visible!important}.no-print,.noPrint,button{display:none!important}&lt;/style&gt;&lt;script src=&quot;https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js&quot;&gt;&lt;\/script&gt;`;
+  src=/&lt;\/head&gt;/i.test(src)?src.replace(/&lt;\/head&gt;/i,inject+&#x27;&lt;/head&gt;&#x27;):inject+src;
+  try{
+    await new Promise((resolve,reject)=&gt;{let done=false;const t=setTimeout(()=&gt;{if(!done)reject(new Error(&#x27;انتهت مهلة تجهيز PDF&#x27;))},15000);frame.onload=()=&gt;{done=true;clearTimeout(t);resolve()};document.body.appendChild(frame);frame.srcdoc=src;});
+    const w=frame.contentWindow,d=w&amp;&amp;w.document;if(!w||!d)throw new Error(&#x27;تعذر تجهيز مستند PDF&#x27;);
+    for(let i=0;i&lt;80&amp;&amp;!w.html2pdf;i++)await new Promise(r=&gt;setTimeout(r,100));
+    if(!w.html2pdf)throw new Error(&#x27;تعذر تحميل محرك PDF&#x27;);
+    try{if(d.fonts&amp;&amp;d.fonts.ready)await Promise.race([d.fonts.ready,new Promise(r=&gt;setTimeout(r,2500))])}catch(_){ }
+    await new Promise(r=&gt;setTimeout(r,180));
+    const blob=await w.html2pdf().set({margin:0,image:{type:&#x27;jpeg&#x27;,quality:.98},html2canvas:{scale:2,useCORS:true,allowTaint:false,scrollY:0,backgroundColor:&#x27;#ffffff&#x27;},jsPDF:{unit:&#x27;mm&#x27;,format:&#x27;a4&#x27;,orientation:&#x27;portrait&#x27;},pagebreak:{mode:[&#x27;css&#x27;,&#x27;legacy&#x27;]}}).from(d.body).outputPdf(&#x27;blob&#x27;);
+    if(!blob||Number(blob.size||0)&lt;500)throw new Error(&#x27;ملف PDF الناتج غير صالح&#x27;);
+    const safe=String(title||&#x27;سجل التقويم الذاتي&#x27;).replace(/[\\/:*?&quot;&lt;&gt;|]/g,&#x27;_&#x27;).slice(0,130)||&#x27;سجل التقويم الذاتي&#x27;;
+    const file=new File([blob],safe+&#x27;.pdf&#x27;,{type:&#x27;application/pdf&#x27;,lastModified:Date.now()});
+    const up=await engine.upload({file,ownershipScope:&#x27;school&#x27;,moduleKey:&#x27;self_evaluation_archive&#x27;,recordType:&#x27;self_evaluation_pdf&#x27;,recordId:String(rowId),relationType:&#x27;archive_pdf&#x27;,displayName:file.name,metadata:{folderId:String(folderId||&#x27;&#x27;),folderName:String(folderName||&#x27;&#x27;),archiveRecordId:String(rowId),source:&#x27;self_evaluation_records.html&#x27;,archiveVersion:&#x27;RL30&#x27;}});
+    const fileId=String(up&amp;&amp;up.file&amp;&amp;up.file.id||&#x27;&#x27;);if(!fileId)throw new Error(&#x27;لم يرجع محرك الملفات معرف PDF&#x27;);
+    const check=await engine.usage(fileId),f=check&amp;&amp;check.file;
+    if(!f||String(f.id)!==fileId||String(f.module_key||&#x27;&#x27;)!==&#x27;self_evaluation_archive&#x27;||String(f.primary_record_type||&#x27;&#x27;)!==&#x27;self_evaluation_pdf&#x27;||String(f.primary_record_id||&#x27;&#x27;)!==String(rowId)||String(f.status||&#x27;active&#x27;)!==&#x27;active&#x27;)throw new Error(&#x27;تعذر التحقق من PDF السحابي بعد الرفع&#x27;);
+    return fileId;
+  }finally{try{frame.remove()}catch(_){}}
+}
+
     const { createApp } = Vue;
 
     createApp({
@@ -2792,52 +2825,33 @@ h1{font-size:18px;margin:0;color:#0f3f75;font-weight:900}
                 }catch(e){console.error('[self evaluation restore archive context]',e)}
             },
             async writeArchiveRecord(folderId,folderName,title,type,payload){
-                const objectKey='self_evaluation_archive_v1',flatKey='manager_self_evaluation_archive_v1';
-                const keys=['school_info','school_actual_reality','school_committees','school_operational_plan','school_indicators_data',objectKey,flatKey];
+                const objectKey=&#x27;self_evaluation_archive_v1&#x27;,flatKey=&#x27;manager_self_evaluation_archive_v1&#x27;;
+                const keys=[&#x27;school_info&#x27;,&#x27;school_actual_reality&#x27;,&#x27;school_committees&#x27;,&#x27;school_operational_plan&#x27;,&#x27;school_indicators_data&#x27;,objectKey,flatKey];
                 const before={};keys.forEach(k=&gt;before[k]=localStorage.getItem(k));
-                const now=new Date().toISOString();
+                const now=new Date().toISOString();let pdfFileId=&#x27;&#x27;;
                 try{
-                    // احفظ بيانات العمل أولًا، ولكن بدون إنشاء نسخة أخرى.
-                    localStorage.setItem('school_info',JSON.stringify(this.schoolInfo));
-                    localStorage.setItem('school_actual_reality',JSON.stringify(this.actualReality));
-                    localStorage.setItem('school_committees',JSON.stringify(this.committees));
-                    localStorage.setItem('school_operational_plan',JSON.stringify(this.operationalPlan));
-                    localStorage.setItem('school_indicators_data',JSON.stringify(this.indicatorsData));
-
-                    let archive={};try{archive=JSON.parse(localStorage.getItem(objectKey)||'{}')||{}}catch(e){archive={}}
-                    if(!archive.folders)archive.folders={};
-                    const editId=this._archiveEditId||'';
-                    if(editId&amp;&amp;archive.folders){Object.values(archive.folders).forEach(f=&gt;{if(f&amp;&amp;Array.isArray(f.items))f.items=f.items.filter(x=&gt;String(x.id)!==String(editId))})}
-                    const folder=archive.folders[folderName]||(archive.folders[folderName]={name:folderName,folderId,createdAt:now,items:[]});
-                    folder.folderId=folderId;
-                    const id=editId||`${type}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
-                    const oldRow=this._archiveEditRow||{};
-                    await this.$nextTick();
-                    const prevPrinting=this.isPrinting;if(type==='operational_plan')this.isPrinting=true;await this.$nextTick();const htmlContent=this.buildArchivePrintSnapshot(title,type,false);this.isPrinting=prevPrinting;
-                    const row={...oldRow,id,folderId,folderName,recordName:folderName,title,type,source:'قسم التقويم الذاتي',savedAt:oldRow.savedAt||now,updatedAt:now,schoolName:this.schoolInfo?.name||'',academicYear:this.schoolInfo?.hijriYear||'',data:JSON.parse(JSON.stringify(payload||{})),htmlContent,archiveFormat:'print-runtime-v4-exact',sourceFile:'self_evaluation_records.html',editorTab:this.archiveTypeConfig(type).tab,previewMode:this.archiveTypeConfig(type).printMode};
-                    folder.items.unshift(row);folder.updatedAt=now;
-                    localStorage.setItem(objectKey,JSON.stringify(archive));
-
-                    let flat=[];try{flat=JSON.parse(localStorage.getItem(flatKey)||'[]');if(!Array.isArray(flat))flat=[]}catch(e){flat=[]}
-                    if(editId)flat=flat.filter(x=&gt;String(x.id)!==String(editId));
-                    flat.unshift(row);localStorage.setItem(flatKey,JSON.stringify(flat));
-
-                    const guard=(window.parent&amp;&amp;window.parent.PlatformPersistenceGuard)||window.PlatformPersistenceGuard;
-                    if(!guard||typeof guard.commit!=='function')throw new Error('طبقة الاستمرارية السحابية غير متاحة');
-                    const r=(typeof guard.commitExact==='function')?await guard.commitExact({moduleKey:'self_evaluation',scope:'school',keys:keys}):await guard.commit(keys);if(!r||r.ok===false)throw new Error(r?.error||'تعذر تأكيد الحفظ السحابي');
-
-                    const verifyObj=JSON.parse(localStorage.getItem(objectKey)||'{}')?.folders?.[folderName]?.items?.some(x=&gt;x.id===id&amp;&amp;String(x.folderId)===folderId);
-                    const verifyFlat=JSON.parse(localStorage.getItem(flatKey)||'[]').some(x=&gt;x.id===id&amp;&amp;String(x.folderId)===folderId&amp;&amp;String(x.folderName)===folderName);
-                    if(!verifyObj||!verifyFlat)throw new Error('تعذر التحقق من ظهور السجل داخل مجلد الأرشيف الصحيح');
-                    this._archiveEditId=String(id);this._archiveEditRow=row;
-                    try{sessionStorage.removeItem('self_evaluation_edit_id_v1')}catch(_){ }
-                    this.showToast(`${editId?'تم تحديث الملف المحفوظ والتحقق منه سحابيًا في':'تم الحفظ والتحقق سحابيًا في'} أرشيف التقويم الذاتي / ${folderName}`);
-                    return row;
+                    localStorage.setItem(&#x27;school_info&#x27;,JSON.stringify(this.schoolInfo));localStorage.setItem(&#x27;school_actual_reality&#x27;,JSON.stringify(this.actualReality));localStorage.setItem(&#x27;school_committees&#x27;,JSON.stringify(this.committees));localStorage.setItem(&#x27;school_operational_plan&#x27;,JSON.stringify(this.operationalPlan));localStorage.setItem(&#x27;school_indicators_data&#x27;,JSON.stringify(this.indicatorsData));
+                    let archive={};try{archive=JSON.parse(localStorage.getItem(objectKey)||&#x27;{}&#x27;)||{}}catch(e){archive={}}if(!archive.folders)archive.folders={};
+                    const editId=this._archiveEditId||&#x27;&#x27;;if(editId&amp;&amp;archive.folders){Object.values(archive.folders).forEach(f=&gt;{if(f&amp;&amp;Array.isArray(f.items))f.items=f.items.filter(x=&gt;String(x.id)!==String(editId))})}
+                    const folder=archive.folders[folderName]||(archive.folders[folderName]={name:folderName,folderId,createdAt:now,items:[]});folder.folderId=folderId;
+                    const id=editId||`${type}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,oldRow=this._archiveEditRow||{};
+                    await this.$nextTick();const prevPrinting=this.isPrinting;if(type===&#x27;operational_plan&#x27;)this.isPrinting=true;await this.$nextTick();await new Promise(r=&gt;requestAnimationFrame(()=&gt;requestAnimationFrame(r)));const htmlContent=this.buildArchivePrintSnapshot(title,type,false);this.isPrinting=prevPrinting;
+                    if(!htmlContent||htmlContent.length&lt;300)throw new Error(&#x27;تعذر إنشاء نسخة مطابقة من النموذج قبل الأرشفة&#x27;);
+                    pdfFileId=await selfEvalPdfUploadExact(htmlContent,title,id,folderId,folderName);
+                    const row={...oldRow,id,folderId,folderName,recordName:folderName,title,type,source:&#x27;قسم التقويم الذاتي&#x27;,savedAt:oldRow.savedAt||now,updatedAt:now,schoolName:this.schoolInfo?.name||&#x27;&#x27;,academicYear:this.schoolInfo?.hijriYear||&#x27;&#x27;,data:JSON.parse(JSON.stringify(payload||{})),htmlContent,pdfHtml:htmlContent,archivePdfFileId:pdfFileId,archiveFormat:&#x27;pdf-cloud-rl30-exact&#x27;,sourceFile:&#x27;self_evaluation_records.html&#x27;,editorTab:this.archiveTypeConfig(type).tab,previewMode:this.archiveTypeConfig(type).printMode};
+                    folder.items.unshift(row);folder.updatedAt=now;localStorage.setItem(objectKey,JSON.stringify(archive));
+                    let flat=[];try{flat=JSON.parse(localStorage.getItem(flatKey)||&#x27;[]&#x27;);if(!Array.isArray(flat))flat=[]}catch(e){flat=[]}if(editId)flat=flat.filter(x=&gt;String(x.id)!==String(editId));flat.unshift(row);localStorage.setItem(flatKey,JSON.stringify(flat));
+                    const guard=(window.parent&amp;&amp;window.parent.PlatformPersistenceGuard)||window.PlatformPersistenceGuard;if(!guard||typeof guard.commitExact!==&#x27;function&#x27;||typeof guard.readExactValues!==&#x27;function&#x27;)throw new Error(&#x27;طبقة الأرشفة السحابية الصارمة غير متاحة&#x27;);
+                    const r=await guard.commitExact({moduleKey:&#x27;self_evaluation&#x27;,scope:&#x27;school&#x27;,keys});if(!r||r.ok===false)throw new Error(r?.error||&#x27;تعذر تأكيد الحفظ السحابي&#x27;);
+                    const vr=await guard.readExactValues({moduleKey:&#x27;self_evaluation&#x27;,scope:&#x27;school&#x27;,keys:[objectKey,flatKey]});if(!vr||vr.ok===false)throw new Error(vr?.error||&#x27;تعذر إعادة قراءة الأرشيف من السحابة&#x27;);
+                    const vo=JSON.parse(vr.values?.[objectKey]||&#x27;{}&#x27;),vf=JSON.parse(vr.values?.[flatKey]||&#x27;[]&#x27;),a=vo?.folders?.[folderName]?.items?.find(x=&gt;String(x.id)===String(id)),b=Array.isArray(vf)?vf.find(x=&gt;String(x.id)===String(id)):null;
+                    if(!a||!b||String(a.folderId)!==String(folderId)||String(b.folderId)!==String(folderId)||String(a.archivePdfFileId)!==pdfFileId||String(b.archivePdfFileId)!==pdfFileId||String(a.htmlContent||&#x27;&#x27;).length&lt;300||String(b.htmlContent||&#x27;&#x27;).length&lt;300)throw new Error(&#x27;فشل التحقق السحابي النهائي من النموذج أو مجلده أو PDF&#x27;);
+                    if(oldRow.archivePdfFileId&amp;&amp;String(oldRow.archivePdfFileId)!==pdfFileId){try{const engine=(window.parent&amp;&amp;window.parent.CloudFileEngine)||window.CloudFileEngine;if(engine&amp;&amp;typeof engine.trash===&#x27;function&#x27;)await engine.trash(String(oldRow.archivePdfFileId))}catch(_){}}
+                    this._archiveEditId=String(id);this._archiveEditRow=row;try{sessionStorage.removeItem(&#x27;self_evaluation_edit_id_v1&#x27;)}catch(_){ }
+                    this.showToast(`${editId?&#x27;تم تحديث PDF والتحقق منه سحابيًا في&#x27;:&#x27;تم إنشاء PDF وحفظه والتحقق منه سحابيًا في&#x27;} أرشيف التقويم الذاتي / ${folderName}`);return row;
                 }catch(e){
-                    keys.forEach(k=&gt;{if(before[k]===null)localStorage.removeItem(k);else localStorage.setItem(k,before[k])});
-                    this.showToast('تعذر تأكيد الحفظ في أرشيف التقويم الذاتي؛ تمت استعادة البيانات السابقة.');
-                    console.error('[self evaluation explicit archive]',e);
-                    return null;
+                    if(pdfFileId){try{const engine=(window.parent&amp;&amp;window.parent.CloudFileEngine)||window.CloudFileEngine;if(engine&amp;&amp;typeof engine.trash===&#x27;function&#x27;)await engine.trash(pdfFileId)}catch(_){}}
+                    keys.forEach(k=&gt;{if(before[k]===null)localStorage.removeItem(k);else localStorage.setItem(k,before[k])});this.showToast(&#x27;تعذر تأكيد ملف PDF في أرشيف التقويم الذاتي؛ لم يتم اعتبار الحفظ ناجحًا.&#x27;);console.error(&#x27;[self evaluation RL30 explicit archive]&#x27;,e);return null;
                 }
             },
             saveSchoolBaseDataToArchive(){
@@ -3907,33 +3921,88 @@ function archiveRead(){try{return JSON.parse(localStorage.getItem('self_evaluati
 function archiveWrite(archive){localStorage.setItem('self_evaluation_archive_v1',JSON.stringify(archive))}
 const SELF_EVAL_FOLDER_IDS={&quot;تشكيل فريق التقويم الذاتي&quot;: &quot;selfEval_01&quot;, &quot;نشر ثقافة التقويم الذاتي&quot;: &quot;selfEval_02&quot;, &quot;الخطة الإجرائية للتقويم الذاتي&quot;: &quot;selfEval_03&quot;, &quot;محاضر اجتماعات فريق التقويم&quot;: &quot;selfEval_04&quot;, &quot;توزيع مهام أعضاء الفريق&quot;: &quot;selfEval_05&quot;, &quot;بيانات عامة عن المدرسة&quot;: &quot;selfEval_06&quot;, &quot;سجل مؤشرات الأداء المدرسي&quot;: &quot;selfEval_07&quot;, &quot;الخطة التشغيلية ومتابعة التنفيذ&quot;: &quot;selfEval_08&quot;, &quot;الشراكات المجتمعية&quot;: &quot;selfEval_09&quot;, &quot;التطوير المهني&quot;: &quot;selfEval_10&quot;, &quot;حقوق المتعلم وحمايته&quot;: &quot;selfEval_11&quot;, &quot;التقرير الختامي للتقويم الذاتي&quot;: &quot;selfEval_12&quot;, &quot;خطة التحسين ومتابعة التنفيذ&quot;: &quot;selfEval_13&quot;, &quot;الزيارات الصفية&quot;: &quot;selfEval_14&quot;, &quot;تحليل الممارسات الصفية&quot;: &quot;selfEval_15&quot;, &quot;متابعة تنفيذ المنهج&quot;: &quot;selfEval_16&quot;, &quot;التخطيط للدروس ونواتج التعلم&quot;: &quot;selfEval_17&quot;, &quot;أدوات التقويم المتنوعة&quot;: &quot;selfEval_18&quot;, &quot;تحليل نتائج التقويم الصفي&quot;: &quot;selfEval_19&quot;, &quot;البرامج العلاجية&quot;: &quot;selfEval_20&quot;, &quot;البرامج الإثرائية&quot;: &quot;selfEval_21&quot;, &quot;دعم الفروق الفردية&quot;: &quot;selfEval_22&quot;, &quot;المجتمعات المهنية التعليمية&quot;: &quot;selfEval_23&quot;, &quot;توظيف التقنية والتعلم الإلكتروني&quot;: &quot;selfEval_24&quot;, &quot;مقابلات المعلمين والمتعلمين&quot;: &quot;selfEval_25&quot;, &quot;الشواهد الصفية الرقمية&quot;: &quot;selfEval_26&quot;, &quot;التحصيل الدراسي العام&quot;: &quot;selfEval_27&quot;, &quot;تحليل نتائج الاختبارات&quot;: &quot;selfEval_28&quot;, &quot;نتائج نافس والاختبارات الوطنية&quot;: &quot;selfEval_29&quot;, &quot;القدرات والتحصيلي للمرحلة الثانوية&quot;: &quot;selfEval_30&quot;, &quot;المهارات الأساسية&quot;: &quot;selfEval_31&quot;, &quot;الطلاب المتفوقون&quot;: &quot;selfEval_32&quot;, &quot;الطلاب المتعثرون وخطط الدعم&quot;: &quot;selfEval_33&quot;, &quot;الانضباط والمواظبة&quot;: &quot;selfEval_34&quot;, &quot;السلوك والقيم والمواطنة&quot;: &quot;selfEval_35&quot;, &quot;الصحة المدرسية والنمو الشخصي&quot;: &quot;selfEval_36&quot;, &quot;المشاركات والإنجازات الطلابية&quot;: &quot;selfEval_37&quot;, &quot;قياس أثر البرامج العلاجية والإثرائية&quot;: &quot;selfEval_38&quot;, &quot;مقارنة التحسن بين الفترات&quot;: &quot;selfEval_39&quot;, &quot;بيانات البيئة المدرسية&quot;: &quot;selfEval_40&quot;, &quot;جاهزية المبنى والفصول&quot;: &quot;selfEval_41&quot;, &quot;الأمن والسلامة&quot;: &quot;selfEval_42&quot;, &quot;خطط الإخلاء والطوارئ&quot;: &quot;selfEval_43&quot;, &quot;تنفيذ فرضيات الإخلاء&quot;: &quot;selfEval_44&quot;, &quot;الصيانة والبلاغات&quot;: &quot;selfEval_45&quot;, &quot;المختبرات ومصادر التعلم&quot;: &quot;selfEval_46&quot;, &quot;التجهيزات والتقنيات&quot;: &quot;selfEval_47&quot;, &quot;النظافة والبيئة الجاذبة&quot;: &quot;selfEval_48&quot;, &quot;الصحة المدرسية&quot;: &quot;selfEval_49&quot;, &quot;المقصف المدرسي&quot;: &quot;selfEval_50&quot;, &quot;المخاطر ومعالجتها&quot;: &quot;selfEval_51&quot;, &quot;رضا المستفيدين عن البيئة المدرسية&quot;: &quot;selfEval_52&quot;, &quot;الخطة التشغيلية&quot;: &quot;selfEval_53&quot;, &quot;قرارات اللجان&quot;: &quot;selfEval_54&quot;, &quot;اجتماعات اللجان&quot;: &quot;selfEval_55&quot;, &quot;قرارات الفرق&quot;: &quot;selfEval_56&quot;, &quot;اجتماعات الفرق&quot;: &quot;selfEval_57&quot;, &quot;قرارات المجالس&quot;: &quot;selfEval_58&quot;, &quot;اجتماعات المجالس&quot;: &quot;selfEval_59&quot;, &quot;بيانات المدرسة للتقويم الذاتي&quot;: &quot;selfEval_60&quot;, &quot;واقع المدرسة الفعلي&quot;: &quot;selfEval_61&quot;, &quot;بوابة التميز والمؤشرات&quot;: &quot;selfEval_62&quot;, &quot;سجلات التقويم الذاتي والمؤشرات&quot;: &quot;selfEval_63&quot;};
 function selfEvalFolderId(name){return SELF_EVAL_FOLDER_IDS[name]||''}
+
+async function selfEvalPdfUploadExact(htmlContent,title,rowId,folderId,folderName){
+  const engine=(window.parent&amp;&amp;window.parent!==window&amp;&amp;window.parent.CloudFileEngine)||window.CloudFileEngine;
+  if(!engine||typeof engine.upload!==&#x27;function&#x27;||typeof engine.usage!==&#x27;function&#x27;)throw new Error(&#x27;محرك ملفات PDF السحابي غير متاح&#x27;);
+  const session=(window.parent&amp;&amp;window.parent!==window&amp;&amp;window.parent.PlatformCloudSession)||window.PlatformCloudSession;
+  if(session&amp;&amp;typeof session.ensure===&#x27;function&#x27;)await session.ensure();
+  if(!htmlContent||String(htmlContent).length&lt;300)throw new Error(&#x27;محتوى PDF فارغ أو غير مكتمل&#x27;);
+  const frame=document.createElement(&#x27;iframe&#x27;);
+  frame.setAttribute(&#x27;aria-hidden&#x27;,&#x27;true&#x27;);
+  frame.style.cssText=&#x27;position:fixed;left:-12000px;top:0;width:794px;height:1123px;border:0;opacity:.001;pointer-events:none;z-index:-1&#x27;;
+  let src=String(htmlContent);
+  const inject=`&lt;style id=&quot;self-eval-pdf-capture-fix&quot;&gt;html,body{background:#fff!important;margin:0!important;padding:0!important;overflow:visible!important}.no-print,.noPrint,button{display:none!important}&lt;/style&gt;&lt;script src=&quot;https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js&quot;&gt;&lt;\/script&gt;`;
+  src=/&lt;\/head&gt;/i.test(src)?src.replace(/&lt;\/head&gt;/i,inject+&#x27;&lt;/head&gt;&#x27;):inject+src;
+  try{
+    await new Promise((resolve,reject)=&gt;{let done=false;const t=setTimeout(()=&gt;{if(!done)reject(new Error(&#x27;انتهت مهلة تجهيز PDF&#x27;))},15000);frame.onload=()=&gt;{done=true;clearTimeout(t);resolve()};document.body.appendChild(frame);frame.srcdoc=src;});
+    const w=frame.contentWindow,d=w&amp;&amp;w.document;if(!w||!d)throw new Error(&#x27;تعذر تجهيز مستند PDF&#x27;);
+    for(let i=0;i&lt;80&amp;&amp;!w.html2pdf;i++)await new Promise(r=&gt;setTimeout(r,100));
+    if(!w.html2pdf)throw new Error(&#x27;تعذر تحميل محرك PDF&#x27;);
+    try{if(d.fonts&amp;&amp;d.fonts.ready)await Promise.race([d.fonts.ready,new Promise(r=&gt;setTimeout(r,2500))])}catch(_){ }
+    await new Promise(r=&gt;setTimeout(r,180));
+    const blob=await w.html2pdf().set({margin:0,image:{type:&#x27;jpeg&#x27;,quality:.98},html2canvas:{scale:2,useCORS:true,allowTaint:false,scrollY:0,backgroundColor:&#x27;#ffffff&#x27;},jsPDF:{unit:&#x27;mm&#x27;,format:&#x27;a4&#x27;,orientation:&#x27;portrait&#x27;},pagebreak:{mode:[&#x27;css&#x27;,&#x27;legacy&#x27;]}}).from(d.body).outputPdf(&#x27;blob&#x27;);
+    if(!blob||Number(blob.size||0)&lt;500)throw new Error(&#x27;ملف PDF الناتج غير صالح&#x27;);
+    const safe=String(title||&#x27;سجل التقويم الذاتي&#x27;).replace(/[\\/:*?&quot;&lt;&gt;|]/g,&#x27;_&#x27;).slice(0,130)||&#x27;سجل التقويم الذاتي&#x27;;
+    const file=new File([blob],safe+&#x27;.pdf&#x27;,{type:&#x27;application/pdf&#x27;,lastModified:Date.now()});
+    const up=await engine.upload({file,ownershipScope:&#x27;school&#x27;,moduleKey:&#x27;self_evaluation_archive&#x27;,recordType:&#x27;self_evaluation_pdf&#x27;,recordId:String(rowId),relationType:&#x27;archive_pdf&#x27;,displayName:file.name,metadata:{folderId:String(folderId||&#x27;&#x27;),folderName:String(folderName||&#x27;&#x27;),archiveRecordId:String(rowId),source:&#x27;self_evaluation_records.html&#x27;,archiveVersion:&#x27;RL30&#x27;}});
+    const fileId=String(up&amp;&amp;up.file&amp;&amp;up.file.id||&#x27;&#x27;);if(!fileId)throw new Error(&#x27;لم يرجع محرك الملفات معرف PDF&#x27;);
+    const check=await engine.usage(fileId),f=check&amp;&amp;check.file;
+    if(!f||String(f.id)!==fileId||String(f.module_key||&#x27;&#x27;)!==&#x27;self_evaluation_archive&#x27;||String(f.primary_record_type||&#x27;&#x27;)!==&#x27;self_evaluation_pdf&#x27;||String(f.primary_record_id||&#x27;&#x27;)!==String(rowId)||String(f.status||&#x27;active&#x27;)!==&#x27;active&#x27;)throw new Error(&#x27;تعذر التحقق من PDF السحابي بعد الرفع&#x27;);
+    return fileId;
+  }finally{try{frame.remove()}catch(_){}}
+}
+
+function selfEvalFreezeArchiveNode(source){
+  const clone=source.cloneNode(true),src=[...source.querySelectorAll(&#x27;input,textarea,select&#x27;)],dst=[...clone.querySelectorAll(&#x27;input,textarea,select&#x27;)];
+  src.forEach((c,i)=&gt;{const x=dst[i];if(!x)return;const tag=(c.tagName===&#x27;TEXTAREA&#x27;)?&#x27;div&#x27;:&#x27;span&#x27;,d=document.createElement(tag);d.className=(x.className||&#x27;&#x27;)+&#x27; archived-control-value print-control-value&#x27;;if(c.tagName===&#x27;SELECT&#x27;)d.textContent=c.options[c.selectedIndex]?.text||&#x27;&#x27;;else if(c.type===&#x27;checkbox&#x27;||c.type===&#x27;radio&#x27;)d.textContent=c.checked?&#x27;☑&#x27;:&#x27;☐&#x27;;else d.textContent=c.value||&#x27;&#x27;;x.replaceWith(d)});
+  clone.querySelectorAll(&#x27;.noPrint,.no-print,button,input[type=file]&#x27;).forEach(x=&gt;x.remove());
+  clone.querySelectorAll(&#x27;[contenteditable]&#x27;).forEach(x=&gt;x.removeAttribute(&#x27;contenteditable&#x27;));
+  return clone;
+}
+function buildCurrentSelfEvalArchiveHtml(title,type){
+  let source=null;
+  if(type===&#x27;self_evaluation_record&#x27;)source=document.querySelector(&#x27;#recordView .recordShell&#x27;);
+  if(!source&amp;&amp;type===&#x27;self_evaluation_bundle&#x27;)source=document.querySelector(&#x27;#recordsPage&#x27;);
+  if(!source)source=document.querySelector(&#x27;.recordShell.officialRecord&#x27;)||document.querySelector(&#x27;.page.active&#x27;);
+  if(!source)return &#x27;&#x27;;
+  const clone=selfEvalFreezeArchiveNode(source),styles=[...document.querySelectorAll(&#x27;head style&#x27;)].map(x=&gt;x.outerHTML).join(&#x27;\\n&#x27;),links=[...document.querySelectorAll(&#x27;head link[rel=&quot;stylesheet&quot;]&#x27;)].map(x=&gt;x.outerHTML).join(&#x27;\\n&#x27;);
+  const safe=String(title||&#x27;سجل التقويم الذاتي&#x27;).replace(/[&lt;&gt;]/g,&#x27;&#x27;);
+  return `&lt;!doctype html&gt;&lt;html lang=&quot;ar&quot; dir=&quot;rtl&quot;&gt;&lt;head&gt;&lt;meta charset=&quot;utf-8&quot;&gt;&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width,initial-scale=1&quot;&gt;&lt;title&gt;${safe}&lt;/title&gt;${links}${styles}&lt;style&gt;@page{size:A4 portrait;margin:8mm}html,body{margin:0!important;padding:0!important;background:#fff!important;overflow:visible!important}body{direction:rtl;font-family:Tajawal,Cairo,Arial,sans-serif}.recordShell,.officialRecord,.page{display:block!important;width:100%!important;max-width:none!important;margin:0!important;box-shadow:none!important;border:0!important}.noPrint,.no-print,button{display:none!important}.archived-control-value{display:block;min-height:24px;padding:5px 7px;border:1px solid #d7dee8;border-radius:6px;background:#fff;white-space:pre-wrap;overflow-wrap:anywhere}table{width:100%!important;border-collapse:collapse!important}tr{break-inside:avoid!important}&lt;/style&gt;&lt;/head&gt;&lt;body&gt;${clone.outerHTML}&lt;/body&gt;&lt;/html&gt;`;
+}
+
 async function archiveSaveVerified(folderName,title,type,payload){
-  const objectKey='self_evaluation_archive_v1',flatKey='manager_self_evaluation_archive_v1';
+  const objectKey=&#x27;self_evaluation_archive_v1&#x27;,flatKey=&#x27;manager_self_evaluation_archive_v1&#x27;;
   const beforeObject=localStorage.getItem(objectKey),beforeFlat=localStorage.getItem(flatKey),beforeState=localStorage.getItem(STORAGE);
-  const now=new Date().toISOString(),folderId=selfEvalFolderId(folderName)||'selfEval_63';
+  const now=new Date().toISOString(),folderId=selfEvalFolderId(folderName)||&#x27;selfEval_63&#x27;;
+  let pdfFileId=&#x27;&#x27;;
   try{
     localStorage.setItem(STORAGE,JSON.stringify(state));
     const archive=archiveRead();if(!archive.folders)archive.folders={};
     if(!archive.folders[folderName])archive.folders[folderName]={name:folderName,folderId,createdAt:now,items:[]};
     archive.folders[folderName].folderId=folderId;
-    const row={id:`${type}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,folderId,folderName,recordName:folderName,title,type,source:'سجلات التقويم الذاتي والمؤشرات',savedAt:now,schoolName:state.settings.school||'',academicYear:state.settings.academicYear||'',data:JSON.parse(JSON.stringify(payload||{}))};
+    const rowId=`${type}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+    const htmlContent=buildCurrentSelfEvalArchiveHtml(title,type);
+    if(!htmlContent||htmlContent.length&lt;300)throw new Error(&#x27;تعذر إنشاء نسخة مطابقة من السجل قبل الأرشفة&#x27;);
+    pdfFileId=await selfEvalPdfUploadExact(htmlContent,title,rowId,folderId,folderName);
+    const row={id:rowId,folderId,folderName,recordName:folderName,title,type,source:&#x27;سجلات التقويم الذاتي والمؤشرات&#x27;,savedAt:now,updatedAt:now,schoolName:state.settings.school||&#x27;&#x27;,academicYear:state.settings.academicYear||&#x27;&#x27;,data:JSON.parse(JSON.stringify(payload||{})),htmlContent,pdfHtml:htmlContent,archivePdfFileId:pdfFileId,archiveFormat:&#x27;pdf-cloud-rl30-exact&#x27;,sourceFile:&#x27;self_evaluation_records.html&#x27;};
     archive.folders[folderName].items.unshift(row);archive.folders[folderName].updatedAt=now;archiveWrite(archive);
-
-    let flat=[];try{flat=JSON.parse(localStorage.getItem(flatKey)||'[]');if(!Array.isArray(flat))flat=[]}catch(e){flat=[]}
+    let flat=[];try{flat=JSON.parse(localStorage.getItem(flatKey)||&#x27;[]&#x27;);if(!Array.isArray(flat))flat=[]}catch(e){flat=[]}
     flat.unshift(row);localStorage.setItem(flatKey,JSON.stringify(flat));
-
     const guard=(window.parent&amp;&amp;window.parent.PlatformPersistenceGuard)||window.PlatformPersistenceGuard;
-    if(!guard||typeof guard.commit!=='function')throw new Error('طبقة الاستمرارية السحابية غير متاحة');
-    const _keys=[STORAGE,objectKey,flatKey];const r=(typeof guard.commitExact==='function')?await guard.commitExact({moduleKey:'self_evaluation',scope:'school',keys:_keys}):await guard.commit(_keys);if(!r||r.ok===false)throw new Error(r?.error||'تعذر تأكيد الحفظ السحابي');
-    const ok1=archiveRead()?.folders?.[folderName]?.items?.some(x=&gt;x.id===row.id&amp;&amp;String(x.folderId)===String(folderId));
-    const ok2=JSON.parse(localStorage.getItem(flatKey)||'[]').some(x=&gt;x.id===row.id&amp;&amp;String(x.folderId)===String(folderId));
-    if(!ok1||!ok2)throw new Error('تعذر التحقق من مجلد الأرشيف الصحيح');
+    if(!guard||typeof guard.commitExact!==&#x27;function&#x27;||typeof guard.readExactValues!==&#x27;function&#x27;)throw new Error(&#x27;طبقة الأرشفة السحابية الصارمة غير متاحة&#x27;);
+    const _keys=[STORAGE,objectKey,flatKey],r=await guard.commitExact({moduleKey:&#x27;self_evaluation&#x27;,scope:&#x27;school&#x27;,keys:_keys});if(!r||r.ok===false)throw new Error(r?.error||&#x27;تعذر تأكيد الحفظ السحابي&#x27;);
+    const vr=await guard.readExactValues({moduleKey:&#x27;self_evaluation&#x27;,scope:&#x27;school&#x27;,keys:[objectKey,flatKey]});if(!vr||vr.ok===false)throw new Error(vr?.error||&#x27;تعذر إعادة قراءة الأرشيف من السحابة&#x27;);
+    const vo=JSON.parse(vr.values?.[objectKey]||&#x27;{}&#x27;),vf=JSON.parse(vr.values?.[flatKey]||&#x27;[]&#x27;);
+    const a=vo?.folders?.[folderName]?.items?.find(x=&gt;String(x.id)===String(rowId)),b=Array.isArray(vf)?vf.find(x=&gt;String(x.id)===String(rowId)):null;
+    if(!a||!b||String(a.folderId)!==String(folderId)||String(b.folderId)!==String(folderId)||String(a.archivePdfFileId)!==pdfFileId||String(b.archivePdfFileId)!==pdfFileId||String(a.htmlContent||&#x27;&#x27;).length&lt;300||String(b.htmlContent||&#x27;&#x27;).length&lt;300)throw new Error(&#x27;فشل التحقق السحابي النهائي من محتوى السجل أو مجلده أو PDF&#x27;);
     return row;
   }catch(e){
+    if(pdfFileId){try{const engine=(window.parent&amp;&amp;window.parent.CloudFileEngine)||window.CloudFileEngine;if(engine&amp;&amp;typeof engine.trash===&#x27;function&#x27;)await engine.trash(pdfFileId)}catch(_){}}
     if(beforeObject===null)localStorage.removeItem(objectKey);else localStorage.setItem(objectKey,beforeObject);
     if(beforeFlat===null)localStorage.removeItem(flatKey);else localStorage.setItem(flatKey,beforeFlat);
     if(beforeState===null)localStorage.removeItem(STORAGE);else localStorage.setItem(STORAGE,beforeState);
-    throw e;
+    console.error(&#x27;[self evaluation RL30 strict archive]&#x27;,e);throw e;
   }
 }
 function recordPayload(di,ri){
@@ -4307,8 +4376,9 @@ activateSelfEvaluationModule('committeesFrame');
       let arr=[];
       try{ arr=JSON.parse(target.getItem(MANAGER_ARCHIVE_KEY)||'[]')||[]; }catch(e){ arr=[]; }
       const name=payload.recordName||payload.folderName||payload.title||'سجل التقويم الذاتي';
-      const item={id:Date.now(), folderId:payload.folderId||'', folderName:name, recordName:name, title:payload.title||name, displayName:payload.displayName||name, htmlContent:payload.htmlContent||'', createdAt:payload.createdAt||new Date().toLocaleString('ar-SA'), data:payload.data||null};
-      arr.push(item);
+      if(!payload.htmlContent&&!payload.archivePdfFileId)return;
+      const item={id:payload.id||Date.now(), folderId:payload.folderId||'', folderName:name, recordName:name, title:payload.title||name, displayName:payload.displayName||name, htmlContent:payload.htmlContent||'', archivePdfFileId:payload.archivePdfFileId||'', createdAt:payload.createdAt||new Date().toLocaleString('ar-SA'), data:payload.data||null};
+      arr=arr.filter(x=>String(x&&x.id)!==String(item.id));arr.push(item);
       target.setItem(MANAGER_ARCHIVE_KEY, JSON.stringify(arr));
     }catch(e){}
   }

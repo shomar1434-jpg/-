@@ -2190,7 +2190,7 @@ html.teacher-auth-pending body{visibility:hidden!important;}
 <span>أرشفة ذكية</span>
 <span>تصدير احترافي</span>
 </div>
-<button class="w-full bg-teal-600 text-white px-16 py-5 rounded-[25px] font-bold text-lg shadow-2xl hover:bg-teal-700 active:scale-95 transition-all" onclick="enterApp()">دخول للنظام</button>
+<button id="teacher-enter-system-btn" class="w-full bg-teal-600 text-white px-16 py-5 rounded-[25px] font-bold text-lg shadow-2xl hover:bg-teal-700 active:scale-95 transition-all" onclick="return window.teacherEnterSystem(event)">دخول للنظام</button>
 </div>
 <p class="text-[10px] text-white/60 font-bold uppercase">جميع الحقوق محفوظة © 2026</p>
 </div>
@@ -3318,7 +3318,7 @@ html.teacher-auth-pending body{visibility:hidden!important;}
 
         function deactivateApp() { if (confirm('هل أنت متأكد من إلغاء تنشيط النظام؟')) { localStorage.removeItem('app_activated'); location.reload(); } }
         function showWelcomeGate() { document.getElementById('activation-overlay').style.display = 'none'; document.getElementById('welcome-gate').style.display = 'flex'; }
-        function enterApp() { document.getElementById('welcome-gate').style.display = 'none'; document.getElementById('welcome-dashboard').style.display = 'block'; }
+        function enterApp() { return window.teacherEnterSystem ? window.teacherEnterSystem() : (document.getElementById('welcome-gate').style.display='none',document.getElementById('welcome-dashboard').style.display='block',false); }
         function exitApp() { document.getElementById('exit-modal').style.display = 'flex'; }
         
         /** * وظيفة الخروج الفعلي والمحمي 
@@ -4754,7 +4754,7 @@ body{overflow-x:hidden}
         }, true);
 
         const __enhancedEnterApp = enterApp;
-        enterApp = function() { __enhancedEnterApp(); refreshDashboardMetrics(); };
+        enterApp = function() { return __enhancedEnterApp(); };
         const __enhancedGoHome = goHome;
         goHome = function() { if (typeof teacherIsFollowMode === 'function' && teacherIsFollowMode()) { __enhancedGoHome(); refreshDashboardMetrics(); return; } saveDraftSnapshot(true); __enhancedGoHome(); refreshDashboardMetrics(); };
         const __enhancedSaveReportToArchive = saveReportToArchive;
@@ -4765,7 +4765,7 @@ body{overflow-x:hidden}
   function run(){
     try{ if(typeof setupDateDropdown==='function') setupDateDropdown(); }catch(e){ console.warn('[teacher report init] date',e); }
     try{ if(typeof populateBeneficiaries==='function') populateBeneficiaries(); }catch(e){ console.warn('[teacher report init] beneficiaries',e); }
-    try{ if(window.__teacherPerformanceArchiveReady&&typeof refreshDashboardMetrics==='function') refreshDashboardMetrics(); }catch(e){ console.warn('[teacher report init] metrics',e); }
+    try{ if(window.__TEACHER_SYSTEM_OPENED__&&window.__teacherPerformanceArchiveReady&&typeof refreshDashboardMetrics==='function') refreshDashboardMetrics(); }catch(e){ console.warn('[teacher report init] metrics',e); }
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',run,{once:true}); else run();
 })();
@@ -5400,15 +5400,109 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
 <!-- Unified Comprehensive Cloud Storage -->
 <script src="platform-cloud-session.js?v=20260905-RL33-complete-tab-role-isolation"></script>
 
-<script id="teacher-dual-access-gate-clean-v3">
+<script id="teacher-enter-system-controller-RL56">
 (function(){
   'use strict';
-  if(window.__TEACHER_DUAL_ACCESS_GATE_CLEAN_V3__) return;
-  window.__TEACHER_DUAL_ACCESS_GATE_CLEAN_V3__=true;
+  if(window.__TEACHER_ENTER_SYSTEM_CONTROLLER_RL56__) return;
+  window.__TEACHER_ENTER_SYSTEM_CONTROLLER_RL56__=true;
+
+  function showDashboard(){
+    const gate=document.getElementById('welcome-gate');
+    const dashboard=document.getElementById('welcome-dashboard');
+    const activation=document.getElementById('activation-overlay');
+    const archive=document.getElementById('archive-view');
+    const stats=document.getElementById('stats-view');
+    const report=document.getElementById('main-report-app');
+
+    if(activation) activation.style.setProperty('display','none','important');
+    if(gate) gate.style.setProperty('display','none','important');
+
+    if(archive) archive.style.display='none';
+    if(stats) stats.style.display='none';
+    if(report) report.classList.add('hidden');
+
+    if(!dashboard) throw new Error('TEACHER_DASHBOARD_MISSING');
+    dashboard.classList.remove('hidden');
+    dashboard.style.setProperty('display','block','important');
+    dashboard.scrollTop=0;
+
+    window.__TEACHER_SYSTEM_OPENED__=true;
+
+    // RL57: أظهر لوحة المعلم أولاً. أرشيف الأداء والعدادات مهمة خلفية ولا يجوز أن تحجب الدخول.
+    if(!window.__TEACHER_POST_ENTRY_ARCHIVE_SCHEDULED_RL57__){
+      window.__TEACHER_POST_ENTRY_ARCHIVE_SCHEDULED_RL57__=true;
+      const startArchiveAfterEntry=async function(){
+        try{
+          // امنح الواجهة فرصة لتكتمل وتستجيب للنقر قبل أي قراءة سحابية ثقيلة.
+          await new Promise(r=>setTimeout(r,650));
+          if(!window.__TEACHER_SYSTEM_OPENED__) return;
+          if(window.__teacherPerformanceArchiveReady){
+            try{if(typeof refreshDashboardMetrics==='function')refreshDashboardMetrics()}catch(e){console.warn('[teacher RL57 metrics]',e)}
+            return;
+          }
+          if(typeof window.teacherPerformanceArchiveBootstrap==='function'){
+            await window.teacherPerformanceArchiveBootstrap(false);
+          }else if(typeof window.performanceArchiveUnifiedBootstrap==='function'){
+            await window.performanceArchiveUnifiedBootstrap(false);
+          }
+        }catch(e){
+          // فشل الأرشيف لا يعيد المستخدم لبوابة الدخول ولا يخفي لوحة المعلم.
+          console.warn('[teacher RL57 deferred archive bootstrap]',e);
+        }
+      };
+      if('requestIdleCallback' in window){
+        requestIdleCallback(()=>startArchiveAfterEntry(),{timeout:1200});
+      }else{
+        setTimeout(()=>startArchiveAfterEntry(),0);
+      }
+    }
+    return false;
+  }
+
+  window.teacherEnterSystem=function(event){
+    try{
+      if(event){
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      // لا نعيد التحقق من الدخول هنا؛ الوصول إلى welcome-gate يعني أن بوابة RL55 قد سمحت بالحساب.
+      // لكن نرفض الانتقال إذا لم تكتمل بوابة الوصول بعد.
+      if(!window.__TEACHER_ENTRY_READY__ && !window.__VERIFIED_TEACHER_SCHOOL_CONTEXT__){
+        console.warn('[teacher RL56] entry gate not ready yet');
+        return false;
+      }
+      return showDashboard();
+    }catch(e){
+      console.error('[teacher RL56 enter system]',e);
+      return false;
+    }
+  };
+
+  // ربط احتياطي بعد DOMContentLoaded حتى لو تعطل inline handler بسبب سكربت آخر.
+  function bind(){
+    const btn=document.getElementById('teacher-enter-system-btn');
+    if(!btn || btn.dataset.rl56Bound==='1') return;
+    btn.dataset.rl56Bound='1';
+    btn.addEventListener('click',function(ev){
+      ev.preventDefault();
+      window.teacherEnterSystem(ev);
+    },true);
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',bind,{once:true});
+  else bind();
+})();
+</script>
+
+<script id="teacher-dual-access-gate-clean-v4-RL55">
+(function(){
+  'use strict';
+  if(window.__TEACHER_DUAL_ACCESS_GATE_CLEAN_V4_RL55__) return;
+  window.__TEACHER_DUAL_ACCESS_GATE_CLEAN_V4_RL55__=true;
 
   const TEACHER_ROLES=new Set(['teacher','school_teacher','معلم','معلمة']);
   const norm=v=>String(v||'').trim().toLowerCase();
   const same=(a,b)=>String(a||'').trim()===String(b||'').trim();
+  const wait=ms=>new Promise(r=>setTimeout(r,ms));
 
   function requestedSystemAdminContext(){
     try{
@@ -5418,6 +5512,7 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
         sessionStorage.getItem('system_admin_verified')==='true';
     }catch(_){return false;}
   }
+
   async function verifySystemAdminAccess(){
     const bridge=window.SmartSchoolSupabase;
     const sb=bridge&&typeof bridge.getClient==='function'?bridge.getClient():null;
@@ -5438,7 +5533,6 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
     document.documentElement.classList.remove('teacher-auth-pending');
     const style=document.getElementById('teacher-secure-entry-pending-style');
     if(style) style.remove();
-    // بدء واجهة المعلم الأصلية بعد نجاح التحقق مباشرة، دون انتظار window.onload.
     requestAnimationFrame(function(){
       try{
         const activation=document.getElementById('activation-overlay');
@@ -5457,15 +5551,56 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
         window.__TEACHER_ENTRY_READY__=true;
       }catch(entryError){
         console.error('[teacher original entry bootstrap]',entryError);
-        throw entryError;
       }
     });
   }
 
   function deny(reason){
-    console.error('[teacher access gate]',reason);
+    console.error('[teacher access gate RL55]',reason);
     const target='school-login.html?reason=teacher_access_denied';
     try{ location.replace(target); }catch(_){ location.href=target; }
+  }
+
+  async function ensureSessionWithRetry(){
+    let last=null;
+    for(let attempt=0;attempt<4;attempt++){
+      try{
+        if(!window.PlatformCloudSession || typeof PlatformCloudSession.ensure!=='function') throw new Error('TEACHER_SESSION_ENGINE_UNAVAILABLE');
+        await PlatformCloudSession.ensure();
+        const schoolId=String(PlatformCloudSession.schoolId?.()||'').trim();
+        const userId=String(PlatformCloudSession.userId?.()||'').trim();
+        const role=norm(PlatformCloudSession.role?.());
+        if(schoolId&&userId&&TEACHER_ROLES.has(role)) return {schoolId,userId,role};
+        last=new Error('TEACHER_SESSION_CONTEXT_NOT_READY');
+      }catch(e){last=e}
+      await wait(180*(attempt+1));
+    }
+    throw last||new Error('TEACHER_SESSION_CONTEXT_MISSING');
+  }
+
+  async function membershipsWithRetry(ctx){
+    let last=null, lastPayload=null;
+    if(!window.PlatformCloudSession || typeof PlatformCloudSession.memberships!=='function') return {payload:null,error:new Error('TEACHER_MEMBERSHIP_ENGINE_UNAVAILABLE')};
+    for(let attempt=0;attempt<4;attempt++){
+      try{
+        const payload=await PlatformCloudSession.memberships();
+        lastPayload=payload;
+        const current=payload&&payload.current?payload.current:{};
+        const currentMatches=same(current.schoolId,ctx.schoolId)&&same(current.userId,ctx.userId);
+        const memberships=Array.isArray(payload?.memberships)?payload.memberships:[];
+        const exact=memberships.find(m=>same(m.schoolId,ctx.schoolId)&&same(m.userId,ctx.userId)&&TEACHER_ROLES.has(norm(m.role)));
+        if(currentMatches && exact) return {payload,current,exact,error:null};
+        // إذا أعاد الخادم سياق الجلسة الحالي نفسه كمعلم، نحتفظ به كمرجع موثوق،
+        // ونمنح مهلة للمزامنة التاريخية users -> memberships قبل اتخاذ قرار الرفض.
+        if(currentMatches && TEACHER_ROLES.has(norm(current.role||ctx.role))){
+          last={code:'LEGACY_TEACHER_MEMBERSHIP_NOT_SYNTHESIZED',message:'legacy teacher session valid but membership row not materialized yet'};
+        }else{
+          last=new Error('TEACHER_SESSION_CONTEXT_MISMATCH');
+        }
+      }catch(e){last=e}
+      await wait(220*(attempt+1));
+    }
+    return {payload:lastPayload,error:last};
   }
 
   async function verify(){
@@ -5476,31 +5611,48 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
         revealAuthorizedPage(ctx);
         return;
       }
+
       if(window.ManagerFollowAccessBridge && ManagerFollowAccessBridge.request().active){
         const ctx=await ManagerFollowAccessBridge.verify(['teacher','performance']);
         revealAuthorizedPage(ctx);
         return;
       }
-      if(!window.PlatformCloudSession || typeof PlatformCloudSession.ensure!=='function' || typeof PlatformCloudSession.memberships!=='function'){
-        throw new Error('TEACHER_SESSION_ENGINE_UNAVAILABLE');
-      }
-      await PlatformCloudSession.ensure();
-      const schoolId=String(PlatformCloudSession.schoolId?.()||'').trim();
-      const userId=String(PlatformCloudSession.userId?.()||'').trim();
-      const sessionRole=norm(PlatformCloudSession.role?.());
-      if(!schoolId || !userId) throw new Error('TEACHER_SESSION_CONTEXT_MISSING');
 
-      const payload=await PlatformCloudSession.memberships();
-      const current=payload && payload.current ? payload.current : {};
-      if(!same(current.schoolId,schoolId) || !same(current.userId,userId)){
-        throw new Error('TEACHER_SESSION_CONTEXT_MISMATCH');
-      }
-      const memberships=Array.isArray(payload?.memberships)?payload.memberships:[];
-      const membership=memberships.find(m=>same(m.schoolId,schoolId) && same(m.userId,userId) && TEACHER_ROLES.has(norm(m.role)));
-      const currentTeacher=TEACHER_ROLES.has(sessionRole) || TEACHER_ROLES.has(norm(current.role));
-      if(!membership || !currentTeacher) throw new Error('TEACHER_MEMBERSHIP_DENIED');
+      const ctx=await ensureSessionWithRetry();
+      const membershipResult=await membershipsWithRetry(ctx);
 
-      revealAuthorizedPage({schoolId,userId,role:membership.role||current.role||sessionRole,membershipId:membership.membershipId||''});
+      if(membershipResult.exact){
+        revealAuthorizedPage({
+          schoolId:ctx.schoolId,userId:ctx.userId,
+          role:membershipResult.exact.role||ctx.role,
+          membershipId:membershipResult.exact.membershipId||''
+        });
+        return;
+      }
+
+      // RL55 compatibility bridge:
+      // platform-session أصدر بالفعل جلسة معلم صالحة ومربوطة بـ school_id + user_id + role.
+      // بعض حسابات المعلمين الحالية ما زالت في users ولا يوجد لها صف مستقل في school_members.
+      // إذا أعادت memberships() نفس current session بالضبط كمعلم، نسمح بالدخول ولا نكسر العزل.
+      const payload=membershipResult.payload||{};
+      const current=payload.current||{};
+      const legacyExact=
+        same(current.schoolId,ctx.schoolId) &&
+        same(current.userId,ctx.userId) &&
+        TEACHER_ROLES.has(norm(current.role||ctx.role));
+
+      if(legacyExact){
+        revealAuthorizedPage({
+          schoolId:ctx.schoolId,
+          userId:ctx.userId,
+          role:norm(current.role||ctx.role)||'teacher',
+          membershipId:'',
+          legacyTeacherSession:true
+        });
+        return;
+      }
+
+      throw membershipResult.error||new Error('TEACHER_MEMBERSHIP_DENIED');
     }catch(error){
       if(systemAdminRequested){
         try{sessionStorage.removeItem('system_admin_context');sessionStorage.removeItem('system_admin_verified');}catch(_){}
@@ -5657,7 +5809,8 @@ window.addEventListener('teacher-performance-archive-view-updated',function(){
 });
 
 window.__PERFORMANCE_ARCHIVE_CLEAN_V5__={role:MODULE,indexKey:INDEX_KEY,reportPrefix:REPORT_PREFIX,oneReportPerStateKey:true,legacyReadOnly:false,legacyDeleteSupported:true,userValuesWin:true,fastAppearance:true};
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(()=>window.teacherPerformanceArchiveBootstrap?.(false).catch(e=>console.warn('[Performance V5 bootstrap]',e)),0),{once:true});else setTimeout(()=>window.teacherPerformanceArchiveBootstrap?.(false).catch(e=>console.warn('[Performance V5 bootstrap]',e)),0);
+// RL57: لا يبدأ أرشيف الأداء أثناء تحميل صفحة المعلم.
+window.__TEACHER_PERFORMANCE_ARCHIVE_BOOTSTRAP_DEFERRED_RL57__=true;
 })();
 </script>
 <script id="PERFORMANCE_ARCHIVE_CLEAN_V5_OVERRIDES">
@@ -5667,7 +5820,19 @@ function uniqueId(){return String(Date.now())+'_'+Math.random().toString(36).sli
 function programName(){return String(document.getElementById('field_prog_name')?.innerText||document.getElementById('field_prog_name')?.textContent||'').trim()}
 function rerender(cat){try{if(document.getElementById('archive-view')?.style.display==='block'){if(cat&&typeof openArchiveFolder==='function')openArchiveFolder(cat);else if(typeof renderArchiveFolders==='function')renderArchiveFolders()}}catch(_){}}
 window.saveReportToArchive=async function(){const selected=selectedPerformanceArchiveDomain(),cat=String(selected.id||'').trim();if(!cat){showToast('اختر المجال أولاً ⚠️');return false}const name=programName();if(!name){showToast('أدخل اسم البرنامج قبل الحفظ ⚠️');return false}const folderName=String(selected.name||(typeof performanceArchiveFolderName==='function'?performanceArchiveFolderName(cat):cat)||cat).trim();showToast('جاري إرسال «'+name+'» إلى «'+folderName+'»...');try{if(typeof freezeReportDOMForArchive==='function')freezeReportDOMForArchive();const editId=window.__performanceExplicitEditId?String(window.__performanceExplicitEditId):'';const existing=editId?PerformanceArchiveCleanV5.find(editId):null;const canEdit=!!(existing&&existing.__archiveSource==='clean');const data={id:canEdit?existing.id:uniqueId(),programName:name,title:name,category:cat,categoryName:folderName,archiveFolderId:cat,archiveFolderName:folderName,archiveRole:'teacher',archiveType:'performanceReport',createdAt:(canEdit&&existing.createdAt)||new Date().toLocaleDateString('ar-SA-u-ca-islamic-umalqura'),content:document.getElementById('report-content-container').innerHTML,updatedAt:new Date().toISOString()};const result=await PerformanceArchiveCleanV5.saveFast(data);currentEditingId=null;window.__performanceExplicitEditId=null;rerender(cat);showToast('تم حفظ «'+name+'» وظهر في الأرشيف ✅');result.verification.then(()=>{}).catch(e=>{console.error('[Performance V5 verify]',e);showToast('ظهر التقرير، لكن تعذر التحقق السحابي النهائي: '+String(e?.message||e))});return true}catch(e){console.error('[Performance V5 save]',e);showToast('تعذر حفظ التقرير: '+String(e?.message||e));return false}};
-window.openArchiveView=function(){const w=document.getElementById('welcome-dashboard');if(w)w.style.display='none';const a=document.getElementById('archive-view');if(a)a.style.display='block';window.teacherPerformanceArchiveBootstrap(false).catch(e=>{console.error('[Performance V5 archive]',e);showToast('تعذر تحميل بعض محتويات الأرشيف: '+String(e?.message||e))})};
+window.openArchiveView=function(){
+  const w=document.getElementById('welcome-dashboard');if(w)w.style.display='none';
+  const a=document.getElementById('archive-view');if(a)a.style.display='block';
+  const load=(typeof window.teacherPerformanceArchiveBootstrap==='function')
+    ? window.teacherPerformanceArchiveBootstrap(false)
+    : (typeof window.performanceArchiveUnifiedBootstrap==='function'
+        ? window.performanceArchiveUnifiedBootstrap(false)
+        : Promise.resolve([]));
+  Promise.resolve(load).catch(e=>{
+    console.error('[teacher RL57 archive on-demand]',e);
+    try{if(typeof showToast==='function')showToast('تعذر تحميل بعض محتويات الأرشيف: '+String(e?.message||e))}catch(_){}
+  });
+};
 window.loadReport=async function(id){try{const r=await PerformanceArchiveCleanV5.fetchReport(id);if(!r){showToast('تعذر العثور على التقرير');return}if(r.__archiveSource==='legacy'){showToast('هذا تقرير تاريخي للقراءة فقط');return}document.getElementById('report-content-container').innerHTML=r.content||'';document.querySelectorAll('#report-content-container select[data-saved-value]').forEach(sel=>{const v=sel.getAttribute('data-saved-value');if(Array.from(sel.options).some(o=>o.value===v))sel.value=v});currentEditingId=r.id;window.__performanceExplicitEditId=String(r.id);document.getElementById('archive-view').style.display='none';document.getElementById('main-report-app').classList.remove('hidden');if(typeof updateReportProgress==='function')updateReportProgress()}catch(e){showToast('تعذر فتح التقرير: '+String(e?.message||e))}};
 window.previewArchivedReadOnly=async function(id){try{const r=await PerformanceArchiveCleanV5.fetchReport(id);if(!r){showToast('تعذر العثور على التقرير');return}const title=String(r.programName||r.title||'تقرير أداء').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));const win=window.open('','_blank');if(win){win.document.open();win.document.write('<!doctype html><html dir="rtl"><head><meta charset="utf-8"><title>'+title+'</title></head><body><div style="direction:rtl;padding:18px;font-family:Tajawal,Arial"><h3>'+title+'</h3><div style="color:#64748b;margin-bottom:12px">'+String(r.archiveFolderName||'')+'</div>'+(r.content||'')+'</div></body></html>');win.document.close()}}catch(e){showToast('تعذر معاينة التقرير: '+String(e?.message||e))}};
 window.requestDeleteReport=async function(id){if(!confirm('هل تريد حذف هذا التقرير نهائيًا من أرشيف هذه المدرسة؟'))return;try{const x=PerformanceArchiveCleanV5.find(id);if(!x)throw new Error('تعذر العثور على التقرير');if(x.__archiveSource==='legacy'){showToast('جاري حذف التقرير التاريخي من مصدره السحابي...');await PerformanceArchiveCleanV5.removeLegacy(id);rerender(window.__performanceV5CurrentArchiveFolder);if(typeof refreshDashboardMetrics==='function')refreshDashboardMetrics();showToast('تم حذف التقرير التاريخي والتحقق منه سحابيًا ✅');return}const result=await PerformanceArchiveCleanV5.remove(id);rerender(window.__performanceV5CurrentArchiveFolder);if(typeof refreshDashboardMetrics==='function')refreshDashboardMetrics();showToast('تم حذف التقرير من الأرشيف ✅');result.verification.catch(e=>showToast('تم تحديث العرض لكن تعذر التحقق النهائي من الحذف: '+String(e?.message||e)))}catch(e){showToast('تعذر حذف التقرير: '+String(e?.message||e))}};
@@ -5943,5 +6108,7 @@ window.__PERFORMANCE_ARCHIVE_CLEAN_V5_4__={pdfLikeReadonlyPreview:true,usesPrint
 })();
 </script>
 
+<script id="TEACHER_ENTER_BUTTON_FIX_RL56">window.__TEACHER_ENTER_BUTTON_FIX_RL56__="2026.09.05";</script>
+<script id="TEACHER_DEFER_ARCHIVE_BOOTSTRAP_RL57">window.__TEACHER_DEFER_ARCHIVE_BOOTSTRAP_RL57__="2026.09.05";</script>
 </body>
 </html>

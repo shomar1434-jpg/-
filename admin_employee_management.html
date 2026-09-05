@@ -40,7 +40,7 @@
 <body>
 <div class="wrap">
 <header class="top"><img src="https://salogos.b-cdn.net/logos/svg/1774895141785-5zgexuf8.svg"><div><h1>إدارة الأداء الوظيفي للموظفين الإداريين</h1><p id="sub">قسم المسؤول المباشر</p></div></header>
-<div class="bar"><button class="btn" onclick="createRegistrationLink()">إنشاء رابط تسجيل موظف إداري</button><button class="btn blue" onclick="copyAdministrativeEmployeeLoginLink()">نسخ رابط دخول الموظف الإداري</button><button class="btn blue" onclick="openAdministrativeEmployeesPortal()">الدخول إلى بوابة الموظفين الإداريين</button><button class="btn light" onclick="render()">تحديث البيانات</button><button class="btn light" onclick="history.back()">رجوع</button></div>
+<div class="bar"><button class="btn" onclick="createRegistrationLink()">إنشاء رابط تسجيل موظف إداري</button><button class="btn blue" onclick="copyAdministrativeEmployeeLoginLink()">نسخ رابط دخول الموظف الإداري</button><button class="btn blue" onclick="openAdministrativeEmployeesPortal()">الدخول إلى بوابة الموظفين الإداريين</button><button class="btn light" onclick="render()">تحديث البيانات</button><button class="btn light" onclick="returnToAdministrativeEmployeeSupervisor()">رجوع</button></div>
 
 <section class="panel" id="approvalAssetsPanel"><h2>إعدادات اعتماد المسؤول المباشر</h2><div class="approvalHint">ارفع التوقيع الرقمي والختم مرة واحدة، وسيتم سحبهما تلقائيًا في اعتماد خطة الأداء ونتائج التقييم وخطة التحسين للموظف الإداري حسب المسؤول الحالي.</div><div class="assetGrid"><div class="assetBox"><b>التوقيع الرقمي للمسؤول</b><input type="file" accept="image/*" onchange="saveSupervisorAsset('signature',this)" style="margin-top:10px"><div class="assetPreview" id="signaturePreview">لا يوجد توقيع محفوظ</div></div><div class="assetBox"><b>ختم المدرسة / الاعتماد</b><input type="file" accept="image/*" onchange="saveSupervisorAsset('stamp',this)" style="margin-top:10px"><div class="assetPreview" id="stampPreview">لا يوجد ختم محفوظ</div></div></div></section>
 <section class="grid"><div class="kpi"><span>إجمالي النشطين</span><br><b id="kAll">0</b></div><div class="kpi"><span>خطط بانتظار الاعتماد</span><br><b id="kPending">0</b></div><div class="kpi"><span>خطط معتمدة</span><br><b id="kApproved">0</b></div><div class="kpi"><span>خطط معادة للتعديل</span><br><b id="kReturned">0</b></div><div class="kpi"><span>موظفون معطلون</span><br><b id="kDisabled">0</b></div></section>
@@ -49,7 +49,34 @@
 </div>
 <script>
 const params=new URLSearchParams(location.search);let supervisor=params.get('supervisor')||params.get('role')||'manager';
+document.documentElement.setAttribute('data-administrative-employee-supervisor-page','1');
+document.documentElement.setAttribute('data-administrative-employee-supervisor-role',String(supervisor||'manager'));
 function supLabel(v){return v==='agent'||v==='vice'||v==='wakil'?'الوكيل/الوكيلة':'المدير/المديرة'}
+
+function administrativeEmployeeSupervisorRole(){
+  const q=new URLSearchParams(location.search||'');
+  const v=normalizeSupervisor(q.get('supervisor')||q.get('viewerRole')||q.get('viewer')||q.get('returnRole')||supervisor||'manager');
+  return v==='agent'?'agent':'manager';
+}
+function administrativeEmployeeSupervisorSchoolId(){
+  const q=new URLSearchParams(location.search||'');
+  const fromUrl=String(q.get('schoolId')||q.get('school_id')||q.get('school')||'').trim();
+  const tab=String(sessionStorage.getItem('smart_school_tab_school_v1')||sessionStorage.getItem('platform_tab_session_school_id_v1')||'').trim();
+  const cloud=String((window.PlatformCloudSession&&typeof PlatformCloudSession.schoolId==='function'&&PlatformCloudSession.schoolId())||'').trim();
+  const trusted=tab||cloud||fromUrl;
+  if(fromUrl&&trusted&&fromUrl!==trusted)throw new Error('رابط قسم الموظف الإداري لا يطابق مدرسة جلسة التبويب');
+  return trusted;
+}
+function returnToAdministrativeEmployeeSupervisor(){
+  try{
+    const role=administrativeEmployeeSupervisorRole(),sid=administrativeEmployeeSupervisorSchoolId(),q=new URLSearchParams();
+    if(sid)q.set('schoolId',sid);
+    q.set('sectionHome','1');q.set('sectionReturn','1');q.set('returnedFromAdminEmployee','1');
+    location.href=(role==='agent'?'agent.html':'manager.html')+'?'+q.toString();
+  }catch(e){console.error('[admin employee supervisor return]',e);alert('تعذر العودة إلى واجهة المسؤول المباشر: '+String(e&&e.message||e));}
+}
+window.returnToAdministrativeEmployeeSupervisor=returnToAdministrativeEmployeeSupervisor;
+
 document.getElementById('sub').textContent='بإشراف '+supLabel(supervisor);
 function allPlans(){try{return JSON.parse(localStorage.getItem('administrative_employee_plans')||'[]')}catch(e){return []}}
 function saveAll(a){localStorage.setItem('administrative_employee_plans',JSON.stringify(a));window.dispatchEvent(new StorageEvent('storage',{key:'administrative_employee_plans'}));}

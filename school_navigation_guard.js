@@ -26,6 +26,13 @@ function ownerHome(){
 function roleRoot(){
  if(isSystemAdminContext())return ownerHome();
  const f=(location.pathname.split('/').pop()||'').toLowerCase();
+ if(f==='admin_employee_management.html'){
+   try{
+     const q=new URLSearchParams(location.search||''),s=String(q.get('supervisor')||q.get('viewerRole')||q.get('viewer')||q.get('returnRole')||'').toLowerCase();
+     if(/agent|wakil|deputy|agency|وكيل/.test(s))return'agent.html';
+     if(/manager|principal|leadership|مدير/.test(s))return'manager.html';
+   }catch(_){}
+ }
  if(/manager/.test(f))return'manager.html';if(/agent|wakil|deputy/.test(f))return'agent.html';
  if(/student_advisor/.test(f))return'student_advisor.html';if(/health_advisor/.test(f))return'health_advisor.html';
  if(/kindergarten_teacher/.test(f))return'kindergarten_teacher.html';if(/activity_leader/.test(f))return'activity_leader.html';

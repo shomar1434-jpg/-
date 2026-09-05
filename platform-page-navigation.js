@@ -36,8 +36,15 @@ function roleRoot(){
   const explicit=cleanFile(p.get('return_to')||p.get('returnTo')||'');
   if(ROLE_ROOTS.has(explicit)) return explicit;
   const ref=(()=>{try{if(!document.referrer)return '';const u=new URL(document.referrer);if(u.origin!==location.origin)return '';return cleanFile(u.href)}catch(_){return ''}})();
-  if(ROLE_ROOTS.has(ref)) return ref;
   const f=fileName();
+  if(f!=='admin_employee_management.html'&&ROLE_ROOTS.has(ref)) return ref;
+  if(f==='admin_employee_management.html'){
+    try{
+      const s=String(p.get('supervisor')||p.get('viewerRole')||p.get('viewer')||p.get('returnRole')||'').toLowerCase();
+      if(/agent|wakil|deputy|agency|وكيل/.test(s)) return 'agent.html';
+      if(/manager|principal|leadership|مدير/.test(s)) return 'manager.html';
+    }catch(_){}
+  }
   const byFile=[
     [/decisions|manager|school_command_center|manager_records|manager_library|performance_evaluation|school_readiness|self_evaluation|staff_discipline|academic_year|central_task_center|external_evaluation/,'manager.html'],
     [/agent|wakil|deputy|exam_committees|student_affairs/,'agent.html'],

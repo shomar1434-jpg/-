@@ -369,10 +369,14 @@
       administrative_employee: ['administrative_employee','admin_employee','employee_admin','موظف إداري','موظفة إدارية']
     };
     const allowed = (requiredRoles || []).flatMap((role) => aliases[normalizeRole(role)] || [normalizeRole(role)]);
+    const currentRoleNorm = normalizeRole(rr);
+    const currentRoleAliases = new Set(
+      (aliases[currentRoleNorm] || [currentRoleNorm]).map(normalizeRole)
+    );
     const member = membershipsList.find((m) =>
       String(m.schoolId || '') === sid &&
       String(m.userId || '') === uid &&
-      normalizeRole(m.role) === normalizeRole(rr)
+      currentRoleAliases.has(normalizeRole(m.role))
     );
     if (!member) {
       const error = new Error('المستخدم غير مرتبط بالمدرسة الحالية بعضوية فعالة.');
@@ -387,8 +391,13 @@
     // RL33: verified identity remains tab-scoped. Never rewrite shared localStorage identity keys.
     sessionStorage.setItem(TAB_SCHOOL_KEY, sid);
     sessionStorage.setItem(TAB_USER_KEY, uid);
-    sessionStorage.setItem(TAB_ROLE_KEY, rr || String(member.role || ''));
-    return { schoolId: sid, userId: uid, role: rr || String(member.role || ''), membership: member };
+    const memberRoleNorm = normalizeRole(member.role || '');
+    const canonicalRouteRole =
+      (currentRoleNorm === 'teacher' && ['teacher','performance','school_teacher','معلم','معلمة'].includes(memberRoleNorm))
+        ? 'teacher'
+        : (rr || String(member.role || ''));
+    sessionStorage.setItem(TAB_ROLE_KEY, canonicalRouteRole);
+    return { schoolId: sid, userId: uid, role: canonicalRouteRole, membership: member };
   }
 
   function clear() {
@@ -458,7 +467,7 @@
     }
   }
 
-  const SESSION_VERSION='2026.09.05-RL33-complete-tab-role-isolation';
+  const SESSION_VERSION='2026.09.05-RL60-teacher-legacy-role-compat';
 
   window.PlatformCloudSession = {
     VERSION:SESSION_VERSION,

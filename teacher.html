@@ -5405,7 +5405,7 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
   if(window.__TEACHER_DUAL_ACCESS_GATE_CLEAN_V4_RL55__) return;
   window.__TEACHER_DUAL_ACCESS_GATE_CLEAN_V4_RL55__=true;
 
-  const TEACHER_ROLES=new Set(['teacher','school_teacher','معلم','معلمة']);
+  const TEACHER_ROLES=new Set(['teacher','school_teacher','performance','معلم','معلمة']);
   const norm=v=>String(v||'').trim().toLowerCase();
   const same=(a,b)=>String(a||'').trim()===String(b||'').trim();
   const wait=ms=>new Promise(r=>setTimeout(r,ms));
@@ -5462,8 +5462,23 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
   }
 
   function deny(reason){
-    console.error('[teacher access gate RL55]',reason);
-    const target='school-login.html?reason=teacher_access_denied';
+    console.error('[teacher access gate RL60]',reason);
+    const q=new URLSearchParams();
+    q.set('reason','teacher_access_denied');
+    const sid=String(
+      window.PlatformCloudSession?.schoolId?.() ||
+      sessionStorage.getItem('smart_school_tab_school_v1') ||
+      sessionStorage.getItem('current_school_id') ||
+      new URLSearchParams(location.search||'').get('schoolId') || ''
+    ).trim();
+    const schoolName=String(
+      sessionStorage.getItem('current_school_name') ||
+      new URLSearchParams(location.search||'').get('school_name') || ''
+    ).trim();
+    if(sid) q.set('schoolId',sid);
+    if(schoolName) q.set('school_name',schoolName);
+    q.set('schoolMode','independent');
+    const target='school-login.html?'+q.toString();
     try{ location.replace(target); }catch(_){ location.href=target; }
   }
 
@@ -5972,5 +5987,6 @@ window.__PERFORMANCE_ARCHIVE_CLEAN_V5_4__={pdfLikeReadonlyPreview:true,usesPrint
 </script>
 
 <script id="TEACHER_PRE_RL48_DIAGNOSTIC_ROLLBACK_RL58">window.__TEACHER_PRE_RL48_DIAGNOSTIC_ROLLBACK_RL58__="2026.09.05";</script>
+<script id="TEACHER_INDEPENDENT_SESSION_COMPAT_RL60">window.__TEACHER_INDEPENDENT_SESSION_COMPAT_RL60__="2026.09.05";</script>
 </body>
 </html>

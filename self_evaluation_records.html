@@ -106,7 +106,7 @@ h1{font-size:18px;margin:0;color:#0f3f75;font-weight:900}
 .uw-verified-title-back:hover{background:#e6fffb!important}
 @media print{.uw-verified-title-back{display:none!important}}
 </style><link href="responsive-layout.css?v=20260818-responsive-1" rel="stylesheet"/>
-<style id="self-eval-archive-runtime-preview-style">body.self-eval-archive-preview .topbar{display:none!important}body.self-eval-archive-preview .frameWrap{padding:0!important}body.self-eval-archive-preview .moduleFrame.active{border:0!important;border-radius:0!important;box-shadow:none!important;height:100vh!important}</style><meta name="self-evaluation-archive-version" content="2026.09.05-RL53-performance-style-self-eval-archive">
+<style id="self-eval-archive-runtime-preview-style">body.self-eval-archive-preview .topbar{display:none!important}body.self-eval-archive-preview .frameWrap{padding:0!important}body.self-eval-archive-preview .moduleFrame.active{border:0!important;border-radius:0!important;box-shadow:none!important;height:100vh!important}</style><meta name="self-evaluation-archive-version" content="2026.09.05-RL54-nonblank-pdf-render">
 
 <style id="rl39-committee-print-cell-fix">
 @media print {
@@ -2472,25 +2472,81 @@ async function selfEvalPdfUploadExact(htmlContent,title,rowId,folderId,folderNam
   const session=(window.parent&amp;&amp;window.parent!==window&amp;&amp;window.parent.PlatformCloudSession)||window.PlatformCloudSession;
   if(session&amp;&amp;typeof session.ensure===&#x27;function&#x27;)await session.ensure();
   if(!htmlContent||String(htmlContent).length&lt;300)throw new Error(&#x27;محتوى PDF فارغ أو غير مكتمل&#x27;);
+
   const frame=document.createElement(&#x27;iframe&#x27;);
   frame.setAttribute(&#x27;aria-hidden&#x27;,&#x27;true&#x27;);
-  frame.style.cssText=&#x27;position:fixed;left:-12000px;top:0;width:794px;height:1123px;border:0;opacity:.001;pointer-events:none;z-index:-1&#x27;;
+  frame.style.cssText=&#x27;position:fixed;left:0;top:0;width:794px;height:1123px;border:0;pointer-events:none;z-index:-2147483000;background:#fff&#x27;;
   let src=String(htmlContent);
   const inject=`&lt;style id=&quot;self-eval-pdf-capture-fix&quot;&gt;html,body{background:#fff!important;margin:0!important;padding:0!important;overflow:visible!important}.no-print,.noPrint,button{display:none!important}&lt;/style&gt;&lt;script src=&quot;https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js&quot;&gt;&lt;\/script&gt;`;
   src=/&lt;\/head&gt;/i.test(src)?src.replace(/&lt;\/head&gt;/i,inject+&#x27;&lt;/head&gt;&#x27;):inject+src;
+
   try{
-    await new Promise((resolve,reject)=&gt;{let done=false;const t=setTimeout(()=&gt;{if(!done)reject(new Error(&#x27;انتهت مهلة تجهيز PDF&#x27;))},15000);frame.onload=()=&gt;{done=true;clearTimeout(t);resolve()};document.body.appendChild(frame);frame.srcdoc=src;});
+    await new Promise((resolve,reject)=&gt;{
+      let done=false;
+      const timer=setTimeout(()=&gt;{if(!done)reject(new Error(&#x27;انتهت مهلة تجهيز PDF&#x27;))},18000);
+      frame.onload=()=&gt;{done=true;clearTimeout(timer);resolve()};
+      document.body.appendChild(frame);
+      frame.srcdoc=src;
+    });
+
     const w=frame.contentWindow,d=w&amp;&amp;w.document;if(!w||!d)throw new Error(&#x27;تعذر تجهيز مستند PDF&#x27;);
-    for(let i=0;i&lt;80&amp;&amp;!w.html2pdf;i++)await new Promise(r=&gt;setTimeout(r,100));
-    if(!w.html2pdf)throw new Error(&#x27;تعذر تحميل محرك PDF&#x27;);
-    try{if(d.fonts&amp;&amp;d.fonts.ready)await Promise.race([d.fonts.ready,new Promise(r=&gt;setTimeout(r,2500))])}catch(_){ }
-    await new Promise(r=&gt;setTimeout(r,180));
-    const blob=await w.html2pdf().set({margin:0,image:{type:&#x27;jpeg&#x27;,quality:.98},html2canvas:{scale:2,useCORS:true,allowTaint:false,scrollY:0,backgroundColor:&#x27;#ffffff&#x27;},jsPDF:{unit:&#x27;mm&#x27;,format:&#x27;a4&#x27;,orientation:&#x27;portrait&#x27;},pagebreak:{mode:[&#x27;css&#x27;,&#x27;legacy&#x27;]}}).from(d.body).outputPdf(&#x27;blob&#x27;);
-    if(!blob||Number(blob.size||0)&lt;500)throw new Error(&#x27;ملف PDF الناتج غير صالح&#x27;);
+    for(let i=0;i&lt;100&amp;&amp;(!w.html2canvas||!w.jspdf?.jsPDF);i++)await new Promise(r=&gt;setTimeout(r,100));
+    if(!w.html2canvas||!w.jspdf?.jsPDF)throw new Error(&#x27;تعذر تحميل محرك PDF/Canvas&#x27;);
+
+    try{if(d.fonts&amp;&amp;d.fonts.ready)await Promise.race([d.fonts.ready,new Promise(r=&gt;setTimeout(r,3000))])}catch(_){}
+    const imgs=[...d.images];
+    await Promise.all(imgs.map(img=&gt;img.complete?Promise.resolve():new Promise(r=&gt;{const done=()=&gt;r();img.addEventListener(&#x27;load&#x27;,done,{once:true});img.addEventListener(&#x27;error&#x27;,done,{once:true});setTimeout(done,2500)})));
+    await new Promise(r=&gt;requestAnimationFrame(()=&gt;requestAnimationFrame(r)));
+    await new Promise(r=&gt;setTimeout(r,220));
+
+    const target=d.querySelector(&#x27;#self-eval-pdf-root&#x27;)||d.querySelector(&#x27;.recordShell,.officialRecord,.page-container,.page&#x27;)||d.body;
+    const rect=target.getBoundingClientRect();
+    const textLen=String(target.innerText||target.textContent||&#x27;&#x27;).replace(/\s+/g,&#x27;&#x27;).length;
+    if(rect.width&lt;100||rect.height&lt;100||textLen&lt;15)throw new Error(&#x27;محتوى النموذج غير ظاهر فعليًا قبل إنشاء PDF&#x27;);
+
+    const canvas=await w.html2canvas(target,{
+      scale:2,useCORS:true,allowTaint:false,backgroundColor:&#x27;#ffffff&#x27;,scrollX:0,scrollY:0,
+      windowWidth:Math.max(794,d.documentElement.scrollWidth||794),
+      windowHeight:Math.max(1123,d.documentElement.scrollHeight||1123),
+      logging:false
+    });
+    if(!canvas||canvas.width&lt;300||canvas.height&lt;300)throw new Error(&#x27;فشل إنشاء صورة النموذج&#x27;);
+
+    const ctx=canvas.getContext(&#x27;2d&#x27;,{willReadFrequently:true});
+    const sx=Math.max(1,Math.floor(canvas.width/80)),sy=Math.max(1,Math.floor(canvas.height/110));
+    let samples=0,nonWhite=0;
+    for(let y=0;y&lt;canvas.height;y+=sy){
+      for(let x=0;x&lt;canvas.width;x+=sx){
+        const p=ctx.getImageData(x,y,1,1).data;samples++;
+        if(p[3]&gt;10&amp;&amp;(p[0]&lt;245||p[1]&lt;245||p[2]&lt;245))nonWhite++;
+      }
+    }
+    if(samples&lt;100||nonWhite&lt;Math.max(12,Math.floor(samples*0.0015)))throw new Error(&#x27;تم منع رفع PDF أبيض: لم يظهر محتوى كافٍ في لقطة النموذج&#x27;);
+
+    const {jsPDF}=w.jspdf;
+    const pdf=new jsPDF({unit:&#x27;mm&#x27;,format:&#x27;a4&#x27;,orientation:&#x27;portrait&#x27;,compress:true});
+    const pageW=210,pageH=297,margin=5,usableW=pageW-margin*2,usableH=pageH-margin*2;
+    const pagePx=Math.max(1,Math.floor(canvas.width*(usableH/usableW)));
+    let offset=0,page=0;
+    while(offset&lt;canvas.height){
+      const sliceH=Math.min(pagePx,canvas.height-offset);
+      const slice=d.createElement(&#x27;canvas&#x27;);slice.width=canvas.width;slice.height=sliceH;
+      const sctx=slice.getContext(&#x27;2d&#x27;);sctx.fillStyle=&#x27;#fff&#x27;;sctx.fillRect(0,0,slice.width,slice.height);
+      sctx.drawImage(canvas,0,offset,canvas.width,sliceH,0,0,canvas.width,sliceH);
+      const data=slice.toDataURL(&#x27;image/jpeg&#x27;,0.96);
+      if(page&gt;0)pdf.addPage();
+      const h=usableW*(sliceH/canvas.width);
+      pdf.addImage(data,&#x27;JPEG&#x27;,margin,margin,usableW,h,undefined,&#x27;FAST&#x27;);
+      offset+=sliceH;page++;
+    }
+
+    const blob=pdf.output(&#x27;blob&#x27;);
+    if(!blob||Number(blob.size||0)&lt;1500)throw new Error(&#x27;ملف PDF الناتج غير صالح&#x27;);
     const safe=String(title||&#x27;سجل التقويم الذاتي&#x27;).replace(/[\\/:*?&quot;&lt;&gt;|]/g,&#x27;_&#x27;).slice(0,130)||&#x27;سجل التقويم الذاتي&#x27;;
     const file=new File([blob],safe+&#x27;.pdf&#x27;,{type:&#x27;application/pdf&#x27;,lastModified:Date.now()});
-    const up=await engine.upload({file,ownershipScope:&#x27;school&#x27;,moduleKey:&#x27;self_evaluation_archive&#x27;,recordType:&#x27;self_evaluation_pdf&#x27;,recordId:String(rowId),relationType:&#x27;archive_pdf&#x27;,displayName:file.name,metadata:{folderId:String(folderId||&#x27;&#x27;),folderName:String(folderName||&#x27;&#x27;),archiveRecordId:String(rowId),source:&#x27;self_evaluation_records.html&#x27;,archiveVersion:&#x27;RL30&#x27;}});
+    const up=await engine.upload({file,ownershipScope:&#x27;school&#x27;,moduleKey:&#x27;self_evaluation_archive&#x27;,recordType:&#x27;self_evaluation_pdf&#x27;,recordId:String(rowId),relationType:&#x27;archive_pdf&#x27;,displayName:file.name,metadata:{folderId:String(folderId||&#x27;&#x27;),folderName:String(folderName||&#x27;&#x27;),archiveRecordId:String(rowId),source:&#x27;self_evaluation_records.html&#x27;,archiveVersion:&#x27;RL54-canvas-verified&#x27;}});
     const fileId=String(up&amp;&amp;up.file&amp;&amp;up.file.id||&#x27;&#x27;);if(!fileId)throw new Error(&#x27;لم يرجع محرك الملفات معرف PDF&#x27;);
+
     let verifiedFile=null;
     for(let attempt=0;attempt&lt;4;attempt++){
       if(attempt&gt;0)await new Promise(r=&gt;setTimeout(r,300*attempt));
@@ -2501,7 +2557,6 @@ async function selfEvalPdfUploadExact(htmlContent,title,rowId,folderId,folderNam
     return fileId;
   }finally{try{frame.remove()}catch(_){}}
 }
-
 
 const SELF_EVAL_ARCHIVE_V5_INDEX=&#x27;self_eval_archive_index_v5&#x27;;
 const SELF_EVAL_ARCHIVE_V5_PREFIX=&#x27;self_eval_archive_record_v5_&#x27;;
@@ -2946,7 +3001,7 @@ input,textarea,select{max-width:100%!important}
                     if(!htmlContent||htmlContent.length&lt;300)throw new Error(&#x27;تعذر إنشاء مستند الطباعة المعزول لهذا السجل&#x27;);
                     const editId=String(this._archiveEditId||&#x27;&#x27;),oldRow=this._archiveEditRow||{},id=editId||`${type}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,now=new Date().toISOString();
                     pdfFileId=await selfEvalPdfUploadExact(htmlContent,title,id,folderId,folderName);
-                    const row={...oldRow,id,folderId,folderName,recordName:folderName,title,type,source:&#x27;قسم التقويم الذاتي&#x27;,savedAt:oldRow.savedAt||now,updatedAt:now,schoolName:this.schoolInfo?.name||&#x27;&#x27;,academicYear:this.schoolInfo?.hijriYear||&#x27;&#x27;,data:JSON.parse(JSON.stringify(payload||{})),archivePdfFileId:pdfFileId,archiveFormat:&#x27;self-evaluation-v5-pdf-cloud&#x27;,sourceFile:&#x27;self_evaluation_records.html&#x27;,editorTab:this.archiveTypeConfig(type).tab,previewMode:&#x27;pdf-cloud&#x27;,storageEngine:&#x27;SelfEvaluationArchiveV5&#x27;};
+                    const row={...oldRow,id,folderId,folderName,recordName:folderName,title,type,source:&#x27;قسم التقويم الذاتي&#x27;,savedAt:oldRow.savedAt||now,updatedAt:now,schoolName:this.schoolInfo?.name||&#x27;&#x27;,academicYear:this.schoolInfo?.hijriYear||&#x27;&#x27;,data:JSON.parse(JSON.stringify(payload||{})),printSourceHtml:htmlContent,archivePdfFileId:pdfFileId,archiveFormat:&#x27;self-evaluation-v5-pdf-cloud&#x27;,sourceFile:&#x27;self_evaluation_records.html&#x27;,editorTab:this.archiveTypeConfig(type).tab,previewMode:&#x27;pdf-cloud&#x27;,storageEngine:&#x27;SelfEvaluationArchiveV5&#x27;};
                     delete row.htmlContent;delete row.pdfHtml;delete row.officialHtml;delete row.templateHtml;
                     const saved=await selfEvalV5Upsert(row);
                     if(oldRow.archivePdfFileId&amp;&amp;String(oldRow.archivePdfFileId)!==String(pdfFileId)){try{const engine=(window.parent&amp;&amp;window.parent.CloudFileEngine)||window.CloudFileEngine;if(engine&amp;&amp;typeof engine.trash===&#x27;function&#x27;)await engine.trash(String(oldRow.archivePdfFileId))}catch(_){}}
@@ -4034,27 +4089,87 @@ async function selfEvalPdfUploadExact(htmlContent,title,rowId,folderId,folderNam
   const session=(window.parent&amp;&amp;window.parent!==window&amp;&amp;window.parent.PlatformCloudSession)||window.PlatformCloudSession;
   if(session&amp;&amp;typeof session.ensure===&#x27;function&#x27;)await session.ensure();
   if(!htmlContent||String(htmlContent).length&lt;300)throw new Error(&#x27;محتوى PDF فارغ أو غير مكتمل&#x27;);
+
   const frame=document.createElement(&#x27;iframe&#x27;);
   frame.setAttribute(&#x27;aria-hidden&#x27;,&#x27;true&#x27;);
-  frame.style.cssText=&#x27;position:fixed;left:-12000px;top:0;width:794px;height:1123px;border:0;opacity:.001;pointer-events:none;z-index:-1&#x27;;
+  frame.style.cssText=&#x27;position:fixed;left:0;top:0;width:794px;height:1123px;border:0;pointer-events:none;z-index:-2147483000;background:#fff&#x27;;
   let src=String(htmlContent);
   const inject=`&lt;style id=&quot;self-eval-pdf-capture-fix&quot;&gt;html,body{background:#fff!important;margin:0!important;padding:0!important;overflow:visible!important}.no-print,.noPrint,button{display:none!important}&lt;/style&gt;&lt;script src=&quot;https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js&quot;&gt;&lt;\/script&gt;`;
   src=/&lt;\/head&gt;/i.test(src)?src.replace(/&lt;\/head&gt;/i,inject+&#x27;&lt;/head&gt;&#x27;):inject+src;
+
   try{
-    await new Promise((resolve,reject)=&gt;{let done=false;const t=setTimeout(()=&gt;{if(!done)reject(new Error(&#x27;انتهت مهلة تجهيز PDF&#x27;))},15000);frame.onload=()=&gt;{done=true;clearTimeout(t);resolve()};document.body.appendChild(frame);frame.srcdoc=src;});
+    await new Promise((resolve,reject)=&gt;{
+      let done=false;
+      const timer=setTimeout(()=&gt;{if(!done)reject(new Error(&#x27;انتهت مهلة تجهيز PDF&#x27;))},18000);
+      frame.onload=()=&gt;{done=true;clearTimeout(timer);resolve()};
+      document.body.appendChild(frame);
+      frame.srcdoc=src;
+    });
+
     const w=frame.contentWindow,d=w&amp;&amp;w.document;if(!w||!d)throw new Error(&#x27;تعذر تجهيز مستند PDF&#x27;);
-    for(let i=0;i&lt;80&amp;&amp;!w.html2pdf;i++)await new Promise(r=&gt;setTimeout(r,100));
-    if(!w.html2pdf)throw new Error(&#x27;تعذر تحميل محرك PDF&#x27;);
-    try{if(d.fonts&amp;&amp;d.fonts.ready)await Promise.race([d.fonts.ready,new Promise(r=&gt;setTimeout(r,2500))])}catch(_){ }
-    await new Promise(r=&gt;setTimeout(r,180));
-    const blob=await w.html2pdf().set({margin:0,image:{type:&#x27;jpeg&#x27;,quality:.98},html2canvas:{scale:2,useCORS:true,allowTaint:false,scrollY:0,backgroundColor:&#x27;#ffffff&#x27;},jsPDF:{unit:&#x27;mm&#x27;,format:&#x27;a4&#x27;,orientation:&#x27;portrait&#x27;},pagebreak:{mode:[&#x27;css&#x27;,&#x27;legacy&#x27;]}}).from(d.body).outputPdf(&#x27;blob&#x27;);
-    if(!blob||Number(blob.size||0)&lt;500)throw new Error(&#x27;ملف PDF الناتج غير صالح&#x27;);
+    for(let i=0;i&lt;100&amp;&amp;(!w.html2canvas||!w.jspdf?.jsPDF);i++)await new Promise(r=&gt;setTimeout(r,100));
+    if(!w.html2canvas||!w.jspdf?.jsPDF)throw new Error(&#x27;تعذر تحميل محرك PDF/Canvas&#x27;);
+
+    try{if(d.fonts&amp;&amp;d.fonts.ready)await Promise.race([d.fonts.ready,new Promise(r=&gt;setTimeout(r,3000))])}catch(_){}
+    const imgs=[...d.images];
+    await Promise.all(imgs.map(img=&gt;img.complete?Promise.resolve():new Promise(r=&gt;{const done=()=&gt;r();img.addEventListener(&#x27;load&#x27;,done,{once:true});img.addEventListener(&#x27;error&#x27;,done,{once:true});setTimeout(done,2500)})));
+    await new Promise(r=&gt;requestAnimationFrame(()=&gt;requestAnimationFrame(r)));
+    await new Promise(r=&gt;setTimeout(r,220));
+
+    const target=d.querySelector(&#x27;#self-eval-pdf-root&#x27;)||d.querySelector(&#x27;.recordShell,.officialRecord,.page-container,.page&#x27;)||d.body;
+    const rect=target.getBoundingClientRect();
+    const textLen=String(target.innerText||target.textContent||&#x27;&#x27;).replace(/\s+/g,&#x27;&#x27;).length;
+    if(rect.width&lt;100||rect.height&lt;100||textLen&lt;15)throw new Error(&#x27;محتوى النموذج غير ظاهر فعليًا قبل إنشاء PDF&#x27;);
+
+    const canvas=await w.html2canvas(target,{
+      scale:2,useCORS:true,allowTaint:false,backgroundColor:&#x27;#ffffff&#x27;,scrollX:0,scrollY:0,
+      windowWidth:Math.max(794,d.documentElement.scrollWidth||794),
+      windowHeight:Math.max(1123,d.documentElement.scrollHeight||1123),
+      logging:false
+    });
+    if(!canvas||canvas.width&lt;300||canvas.height&lt;300)throw new Error(&#x27;فشل إنشاء صورة النموذج&#x27;);
+
+    const ctx=canvas.getContext(&#x27;2d&#x27;,{willReadFrequently:true});
+    const sx=Math.max(1,Math.floor(canvas.width/80)),sy=Math.max(1,Math.floor(canvas.height/110));
+    let samples=0,nonWhite=0;
+    for(let y=0;y&lt;canvas.height;y+=sy){
+      for(let x=0;x&lt;canvas.width;x+=sx){
+        const p=ctx.getImageData(x,y,1,1).data;samples++;
+        if(p[3]&gt;10&amp;&amp;(p[0]&lt;245||p[1]&lt;245||p[2]&lt;245))nonWhite++;
+      }
+    }
+    if(samples&lt;100||nonWhite&lt;Math.max(12,Math.floor(samples*0.0015)))throw new Error(&#x27;تم منع رفع PDF أبيض: لم يظهر محتوى كافٍ في لقطة النموذج&#x27;);
+
+    const {jsPDF}=w.jspdf;
+    const pdf=new jsPDF({unit:&#x27;mm&#x27;,format:&#x27;a4&#x27;,orientation:&#x27;portrait&#x27;,compress:true});
+    const pageW=210,pageH=297,margin=5,usableW=pageW-margin*2,usableH=pageH-margin*2;
+    const pagePx=Math.max(1,Math.floor(canvas.width*(usableH/usableW)));
+    let offset=0,page=0;
+    while(offset&lt;canvas.height){
+      const sliceH=Math.min(pagePx,canvas.height-offset);
+      const slice=d.createElement(&#x27;canvas&#x27;);slice.width=canvas.width;slice.height=sliceH;
+      const sctx=slice.getContext(&#x27;2d&#x27;);sctx.fillStyle=&#x27;#fff&#x27;;sctx.fillRect(0,0,slice.width,slice.height);
+      sctx.drawImage(canvas,0,offset,canvas.width,sliceH,0,0,canvas.width,sliceH);
+      const data=slice.toDataURL(&#x27;image/jpeg&#x27;,0.96);
+      if(page&gt;0)pdf.addPage();
+      const h=usableW*(sliceH/canvas.width);
+      pdf.addImage(data,&#x27;JPEG&#x27;,margin,margin,usableW,h,undefined,&#x27;FAST&#x27;);
+      offset+=sliceH;page++;
+    }
+
+    const blob=pdf.output(&#x27;blob&#x27;);
+    if(!blob||Number(blob.size||0)&lt;1500)throw new Error(&#x27;ملف PDF الناتج غير صالح&#x27;);
     const safe=String(title||&#x27;سجل التقويم الذاتي&#x27;).replace(/[\\/:*?&quot;&lt;&gt;|]/g,&#x27;_&#x27;).slice(0,130)||&#x27;سجل التقويم الذاتي&#x27;;
     const file=new File([blob],safe+&#x27;.pdf&#x27;,{type:&#x27;application/pdf&#x27;,lastModified:Date.now()});
-    const up=await engine.upload({file,ownershipScope:&#x27;school&#x27;,moduleKey:&#x27;self_evaluation_archive&#x27;,recordType:&#x27;self_evaluation_pdf&#x27;,recordId:String(rowId),relationType:&#x27;archive_pdf&#x27;,displayName:file.name,metadata:{folderId:String(folderId||&#x27;&#x27;),folderName:String(folderName||&#x27;&#x27;),archiveRecordId:String(rowId),source:&#x27;self_evaluation_records.html&#x27;,archiveVersion:&#x27;RL30&#x27;}});
+    const up=await engine.upload({file,ownershipScope:&#x27;school&#x27;,moduleKey:&#x27;self_evaluation_archive&#x27;,recordType:&#x27;self_evaluation_pdf&#x27;,recordId:String(rowId),relationType:&#x27;archive_pdf&#x27;,displayName:file.name,metadata:{folderId:String(folderId||&#x27;&#x27;),folderName:String(folderName||&#x27;&#x27;),archiveRecordId:String(rowId),source:&#x27;self_evaluation_records.html&#x27;,archiveVersion:&#x27;RL54-canvas-verified&#x27;}});
     const fileId=String(up&amp;&amp;up.file&amp;&amp;up.file.id||&#x27;&#x27;);if(!fileId)throw new Error(&#x27;لم يرجع محرك الملفات معرف PDF&#x27;);
+
     let verifiedFile=null;
-    for(let attempt=0;attempt&lt;4;attempt++){if(attempt)await new Promise(r=&gt;setTimeout(r,300*attempt));const check=await engine.usage(fileId),f=check&amp;&amp;check.file;if(f&amp;&amp;String(f.id)===fileId&amp;&amp;String(f.module_key||&#x27;&#x27;)===&#x27;self_evaluation_archive&#x27;&amp;&amp;String(f.primary_record_type||&#x27;&#x27;)===&#x27;self_evaluation_pdf&#x27;&amp;&amp;String(f.primary_record_id||&#x27;&#x27;)===String(rowId)&amp;&amp;String(f.status||&#x27;active&#x27;)===&#x27;active&#x27;){verifiedFile=f;break}}
+    for(let attempt=0;attempt&lt;4;attempt++){
+      if(attempt&gt;0)await new Promise(r=&gt;setTimeout(r,300*attempt));
+      const check=await engine.usage(fileId),f=check&amp;&amp;check.file;
+      if(f&amp;&amp;String(f.id)===fileId&amp;&amp;String(f.module_key||&#x27;&#x27;)===&#x27;self_evaluation_archive&#x27;&amp;&amp;String(f.primary_record_type||&#x27;&#x27;)===&#x27;self_evaluation_pdf&#x27;&amp;&amp;String(f.primary_record_id||&#x27;&#x27;)===String(rowId)&amp;&amp;String(f.status||&#x27;active&#x27;)===&#x27;active&#x27;){verifiedFile=f;break}
+    }
     if(!verifiedFile)throw new Error(&#x27;تعذر التحقق من PDF السحابي بعد الرفع&#x27;);
     return fileId;
   }finally{try{frame.remove()}catch(_){}}
@@ -4136,7 +4251,7 @@ async function archiveSaveVerified(folderName,title,type,payload){
     const htmlContent=buildCurrentSelfEvalArchiveHtml(title,type);
     if(!htmlContent||htmlContent.length&lt;300)throw new Error(&#x27;تعذر إنشاء نسخة مطابقة من السجل قبل الأرشفة&#x27;);
     pdfFileId=await selfEvalPdfUploadExact(htmlContent,title,rowId,folderId,folderName);
-    const row={id:rowId,folderId,folderName,recordName:folderName,title,type,source:&#x27;سجلات التقويم الذاتي والمؤشرات&#x27;,savedAt:now,updatedAt:now,schoolName:state.settings.school||&#x27;&#x27;,academicYear:state.settings.academicYear||&#x27;&#x27;,data:JSON.parse(JSON.stringify(payload||{})),archivePdfFileId:pdfFileId,archiveFormat:&#x27;self-evaluation-v5-pdf-cloud&#x27;,sourceFile:&#x27;self_evaluation_records.html&#x27;,storageEngine:&#x27;SelfEvaluationArchiveV5&#x27;,previewMode:&#x27;pdf-cloud&#x27;};
+    const row={id:rowId,folderId,folderName,recordName:folderName,title,type,source:&#x27;سجلات التقويم الذاتي والمؤشرات&#x27;,savedAt:now,updatedAt:now,schoolName:state.settings.school||&#x27;&#x27;,academicYear:state.settings.academicYear||&#x27;&#x27;,data:JSON.parse(JSON.stringify(payload||{})),printSourceHtml:htmlContent,archivePdfFileId:pdfFileId,archiveFormat:&#x27;self-evaluation-v5-pdf-cloud&#x27;,sourceFile:&#x27;self_evaluation_records.html&#x27;,storageEngine:&#x27;SelfEvaluationArchiveV5&#x27;,previewMode:&#x27;pdf-cloud&#x27;};
     return await selfEvalV5Upsert(row);
   }catch(e){
     if(pdfFileId){try{const engine=(window.parent&amp;&amp;window.parent.CloudFileEngine)||window.CloudFileEngine;if(engine&amp;&amp;typeof engine.trash===&#x27;function&#x27;)await engine.trash(pdfFileId)}catch(_){}}

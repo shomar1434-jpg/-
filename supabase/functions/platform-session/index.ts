@@ -41,6 +41,8 @@ const activeStatus = (value: unknown) => {
     'blocked',
     'deleted',
     'archived',
+    'pending',
+    'بانتظار التفعيل',
     'غير فعال',
     'معطل',
     'موقوف',
@@ -203,10 +205,10 @@ Deno.serve(async (request) => {
       }
       const memberships = await membershipsForIdentity(admin, previous);
       const requestedSchool = text(payload?.schoolId || previous.school_id);
-      const allowed = memberships.find((m:any)=>m.schoolId===requestedSchool && lower(m.role)===lower(previous.role)) ||
-        memberships.find((m:any)=>m.schoolId===requestedSchool);
-      if (!allowed) return json({error:'عضوية الحساب في المدرسة لم تعد فعالة',code:'SESSION_RENEW_MEMBERSHIP_DENIED',requestId},403);
-      const next = await issueSession(admin, allowed.userId || previous.user_id, allowed.schoolId, allowed.role || previous.role, previous.id);
+      // RL33: renewal must preserve the exact school + role. A renewal is never a role switch.
+      const allowed = memberships.find((m:any)=>m.schoolId===requestedSchool && lower(m.role)===lower(previous.role) && String(m.userId||previous.user_id)===String(previous.user_id));
+      if (!allowed) return json({error:'عضوية الحساب في المدرسة أو الدور الحالي لم تعد فعالة. اختر الدور صراحة من مبدّل العضويات.',code:'SESSION_RENEW_ROLE_MEMBERSHIP_DENIED',requestId},403);
+      const next = await issueSession(admin, previous.user_id, allowed.schoolId, previous.role, previous.id);
       return json({...next,membershipId:allowed.membershipId,schoolName:allowed.schoolName,schoolCode:allowed.schoolCode,requestId,renewed:true});
     }
     if (action === 'memberships' || action === 'switch') {
@@ -366,29 +368,32 @@ Deno.serve(async (request) => {
       );
     }
 
-    const membership = resolvedMembership ? { data: resolvedMembership, error: null } : await admin
+    const membershipsQ = await admin
       .from('school_members')
       .select('*')
       .eq('school_id', school.id)
-      .eq('user_id', user.id)
-      .limit(1)
-      .maybeSingle();
+      .eq('user_id', user.id);
 
-    if (!membership.error && membership.data && !activeStatus(membership.data.status)) {
-      return json(
-        {
-          error: 'عضوية المستخدم في المدرسة غير فعالة',
-          code: 'MEMBERSHIP_INACTIVE',
-          requestId,
-        },
-        403,
-      );
+    if (membershipsQ.error) {
+      console.warn('[platform-session]', requestId, 'membership_lookup_warning', membershipsQ.error);
     }
-    if (membership.error) {
-      console.warn('[platform-session]', requestId, 'membership_lookup_warning', membership.error);
+    const activeMemberships=(membershipsQ.data||[]).filter((m:any)=>activeStatus(m.status));
+    const requestedLoginRole=lower(payload?.role||'');
+    const preferredRole=lower(resolvedMembership?.role||user.role||'');
+    let selectedMembership:any=null;
+    if(requestedLoginRole) selectedMembership=activeMemberships.find((m:any)=>lower(m.role)===requestedLoginRole)||null;
+    if(!selectedMembership&&preferredRole) selectedMembership=activeMemberships.find((m:any)=>lower(m.role)===preferredRole)||null;
+    if(!selectedMembership&&activeMemberships.length===1) selectedMembership=activeMemberships[0];
+    if(requestedLoginRole&&!selectedMembership) return json({error:'الحساب لا يملك الدور المطلوب في هذه المدرسة',code:'LOGIN_ROLE_NOT_ALLOWED',requestId},403);
+    if(!selectedMembership&&activeMemberships.length>1) return json({error:'للحساب أكثر من دور في المدرسة. اختر الدور المطلوب قبل الدخول.',code:'ROLE_SELECTION_REQUIRED',roles:activeMemberships.map((m:any)=>text(m.role)),requestId},409);
+    if(!selectedMembership&&activeMemberships.length===0){
+      const legacyRole=text(user.role||'member');
+      const sameSchool=String(user.school_id||school.id)===String(school.id);
+      const managerLegacy=lower(legacyRole)==='manager'&&lower(school.manager_email||'')===normalizedLogin;
+      if(!sameSchool&&!managerLegacy)return json({error:'عضوية المستخدم في المدرسة غير فعالة',code:'MEMBERSHIP_INACTIVE',requestId},403);
+      selectedMembership={role:legacyRole,status:'active',user_id:user.id,school_id:school.id};
     }
-
-    const role = text(membership.data?.role || user.role || 'member');
+    const role = text(selectedMembership?.role || user.role || 'member');
     const rawToken = `${crypto.randomUUID()}${crypto.randomUUID()}`;
     const tokenHash = await sha256(rawToken);
     const now = new Date().toISOString();

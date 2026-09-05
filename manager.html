@@ -1502,7 +1502,7 @@ body{overflow-x:hidden}
 <h3 class="font-black text-xl text-slate-800">مركز التكليفات</h3>
 <p class="text-[11px] text-slate-400 font-bold mt-2">إنشاء، نقل، سحب، اعتماد، رفض وأرشفة التكليفات المدرسية</p>
 </div>
-</div><div class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-amber-400 cursor-pointer transition-all flex flex-col items-center gap-4 group manager-section-card" onclick="window.location.href='admin_employee_management.html?supervisor=manager'">
+</div><div class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-amber-400 cursor-pointer transition-all flex flex-col items-center gap-4 group manager-section-card" onclick="openAdministrativeEmployeeManagerSection()">
 <div class="w-14 h-14 bg-gradient-to-br from-amber-500 to-emerald-700 text-white rounded-2xl flex items-center justify-center shadow-lg text-2xl">👤</div>
 <h3 class="font-bold text-lg text-slate-700">الموظف الإداري</h3>
 </div><div class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-teal-400 cursor-pointer transition-all flex flex-col items-center gap-4 group manager-section-card" onclick="openUserFollowupManagement()">
@@ -3947,7 +3947,41 @@ async function legacyPerformanceSave_DISABLED() {
     b.innerHTML=html;
   }
   function attach(){var q=function(id){return document.getElementById(id)}; q('ssBack')&&q('ssBack').addEventListener('click',function(){location.href='index.html'}); q('ssExit')&&q('ssExit').addEventListener('click',function(){location.href='index.html'}); q('ssTeachers')&&q('ssTeachers').addEventListener('click',function(){showUsers('teacher')}); q('ssStudentAdvisors')&&q('ssStudentAdvisors').addEventListener('click',function(){showUsers('student_advisor')}); q('ssActivityLeaders')&&q('ssActivityLeaders').addEventListener('click',function(){showUsers('activity_leader')}); q('ssAgents')&&q('ssAgents').addEventListener('click',function(){showUsers('agent')}); q('ssActivate')&&q('ssActivate').addEventListener('click',showActivation); q('ssRegLink')&&q('ssRegLink').addEventListener('click',showRegLink); q('ssAlert')&&q('ssAlert').addEventListener('click',showAlert); q('ssInbox')&&q('ssInbox').addEventListener('click',showInbox); q('ssMeetWallet')&&q('ssMeetWallet').addEventListener('click',showWallet); q('ssMeetingRoom')&&q('ssMeetingRoom').addEventListener('click',showMeetingRoom); q('ssCloud')&&q('ssCloud').addEventListener('click',showCloud); }
-  function followRoleConfig(){
+  
+function openAdministrativeEmployeeManagerSection(){
+  try{
+    var sid=String(currentSchoolId()||'').trim();
+    if(!sid){
+      alert('تعذر تحديد المدرسة الحالية. أعد فتح قسم المدير من رابط المدرسة نفسها ثم حاول مرة أخرى.');
+      return;
+    }
+    var sname=String(currentSchoolName()||'').trim();
+    // لا نبدّل دور التبويب إلى موظف إداري؛ هذه واجهة إشراف المدير على موظفي مدرسته.
+    sessionStorage.setItem('admin_employee_manager_section_v1',JSON.stringify({
+      schoolId:sid,schoolName:sname,supervisor:'manager',viewerRole:'manager',
+      returnTo:'manager.html?sectionReturn=1&schoolId='+encodeURIComponent(sid),
+      createdAt:new Date().toISOString()
+    }));
+    var q=new URLSearchParams();
+    q.set('supervisor','manager');
+    q.set('viewer','manager');
+    q.set('viewerRole','manager');
+    q.set('mode','supervisor');
+    q.set('schoolId',sid);
+    q.set('school',sid);
+    q.set('schoolMode','independent');
+    q.set('returnRole','manager');
+    q.set('sectionReturn','1');
+    if(sname)q.set('schoolName',sname);
+    window.location.href='admin_employee_management.html?'+q.toString();
+  }catch(e){
+    console.error('[admin employee manager route]',e);
+    alert('تعذر فتح قسم الموظف الإداري: '+String(e&&e.message||e));
+  }
+}
+window.openAdministrativeEmployeeManagerSection=openAdministrativeEmployeeManagerSection;
+
+function followRoleConfig(){
     var base=[
       {role:'agent',label:'الوكلاء/الوكيلات',icon:'👥',file:'agent.html'},
       {role:'teacher',label:'المعلمون/المعلمات',icon:'👨‍🏫',file:'teacher.html'}, {role:'health_advisor',label:'الموجهون الصحيون',icon:'🩺',file:'health_advisor.html'}, {role:'kindergarten_teacher',label:'معلمات رياض الأطفال',icon:'🧸',file:'kindergarten_teacher.html'},

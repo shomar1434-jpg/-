@@ -270,7 +270,8 @@ function renderSupervisorAssets(){let a=readSupervisorAssets();let sig=document.
 function saveSupervisorAsset(type,input){let f=input.files&&input.files[0];if(!f)return;let r=new FileReader();r.onload=function(){let a=readSupervisorAssets();a[type]=r.result;a.updatedAt=new Date().toISOString();localStorage.setItem(supervisorAssetKey(),JSON.stringify(a));renderSupervisorAssets();alert(type==='signature'?'تم حفظ التوقيع الرقمي.':'تم حفظ الختم.');};r.readAsDataURL(f);input.value='';}
 function updateDashboardMetrics(rows){try{let a=Array.isArray(rows)?rows:combinedEmployees();let active=a.filter(x=>x.active!==false&&x._accountStatus!=='disabled');let evals=active.map(x=>{try{return JSON.parse(localStorage.getItem('administrative_employee_eval_'+x.id)||'null')}catch(e){return null}}).filter(Boolean);let avg=0;if(evals.length){avg=Math.round(evals.reduce((sum,x)=>sum+(Number(x.total)||Number(x.score)||0),0)/evals.length)}let metrics={total:active.length,disabled:a.filter(x=>x.active===false||x._accountStatus==='disabled').length,pending:a.filter(x=>x._accountStatus==='pending'||x.status==='pending').length,approved:active.filter(x=>x.status==='approved').length,returned:active.filter(x=>x.status==='returned').length,improvement:0,averageEvaluation:avg,updatedAt:new Date().toISOString()};localStorage.setItem('administrative_employee_metrics',JSON.stringify(metrics));}catch(e){}}
 
-renderSupervisorAssets();render();
+renderSupervisorAssets();
+window.__ADMIN_EMPLOYEE_MANAGEMENT_RENDER_PENDING__=true;
 </script>
 
 <!-- Unified Comprehensive Cloud Storage -->
@@ -294,4 +295,25 @@ renderSupervisorAssets();render();
 <script src="openai-engine.js"></script>
 <script src="top-ai-center.js"></script>
 <script src="platform-page-navigation.js?v=20260818-nav1"></script>
+
+<script id="ADMIN_EMPLOYEE_SUPERVISOR_BOOTSTRAP_RL68">
+(function(){
+  async function start(){
+    try{
+      const sid=currentSchoolScope(),actual=currentActualRole();
+      if(!sid)throw new Error('لم يتم تحميل هوية المدرسة المستقلة');
+      if(!isSystemAdminSession()&&actual!==supervisor)throw new Error('دور جلسة المسؤول لا يطابق جهة الإشراف المطلوبة');
+      await render();
+      window.__ADMIN_EMPLOYEE_MANAGEMENT_RENDER_PENDING__=false;
+      window.__ADMIN_EMPLOYEE_MANAGEMENT_READY_RL68__=true;
+    }catch(e){
+      console.error('[admin employee supervisor bootstrap]',e);
+      const rows=document.getElementById('rows');
+      if(rows)rows.innerHTML='<tr><td colspan="6" style="text-align:center;padding:24px;color:#b42318;font-weight:800">تعذر فتح القسم ضمن جلسة المدرسة الحالية: '+String(e&&e.message||e)+'</td></tr>';
+    }
+  }
+  if(document.readyState==='complete')setTimeout(start,0);
+  else window.addEventListener('load',()=>setTimeout(start,0),{once:true});
+})();
+</script>
 </body></html>

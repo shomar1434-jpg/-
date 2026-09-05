@@ -13,7 +13,7 @@
     'administrative_employee_evaluation.html':'administrative_employee_portal.html',
     'administrative_employee_improvement.html':'administrative_employee_portal.html',
     'administrative_employee_library.html':'administrative_employee_portal.html',
-    'admin_employee_management.html':'administrative_employee_portal.html',
+    'admin_employee_management.html':'__supervisor_dynamic__',
     'self_evaluation_records.html':'manager.html',
     'manager_exams_management.html':'manager.html',
     'agent_exams_management.html':'agent.html',
@@ -106,6 +106,19 @@
       if(rt && /\.html(?:$|[?#])/.test(rt)) return rt.split(/[?#]/)[0].split('/').pop();
       if(document.referrer){var rf=new URL(document.referrer).pathname.split('/').pop();if(/^(manager|agent|teacher|student_advisor|activity_leader|health_advisor|kindergarten_teacher|administrative_employee_portal)\.html$/.test(rf))return rf;}
     }catch(e){}
+    if(FILE==='admin_employee_management.html'){
+      try{
+        var aq=new URLSearchParams(location.search||''),as=String(aq.get('supervisor')||aq.get('viewerRole')||aq.get('viewer')||aq.get('returnRole')||'').toLowerCase();
+        if(/agent|wakil|deputy|agency|وكيل/.test(as)) return 'agent.html';
+        if(/manager|principal|leadership|مدير/.test(as)) return 'manager.html';
+      }catch(e){}
+      try{
+        var ar0=String(sessionStorage.getItem('smart_school_tab_role_v1')||'').toLowerCase();
+        if(/agent|wakil|deputy|agency|وكيل/.test(ar0)) return 'agent.html';
+        if(/manager|principal|leadership|مدير/.test(ar0)) return 'manager.html';
+      }catch(e){}
+      return 'school-login.html';
+    }
     if(ROOT_MAP[FILE]) return ROOT_MAP[FILE];
     if(/manager/.test(FILE)) return 'manager.html';
     if(/agent|wakil/.test(FILE)) return 'agent.html';

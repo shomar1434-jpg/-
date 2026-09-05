@@ -20,6 +20,20 @@
     try { return raw ? JSON.parse(raw) : null; } catch (_) { return null; }
   }
 
+  function hasTabIdentity() {
+    return Boolean(
+      sessionStorage.getItem(TAB_SCHOOL_KEY) || sessionStorage.getItem('smart_school_tab_school_v1') ||
+      sessionStorage.getItem(TAB_USER_KEY) || sessionStorage.getItem('currentUserId') ||
+      sessionStorage.getItem(TAB_ROLE_KEY) || sessionStorage.getItem('smart_school_current_session') ||
+      sessionStorage.getItem('administrative_employee_tab_session_v1')
+    );
+  }
+  function tabFirst(tabKey, legacyKey) {
+    const tab=String(sessionStorage.getItem(tabKey)||'').trim();
+    if(tab)return tab;
+    return hasTabIdentity()?'':String(localStorage.getItem(legacyKey)||'').trim();
+  }
+
   function directActiveSchoolId() {
     return String(
       sessionStorage.getItem(TAB_SCHOOL_KEY) ||
@@ -33,12 +47,11 @@
 
   function directActiveUserId() {
     try {
+      const tabUser=sessionStorage.getItem(TAB_USER_KEY)||sessionStorage.getItem('currentUserId')||'';
+      if(tabUser)return String(tabUser).trim();
+      if(hasTabIdentity())return '';
       const current = parseJson(localStorage.getItem('currentUser')) || parseJson(localStorage.getItem('currentSchoolUser')) || {};
-      return String(
-        sessionStorage.getItem(TAB_USER_KEY) ||
-        localStorage.getItem('currentUserId') ||
-        current.id || current.user_id || ''
-      ).trim();
+      return String(localStorage.getItem('currentUserId') || current.id || current.user_id || '').trim();
     } catch (_) { return ''; }
   }
 
@@ -52,11 +65,9 @@
   }
 
   function sessionContexts() {
-    return [
-      parseJson(sessionStorage.getItem('smart_school_current_session')),
-      parseJson(localStorage.getItem('smart_school_current_session')),
-      parseJson(sessionStorage.getItem('administrative_employee_tab_session_v1')),
-    ].filter(Boolean);
+    const tab=[parseJson(sessionStorage.getItem('smart_school_current_session')),parseJson(sessionStorage.getItem('administrative_employee_tab_session_v1'))].filter(Boolean);
+    if(tab.length||hasTabIdentity())return tab;
+    return [parseJson(localStorage.getItem('smart_school_current_session'))].filter(Boolean);
   }
 
   function contextToken(ctx) {
@@ -67,8 +78,9 @@
     if (isSystemAdminContext()) return '';
     const activeSchool = directActiveSchoolId();
     const activeUser = directActiveUserId();
-    const existing = String(sessionStorage.getItem(TAB_TOKEN_KEY) || localStorage.getItem(TOKEN_KEY) || '').trim();
-    if (existing) return existing;
+    const tabToken=String(sessionStorage.getItem(TAB_TOKEN_KEY)||'').trim();
+    if(tabToken)return tabToken;
+    if(!hasTabIdentity()){const legacy=String(localStorage.getItem(TOKEN_KEY)||'').trim();if(legacy)return legacy;}
 
     for (const ctx of sessionContexts()) {
       const candidate = contextToken(ctx);
@@ -87,11 +99,6 @@
       sessionStorage.setItem(TAB_USER_KEY, uid);
       sessionStorage.setItem(TAB_SCHOOL_KEY, sid);
       sessionStorage.setItem(TAB_ROLE_KEY, rr);
-      localStorage.setItem(TOKEN_KEY, candidate);
-      localStorage.setItem(EXPIRES_KEY, exp);
-      localStorage.setItem(USER_KEY, uid);
-      localStorage.setItem(SCHOOL_KEY, sid);
-      localStorage.setItem(ROLE_KEY, rr);
       return candidate;
     }
     return '';
@@ -99,20 +106,16 @@
 
   function updateKnownContext(payload) {
     try {
-      const raw = parseJson(localStorage.getItem('smart_school_current_session')) || {};
+      let raw = parseJson(sessionStorage.getItem('smart_school_current_session')) || {};
+      if(!Object.keys(raw).length && !hasTabIdentity()) raw=parseJson(localStorage.getItem('smart_school_current_session'))||{};
       const sid = String(payload?.schoolId || directActiveSchoolId() || '').trim();
       const rawSid = String(raw.schoolId || raw.school_id || '').trim();
-      // Never stamp a session token into a context belonging to another school.
+      const rawUid = String(raw.userId || raw.id || '').trim();
+      const uid = String(payload?.userId || rawUid || '').trim();
       if (rawSid && sid && rawSid !== sid) return;
-      const next = {
-        ...raw,
-        cloudToken: String(payload?.token || ''),
-        cloudExpiresAt: String(payload?.expiresAt || ''),
-        cloudUserId: String(payload?.userId || raw.userId || raw.id || ''),
-        cloudSchoolId: sid,
-        cloudRole: String(payload?.role || raw.role || ''),
-      };
-      localStorage.setItem('smart_school_current_session', JSON.stringify(next));
+      if (rawUid && uid && rawUid !== uid) return;
+      const next = {...raw,cloudToken:String(payload?.token||''),cloudExpiresAt:String(payload?.expiresAt||''),cloudUserId:uid,cloudSchoolId:sid,cloudRole:String(payload?.role||raw.role||'')};
+      sessionStorage.setItem('smart_school_current_session', JSON.stringify(next));
     } catch (_) {}
   }
 
@@ -179,66 +182,52 @@
     const payload = await sessionAction('switch', {schoolId:targetSchoolId, role:targetRole, membershipId});
     if (!payload.token) throw new Error('لم تُنشأ جلسة سحابية للمدرسة المختارة.');
     sessionStorage.setItem(TAB_TOKEN_KEY,payload.token);sessionStorage.setItem(TAB_EXPIRES_KEY,payload.expiresAt||'');sessionStorage.setItem(TAB_USER_KEY,payload.userId||'');sessionStorage.setItem(TAB_SCHOOL_KEY,payload.schoolId||'');sessionStorage.setItem(TAB_ROLE_KEY,payload.role||'');
-    localStorage.setItem(TOKEN_KEY, payload.token);
-    localStorage.setItem(EXPIRES_KEY, payload.expiresAt || '');
-    localStorage.setItem(USER_KEY, payload.userId || '');
-    localStorage.setItem(SCHOOL_KEY, payload.schoolId || '');
-    localStorage.setItem(ROLE_KEY, payload.role || '');
     window.dispatchEvent(new CustomEvent('platform-cloud-session-ready',{detail:{userId:payload.userId||'',schoolId:payload.schoolId||'',role:payload.role||'',expiresAt:payload.expiresAt||'',membershipId:payload.membershipId||''}}));
     return payload;
   }
 
   function token() {
     if (isSystemAdminContext()) return '';
-    return sessionStorage.getItem(TAB_TOKEN_KEY) || localStorage.getItem(TOKEN_KEY) || '';
+    return tabFirst(TAB_TOKEN_KEY,TOKEN_KEY);
   }
 
   function expiresAt() {
-    return sessionStorage.getItem(TAB_EXPIRES_KEY) || localStorage.getItem(EXPIRES_KEY) || '';
+    return tabFirst(TAB_EXPIRES_KEY,EXPIRES_KEY);
   }
 
   function userId() {
     if (isSystemAdminContext()) return '';
-    return sessionStorage.getItem(TAB_USER_KEY) || localStorage.getItem(USER_KEY) || '';
+    return tabFirst(TAB_USER_KEY,USER_KEY);
   }
 
   function schoolId() {
     if (isSystemAdminContext()) return '';
-    return sessionStorage.getItem(TAB_SCHOOL_KEY) || localStorage.getItem(SCHOOL_KEY) || '';
+    return tabFirst(TAB_SCHOOL_KEY,SCHOOL_KEY);
   }
 
   function role() {
     if (isSystemAdminContext()) return 'system_admin';
-    return sessionStorage.getItem(TAB_ROLE_KEY) || localStorage.getItem(ROLE_KEY) || '';
+    return tabFirst(TAB_ROLE_KEY,ROLE_KEY);
   }
 
   function valid() {
     if (isSystemAdminContext()) return false;
     const currentToken = token();
     const expiry = expiresAt();
-    const activeSchool = sessionStorage.getItem(TAB_SCHOOL_KEY) || localStorage.getItem('active_school_id') || localStorage.getItem('current_school_id') || localStorage.getItem('school_id') || localStorage.getItem('smart_school_id') || '';
+    const activeSchool = sessionStorage.getItem(TAB_SCHOOL_KEY) || sessionStorage.getItem('smart_school_tab_school_v1') || (hasTabIdentity()?'':(localStorage.getItem('active_school_id') || localStorage.getItem('current_school_id') || localStorage.getItem('school_id') || localStorage.getItem('smart_school_id'))) || '';
     const sameSchool = !activeSchool || !schoolId() || String(activeSchool) === String(schoolId());
     return Boolean(currentToken && sameSchool && (!expiry || Date.parse(expiry) > Date.now() + 60_000));
   }
 
   function currentSchoolId() {
-    return sessionStorage.getItem(TAB_SCHOOL_KEY) ||
-      localStorage.getItem('active_school_id') ||
-      localStorage.getItem('current_school_id') ||
-      localStorage.getItem('school_id') ||
-      localStorage.getItem('smart_school_id') ||
-      schoolId() || '';
+    return sessionStorage.getItem(TAB_SCHOOL_KEY) || sessionStorage.getItem('smart_school_tab_school_v1') ||
+      (hasTabIdentity()?'':(localStorage.getItem('active_school_id') || localStorage.getItem('current_school_id') || localStorage.getItem('school_id') || localStorage.getItem('smart_school_id'))) || schoolId() || '';
   }
 
   function applyPayload(payload, renewed = true) {
     if (!payload || !payload.token) throw new Error('استجابة تجديد الجلسة لا تحتوي على رمز صالح');
-    const sid=payload.schoolId || currentSchoolId() || '';const rr=payload.role || role() || localStorage.getItem('currentRole') || '';
+    const sid=payload.schoolId || currentSchoolId() || '';const rr=payload.role || role() || (hasTabIdentity()?'':localStorage.getItem('currentRole')) || '';
     sessionStorage.setItem(TAB_TOKEN_KEY,payload.token);sessionStorage.setItem(TAB_EXPIRES_KEY,payload.expiresAt||'');sessionStorage.setItem(TAB_USER_KEY,payload.userId||'');sessionStorage.setItem(TAB_SCHOOL_KEY,sid);sessionStorage.setItem(TAB_ROLE_KEY,rr);
-    localStorage.setItem(TOKEN_KEY, payload.token);
-    localStorage.setItem(EXPIRES_KEY, payload.expiresAt || '');
-    localStorage.setItem(USER_KEY, payload.userId || '');
-    localStorage.setItem(SCHOOL_KEY, sid);
-    localStorage.setItem(ROLE_KEY, rr);
     updateKnownContext({...payload,schoolId:sid,role:rr});
     window.dispatchEvent(new CustomEvent('platform-cloud-session-ready',{detail:{userId:payload.userId||'',schoolId:sid,role:rr,expiresAt:payload.expiresAt||'',renewed:Boolean(renewed)}}));
     return payload.token;
@@ -351,7 +340,7 @@
     } catch (_) {}
   }
 
-  const SESSION_VERSION='2026.08.29-clean-independent-school-v5';
+  const SESSION_VERSION='2026.09.05-RL32-tab-user-role-isolation';
 
   window.PlatformCloudSession = {
     VERSION:SESSION_VERSION,

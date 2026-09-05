@@ -5,6 +5,31 @@
   const S={files:[],selected:new Set(),mode:null,target:null,loading:false};
   (function prehide(){try{if(!document.getElementById('elsPrehideStyle')){const st=document.createElement('style');st.id='elsPrehideStyle';st.textContent='#elsPicker[hidden]{display:none!important;visibility:hidden!important}#elsPicker:not([data-els-open=\"1\"]){display:none!important;visibility:hidden!important}';(document.head||document.documentElement).appendChild(st)}}catch(_){}})();
   const page=(location.pathname.split('/').pop()||'page').toLowerCase();
+  const LIBRARY_SCOPE_VERSION='2026.09.05-RL32-role-owned-picker';
+  const ROLE_ALIASES={
+    manager:['manager','owner','school_manager','principal','leadership','admin','مدير','مديرة','مدير المدرسة','مديرة المدرسة'],
+    agent:['agent','agency','wakil','vice','deputy','deputy_admin','deputy_academic','deputy_students','وكيل','وكيلة'],
+    teacher:['teacher','معلم','معلمة'],
+    student_advisor:['student_advisor','advisor','counselor','مرشد','موجه'],
+    health_advisor:['health_advisor','health-advisor','موجه صحي','الموجه الصحي'],
+    activity_leader:['activity_leader','activity-leader','activity','رائد النشاط','رائدة النشاط'],
+    kindergarten_teacher:['kindergarten_teacher','kindergarten-teacher','معلمة رياض الأطفال'],
+    administrative_employee:['administrative_employee','admin_employee','administrative-employee','موظف إداري','موظفة إدارية']
+  };
+  const normalizeRole=v=>String(v||'').trim().toLowerCase();
+  function canonicalRole(v){const x=normalizeRole(v);for(const [key,arr] of Object.entries(ROLE_ALIASES)){if(key===x||arr.map(normalizeRole).includes(x))return key}return ''}
+  function tabRole(){
+    const explicit=canonicalRole(sessionStorage.getItem('smart_school_tab_role_v1')||sessionStorage.getItem('platform_tab_role_v1')||'');
+    if(explicit)return explicit;
+    const cloud=canonicalRole(window.PlatformCloudSession?.role?.()||'');if(cloud)return cloud;
+    try{const ctx=JSON.parse(sessionStorage.getItem('administrative_employee_tab_session_v1')||'null');const r=canonicalRole(ctx?.role);if(r)return r}catch(_){}
+    return '';
+  }
+  function libraryScopeForRole(role){
+    if(role==='manager')return {role,moduleKey:'manager_records_archive',recordType:'pdf_archive',recordId:'manager'};
+    if(['agent','teacher','student_advisor','health_advisor','activity_leader','kindergarten_teacher','administrative_employee'].includes(role))return {role,moduleKey:'section_library_'+role,recordType:'library_file',recordId:role};
+    return null;
+  }
   const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   const fmt=n=>{n=Number(n||0);return n<1024?n+' ب':n<1048576?(n/1024).toFixed(1)+' ك.ب':(n/1048576).toFixed(1)+' م.ب'};
   const g=name=>{try{return (0,eval)(name)}catch(_){return undefined}};
@@ -39,10 +64,15 @@
     if(S.loading)return;S.loading=true;const box=document.getElementById('elsList');if(box)box.innerHTML='<div class="els-empty">جارٍ تحميل مكتبة القسم...</div>';
     try{
       if(!window.CloudFileEngine)throw new Error('محرك الملفات السحابي غير متاح في هذه الصفحة');
-      const r=await CloudFileEngine.list({ownershipScope:'user',limit:1000});
-      const active=(r.files||[]).filter(x=>x&&x.status==='active');
-      const library=active.filter(x=>{const m=String(x.module_key||'').toLowerCase(),rt=String(x.record_type||'').toLowerCase(),md=x.metadata||{};return m.includes('library')||m==='section_records_repository'||rt.includes('library')||String(md.source||'').toLowerCase().includes('library')||String(md.folder||'').length>0&&m==='section_records_repository'});
-      S.files=library.length?library:active;render();
+      if(window.PlatformCloudSession?.ensure)await window.PlatformCloudSession.ensure();
+      const role=tabRole(),scope=libraryScopeForRole(role);
+      if(!scope)throw new Error('تعذر تحديد مكتبة القسم المرتبطة بالدور النشط في هذا التبويب. أعد تسجيل الدخول من رابط المدرسة.');
+      const uid=String(window.PlatformCloudSession?.userId?.()||'').trim();
+      const sid=String(window.PlatformCloudSession?.schoolId?.()||'').trim();
+      if(!uid||!sid)throw new Error('تعذر تثبيت هوية المستخدم والمدرسة قبل فتح مكتبة القسم.');
+      const r=await CloudFileEngine.list({ownershipScope:'user',moduleKey:scope.moduleKey,recordType:scope.recordType,limit:1000});
+      S.files=(r.files||[]).filter(x=>x&&x.status==='active'&&String(x.module_key||'')===scope.moduleKey&&String(x.owner_user_id||'')===uid&&String(x.ownership_scope||'')==='user'&&(!x.school_id||String(x.school_id)===sid));
+      render();
     }catch(e){if(box)box.innerHTML='<div class="els-empty">تعذر تحميل مكتبة القسم.<br><small>'+esc(e.message||e)+'</small></div>'}
     finally{S.loading=false}
   }

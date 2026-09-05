@@ -1,0 +1,24 @@
+RL32 — عزل المدارس/المستخدمين/الأدوار + محدد مكتبة القسم
+
+الملفات المعدلة:
+1) platform-cloud-session.js
+2) evidence-library-source.js
+3) administrative_employee_login.html
+4) administrative_employee_portal.html
+
+Regression Lock:
+- لم تتغير أي Edge Function أو قاعدة بيانات.
+- platform-state / platform-files / platform-messages / platform-tasks بقيت دون تعديل.
+- الجلسة السحابية ما زالت مرتبطة من الخادم بـ school_id + user_id + role.
+- مكتبة القسم أصبحت تقرأ moduleKey محددًا للدور، ولا يوجد fallback إلى جميع ملفات المستخدم.
+- المدير: manager_records_archive + pdf_archive.
+- بقية الأدوار: section_library_<role> + library_file.
+- النتائج تُفلتر أيضًا على ownership_scope=user + owner_user_id=current user + school_id=current school إن توفر.
+- هوية الموظف الإداري ورمز جلسته لم يعودا يُكتبان في localStorage العام؛ أصبحا خاصين بالتبويب sessionStorage.
+- PlatformCloudSession لا يسمح لرمز localStorage من تبويب آخر بتجاوز هوية تبويب موجودة.
+
+QA:
+- node --check نجح للملفين JS.
+- جميع inline scripts في صفحتي الإداري نجحت في node --check.
+- فحص غياب fallback القديم لمكتبة القسم نجح.
+- لم يُنفذ اختبار E2E بحسابات مدارس حقيقية؛ يلزم اختبار قبول بحسابين فعليين.

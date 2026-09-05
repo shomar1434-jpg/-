@@ -106,7 +106,7 @@ h1{font-size:18px;margin:0;color:#0f3f75;font-weight:900}
 .uw-verified-title-back:hover{background:#e6fffb!important}
 @media print{.uw-verified-title-back{display:none!important}}
 </style><link href="responsive-layout.css?v=20260818-responsive-1" rel="stylesheet"/>
-<style id="self-eval-archive-runtime-preview-style">body.self-eval-archive-preview .topbar{display:none!important}body.self-eval-archive-preview .frameWrap{padding:0!important}body.self-eval-archive-preview .moduleFrame.active{border:0!important;border-radius:0!important;box-shadow:none!important;height:100vh!important}</style><meta name="self-evaluation-archive-version" content="2026.09.05-RL50-cloud-working-state-exact">
+<style id="self-eval-archive-runtime-preview-style">body.self-eval-archive-preview .topbar{display:none!important}body.self-eval-archive-preview .frameWrap{padding:0!important}body.self-eval-archive-preview .moduleFrame.active{border:0!important;border-radius:0!important;box-shadow:none!important;height:100vh!important}</style><meta name="self-evaluation-archive-version" content="2026.09.05-RL52-serial-verified-transaction">
 
 <style id="rl39-committee-print-cell-fix">
 @media print {
@@ -2491,8 +2491,13 @@ async function selfEvalPdfUploadExact(htmlContent,title,rowId,folderId,folderNam
     const file=new File([blob],safe+&#x27;.pdf&#x27;,{type:&#x27;application/pdf&#x27;,lastModified:Date.now()});
     const up=await engine.upload({file,ownershipScope:&#x27;school&#x27;,moduleKey:&#x27;self_evaluation_archive&#x27;,recordType:&#x27;self_evaluation_pdf&#x27;,recordId:String(rowId),relationType:&#x27;archive_pdf&#x27;,displayName:file.name,metadata:{folderId:String(folderId||&#x27;&#x27;),folderName:String(folderName||&#x27;&#x27;),archiveRecordId:String(rowId),source:&#x27;self_evaluation_records.html&#x27;,archiveVersion:&#x27;RL30&#x27;}});
     const fileId=String(up&amp;&amp;up.file&amp;&amp;up.file.id||&#x27;&#x27;);if(!fileId)throw new Error(&#x27;لم يرجع محرك الملفات معرف PDF&#x27;);
-    const check=await engine.usage(fileId),f=check&amp;&amp;check.file;
-    if(!f||String(f.id)!==fileId||String(f.module_key||&#x27;&#x27;)!==&#x27;self_evaluation_archive&#x27;||String(f.primary_record_type||&#x27;&#x27;)!==&#x27;self_evaluation_pdf&#x27;||String(f.primary_record_id||&#x27;&#x27;)!==String(rowId)||String(f.status||&#x27;active&#x27;)!==&#x27;active&#x27;)throw new Error(&#x27;تعذر التحقق من PDF السحابي بعد الرفع&#x27;);
+    let verifiedFile=null;
+    for(let attempt=0;attempt&lt;4;attempt++){
+      if(attempt&gt;0)await new Promise(r=&gt;setTimeout(r,300*attempt));
+      const check=await engine.usage(fileId),f=check&amp;&amp;check.file;
+      if(f&amp;&amp;String(f.id)===fileId&amp;&amp;String(f.module_key||&#x27;&#x27;)===&#x27;self_evaluation_archive&#x27;&amp;&amp;String(f.primary_record_type||&#x27;&#x27;)===&#x27;self_evaluation_pdf&#x27;&amp;&amp;String(f.primary_record_id||&#x27;&#x27;)===String(rowId)&amp;&amp;String(f.status||&#x27;active&#x27;)===&#x27;active&#x27;){verifiedFile=f;break}
+    }
+    if(!verifiedFile)throw new Error(&#x27;تعذر التحقق من PDF السحابي بعد الرفع&#x27;);
     return fileId;
   }finally{try{frame.remove()}catch(_){}}
 }
@@ -2681,7 +2686,22 @@ async function selfEvalPdfUploadExact(htmlContent,title,rowId,folderId,folderNam
                     }
                 });
             },
-            async saveWorkingDataOnly() {
+            async selfEvalWait(ms){return new Promise(resolve=&gt;setTimeout(resolve,ms));},
+            async selfEvalReadExactWithRetry(guard,keys,expected,attempts=4){
+                let last=null;
+                for(let i=0;i&lt;attempts;i++){
+                    if(i&gt;0)await this.selfEvalWait(250*i);
+                    const r=await guard.readExactValues({moduleKey:'self_evaluation',scope:'school',keys});
+                    last=r;
+                    if(r&amp;&amp;r.ok!==false){
+                        let ok=true;
+                        for(const k of keys){if(String(r.values?.[k]??'')!==String(expected[k]??'')){ok=false;break}}
+                        if(ok)return r;
+                    }
+                }
+                throw new Error(last?.error||'لم تستقر النسخة السحابية المطابقة ضمن مهلة التحقق');
+            },
+            async saveWorkingDataOnly(silent=false) {
                 const keys=['school_info','school_actual_reality','school_committees','school_operational_plan','school_indicators_data'];
                 const before={};keys.forEach(k=&gt;before[k]=localStorage.getItem(k));
                 try{
@@ -2695,14 +2715,12 @@ async function selfEvalPdfUploadExact(htmlContent,title,rowId,folderId,folderNam
                     const expected={};keys.forEach(k=&gt;expected[k]=localStorage.getItem(k)||'');
                     const r=(typeof guard.commitExact==='function')?await guard.commitExact({moduleKey:'self_evaluation',scope:'school',keys:keys}):await guard.commit(keys);if(!r||r.ok===false)throw new Error(r?.error||'تعذر تأكيد الحفظ السحابي');
                     if(typeof guard.readExactValues!=='function')throw new Error('إعادة القراءة السحابية الصارمة غير متاحة');
-                    const vr=await guard.readExactValues({moduleKey:'self_evaluation',scope:'school',keys});
-                    if(!vr||vr.ok===false)throw new Error(vr?.error||'تعذر إعادة قراءة البيانات من السحابة');
-                    for(const k of keys){if(String(vr.values?.[k]??'')!==String(expected[k]??''))throw new Error('عدم تطابق البيانات السحابية بعد الحفظ: '+k)}
-                    this.showToast('تم حفظ التغييرات الحالية والتحقق من مطابقتها سحابيًا دون إنشاء نسخة أرشيفية.');
+                    await this.selfEvalReadExactWithRetry(guard,keys,expected,4);
+                    if(!silent)this.showToast('تم حفظ التغييرات الحالية والتحقق من مطابقتها سحابيًا دون إنشاء نسخة أرشيفية.');
                     return true;
                 }catch(e){
                     keys.forEach(k=&gt;{if(before[k]===null)localStorage.removeItem(k);else localStorage.setItem(k,before[k])});
-                    this.showToast('تعذر تأكيد حفظ التغييرات؛ تمت استعادة النسخة السابقة.');
+                    if(!silent)this.showToast('تعذر تأكيد حفظ التغييرات؛ تمت استعادة النسخة السابقة.');
                     return false;
                 }
             },
@@ -2857,9 +2875,22 @@ async function selfEvalPdfUploadExact(htmlContent,title,rowId,folderId,folderNam
                 }catch(e){console.error('[self evaluation restore archive context]',e)}
             },
             async writeArchiveRecord(folderId,folderName,title,type,payload){
+                if(this.__selfEvalArchiveTxnBusy){this.showToast('جاري تنفيذ عملية حفظ وأرشفة حالية؛ انتظر اكتمالها ثم أعد المحاولة.');return null}
+                this.__selfEvalArchiveTxnBusy=true;
+                
+                try{
+                const workingSaved=await this.saveWorkingDataOnly(true);
+                if(!workingSaved){this.showToast(&#x27;تعذر تثبيت بيانات الصفحة سحابيًا؛ لم تبدأ عملية الأرشفة.&#x27;);return null}
+                const guard0=(window.parent&amp;&amp;window.parent.PlatformPersistenceGuard)||window.PlatformPersistenceGuard;
+                const barrierKeys=[&#x27;school_info&#x27;,&#x27;school_actual_reality&#x27;,&#x27;school_committees&#x27;,&#x27;school_operational_plan&#x27;,&#x27;school_indicators_data&#x27;];
+                const barrierExpected={};barrierKeys.forEach(k=&gt;barrierExpected[k]=localStorage.getItem(k)||&#x27;&#x27;);
+                await this.selfEvalWait(220);
+                await this.selfEvalReadExactWithRetry(guard0,barrierKeys,barrierExpected,4);
                 const objectKey=&#x27;self_evaluation_archive_v1&#x27;,flatKey=&#x27;manager_self_evaluation_archive_v1&#x27;;
-                const keys=[&#x27;school_info&#x27;,&#x27;school_actual_reality&#x27;,&#x27;school_committees&#x27;,&#x27;school_operational_plan&#x27;,&#x27;school_indicators_data&#x27;,objectKey,flatKey];
-                const before={};keys.forEach(k=&gt;before[k]=localStorage.getItem(k));
+                const workingKeys=[&#x27;school_info&#x27;,&#x27;school_actual_reality&#x27;,&#x27;school_committees&#x27;,&#x27;school_operational_plan&#x27;,&#x27;school_indicators_data&#x27;];
+                const archiveKeys=[objectKey,flatKey];
+                const keys=[...workingKeys,...archiveKeys];
+                const beforeArchive={};archiveKeys.forEach(k=&gt;beforeArchive[k]=localStorage.getItem(k));
                 const now=new Date().toISOString();let pdfFileId=&#x27;&#x27;;
                 try{
                     localStorage.setItem(&#x27;school_info&#x27;,JSON.stringify(this.schoolInfo));localStorage.setItem(&#x27;school_actual_reality&#x27;,JSON.stringify(this.actualReality));localStorage.setItem(&#x27;school_committees&#x27;,JSON.stringify(this.committees));localStorage.setItem(&#x27;school_operational_plan&#x27;,JSON.stringify(this.operationalPlan));localStorage.setItem(&#x27;school_indicators_data&#x27;,JSON.stringify(this.indicatorsData));
@@ -2867,17 +2898,19 @@ async function selfEvalPdfUploadExact(htmlContent,title,rowId,folderId,folderNam
                     const editId=this._archiveEditId||&#x27;&#x27;;if(editId&amp;&amp;archive.folders){Object.values(archive.folders).forEach(f=&gt;{if(f&amp;&amp;Array.isArray(f.items))f.items=f.items.filter(x=&gt;String(x.id)!==String(editId))})}
                     const folder=archive.folders[folderName]||(archive.folders[folderName]={name:folderName,folderId,createdAt:now,items:[]});folder.folderId=folderId;
                     const id=editId||`${type}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,oldRow=this._archiveEditRow||{};
-                    await this.$nextTick();const prevPrinting=this.isPrinting;if(type===&#x27;operational_plan&#x27;)this.isPrinting=true;await this.$nextTick();await new Promise(r=&gt;requestAnimationFrame(()=&gt;requestAnimationFrame(r)));const htmlContent=this.buildArchivePrintSnapshot(title,type,false);this.isPrinting=prevPrinting;
+                    await this.$nextTick();const prevPrinting=this.isPrinting;if(type===&#x27;operational_plan&#x27;)this.isPrinting=true;await this.$nextTick();await new Promise(r=&gt;requestAnimationFrame(()=&gt;requestAnimationFrame(r)));await this.selfEvalWait(180);const htmlContent=this.buildArchivePrintSnapshot(title,type,false);this.isPrinting=prevPrinting;
                     if(!htmlContent||htmlContent.length&lt;300)throw new Error(&#x27;تعذر إنشاء نسخة مطابقة من النموذج قبل الأرشفة&#x27;);
                     pdfFileId=await selfEvalPdfUploadExact(htmlContent,title,id,folderId,folderName);
+                    await this.selfEvalWait(220);
                     const row={...oldRow,id,folderId,folderName,recordName:folderName,title,type,source:&#x27;قسم التقويم الذاتي&#x27;,savedAt:oldRow.savedAt||now,updatedAt:now,schoolName:this.schoolInfo?.name||&#x27;&#x27;,academicYear:this.schoolInfo?.hijriYear||&#x27;&#x27;,data:JSON.parse(JSON.stringify(payload||{})),htmlContent,pdfHtml:htmlContent,archivePdfFileId:pdfFileId,archiveFormat:&#x27;pdf-cloud-rl30-exact&#x27;,sourceFile:&#x27;self_evaluation_records.html&#x27;,editorTab:this.archiveTypeConfig(type).tab,previewMode:this.archiveTypeConfig(type).printMode};
                     folder.items.unshift(row);folder.updatedAt=now;localStorage.setItem(objectKey,JSON.stringify(archive));
                     let flat=[];try{flat=JSON.parse(localStorage.getItem(flatKey)||&#x27;[]&#x27;);if(!Array.isArray(flat))flat=[]}catch(e){flat=[]}if(editId)flat=flat.filter(x=&gt;String(x.id)!==String(editId));flat.unshift(row);localStorage.setItem(flatKey,JSON.stringify(flat));
                     const guard=(window.parent&amp;&amp;window.parent.PlatformPersistenceGuard)||window.PlatformPersistenceGuard;if(!guard||typeof guard.commitExact!==&#x27;function&#x27;||typeof guard.readExactValues!==&#x27;function&#x27;)throw new Error(&#x27;طبقة الأرشفة السحابية الصارمة غير متاحة&#x27;);
                     const r=await guard.commitExact({moduleKey:&#x27;self_evaluation&#x27;,scope:&#x27;school&#x27;,keys});if(!r||r.ok===false)throw new Error(r?.error||&#x27;تعذر تأكيد الحفظ السحابي&#x27;);
                     const verifyKeys=[&#x27;school_info&#x27;,&#x27;school_actual_reality&#x27;,&#x27;school_committees&#x27;,&#x27;school_operational_plan&#x27;,&#x27;school_indicators_data&#x27;,objectKey,flatKey];
-                    const vr=await guard.readExactValues({moduleKey:&#x27;self_evaluation&#x27;,scope:&#x27;school&#x27;,keys:verifyKeys});if(!vr||vr.ok===false)throw new Error(vr?.error||&#x27;تعذر إعادة قراءة الأرشيف من السحابة&#x27;);
-                    for(const k of [&#x27;school_info&#x27;,&#x27;school_actual_reality&#x27;,&#x27;school_committees&#x27;,&#x27;school_operational_plan&#x27;,&#x27;school_indicators_data&#x27;]){if(String(vr.values?.[k]??&#x27;&#x27;)!==String(localStorage.getItem(k)||&#x27;&#x27;))throw new Error(&#x27;عدم تطابق بيانات القسم بعد الأرشفة: &#x27;+k)}
+                    const verifyExpected={};verifyKeys.forEach(k=&gt;verifyExpected[k]=localStorage.getItem(k)||&#x27;&#x27;);
+                    await this.selfEvalWait(220);
+                    const vr=await this.selfEvalReadExactWithRetry(guard,verifyKeys,verifyExpected,4);
                     const vo=JSON.parse(vr.values?.[objectKey]||&#x27;{}&#x27;),vf=JSON.parse(vr.values?.[flatKey]||&#x27;[]&#x27;),a=vo?.folders?.[folderName]?.items?.find(x=&gt;String(x.id)===String(id)),b=Array.isArray(vf)?vf.find(x=&gt;String(x.id)===String(id)):null;
                     if(!a||!b||String(a.folderId)!==String(folderId)||String(b.folderId)!==String(folderId)||String(a.archivePdfFileId)!==pdfFileId||String(b.archivePdfFileId)!==pdfFileId||String(a.htmlContent||&#x27;&#x27;).length&lt;300||String(b.htmlContent||&#x27;&#x27;).length&lt;300)throw new Error(&#x27;فشل التحقق السحابي النهائي من النموذج أو مجلده أو PDF&#x27;);
                     if(oldRow.archivePdfFileId&amp;&amp;String(oldRow.archivePdfFileId)!==pdfFileId){try{const engine=(window.parent&amp;&amp;window.parent.CloudFileEngine)||window.CloudFileEngine;if(engine&amp;&amp;typeof engine.trash===&#x27;function&#x27;)await engine.trash(String(oldRow.archivePdfFileId))}catch(_){}}
@@ -2885,8 +2918,11 @@ async function selfEvalPdfUploadExact(htmlContent,title,rowId,folderId,folderNam
                     this.showToast(`${editId?&#x27;تم تحديث PDF والتحقق منه سحابيًا في&#x27;:&#x27;تم إنشاء PDF وحفظه والتحقق منه سحابيًا في&#x27;} أرشيف التقويم الذاتي / ${folderName}`);return row;
                 }catch(e){
                     if(pdfFileId){try{const engine=(window.parent&amp;&amp;window.parent.CloudFileEngine)||window.CloudFileEngine;if(engine&amp;&amp;typeof engine.trash===&#x27;function&#x27;)await engine.trash(pdfFileId)}catch(_){}}
-                    keys.forEach(k=&gt;{if(before[k]===null)localStorage.removeItem(k);else localStorage.setItem(k,before[k])});this.showToast(&#x27;تعذر تأكيد ملف PDF في أرشيف التقويم الذاتي؛ لم يتم اعتبار الحفظ ناجحًا.&#x27;);console.error(&#x27;[self evaluation RL30 explicit archive]&#x27;,e);return null;
+                    archiveKeys.forEach(k=&gt;{if(beforeArchive[k]===null)localStorage.removeItem(k);else localStorage.setItem(k,beforeArchive[k])});
+                    this.showToast(&#x27;تم حفظ بيانات الصفحة سحابيًا، لكن تعذر إنشاء/تأكيد نسخة PDF في الأرشيف. لم يتم التراجع عن البيانات المحفوظة.&#x27;);
+                    console.error(&#x27;[self evaluation RL52 serial transaction]&#x27;,e);return null;
                 }
+                }finally{this.__selfEvalArchiveTxnBusy=false}
             },
             saveSchoolBaseDataToArchive(){
                 return this.writeArchiveRecord('selfEval_60','بيانات المدرسة للتقويم الذاتي',`بيانات المدرسة - ${this.schoolInfo.hijriYear||''}هـ`,'school_info',this.schoolInfo);

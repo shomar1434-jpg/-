@@ -26,7 +26,7 @@
 @media(max-width:900px){.hero-grid,.survey-layout,.basic-grid,.summary,.analysis-grid,.respondent-grid{grid-template-columns:1fr}.metric-row,.question-row{grid-template-columns:1fr}.current-top-inner{align-items:flex-start;flex-direction:column}.source-actions{grid-template-columns:1fr}}
 @media print{.no-print,.top-actions,.source-actions,.actions-row{display:none!important}body{background:#fff}.current-top{position:static}.panel,.section-card{box-shadow:none;break-inside:avoid}.wrap{padding-top:8px}}
 </style>
-<meta name="impact-evidence-isolation-version" content="2026.09.05-RL44-user-role-evidence-sources">
+<meta name="impact-evidence-isolation-version" content="2026.09.05-RL45-real-library-and-performance-archive-readers">
 </head>
 <body>
 <div class="current-shell">
@@ -221,7 +221,20 @@ function renderRoleEvidenceSources(){
 async function openEvidencePicker(source){
  try{assertEvidenceSourceAllowed(source)}catch(e){toast(e.message);return}
  activeEvidenceSource=source;
- if(source==='section_library'&&window.EvidenceLibrarySource){return EvidenceLibrarySource.open('impact',document.querySelector('[data-source="section_library"]'))}
+ if(source==='section_library'&&window.EvidenceLibrarySource){
+   const btn=document.querySelector('[data-source="section_library"]');
+   window.__impactEvidenceLibraryGuard={
+     schoolId:activeSchoolId(),userId:currentUserId(),role:currentRole(),
+     accept(item){
+       const sid=String(item?.schoolId||item?.school_id||'').trim(),uid=String(item?.ownerUserId||item?.owner_user_id||item?.userId||item?.user_id||'').trim(),role=String(item?.role||item?.ownerRole||item?.owner_role||'').trim();
+       if(sid&&sid!==String(activeSchoolId()))return false;
+       if(uid&&uid!==String(currentUserId()))return false;
+       if(role&&role!==String(currentRole()))return false;
+       return true;
+     }
+   };
+   return EvidenceLibrarySource.open('impact',btn);
+ }
  document.getElementById('pickerTitle').textContent='إضافة شاهد من '+sourceLabel(source);
  const privateSource=['section_library','performance_archive','agent_records_archive'].includes(source);
  document.getElementById('pickerHelp').textContent=privateSource?'القسم الحالي: '+currentRoleLabel()+' — المدرسة والمستخدم والدور الحالي فقط':'المصدر المؤسسي المتاح لمدير المدرسة الحالية فقط';
@@ -232,13 +245,51 @@ function closeEvidencePicker(){document.getElementById('evidencePicker').style.d
 function parseNestedValue(v){let x=v;for(let i=0;i<3&&typeof x==='string';i++){try{x=JSON.parse(x)}catch(_){break}}if(x&&typeof x==='object'&&Object.prototype.hasOwnProperty.call(x,'value'))return parseNestedValue(x.value);return x}
 function evidenceName(it,fallback){return String(it?.recordName||it?.title||it?.name||it?.displayName||it?.fileName||it?.folderName||it?.categoryLabel||fallback||'شاهد').trim()}
 function evidenceRef(it,fallback){return String(it?.url||it?.link||it?.archivePdfFileId||it?.fileId||it?.platformFileId||it?.id||it?.sourceRecordId||fallback||'').trim()}
+
+const PERFORMANCE_ARCHIVE_ROLE_MAP=Object.freeze({
+ manager:{moduleKey:'manager',indexKey:'manager_perf_index_v1',reportPrefix:'manager_perf_report_v1_'},
+ agent:{moduleKey:'agent',indexKey:'agent_perf_index_v1',reportPrefix:'agent_perf_report_v1_'},
+ teacher:{moduleKey:'teacher',indexKey:'teacher_perf_index_v1',reportPrefix:'teacher_perf_report_v1_'},
+ counselor:{moduleKey:'counselor',indexKey:'counselor_perf_index_v1',reportPrefix:'counselor_perf_report_v1_'},
+ health_guide:{moduleKey:'health_guide',indexKey:'health_guide_perf_index_v1',reportPrefix:'health_guide_perf_report_v1_'},
+ activity_leader:{moduleKey:'activity_leader',indexKey:'activity_leader_perf_index_v1',reportPrefix:'activity_leader_perf_report_v1_'},
+ admin_employee:{moduleKey:'admin_employee',indexKey:'admin_employee_perf_index_v1',reportPrefix:'admin_employee_perf_report_v1_'},
+ kindergarten_teacher:{moduleKey:'kindergarten_teacher',indexKey:'kindergarten_teacher_perf_index_v1',reportPrefix:'kindergarten_teacher_perf_report_v1_'}
+});
+function performanceArchiveSpec(){return PERFORMANCE_ARCHIVE_ROLE_MAP[currentRole()]||null}
 function flattenPerformanceValue(v,row){const out=[];let x=parseNestedValue(v);const arr=Array.isArray(x)?x:(Array.isArray(x?.items)?x.items:Array.isArray(x?.reports)?x.reports:Array.isArray(x?.records)?x.records:[]);if(arr.length){arr.forEach((it,j)=>{if(!it)return;const obj=typeof it==='string'?{name:it}:it;out.push({name:evidenceName(obj,'تقرير أداء '+(j+1)),ref:evidenceRef(obj,row.state_key),source:'performance_archive',role:currentRole(),roleLabel:currentRoleLabel(),type:'تقرير أداء',stateKey:row.state_key,ownerUserId:currentUserId(),schoolId:activeSchoolId()})})}else if(x&&typeof x==='object'){out.push({name:evidenceName(x,'تقرير أداء'),ref:evidenceRef(x,row.state_key),source:'performance_archive',role:currentRole(),roleLabel:currentRoleLabel(),type:'تقرير أداء',stateKey:row.state_key,ownerUserId:currentUserId(),schoolId:activeSchoolId()})}return out}
 async function loadPerformanceArchiveEvidence(){
- const d=await stateCall('pull-performance-archive',{});
- if(String(d.ownerKey||'')!==String(currentUserId()))throw new Error('رفضت القراءة لأن أرشيف الأداء لا يطابق المستخدم الحالي');
- if(d.role&&String(d.role)!==String(currentRole()))throw new Error('رفضت القراءة لأن أرشيف الأداء لا يطابق الدور الحالي');
- const items=[];(d.items||[]).forEach(row=>items.push(...flattenPerformanceValue(row.payload,row)));
- const seen=new Set;return items.filter(x=>{const k=x.ref+'|'+x.name;if(seen.has(k))return false;seen.add(k);return true}).slice(0,200)
+ const spec=performanceArchiveSpec();if(!spec)throw new Error('لا يوجد أرشيف أداء معرف للدور الحالي');
+ if(!window.PlatformPersistenceGuard?.readExactValues)throw new Error('محرك حالة الأداء السحابي غير متاح');
+ const idxRead=await PlatformPersistenceGuard.readExactValues({moduleKey:spec.moduleKey,scope:'user',keys:[spec.indexKey]});
+ if(!idxRead||idxRead.ok===false)throw new Error(idxRead?.error||'تعذر قراءة فهرس أرشيف مجالات الأداء');
+ const raw=parseNestedValue(idxRead.values?.[spec.indexKey]);
+ const indexItems=Array.isArray(raw)?raw:(Array.isArray(raw?.items)?raw.items:Array.isArray(raw?.records)?raw.records:[]);
+ const uid=String(currentUserId()),sid=String(activeSchoolId()),role=String(currentRole());
+ const safeIndex=indexItems.filter(it=>{
+   if(!it)return false;
+   const owner=String(it.ownerUserId||it.owner_user_id||it.userId||it.user_id||uid);
+   const school=String(it.schoolId||it.school_id||sid);
+   const r=String(it.role||it.ownerRole||it.owner_role||role);
+   return owner===uid&&school===sid&&r===role;
+ });
+ const keys=safeIndex.map(it=>String(it.stateKey||it.state_key||it.reportKey||it.report_key||'')).filter(Boolean);
+ const inferred=safeIndex.map(it=>it.id?spec.reportPrefix+it.id:'').filter(Boolean);
+ const allKeys=[...new Set([...keys,...inferred])];
+ let values={};
+ if(allKeys.length){
+   const rr=await PlatformPersistenceGuard.readExactValues({moduleKey:spec.moduleKey,scope:'user',keys:allKeys});
+   if(!rr||rr.ok===false)throw new Error(rr?.error||'تعذر قراءة تقارير أرشيف الأداء');
+   values=rr.values||{};
+ }
+ const out=[];
+ safeIndex.forEach((it,i)=>{
+   const key=String(it.stateKey||it.state_key||it.reportKey||it.report_key||(it.id?spec.reportPrefix+it.id:''));
+   const payload=parseNestedValue(values[key]);
+   const obj=(payload&&typeof payload==='object')?payload:it;
+   out.push({name:evidenceName(obj,evidenceName(it,'تقرير أداء '+(i+1))),ref:evidenceRef(obj,key||it.id),source:'performance_archive',role,roleLabel:currentRoleLabel(),type:'تقرير أداء',stateKey:key,ownerUserId:uid,schoolId:sid,archiveItemId:String(it.id||'')});
+ });
+ return out.slice(0,300)
 }
 async function readExactArchive(moduleKey,scope,keys){
  if(!window.PlatformPersistenceGuard?.readExactValues)throw new Error('محرك الأرشيف السحابي غير متاح');
@@ -293,6 +344,13 @@ function addManualEvidenceRef(){const el=document.getElementById('manualEvidence
 function handleFiles(files){Array.from(files||[]).forEach(f=>evidence.push({name:f.name,type:f.type||'ملف',size:f.size,source:'device',role:currentRole(),roleLabel:currentRoleLabel(),selectedByUserId:currentUserId(),schoolId:activeSchoolId()}));renderFiles()}
 function renderFiles(){document.getElementById('fileList').innerHTML=evidence.map((f,i)=>`<div class="file-item"><span>${sourceIcon(f.source)} ${esc(f.name)} <span class="source-badge">${esc(sourceLabel(f.source))}</span></span><button class="btn red no-print" onclick="evidence.splice(${i},1);renderFiles()">حذف</button></div>`).join('')||'<p class="small">لم تتم إضافة شواهد بعد.</p>'}
 function summarizeEvidenceSources(){const g={};evidence.forEach(e=>g[sourceLabel(e.source)]=(g[sourceLabel(e.source)]||0)+1);return Object.entries(g).map(([k,v])=>k+': '+v).join(' | ')}
+
+window.addEventListener('evidence-library-selected',ev=>{
+ const it=ev?.detail;if(!it||activeEvidenceSource!=='section_library')return;
+ const guard=window.__impactEvidenceLibraryGuard;
+ if(guard&&!guard.accept(it)){toast('تم رفض الشاهد لأنه لا يخص المستخدم/الدور الحالي');return}
+ evidence.push({...it,source:'section_library',selectedByUserId:currentUserId(),selectedInRole:currentRole(),schoolId:activeSchoolId(),ownerUserId:currentUserId()});renderFiles();
+});
 function renderMetrics(){const box=document.getElementById('metricsList');box.innerHTML=metrics.map((m,i)=>`<div class="metric-row"><div class="field"><label>مؤشر القياس <span class="req">*</span></label><input value="${esc(m.name)}" oninput="metrics[${i}].name=this.value;calc()"></div><div class="field"><label>خط الأساس</label><input type="number" value="${esc(m.baseline)}" oninput="metrics[${i}].baseline=this.value;calc()"></div><div class="field"><label>بعد التنفيذ</label><input type="number" value="${esc(m.after)}" oninput="metrics[${i}].after=this.value;calc()"></div><div class="field"><label>التحسن</label><input class="calc" readonly value="${improve(m)}%"></div><div class="field"><label>أداة القياس</label><select onchange="metrics[${i}].tool=this.value"><option ${m.tool==='ملاحظة مباشرة'?'selected':''}>ملاحظة مباشرة</option><option ${m.tool==='اختبار قبلي/بعدي'?'selected':''}>اختبار قبلي/بعدي</option><option ${m.tool==='استبانة'?'selected':''}>استبانة</option><option ${m.tool==='سجل متابعة'?'selected':''}>سجل متابعة</option><option ${m.tool==='تحليل نتائج'?'selected':''}>تحليل نتائج</option></select></div><button class="btn red no-print" onclick="removeMetric(${i})">×</button></div>`).join('');calc()}
 function improve(m){const b=Number(m.baseline),a=Number(m.after);if(m.tool==='استبانة'&&b===0&&isFinite(a))return Math.round(a);if(!isFinite(b)||!isFinite(a)||b===0)return 0;return Math.round(((a-b)/Math.abs(b))*100)}
 function calc(){document.getElementById('metricCount').textContent=metrics.length;const vals=metrics.map(improve),avg=Math.round(vals.reduce((s,v)=>s+v,0)/(vals.length||1));document.getElementById('avgImprovement').textContent=avg+'%';document.getElementById('impactLevel').textContent=avg>=50?'مرتفع جداً':avg>=25?'مرتفع':avg>=10?'متوسط':avg>0?'منخفض':'غير محدد';document.querySelectorAll('.calc').forEach((el,i)=>el.value=improve(metrics[i])+'%')}

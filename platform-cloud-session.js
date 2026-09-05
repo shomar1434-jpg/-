@@ -369,14 +369,10 @@
       administrative_employee: ['administrative_employee','admin_employee','employee_admin','موظف إداري','موظفة إدارية']
     };
     const allowed = (requiredRoles || []).flatMap((role) => aliases[normalizeRole(role)] || [normalizeRole(role)]);
-    const currentRoleNorm = normalizeRole(rr);
-    const currentRoleAliases = new Set(
-      (aliases[currentRoleNorm] || [currentRoleNorm]).map(normalizeRole)
-    );
     const member = membershipsList.find((m) =>
       String(m.schoolId || '') === sid &&
       String(m.userId || '') === uid &&
-      currentRoleAliases.has(normalizeRole(m.role))
+      normalizeRole(m.role) === normalizeRole(rr)
     );
     if (!member) {
       const error = new Error('المستخدم غير مرتبط بالمدرسة الحالية بعضوية فعالة.');
@@ -391,13 +387,8 @@
     // RL33: verified identity remains tab-scoped. Never rewrite shared localStorage identity keys.
     sessionStorage.setItem(TAB_SCHOOL_KEY, sid);
     sessionStorage.setItem(TAB_USER_KEY, uid);
-    const memberRoleNorm = normalizeRole(member.role || '');
-    const canonicalRouteRole =
-      (currentRoleNorm === 'teacher' && ['teacher','performance','school_teacher','معلم','معلمة'].includes(memberRoleNorm))
-        ? 'teacher'
-        : (rr || String(member.role || ''));
-    sessionStorage.setItem(TAB_ROLE_KEY, canonicalRouteRole);
-    return { schoolId: sid, userId: uid, role: canonicalRouteRole, membership: member };
+    sessionStorage.setItem(TAB_ROLE_KEY, rr || String(member.role || ''));
+    return { schoolId: sid, userId: uid, role: rr || String(member.role || ''), membership: member };
   }
 
   function clear() {
@@ -421,6 +412,24 @@
   function routeRequiredRole(){
     const file=(location.pathname.split('/').pop()||'').toLowerCase();
     if(!file || /(login|register|guardian|public|invite)/.test(file))return '';
+
+    // RL70: admin_employee_management.html is a supervisor workspace, not the
+    // administrative employee's personal portal. Its required role must follow
+    // the supervisor that opened it, otherwise RL33 hides the page then redirects
+    // manager/agent away after the first visible paint.
+    if(file==='admin_employee_management.html'){
+      try{
+        const q=new URLSearchParams(location.search||'');
+        const s=String(q.get('supervisor')||q.get('viewerRole')||q.get('viewer')||q.get('returnRole')||'').trim().toLowerCase();
+        if(['agent','deputy','vice','wakil','agency','وكيل','وكيلة'].includes(s))return 'agent';
+        if(['manager','principal','school_manager','leadership','مدير','مديرة'].includes(s))return 'manager';
+      }catch(_){}
+      const current=String(role()||'').trim().toLowerCase();
+      if(['agent','deputy','vice','wakil','agency','وكيل','وكيلة'].includes(current))return 'agent';
+      if(['manager','principal','school_manager','leadership','مدير','مديرة'].includes(current))return 'manager';
+      return '';
+    }
+
     const rules=[
       [/^administrative_employee|^admin_employee/,'administrative_employee'],
       [/^kindergarten_teacher/,'kindergarten_teacher'],
@@ -467,7 +476,7 @@
     }
   }
 
-  const SESSION_VERSION='2026.09.05-RL60-teacher-legacy-role-compat';
+  const SESSION_VERSION='2026.09.05-RL33-complete-tab-role-isolation';
 
   window.PlatformCloudSession = {
     VERSION:SESSION_VERSION,

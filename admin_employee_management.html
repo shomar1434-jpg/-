@@ -40,7 +40,7 @@
 <body>
 <div class="wrap">
 <header class="top"><img src="https://salogos.b-cdn.net/logos/svg/1774895141785-5zgexuf8.svg"><div><h1>إدارة الأداء الوظيفي للموظفين الإداريين</h1><p id="sub">قسم المسؤول المباشر</p></div></header>
-<div class="bar"><button class="btn" onclick="createRegistrationLink()">إنشاء رابط تسجيل موظف إداري</button><button class="btn blue" onclick="copyAdministrativeEmployeeLoginLink()">نسخ رابط دخول الموظف الإداري</button><button class="btn blue" onclick="openAdministrativeEmployeesPortal()">الدخول إلى بوابة الموظفين الإداريين</button><button class="btn light" onclick="render()">تحديث البيانات</button><button class="btn light" onclick="history.back()">رجوع</button></div>
+<div class="bar"><button class="btn" onclick="createRegistrationLink()">إنشاء رابط تسجيل موظف إداري</button><button class="btn blue" onclick="copyAdministrativeEmployeeLoginLink()">نسخ رابط دخول الموظف الإداري</button><button class="btn blue" onclick="openAdministrativeEmployeesPortal()">الدخول إلى بوابة الموظفين الإداريين</button><button class="btn light" onclick="render()">تحديث البيانات</button><button class="btn light" onclick="returnToAdministrativeEmployeeSupervisor()">رجوع</button></div>
 
 <section class="panel" id="approvalAssetsPanel"><h2>إعدادات اعتماد المسؤول المباشر</h2><div class="approvalHint">ارفع التوقيع الرقمي والختم مرة واحدة، وسيتم سحبهما تلقائيًا في اعتماد خطة الأداء ونتائج التقييم وخطة التحسين للموظف الإداري حسب المسؤول الحالي.</div><div class="assetGrid"><div class="assetBox"><b>التوقيع الرقمي للمسؤول</b><input type="file" accept="image/*" onchange="saveSupervisorAsset('signature',this)" style="margin-top:10px"><div class="assetPreview" id="signaturePreview">لا يوجد توقيع محفوظ</div></div><div class="assetBox"><b>ختم المدرسة / الاعتماد</b><input type="file" accept="image/*" onchange="saveSupervisorAsset('stamp',this)" style="margin-top:10px"><div class="assetPreview" id="stampPreview">لا يوجد ختم محفوظ</div></div></div></section>
 <section class="grid"><div class="kpi"><span>إجمالي النشطين</span><br><b id="kAll">0</b></div><div class="kpi"><span>خطط بانتظار الاعتماد</span><br><b id="kPending">0</b></div><div class="kpi"><span>خطط معتمدة</span><br><b id="kApproved">0</b></div><div class="kpi"><span>خطط معادة للتعديل</span><br><b id="kReturned">0</b></div><div class="kpi"><span>موظفون معطلون</span><br><b id="kDisabled">0</b></div></section>
@@ -49,9 +49,33 @@
 </div>
 <script>
 const params=new URLSearchParams(location.search);let supervisor=params.get('supervisor')||params.get('role')||'manager';
+document.documentElement.setAttribute('data-administrative-employee-supervisor-page','1');
+document.documentElement.setAttribute('data-administrative-employee-supervisor-role',String(supervisor||'manager'));
 function supLabel(v){return v==='agent'||v==='vice'||v==='wakil'?'الوكيل/الوكيلة':'المدير/المديرة'}
 
-
+function administrativeEmployeeSupervisorRole(){
+  const q=new URLSearchParams(location.search||'');
+  const v=normalizeSupervisor(q.get('supervisor')||q.get('viewerRole')||q.get('viewer')||q.get('returnRole')||supervisor||'manager');
+  return v==='agent'?'agent':'manager';
+}
+function administrativeEmployeeSupervisorSchoolId(){
+  const q=new URLSearchParams(location.search||'');
+  const fromUrl=String(q.get('schoolId')||q.get('school_id')||q.get('school')||'').trim();
+  const tab=String(sessionStorage.getItem('smart_school_tab_school_v1')||sessionStorage.getItem('platform_tab_session_school_id_v1')||'').trim();
+  const cloud=String((window.PlatformCloudSession&&typeof PlatformCloudSession.schoolId==='function'&&PlatformCloudSession.schoolId())||'').trim();
+  const trusted=tab||cloud||fromUrl;
+  if(fromUrl&&trusted&&fromUrl!==trusted)throw new Error('رابط قسم الموظف الإداري لا يطابق مدرسة جلسة التبويب');
+  return trusted;
+}
+function returnToAdministrativeEmployeeSupervisor(){
+  try{
+    const role=administrativeEmployeeSupervisorRole(),sid=administrativeEmployeeSupervisorSchoolId(),q=new URLSearchParams();
+    if(sid)q.set('schoolId',sid);
+    q.set('sectionHome','1');q.set('sectionReturn','1');q.set('returnedFromAdminEmployee','1');
+    location.href=(role==='agent'?'agent.html':'manager.html')+'?'+q.toString();
+  }catch(e){console.error('[admin employee supervisor return]',e);alert('تعذر العودة إلى واجهة المسؤول المباشر: '+String(e&&e.message||e));}
+}
+window.returnToAdministrativeEmployeeSupervisor=returnToAdministrativeEmployeeSupervisor;
 
 document.getElementById('sub').textContent='بإشراف '+supLabel(supervisor);
 function allPlans(){try{return JSON.parse(localStorage.getItem('administrative_employee_plans')||'[]')}catch(e){return []}}
@@ -194,22 +218,13 @@ function currentSchoolScope(){
   }catch(e){console.warn('[admin employee school scope]',e);return ''}
 }
 async function resolveAdministrativeEmployeeSchoolLinkContext(){
-  const schoolId=currentSchoolScope();
-  if(!schoolId)throw new Error('تعذر تحديد المدرسة من جلسة هذا التبويب.');
-  const sb=window.SmartSchoolSupabase&&SmartSchoolSupabase.getClient?SmartSchoolSupabase.getClient():null;
-  if(!sb)throw new Error('مصدر المدارس السحابي غير متاح.');
-  const q=await sb.from('schools').select('id,school_name,school_code,registration_code,status').eq('id',schoolId).maybeSingle();
-  if(q.error)throw q.error;
-  const row=q.data;
-  if(!row||String(row.id)!==String(schoolId))throw new Error('المدرسة غير موجودة في المصدر السحابي.');
-  if(['disabled','inactive','suspended','deleted'].includes(String(row.status||'active').toLowerCase()))throw new Error('المدرسة غير مفعلة.');
-  if(!row.school_code||!row.registration_code)throw new Error('بيانات رابط التسجيل للمدرسة غير مكتملة.');
-  return {schoolId:String(row.id),schoolName:String(row.school_name||''),schoolCode:String(row.school_code),registrationCode:String(row.registration_code)};
-}
-function openAdministrativeEmployeesPortal(){
-  const school=currentSchoolScope();
-  const url='administrative_employee_portal.html?mode=supervisor&supervisor='+encodeURIComponent(supervisor)+(school?'&school='+encodeURIComponent(school):'');
-  location.href=url;
+  if(!window.SmartSchoolSupabase?.platformDirectoryCall)throw new Error('خدمة المدرسة الآمنة غير متاحة');
+  const d=await window.SmartSchoolSupabase.platformDirectoryCall('school-registration-context',{}),row=d.school||{};
+  if(!row.id||!row.school_code||!row.registration_code)throw new Error('بيانات رابط التسجيل غير مكتملة');
+  const resolvedRole=normalizeSupervisor(d.supervisorRole||'');
+  if(resolvedRole!==supervisor)throw new Error('جهة الإشراف في الصفحة لا تطابق جلسة المسؤول الحالي');
+  if(!d.supervisorUserId||!d.adminRegistrationToken)throw new Error('تعذر إثبات هوية المسؤول المباشر لإنشاء رابط الموظف الإداري');
+  return {schoolId:String(row.id),schoolName:String(row.school_name||''),schoolCode:String(row.school_code||''),registrationCode:String(row.registration_code||''),supervisorUserId:String(d.supervisorUserId||''),supervisorRole:resolvedRole,adminRegistrationToken:String(d.adminRegistrationToken||'')};
 }
 async function copyAdministrativeEmployeeLoginLink(){
   try{
@@ -229,7 +244,7 @@ async function createRegistrationLink(){
       schoolId:ctx.schoolId,school:ctx.schoolCode,schoolCode:ctx.schoolCode,
       reg:ctx.registrationCode,token:ctx.registrationCode,
       schoolName:ctx.schoolName,adminEmployee:'1',role:'administrative_employee',
-      supervisor:supervisor,source:'administrative_employee_registration',scope:'school'
+      supervisor:ctx.supervisorRole||supervisor,supervisorUserId:ctx.supervisorUserId,adminToken:ctx.adminRegistrationToken,source:'administrative_employee_registration',scope:'school'
     });
     const url=base+'?'+q.toString();
     try{await navigator.clipboard.writeText(url)}catch(e){}
@@ -255,11 +270,12 @@ function renderSupervisorAssets(){let a=readSupervisorAssets();let sig=document.
 function saveSupervisorAsset(type,input){let f=input.files&&input.files[0];if(!f)return;let r=new FileReader();r.onload=function(){let a=readSupervisorAssets();a[type]=r.result;a.updatedAt=new Date().toISOString();localStorage.setItem(supervisorAssetKey(),JSON.stringify(a));renderSupervisorAssets();alert(type==='signature'?'تم حفظ التوقيع الرقمي.':'تم حفظ الختم.');};r.readAsDataURL(f);input.value='';}
 function updateDashboardMetrics(rows){try{let a=Array.isArray(rows)?rows:combinedEmployees();let active=a.filter(x=>x.active!==false&&x._accountStatus!=='disabled');let evals=active.map(x=>{try{return JSON.parse(localStorage.getItem('administrative_employee_eval_'+x.id)||'null')}catch(e){return null}}).filter(Boolean);let avg=0;if(evals.length){avg=Math.round(evals.reduce((sum,x)=>sum+(Number(x.total)||Number(x.score)||0),0)/evals.length)}let metrics={total:active.length,disabled:a.filter(x=>x.active===false||x._accountStatus==='disabled').length,pending:a.filter(x=>x._accountStatus==='pending'||x.status==='pending').length,approved:active.filter(x=>x.status==='approved').length,returned:active.filter(x=>x.status==='returned').length,improvement:0,averageEvaluation:avg,updatedAt:new Date().toISOString()};localStorage.setItem('administrative_employee_metrics',JSON.stringify(metrics));}catch(e){}}
 
-renderSupervisorAssets();render();
+renderSupervisorAssets();
+window.__ADMIN_EMPLOYEE_MANAGEMENT_RENDER_PENDING__=true;
 </script>
 
 <!-- Unified Comprehensive Cloud Storage -->
-<script src="platform-cloud-session.js?v=20260818-session-v12"></script>
+<script src="platform-cloud-session.js?v=20260905-RL33-complete-tab-role-isolation"></script>
 <script src="cloud-file-engine.js"></script>
 <script src="cloud-file-bootstrap.js"></script>
 <script src="cloud-upload-hub.js"></script>
@@ -280,5 +296,24 @@ renderSupervisorAssets();render();
 <script src="top-ai-center.js"></script>
 <script src="platform-page-navigation.js?v=20260818-nav1"></script>
 
-
+<script id="ADMIN_EMPLOYEE_SUPERVISOR_BOOTSTRAP_RL68">
+(function(){
+  async function start(){
+    try{
+      const sid=currentSchoolScope(),actual=currentActualRole();
+      if(!sid)throw new Error('لم يتم تحميل هوية المدرسة المستقلة');
+      if(!isSystemAdminSession()&&actual!==supervisor)throw new Error('دور جلسة المسؤول لا يطابق جهة الإشراف المطلوبة');
+      await render();
+      window.__ADMIN_EMPLOYEE_MANAGEMENT_RENDER_PENDING__=false;
+      window.__ADMIN_EMPLOYEE_MANAGEMENT_READY_RL68__=true;
+    }catch(e){
+      console.error('[admin employee supervisor bootstrap]',e);
+      const rows=document.getElementById('rows');
+      if(rows)rows.innerHTML='<tr><td colspan="6" style="text-align:center;padding:24px;color:#b42318;font-weight:800">تعذر فتح القسم ضمن جلسة المدرسة الحالية: '+String(e&&e.message||e)+'</td></tr>';
+    }
+  }
+  if(document.readyState==='complete')setTimeout(start,0);
+  else window.addEventListener('load',()=>setTimeout(start,0),{once:true});
+})();
+</script>
 </body></html>

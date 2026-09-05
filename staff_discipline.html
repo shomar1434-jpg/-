@@ -128,7 +128,6 @@ aside{background:
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
-<meta name="staff-discipline-version" content="2026.09.04-RL26-cloud-session-movement-recovery">
 <link rel="stylesheet" href="responsive-layout.css?v=20260818-responsive-1">
 </head>
 <body class="text-slate-800">
@@ -380,7 +379,7 @@ aside{background:
 
 <div id="toast" class="fixed bottom-5 left-5 hidden bg-slate-950 text-white px-5 py-3 rounded-xl shadow-xl z-[60]"></div>
 
-<script src="platform-cloud-session.js?v=20260818-session-v12"></script>
+<script src="platform-cloud-session.js?v=20260905-RL33-complete-tab-role-isolation"></script>
 <script src="school-information-source.js"></script>
 <script>
 (function(){
@@ -397,9 +396,7 @@ function settings(){
  return o;
 }
 function mapStaff(u){
- // RL26: الحركة يجب أن ترتبط بحساب المستخدم الحقيقي، لا بمعرف سجل وسيط قديم.
- const canonicalUserId=safe(u.user_id||u.userId||u.id||u.email||u.name);
- return {id:canonicalUserId,userId:canonicalUserId,name:safe(u.name||u.full_name||u.fullName||u.display_name),title:safe(u.role_label||u.job_role_label||u.title||u.job_title||u.jobTitle||u.roleLabel||u.role),dept:safe(u.department||u.dept||''),status:safe(u.status||'على رأس العمل'),email:safe(u.email||u.user_email||'')};
+ return {id:safe(u.id||u.user_id||u.userId||u.email||u.name),name:safe(u.name||u.full_name||u.fullName||u.display_name),title:safe(u.role_label||u.job_role_label||u.title||u.job_title||u.jobTitle||u.roleLabel||u.role),dept:safe(u.department||u.dept||''),status:safe(u.status||'على رأس العمل'),email:safe(u.email||'')};
 }
 async function getSchoolUsers(force=false){
  if(window.SchoolInformationSource?.getStaff){
@@ -443,75 +440,10 @@ const state=_initialState||{staff:[],records:[],deductions:[],settings:{},integr
 state.staff=Array.isArray(state.staff)?state.staff:[];state.records=Array.isArray(state.records)?state.records:[];state.deductions=Array.isArray(state.deductions)?state.deductions:[];state.settings=state.settings||{};state.integration=state.integration||{};state._schoolId=_disciplineSchoolId;
 let importRows=[],importHeaders=[];const today=()=>new Date().toISOString().slice(0,10);document.getElementById('recordDate').value=today();
 let _disciplineCloudTimer=null,_disciplineBootPromise=null,_disciplineReady=false;
-const DISCIPLINE_DEFAULT_SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
-function disciplineSessionToken(){
- // RL26 Regression Lock: الجلسة الحالية هي المرجع. لا نسمح لـ localStorage قديم أن يسبق جلسة التبويب الحالية.
- return String(window.PlatformCloudSession?.token?.()||sessionStorage.getItem('platform_tab_session_token_v1')||sessionStorage.getItem('platform_session_token')||sessionStorage.getItem('platform_file_session_token')||localStorage.getItem('platform_tab_session_token_v1')||localStorage.getItem('platform_file_session_token')||'').trim();
-}
-async function disciplineCloudCall(action,payload){
- if(window.PlatformCloudSession?.ensure)await window.PlatformCloudSession.ensure();
- const token=disciplineSessionToken();if(!token)throw new Error('جلسة المنصة غير متاحة لحفظ الانضباط سحابيًا');
- const expectedSchool=String(window.PlatformCloudSession?.schoolId?.()||_disciplineSchoolId||'').trim();
- if(expectedSchool&&_disciplineSchoolId&&expectedSchool!==_disciplineSchoolId)throw new Error('تم منع الحفظ بسبب اختلاف سياق المدرسة الحالية');
- const url=(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'');
- const key=localStorage.getItem('smartSchoolSupabaseAnonKey')||DISCIPLINE_DEFAULT_SUPABASE_KEY;
- const r=await fetch(url+'/functions/v1/platform-discipline?action='+encodeURIComponent(action),{method:'POST',headers:{'content-type':'application/json','apikey':key,'x-platform-session':token},body:JSON.stringify(payload||{}),cache:'no-store'});
- const j=await r.json().catch(()=>({}));if(!r.ok||j?.ok===false)throw new Error(j.error||'تعذر مزامنة الانضباط');return j;
-}
+function disciplineSessionToken(){return localStorage.getItem('platform_file_session_token')||sessionStorage.getItem('platform_tab_session_token_v1')||localStorage.getItem('platform_tab_session_token_v1')||sessionStorage.getItem('platform_file_session_token')||''}
+async function disciplineCloudCall(action,payload){const token=disciplineSessionToken();if(!token)throw new Error('جلسة المنصة غير متاحة لحفظ الانضباط سحابيًا');const url=(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'');const key=localStorage.getItem('smartSchoolSupabaseAnonKey')||'';const r=await fetch(url+'/functions/v1/platform-discipline?action='+encodeURIComponent(action),{method:'POST',headers:{'content-type':'application/json','apikey':key,'x-platform-session':token},body:JSON.stringify(payload||{})});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'تعذر مزامنة الانضباط');return j}
 function mergeById(localRows,cloudRows){const map=new Map();[...(cloudRows||[]),...(localRows||[])].forEach(r=>{if(!r)return;const id=String(r.id||'');if(!id)return;const prev=map.get(id);if(!prev){map.set(id,r);return}const a=Date.parse(prev.updatedAt||prev.updated_at||prev.createdAt||prev.created_at||0)||0,b=Date.parse(r.updatedAt||r.updated_at||r.createdAt||r.created_at||0)||0;if(b>=a)map.set(id,r)});return Array.from(map.values()).sort((a,b)=>String(b.date||b.start_at||'').localeCompare(String(a.date||a.start_at||'')))}
-function movementRowToRecord(r){return{id:r.id,date:String(r.start_at||'').slice(0,10),employeeId:r.user_id,type:r.movement_type||'حاضر',minutes:Number(r.minutes||0),days:Number(r.absence_days||0),notes:r.notes||'',excuse:r.excuse_type||'',excuseStatus:r.excuse_status||'',createdAt:r.created_at||'',updatedAt:r.updated_at||r.created_at||'',_cloudPending:false}}
-const disciplineWait=ms=>new Promise(resolve=>setTimeout(resolve,Math.max(0,Number(ms)||0)));
-async function verifyMovementFromCloud(id,waits=[0,350,800,1500,2600]){
- const rid=String(id||'').trim();if(!rid)return null;
- let lastError=null;
- for(const wait of waits){
-   if(wait)await disciplineWait(wait);
-   try{
-     const j=await disciplineCloudCall('load',{academicYear:_ctx.academicYear||state.settings.year||'1448'});
-     const row=(Array.isArray(j?.movements)?j.movements:[]).find(x=>String(x?.id||'')===rid&&String(x?.status||'active')!=='deleted');
-     if(row)return movementRowToRecord(row);
-   }catch(e){lastError=e;console.warn('[discipline movement verify]',e?.message||e);}
- }
- if(lastError)console.warn('[discipline movement verify exhausted]',lastError);
- return null;
-}
-async function saveMovementCloudConfirmed(rec){
- const movement={id:rec.id,userId:rec.employeeId,type:rec.type,date:rec.date,minutes:rec.minutes,days:rec.days||0,excuse:rec.excuse||'',excuseStatus:rec.excuseStatus||'',notes:rec.notes||'',source:'attendance-discipline'};
- let lastError=null;
- // نفس ID في كل محاولة: upsert آمن ولا ينتج حركة مكررة عند تأخر الاستجابة.
- for(let attempt=0;attempt<3;attempt++){
-   try{
-     const saved=await disciplineCloudCall('save_movement',{academicYear:_ctx.academicYear||state.settings.year||'1448',movement,state});
-     if(saved?.movement?.id&&String(saved.movement.id)===String(rec.id)){
-       const verified=await verifyMovementFromCloud(rec.id,[0,250,600,1200]);
-       if(verified)return verified;
-     }
-   }catch(e){
-     lastError=e;console.warn('[discipline movement save attempt '+(attempt+1)+']',e?.message||e);
-     // قد يكون الخادم حفظ الحركة ثم تأخر الرد؛ نقرأ نفس ID قبل إعادة upsert.
-     const verified=await verifyMovementFromCloud(rec.id,[0,300,700]);
-     if(verified)return verified;
-   }
-   await disciplineWait([450,1000,1800][attempt]||500);
- }
- if(lastError)throw lastError;
- throw new Error('تعذر تأكيد الحركة من المصدر السحابي');
-}
-async function recoverPendingMovements(){
- const pending=(state.records||[]).filter(r=>r&&r._cloudPending===true);
- if(!pending.length)return {recovered:0,pending:0};
- let recovered=0;
- for(const rec of pending){
-   try{
-     const verified=await verifyMovementFromCloud(rec.id,[0,250]);
-     const cloud=verified||await saveMovementCloudConfirmed(rec);
-     if(cloud){
-       Object.assign(rec,cloud,{_cloudPending:false});recovered++;
-     }
-   }catch(e){console.warn('[discipline pending movement recovery]',rec.id,e?.message||e);}
- }
- persistLocal();renderAll();return {recovered,pending:pending.length-recovered};
-}
+function movementRowToRecord(r){return{id:r.id,date:String(r.start_at||'').slice(0,10),employeeId:r.user_id,type:r.movement_type||'حاضر',minutes:Number(r.minutes||0),days:Number(r.absence_days||0),notes:r.notes||'',excuse:r.excuse_type||'',excuseStatus:r.excuse_status||'',createdAt:r.created_at||'',updatedAt:r.updated_at||r.created_at||''}}
 function scheduleDisciplineCloudSave(){clearTimeout(_disciplineCloudTimer);_disciplineCloudTimer=setTimeout(()=>disciplineCloudCall('save',{academicYear:_ctx.academicYear||state.settings.year||'1448',state}).catch(e=>console.warn('[discipline cloud]',e.message)),700)}
 function persistLocal(){
   state._schoolId=_disciplineSchoolId;
@@ -606,9 +538,9 @@ if(_recordFormEl)_recordFormEl.addEventListener('submit',async e=>{
   createOrUpdateDeductionForRecord(rec);
   persistLocal();renderAll();
   try{
-    const verified=await saveMovementCloudConfirmed(rec);
-    if(!verified||String(verified.id||'')!==String(rec.id))throw new Error('MOVEMENT_CLOUD_CONFIRMATION_FAILED');
-    Object.assign(rec,verified,{_cloudPending:false});persistLocal();
+    const saved=await disciplineCloudCall('save_movement',{academicYear:_ctx.academicYear||state.settings.year||'1448',movement:{id:rec.id,userId:rec.employeeId,type:rec.type,date:rec.date,minutes:rec.minutes,days:rec.days||0,excuse:rec.excuse||'',excuseStatus:rec.excuseStatus||'',notes:rec.notes||'',source:'attendance-discipline'},state});
+    if(!saved?.ok||!saved?.stateSaved||String(saved?.movement?.id||'')!==String(rec.id))throw new Error('MOVEMENT_CLOUD_CONFIRMATION_FAILED');
+    rec._cloudPending=false;persistLocal();
     if(!state.records.some(r=>String(r.id)===String(rec.id)))throw new Error('MOVEMENT_STATE_CONFIRMATION_FAILED');
     if(document.getElementById('autoSyncDed')?.checked)await Promise.resolve(syncDeductionsToPlatform(true));
     resetRecordForm();renderRecords();renderDashboard();renderMonthlyReport();
@@ -671,7 +603,7 @@ async function syncStaffFromPlatform(force=true,silent=false){
   try{
     const users=await b.getSchoolUsers(!!force);
     const incoming=(users||[]).map(u=>({
-      id:String(u.user_id??u.userId??u.id??''),userId:String(u.user_id??u.userId??u.id??''),name:String(u.name??u.fullName??''),
+      id:String(u.id??u.userId??''),name:String(u.name??u.fullName??''),
       title:String(u.role_label??u.job_role_label??u.title??u.job_title??u.jobTitle??u.roleLabel??u.role??''),
       dept:String(u.dept??u.department??''),phone:String(u.phone??''),
       status:String(u.status??'على رأس العمل'),email:String(u.email??''),
@@ -708,8 +640,6 @@ if(platformMode()){
     await loadDisciplineCloud();
     // مركز المعلومات هو المصدر المرجعي للمنسوبين؛ التحديث هنا يمنع بقاء قائمة قديمة بعد الاستيراد أو التعديل.
     await syncStaffFromPlatform(true,true);
-    // RL26: بعد تثبيت قائمة المنسوبين والجلسة الحالية، نستعيد أي حركة سابقة بقيت معلقة بنفس ID.
-    await recoverPendingMovements();
     _disciplineReady=true;renderAll();
   })().catch(err=>{console.error('[discipline boot]',err);_disciplineReady=true;renderAll()});
 }else{_disciplineReady=true;}

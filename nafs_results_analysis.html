@@ -18,7 +18,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="active_school_scope.js"></script>
   <script src="school_isolation_guard.js?v=nonblock20260614"></script>
-  <script src="platform-cloud-session.js"></script>
+  <script src="platform-cloud-session.js?v=20260905-RL33-complete-tab-role-isolation"></script>
   <script src="platform-state-engine.js?v=20260828-school-isolation-v8"></script>
 
   <script>
@@ -1472,9 +1472,6 @@
       badge.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> جاري قراءة بطاقة نافس (PDF)...';
 
       try {
-        if (typeof pdfjsLib === 'undefined' || !pdfjsLib.getDocument) {
-          throw new Error('مكتبة PDF.js غير متاحة في الصفحة');
-        }
         const arrayBuffer = await file.arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
         const pages = [];
@@ -1500,14 +1497,8 @@
         badge.className = "bg-emerald-100 text-emerald-800 font-bold text-[10px] px-2.5 py-0.5 rounded-full";
         badge.innerHTML = `<i class="fa-solid fa-check"></i> تمت القراءة: ${availableSubjects.join(' - ')}`;
         
-        // Apply the extracted card first; cloud persistence is a separate stage.
-        await applyPdfDataToSystem({persist:false,reason:'pdf-upload'});
-        try {
-          await persistNafsAnalysis('pdf-upload');
-        } catch (cloudErr) {
-          console.error('[NAFS pdf-upload cloud save]', cloudErr);
-          setNafsPersistenceBadge('error','<i class="fa-solid fa-cloud-circle-xmark"></i> تم تحليل البطاقة بنجاح، لكن تعذر حفظ التحليل سحابيًا');
-        }
+        // Auto-apply + persist before considering the upload cycle complete.
+        await applyPdfDataToSystem({persist:true,reason:'pdf-upload'});
       } catch (err) {
         console.error(err);
         extractedPdfData = null;
@@ -1629,7 +1620,7 @@
         }catch(err){
           console.error('[NAFS persist]',err);
           setNafsPersistenceBadge('error','<i class="fa-solid fa-circle-xmark"></i> تم التحليل محليًا لكن لم يتم حفظه سحابيًا');
-          return false;
+          throw err;
         }
       }
       switchView('visualDashboard');

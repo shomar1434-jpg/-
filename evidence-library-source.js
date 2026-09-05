@@ -5,7 +5,7 @@
   const S={files:[],selected:new Set(),mode:null,target:null,loading:false};
   (function prehide(){try{if(!document.getElementById('elsPrehideStyle')){const st=document.createElement('style');st.id='elsPrehideStyle';st.textContent='#elsPicker[hidden]{display:none!important;visibility:hidden!important}#elsPicker:not([data-els-open=\"1\"]){display:none!important;visibility:hidden!important}';(document.head||document.documentElement).appendChild(st)}}catch(_){}})();
   const page=(location.pathname.split('/').pop()||'page').toLowerCase();
-  const LIBRARY_SCOPE_VERSION='2026.09.05-RL32-role-owned-picker';
+  const LIBRARY_SCOPE_VERSION='2026.09.05-RL33-school-user-role-owned-picker';
   const ROLE_ALIASES={
     manager:['manager','owner','school_manager','principal','leadership','admin','مدير','مديرة','مدير المدرسة','مديرة المدرسة'],
     agent:['agent','agency','wakil','vice','deputy','deputy_admin','deputy_academic','deputy_students','وكيل','وكيلة'],

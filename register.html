@@ -236,7 +236,9 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
     schoolCode:qs.get('school')||qs.get('schoolCode')||qs.get('school_code')||'',
     schoolName:qs.get('schoolName')||qs.get('school_name')||'',
     adminEmployee:qs.get('adminEmployee')==='1'||qs.get('source')==='administrative_employee_registration',
-    adminSupervisor:(qs.get('supervisor')||qs.get('adminSupervisor')||'').toLowerCase()==='agent'?'agent':'manager'
+    adminSupervisor:(qs.get('supervisor')||qs.get('adminSupervisor')||'').toLowerCase()==='agent'?'agent':'manager',
+    supervisorUserId:qs.get('supervisorUserId')||qs.get('supervisor_user_id')||'',
+    adminRegistrationToken:qs.get('adminToken')||qs.get('adminRegistrationToken')||''
   };
   function configureRoleFromInvite(){
     const roleEl=document.getElementById('role');
@@ -253,50 +255,12 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
   }
   configureRoleFromInvite();
   async function resolveInviteSchool(){
-    let raw=null;
     try{
-      if(!window.SmartSchoolSupabase) throw new Error('مصدر المدارس غير متاح');
-      const sb=window.SmartSchoolSupabase.getClient();
-      if(!sb) throw new Error('تعذر الاتصال بقاعدة المدارس');
-
-      // schoolId هو المرجع الأعلى. لا نبحث عن مدرسة بديلة إذا كان موجودًا.
-      if(invite.schoolId){
-        const q=await sb.from('schools').select('*').eq('id',invite.schoolId).maybeSingle();
-        if(q.error) throw q.error;
-        raw=q.data||null;
-      }else if(invite.token){
-        const q=await sb.from('schools').select('*').eq('registration_code',invite.token).limit(2);
-        if(q.error) throw q.error;
-        if((q.data||[]).length===1)raw=q.data[0];
-      }else if(invite.schoolCode){
-        const q=await sb.from('schools').select('*').eq('school_code',invite.schoolCode).limit(2);
-        if(q.error) throw q.error;
-        if((q.data||[]).length===1)raw=q.data[0];
-      }
-      if(!raw)return null;
-      if(['disabled','inactive','suspended','deleted'].includes(String(raw.status||'active').toLowerCase()))return null;
-
-      const sid=String(raw.id||'');
-      const scode=String(raw.school_code||'');
-      const reg=String(raw.registration_code||'');
-      if(invite.schoolId&&String(invite.schoolId)!==sid)return null;
-      if(invite.schoolCode&&String(invite.schoolCode)!==scode)return null;
-      if(invite.token&&String(invite.token)!==reg)return null;
-
-      // لا تعتمد صحة الرابط على normalizeSchool حتى لو حدث خلل في طبقة العرض.
-      const school=(typeof window.SmartSchoolSupabase.normalizeSchool==='function')
-        ? (window.SmartSchoolSupabase.normalizeSchool(raw)||{}) : {};
-      invite.schoolId=sid;
-      invite.schoolCode=scode;
-      invite.token=reg;
-      invite.schoolName=String(raw.school_name||school.schoolName||'');
-      const title=document.getElementById('school-title');
-      if(title)title.textContent='رابط تسجيل خاص بمدرسة: '+(invite.schoolName||'المدرسة');
-      return {raw,school,schoolId:sid,schoolCode:scode,registrationCode:reg};
-    }catch(e){
-      console.warn('[registration-school-contract]',e);
-      return null;
-    }
+      if(!window.SmartSchoolSupabase?.platformDirectoryCall)throw new Error('مصدر المدارس الآمن غير متاح');
+      const d=await window.SmartSchoolSupabase.platformDirectoryCall('inspect-school',{schoolId:invite.schoolId||'',schoolCode:invite.schoolCode||'',registrationCode:invite.token||''},false),raw=d.school||null;
+      if(!raw)return null;const sid=String(raw.id||''),scode=String(raw.school_code||'');if(invite.schoolId&&invite.schoolId!==sid)return null;if(invite.schoolCode&&invite.schoolCode!==scode)return null;
+      invite.schoolId=sid;invite.schoolCode=scode||invite.schoolCode;invite.schoolName=String(raw.school_name||'');const title=document.getElementById('school-title');if(title)title.textContent='رابط تسجيل خاص بمدرسة: '+(invite.schoolName||'المدرسة');return {raw,school:raw,schoolId:sid,schoolCode:scode,registrationCode:invite.token};
+    }catch(e){console.warn('[registration-school-contract]',e);return null}
   }
   resolveInviteSchool();
   document.getElementById('reg-form').addEventListener('submit',async function(e){
@@ -322,23 +286,13 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
     };
     try{
       if(window.SmartSchoolSupabase && (invite.schoolId || invite.schoolCode || invite.token)){
-        await window.SmartSchoolSupabase.registerSchoolUser({schoolId:invite.schoolId, schoolCode:invite.schoolCode, registrationCode:invite.token, name, email, password, role, adminSupervisor:invite.adminEmployee?invite.adminSupervisor:'', registrationSource:invite.adminEmployee?'administrative_employee_link':'general_registration'});
+        await window.SmartSchoolSupabase.registerSchoolUser({schoolId:invite.schoolId, schoolCode:invite.schoolCode, registrationCode:invite.token, name, email, password, role, adminSupervisor:invite.adminEmployee?invite.adminSupervisor:'', supervisorUserId:invite.adminEmployee?invite.supervisorUserId:'', adminRegistrationToken:invite.adminEmployee?invite.adminRegistrationToken:'', registrationSource:invite.adminEmployee?'administrative_employee_link':'general_registration'});
       }
     }catch(err){
       msg.textContent=err.message||'تعذر إرسال الطلب إلى السحابة';
       return;
     }
-    const keys=['smartSchoolUnifiedOpsV2_users','smart_school_users'];
-    for(const key of keys){
-      const all=JSON.parse(localStorage.getItem(key)||'[]');
-      const exists=all.some(u=>String(u.email||'').toLowerCase()===email.toLowerCase() && String(u.adminOwnerId||invite.admin)===String(invite.admin));
-      if(exists){ msg.textContent='يوجد طلب أو حساب سابق بنفس البريد داخل هذه المدرسة.'; return; }
-    }
-    for(const key of keys){
-      const all=JSON.parse(localStorage.getItem(key)||'[]');
-      all.push(account);
-      localStorage.setItem(key,JSON.stringify(all));
-    }
+    // RL33: لا تُنسخ هويات المستخدمين إلى localStorage المشترك بين التبويبات.
     document.getElementById('reg-form').classList.add('hide');
     if(invite.adminEmployee){const p=document.querySelector('#success p');if(p)p.innerHTML='تم تسجيل طلب الموظف الإداري. سيظهر لدى المسؤول في المدرسة بحالة <b>بانتظار التفعيل</b>، ولن تتمكن من الدخول قبل أن يقوم مدير المدرسة بتفعيل الحساب.';const box=document.getElementById('success');const a=document.createElement('a');a.href='administrative_employee_login.html?'+new URLSearchParams({schoolId:invite.schoolId||'',schoolCode:invite.schoolCode||'',schoolName:invite.schoolName||'',source:'administrative_employee_login',scope:'school'}).toString();a.textContent='فتح بوابة دخول الموظف الإداري';a.style.cssText='display:inline-block;margin-top:18px;background:#0f6b4a;color:#fff;padding:11px 18px;border-radius:12px;font-weight:900;text-decoration:none';box.appendChild(a);}
     document.getElementById('success').style.display='block';

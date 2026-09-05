@@ -30,7 +30,7 @@ function roleRoot(){
  if(/student_advisor/.test(f))return'student_advisor.html';if(/health_advisor/.test(f))return'health_advisor.html';
  if(/kindergarten_teacher/.test(f))return'kindergarten_teacher.html';if(/activity_leader/.test(f))return'activity_leader.html';
  if(/administrative_employee|admin_employee/.test(f))return'administrative_employee_portal.html';if(/teacher/.test(f))return'teacher.html';
- const r=String(sessionStorage.getItem('smart_school_tab_role_v1')||localStorage.getItem('smart_school_active_role')||localStorage.getItem('platform_file_session_role')||'').toLowerCase();
+ const r=String(sessionStorage.getItem('smart_school_tab_role_v1')||sessionStorage.getItem('currentRole')||'').toLowerCase();
  if(/leadership|manager|principal|مدير/.test(r))return'manager.html';if(/agency|agent|wakil|deputy|وكيل/.test(r))return'agent.html';
  if(/student_advisor|counselor/.test(r))return'student_advisor.html';if(/health/.test(r))return'health_advisor.html';
  if(/kindergarten/.test(r))return'kindergarten_teacher.html';if(/activity/.test(r))return'activity_leader.html';
@@ -53,27 +53,26 @@ async function ownerLogout(){
 function currentSchoolRef(){
  try{
    var q=new URLSearchParams(location.search||'');
-   var session=null;try{session=JSON.parse(localStorage.getItem('smart_school_current_session')||sessionStorage.getItem('smart_school_current_session')||'null')}catch(_){}
-   var current=null;try{current=JSON.parse(localStorage.getItem('smartSchool.currentSchool')||'null')}catch(_){}
-   return String(
-     q.get('schoolId')||q.get('school_id')||q.get('school')||q.get('schoolCode')||
-     sessionStorage.getItem('smart_school_tab_school_v1')||sessionStorage.getItem('current_school_id')||
-     localStorage.getItem('active_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||localStorage.getItem('smart_school_id')||
-     (session&&(session.schoolId||session.school_id))||(current&&(current.schoolId||current.school_id||current.id||current.schoolCode||current.school_code))||''
-   ).trim();
+   var session=null;try{session=JSON.parse(sessionStorage.getItem('smart_school_current_session')||'null')}catch(_){}
+   var tab=String(sessionStorage.getItem('smart_school_tab_school_v1')||sessionStorage.getItem('platform_tab_session_school_id_v1')||sessionStorage.getItem('current_school_id')||(session&&(session.schoolId||session.school_id))||'').trim();
+   if(tab)return tab;
+   // RL33 fail-closed: school pages must not inherit another tab's localStorage identity.
+   return String(q.get('schoolId')||q.get('school_id')||q.get('school')||q.get('schoolCode')||'').trim();
  }catch(_){return ''}
 }
 function clearSchoolContext(){
  try{window.PlatformCloudSession?.clear?.()}catch(_){}
- const keys=[
+ const tabKeys=[
    'smart_school_active_school_id','smart_school_active_school_name','smart_school_active_membership_id','smart_school_active_role',
    'active_school_id','active_school_name','active_school_code','activeSchoolId','selected_school_id',
    'current_school_id','current_school_name','school_id','school_name','school_code','smart_school_id','smart_school_name','persist_school',
    'smartSchool.currentSchool','smartSchool:activeSchool','smart_school_active_school','smart_school_current_session','independent_school_mode',
-   'currentRole','user_role','platform_file_session_school_id','platform_file_session_role','administrative_employee_tab_session_v1',
-   'smart_school_tab_school_v1','smart_school_tab_role_v1','platform_tab_session_token_v1','platform_tab_session_school_id_v1','platform_tab_session_role_v1'
+   'currentRole','user_role','currentUser','currentSchoolUser','currentUserId','currentUserEmail','currentUserName',
+   'platform_file_session_token','platform_file_session_expires_at','platform_file_session_user_id','platform_file_session_school_id','platform_file_session_role','administrative_employee_tab_session_v1',
+   'smart_school_tab_school_v1','smart_school_tab_role_v1','smart_school_tab_membership_v1','platform_tab_session_token_v1','platform_tab_session_expires_at_v1','platform_tab_session_user_id_v1','platform_tab_session_school_id_v1','platform_tab_session_role_v1'
  ];
- try{keys.forEach(k=>{localStorage.removeItem(k);sessionStorage.removeItem(k)})}catch(_){}
+ // RL33: logout is tab-scoped. Never erase shared localStorage identity/data used by another open account/tab.
+ try{tabKeys.forEach(k=>sessionStorage.removeItem(k))}catch(_){}
 }
 function schoolLogout(){
  const sid=currentSchoolRef();
@@ -116,7 +115,7 @@ window.__INDEPENDENT_SCHOOL_ROLE_FLOW_V2__=true;
 const ROOTS=new Set(['manager.html','agent.html','teacher.html','student_advisor.html','health_advisor.html','kindergarten_teacher.html','activity_leader.html','administrative_employee_portal.html']);
 function file(){return (location.pathname.split('/').pop()||'').toLowerCase()}
 function wantsSectionHome(){try{return new URLSearchParams(location.search||'').get('sectionHome')==='1'}catch(_){return false}}
-function hasSchoolContext(){try{return !!(sessionStorage.getItem('platform_tab_session_token_v1')||localStorage.getItem('platform_session_token_v1')||sessionStorage.getItem('smart_school_tab_school_v1')||localStorage.getItem('active_school_id')||localStorage.getItem('smart_school_current_session'))}catch(_){return false}}
+function hasSchoolContext(){try{return !!(sessionStorage.getItem('platform_tab_session_token_v1')||sessionStorage.getItem('smart_school_tab_school_v1')||sessionStorage.getItem('smart_school_current_session'))}catch(_){return false}}
 function clearTransientLayers(){
   const activation=document.getElementById('activation-overlay');
   if(activation){activation.style.setProperty('display','none','important');activation.style.setProperty('visibility','hidden','important');activation.style.setProperty('pointer-events','none','important')}

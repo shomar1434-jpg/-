@@ -12,6 +12,78 @@
   const TAB_SCHOOL_KEY='platform_tab_session_school_v1';
   const TAB_ROLE_KEY='smart_school_tab_role_v1';
 
+  /* RL33 — Tab Identity Firewall
+     Identity/session compatibility keys are tab-scoped. Once a verified tab
+     context exists, legacy localStorage reads/writes are transparently
+     redirected to sessionStorage so another account in the same browser
+     cannot overwrite this tab's school/user/role. */
+  const LEGACY_IDENTITY_KEYS=new Set([
+    'currentUser','currentSchoolUser','currentRole','smart_school_active_role',
+    'currentUserId','currentUserEmail','currentUserName','smart_school_current_session',
+    'platform_file_session_token','platform_file_session_expires_at',
+    'platform_file_session_user_id','platform_file_session_school_id','platform_file_session_role',
+    'activeSchoolId','active_school_id','current_school_id','school_id','smart_school_id',
+    'current_school_name','school_name','active_school_name'
+  ]);
+  const LEGACY_TO_TAB={
+    platform_file_session_token:TAB_TOKEN_KEY,
+    platform_file_session_expires_at:TAB_EXPIRES_KEY,
+    platform_file_session_user_id:TAB_USER_KEY,
+    platform_file_session_school_id:TAB_SCHOOL_KEY,
+    platform_file_session_role:TAB_ROLE_KEY,
+    currentRole:TAB_ROLE_KEY,
+    smart_school_active_role:TAB_ROLE_KEY,
+    currentUserId:TAB_USER_KEY,
+    activeSchoolId:TAB_SCHOOL_KEY,
+    active_school_id:TAB_SCHOOL_KEY,
+    current_school_id:TAB_SCHOOL_KEY,
+    school_id:TAB_SCHOOL_KEY,
+    smart_school_id:TAB_SCHOOL_KEY
+  };
+  function installTabIdentityFirewall(){
+    if(window.__PLATFORM_TAB_IDENTITY_FIREWALL_RL33__)return;
+    window.__PLATFORM_TAB_IDENTITY_FIREWALL_RL33__=true;
+    const proto=Storage.prototype, originalGet=proto.getItem, originalSet=proto.setItem, originalRemove=proto.removeItem;
+    const isLocal=(store)=>{try{return store===window.localStorage}catch(_){return false}};
+    const tabValue=(key)=>{
+      const mapped=LEGACY_TO_TAB[key];
+      if(mapped){const v=originalGet.call(sessionStorage,mapped);if(v!==null&&v!=='')return v}
+      const v=originalGet.call(sessionStorage,key);
+      return v!==null?v:null;
+    };
+    proto.getItem=function(key){
+      key=String(key);
+      if(isLocal(this)&&LEGACY_IDENTITY_KEYS.has(key)){
+        const tv=tabValue(key);
+        if(tv!==null)return tv;
+        if(hasTabIdentity())return null;
+      }
+      return originalGet.call(this,key);
+    };
+    proto.setItem=function(key,value){
+      key=String(key);
+      if(isLocal(this)&&LEGACY_IDENTITY_KEYS.has(key)&&hasTabIdentity()){
+        const mapped=LEGACY_TO_TAB[key];
+        if(mapped)originalSet.call(sessionStorage,mapped,String(value));
+        originalSet.call(sessionStorage,key,String(value));
+        return;
+      }
+      return originalSet.call(this,key,String(value));
+    };
+    proto.removeItem=function(key){
+      key=String(key);
+      if(isLocal(this)&&LEGACY_IDENTITY_KEYS.has(key)&&hasTabIdentity()){
+        const mapped=LEGACY_TO_TAB[key];
+        if(mapped)originalRemove.call(sessionStorage,mapped);
+        originalRemove.call(sessionStorage,key);
+        return;
+      }
+      return originalRemove.call(this,key);
+    };
+  }
+
+  installTabIdentityFirewall();
+
   // Session continuity bridge: preserve the authenticated school session while
   // navigating between independent-school pages.  Only a token whose stored
   // school matches the active school is restored; cross-school restoration is
@@ -29,20 +101,16 @@
     );
   }
   function tabFirst(tabKey, legacyKey) {
-    const tab=String(sessionStorage.getItem(tabKey)||'').trim();
-    if(tab)return tab;
-    return hasTabIdentity()?'':String(localStorage.getItem(legacyKey)||'').trim();
+    // RL33: authenticated identity/session is never restored from localStorage.
+    // A newly opened browser tab must establish its own server-issued session.
+    return String(sessionStorage.getItem(tabKey)||'').trim();
   }
 
   function directActiveSchoolId() {
-    return String(
-      sessionStorage.getItem(TAB_SCHOOL_KEY) ||
-      sessionStorage.getItem('smart_school_tab_school_v1') ||
-      localStorage.getItem('active_school_id') ||
-      localStorage.getItem('current_school_id') ||
-      localStorage.getItem('school_id') ||
-      localStorage.getItem('smart_school_id') || ''
-    ).trim();
+    const tabSchool=String(sessionStorage.getItem(TAB_SCHOOL_KEY)||sessionStorage.getItem('smart_school_tab_school_v1')||'').trim();
+    if(tabSchool)return tabSchool;
+    if(hasTabIdentity())return '';
+    return String(localStorage.getItem('active_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||localStorage.getItem('smart_school_id')||'').trim();
   }
 
   function directActiveUserId() {
@@ -65,9 +133,7 @@
   }
 
   function sessionContexts() {
-    const tab=[parseJson(sessionStorage.getItem('smart_school_current_session')),parseJson(sessionStorage.getItem('administrative_employee_tab_session_v1'))].filter(Boolean);
-    if(tab.length||hasTabIdentity())return tab;
-    return [parseJson(localStorage.getItem('smart_school_current_session'))].filter(Boolean);
+    return [parseJson(sessionStorage.getItem('smart_school_current_session')),parseJson(sessionStorage.getItem('administrative_employee_tab_session_v1'))].filter(Boolean);
   }
 
   function contextToken(ctx) {
@@ -80,8 +146,6 @@
     const activeUser = directActiveUserId();
     const tabToken=String(sessionStorage.getItem(TAB_TOKEN_KEY)||'').trim();
     if(tabToken)return tabToken;
-    if(!hasTabIdentity()){const legacy=String(localStorage.getItem(TOKEN_KEY)||'').trim();if(legacy)return legacy;}
-
     for (const ctx of sessionContexts()) {
       const candidate = contextToken(ctx);
       if (!candidate) continue;
@@ -91,7 +155,7 @@
       if (!sid) continue;
       const uid = String(ctx.cloudUserId || ctx.userId || ctx.id || '').trim();
       if (activeUser && uid && activeUser !== uid) continue;
-      const rr = String(ctx.cloudRole || ctx.role || localStorage.getItem('currentRole') || '').trim();
+      const rr = String(ctx.cloudRole || ctx.role || (hasTabIdentity()?'':localStorage.getItem('currentRole')) || '').trim();
       const exp = String(ctx.cloudExpiresAt || ctx.expiresAt || '').trim();
 
       sessionStorage.setItem(TAB_TOKEN_KEY, candidate);
@@ -127,14 +191,14 @@
     localStorage.getItem('smartSchoolSupabaseAnonKey') ||
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
 
-  async function open(login, password, schoolId) {
+  async function open(login, password, schoolId, requestedRole) {
     const response = await fetch(`${url()}/functions/v1/platform-session`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
         apikey: key(),
       },
-      body: JSON.stringify({ login, password, schoolId }),
+      body: JSON.stringify({ login, password, schoolId, role: requestedRole || undefined }),
     });
 
     const payload = await response.json().catch(() => ({}));
@@ -301,26 +365,26 @@
       student_advisor: ['student_advisor','advisor','counselor','مرشد','موجه'],
       health_advisor: ['health_advisor','health-advisor','موجه صحي','الموجه الصحي'],
       activity_leader: ['activity_leader','activity-leader','activity','رائد النشاط','رائدة النشاط'],
-      kindergarten_teacher: ['kindergarten_teacher','kindergarten-teacher','معلمة رياض الأطفال']
+      kindergarten_teacher: ['kindergarten_teacher','kindergarten-teacher','معلمة رياض الأطفال'],
+      administrative_employee: ['administrative_employee','admin_employee','employee_admin','موظف إداري','موظفة إدارية']
     };
     const allowed = (requiredRoles || []).flatMap((role) => aliases[normalizeRole(role)] || [normalizeRole(role)]);
     const member = membershipsList.find((m) =>
       String(m.schoolId || '') === sid &&
       String(m.userId || '') === uid &&
-      (!rr || normalizeRole(m.role) === normalizeRole(rr))
-    ) || membershipsList.find((m) => String(m.schoolId || '') === sid && String(m.userId || '') === uid);
+      normalizeRole(m.role) === normalizeRole(rr)
+    );
     if (!member) {
       const error = new Error('المستخدم غير مرتبط بالمدرسة الحالية بعضوية فعالة.');
       error.code = 'VERIFIED_MEMBERSHIP_MISSING';
       throw error;
     }
-    if (allowed.length && !allowed.includes(normalizeRole(rr)) && !allowed.includes(normalizeRole(member.role))) {
+    if (allowed.length && !allowed.includes(normalizeRole(rr))) {
       const error = new Error('الدور الحالي غير مخول بفتح هذه الصفحة.');
       error.code = 'VERIFIED_ROLE_DENIED';
       throw error;
     }
-    // Compatibility keys are reconciled only after a server-verified membership response.
-    ['active_school_id','current_school_id','school_id','smart_school_id'].forEach((k) => localStorage.setItem(k, sid));
+    // RL33: verified identity remains tab-scoped. Never rewrite shared localStorage identity keys.
     sessionStorage.setItem(TAB_SCHOOL_KEY, sid);
     sessionStorage.setItem(TAB_USER_KEY, uid);
     sessionStorage.setItem(TAB_ROLE_KEY, rr || String(member.role || ''));
@@ -328,19 +392,73 @@
   }
 
   function clear() {
-    const tabToken=sessionStorage.getItem(TAB_TOKEN_KEY)||'';const sharedToken=localStorage.getItem(TOKEN_KEY)||'';
-    [TAB_TOKEN_KEY,TAB_EXPIRES_KEY,TAB_USER_KEY,TAB_SCHOOL_KEY,TAB_ROLE_KEY].forEach(k=>sessionStorage.removeItem(k));
-    if(!tabToken||sharedToken===tabToken){localStorage.removeItem(TOKEN_KEY);localStorage.removeItem(EXPIRES_KEY);localStorage.removeItem(USER_KEY);localStorage.removeItem(SCHOOL_KEY);localStorage.removeItem(ROLE_KEY);}
-    // Prevent a deliberately cleared/logout session from being silently restored.
+    // RL33: logout/clear is strictly tab-scoped. Shared localStorage may belong to another open account/tab.
+    [TAB_TOKEN_KEY,TAB_EXPIRES_KEY,TAB_USER_KEY,TAB_SCHOOL_KEY,TAB_ROLE_KEY,'platform_file_session_token','platform_file_session_expires_at','platform_file_session_user_id','platform_file_session_school_id','platform_file_session_role'].forEach(k=>sessionStorage.removeItem(k));
     try {
-      const raw=parseJson(localStorage.getItem('smart_school_current_session'));
-      if(raw){delete raw.cloudToken;delete raw.cloudExpiresAt;delete raw.cloudUserId;delete raw.cloudSchoolId;delete raw.cloudRole;localStorage.setItem('smart_school_current_session',JSON.stringify(raw));}
+      const raw=parseJson(sessionStorage.getItem('smart_school_current_session'));
+      if(raw){delete raw.cloudToken;delete raw.cloudExpiresAt;delete raw.cloudUserId;delete raw.cloudSchoolId;delete raw.cloudRole;sessionStorage.setItem('smart_school_current_session',JSON.stringify(raw));}
       const admin=parseJson(sessionStorage.getItem('administrative_employee_tab_session_v1'));
       if(admin){delete admin.token;delete admin.expiresAt;sessionStorage.setItem('administrative_employee_tab_session_v1',JSON.stringify(admin));}
     } catch (_) {}
   }
 
-  const SESSION_VERSION='2026.09.05-RL32-tab-user-role-isolation';
+
+  const ROLE_ROOTS={
+    manager:'manager.html',agent:'agent.html',teacher:'teacher.html',
+    student_advisor:'student_advisor.html',health_advisor:'health_advisor.html',
+    activity_leader:'activity_leader.html',kindergarten_teacher:'kindergarten_teacher.html',
+    administrative_employee:'administrative_employee_portal.html'
+  };
+  function routeRequiredRole(){
+    const file=(location.pathname.split('/').pop()||'').toLowerCase();
+    if(!file || /(login|register|guardian|public|invite)/.test(file))return '';
+    const rules=[
+      [/^administrative_employee|^admin_employee/,'administrative_employee'],
+      [/^kindergarten_teacher/,'kindergarten_teacher'],
+      [/^student_advisor/,'student_advisor'],
+      [/^health_advisor/,'health_advisor'],
+      [/^activity_leader/,'activity_leader'],
+      [/^(agent|wakil|deputy)/,'agent'],
+      [/^teacher/,'teacher'],
+      [/^manager/,'manager']
+    ];
+    for(const [rx,roleName] of rules)if(rx.test(file))return roleName;
+    return '';
+  }
+  function explicitFollowMode(){
+    try{const q=new URLSearchParams(location.search);return q.get('mode')==='follow'||q.get('follow')==='1'||q.get('readOnly')==='1'}catch(_){return false}
+  }
+  async function enforceRouteRole(){
+    const required=routeRequiredRole();
+    if(!required||isSystemAdminContext())return true;
+    document.documentElement.dataset.platformRoleChecking='1';
+    try{
+      const verified=await verifyAccess([required]);
+      document.documentElement.dataset.platformRoleVerified='1';
+      return verified;
+    }catch(err){
+      if(explicitFollowMode()){
+        try{
+          const v=await verifyAccess([]);
+          const r=String(v.role||'').toLowerCase();
+          if(['manager','principal','school_manager','agent','deputy','vice','wakil'].includes(r)){
+            document.documentElement.dataset.platformReadOnlyFollow='1';
+            document.documentElement.dataset.platformRoleVerified='1';
+            window.__PLATFORM_READ_ONLY_FOLLOW__=true;
+            return v;
+          }
+        }catch(_){}
+      }
+      document.documentElement.dataset.platformRoleDenied='1';
+      const current=String(role()||'').toLowerCase();
+      const normalized=current==='performance'?'teacher':current;
+      const target=ROLE_ROOTS[normalized]||'school-login.html';
+      if(!/school-login\.html$/i.test(location.pathname))location.replace(target);
+      throw err;
+    }
+  }
+
+  const SESSION_VERSION='2026.09.05-RL33-complete-tab-role-isolation';
 
   window.PlatformCloudSession = {
     VERSION:SESSION_VERSION,
@@ -357,10 +475,20 @@
     recover,
     restoreFromKnownContext,
     verifyAccess,
+    enforceRouteRole,
     clear,
   };
 
   // Same-tab navigation normally keeps sessionStorage, but restoring here also
   // covers pages opened after a browser/sessionStorage transition.
   restoreFromKnownContext();
+  const roleContract=routeRequiredRole();
+  if(roleContract){
+    const st=document.createElement('style');
+    st.id='platform-role-lock-style';
+    st.textContent='html[data-platform-role-checking=\"1\"]:not([data-platform-role-verified=\"1\"]) body{visibility:hidden!important}';
+    (document.head||document.documentElement).appendChild(st);
+    const run=()=>enforceRouteRole().catch(()=>{});
+    if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',run,{once:true});else queueMicrotask(run);
+  }
 })();

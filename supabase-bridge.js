@@ -639,30 +639,73 @@
       return Object.assign({},u,{name:u.name||u.full_name||'',full_name:u.full_name||u.name||'',isActive:String(u.status||'active')==='active',active:String(u.status||'active')==='active'});
     });
   }
+
+  // RL33 — system administration is server-authoritative too; no public users/school_members CRUD.
+  async function systemAdminCall(action,payload={}){
+    const sb=getClient();if(!sb)throw new Error('Supabase غير جاهز');
+    const sess=await sb.auth.getSession();const token=sess?.data?.session?.access_token||'';
+    if(!token)throw new Error('يلزم تسجيل دخول مدير النظام');
+    const endpoint=(SUPABASE_URL||localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'')+'/functions/v1/system-admin';
+    const r=await fetch(endpoint,{method:'POST',headers:{'content-type':'application/json','apikey':SUPABASE_ANON_KEY||localStorage.getItem('smartSchoolSupabaseAnonKey')||'','authorization':'Bearer '+token},body:JSON.stringify({action,...payload})});
+    const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||d.details||'تعذر تنفيذ عملية مدير النظام');return d;
+  }
+  async function safeListSchools(){const d=await systemAdminCall('list_schools');return(d.schools||[]).map(normalizeSchool)}
+  async function safeCreateSchoolWithManager(payload){const d=await systemAdminCall('create_school',{schoolName:payload.schoolName,managerName:payload.managerName,email:payload.email||payload.managerEmail,password:payload.password});return{school:normalizeSchool(d.school),manager:{id:d.managerUserId,email:payload.email||payload.managerEmail,name:payload.managerName,full_name:payload.managerName,role:'manager',status:'active'}}}
+  async function safeUpdateSchoolStatus(schoolId,status){await systemAdminCall('set_school_status',{schoolId,status});return true}
+  async function safeDeleteSchool(schoolId){await systemAdminCall('delete_school',{schoolId,confirmText:'DELETE'});return true}
+
+  // RL33 — sensitive school directory operations are server-authoritative.
+  async function platformDirectoryCall(action,payload={},requiresSession=true){
+    const endpoint=(SUPABASE_URL||localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'')+'/functions/v1/platform-directory';
+    const headers={'content-type':'application/json','apikey':SUPABASE_ANON_KEY||localStorage.getItem('smartSchoolSupabaseAnonKey')||''};
+    if(requiresSession){if(!window.PlatformCloudSession)throw new Error('جلسة المنصة غير متاحة');await PlatformCloudSession.ensure();headers['x-platform-session']=PlatformCloudSession.token()}
+    const r=await fetch(endpoint,{method:'POST',headers,body:JSON.stringify({action,...payload})});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||d.details||'تعذر تنفيذ العملية السحابية');return d;
+  }
+  async function safeResolveSchool(ref){
+    const x=typeof ref==='object'?ref:{schoolId:ref};const d=await platformDirectoryCall('inspect-school',{schoolId:x.schoolId||x.id||'',schoolCode:x.schoolCode||x.school_code||'',registrationCode:x.registrationCode||x.registration_code||''},false);return normalizeSchool(d.school||null);
+  }
+  async function safeRegisterSchoolUser(payload){
+    const d=await platformDirectoryCall('register-user',{schoolId:payload.schoolId,schoolCode:payload.schoolCode,registrationCode:payload.registrationCode,name:payload.name,email:payload.email,password:payload.password,role:appRoleToDb(payload.role),adminSupervisor:payload.adminSupervisor||payload.supervisor||'',supervisorUserId:payload.supervisorUserId||payload.adminOwnerUserId||'',registrationSource:payload.registrationSource||'',adminRegistrationToken:payload.adminRegistrationToken||payload.adminToken||''},false);return normalizeUser(d.user,d.school);
+  }
+  async function safeListUsersBySchool(){const d=await platformDirectoryCall('list-users');const um=new Map((d.users||[]).map(u=>[String(u.id),u]));return(d.memberships||[]).map(m=>normalizeUser({...um.get(String(m.user_id)),...m,id:m.user_id,role:m.role},d.school));}
+  async function safeListAdministrativeEmployeesBySchool(){const d=await platformDirectoryCall('list-admin-employees');const um=new Map((d.users||[]).map(u=>[String(u.id),u]));return(d.memberships||[]).map(m=>normalizeUser({...um.get(String(m.user_id)),...m,id:m.user_id,role:m.role,adminSupervisor:(String(m.role_label||'').match(/ADMIN_EMPLOYEE_SUPERVISOR:(manager|agent)/i)||[])[1]||'',supervisorUserId:m.supervisor_user_id||''},d.school));}
+  async function safeRemoveAdministrativeEmployee(payload){const userId=typeof payload==='string'?payload:(payload.userId||payload.id||'');return platformDirectoryCall('remove-admin-employee',{userId});}
+  async function safeUpdateAdministrativeEmployeeStatus(payload,statusArg){const userId=typeof payload==='string'?payload:(payload.userId||payload.id||'');const status=statusArg||(typeof payload==='object'?payload.status:'');return platformDirectoryCall('set-admin-status',{userId,status});}
+  async function safeUpdateUserStatus(userId,status){return platformDirectoryCall('set-user-status',{userId,status});}
+  async function safeUpsertSchoolUser(payload){const d=await platformDirectoryCall('upsert-user',{user:payload||{}});return normalizeUser(d.user,d.school||null);}
+  async function safeDeleteUser(userId){return platformDirectoryCall('delete-user',{userId});}
+  async function safeLoginSchoolUser(login,password,schoolId,role){
+    if(!window.PlatformCloudSession||typeof PlatformCloudSession.open!=='function')throw new Error('محرك جلسة المدرسة غير متاح');
+    const d=await PlatformCloudSession.open(String(login||'').trim(),String(password||''),String(schoolId||''),role?String(role):undefined);
+    if(String(d.schoolId||'')!==String(schoolId||''))throw new Error('رفض أمني: جلسة الحساب لا تطابق المدرسة المطلوبة');
+    const me=await platformDirectoryCall('me',{});
+    return normalizeUser({...me.user,school_id:me.school?.id,schoolName:me.school?.school_name,role:d.role||me.membership?.role},me.school||null);
+  }
   window.SmartSchoolSupabase = {
     getClient,
+    platformDirectoryCall,
     appRoleToDb,
     dbRoleToApp,
     normalizeSchool,
     normalizeUser,
-    resolveSchool,
+    resolveSchool: safeResolveSchool,
     buildSchoolLinks,
-    listSchools,
-    createSchoolWithManager,
-    updateSchoolStatus,
-    registerSchoolUser,
-    listUsersBySchool,
-    listAdministrativeEmployeesBySchool,
-    removeAdministrativeEmployee,
-    updateAdministrativeEmployeeStatus,
-    updateUserStatus,
-    upsertSchoolUser,
-    loginSchoolUser,
-    deleteSchool,
-    deleteUser,
-    login: loginSchoolUser,
-    signIn: loginSchoolUser,
-    schoolLogin: loginSchoolUser,
+    listSchools: safeListSchools,
+    createSchoolWithManager: safeCreateSchoolWithManager,
+    updateSchoolStatus: safeUpdateSchoolStatus,
+    registerSchoolUser: safeRegisterSchoolUser,
+    listUsersBySchool: safeListUsersBySchool,
+    listAdministrativeEmployeesBySchool: safeListAdministrativeEmployeesBySchool,
+    removeAdministrativeEmployee: safeRemoveAdministrativeEmployee,
+    updateAdministrativeEmployeeStatus: safeUpdateAdministrativeEmployeeStatus,
+    updateUserStatus: safeUpdateUserStatus,
+    upsertSchoolUser: safeUpsertSchoolUser,
+    loginSchoolUser: safeLoginSchoolUser,
+    deleteSchool: safeDeleteSchool,
+    deleteUser: safeDeleteUser,
+    login: safeLoginSchoolUser,
+    signIn: safeLoginSchoolUser,
+    schoolLogin: safeLoginSchoolUser,
     registerExternalAccess,
     validateExternalAccess,
     revokeExternalAccess,

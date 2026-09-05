@@ -20,11 +20,11 @@
   function parse(v,d){try{return JSON.parse(v||'')}catch(e){return d}}
   function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
   function norm(v){return String(v||'').trim().toLowerCase()}
-  function user(){return parse(localStorage.getItem('currentSchoolUser'),null)||parse(localStorage.getItem('currentUser'),null)||parse(localStorage.getItem('smart_school_current_session'),null)||{}}
-  function email(){var u=user();return norm(u.email||u.microsoftEmail||localStorage.getItem('currentUserEmail')||'')}
-  function userId(){var u=user();return String(u.id||u.user_id||localStorage.getItem('currentUserId')||'')}
-  function activeSchoolId(){var q=new URLSearchParams(location.search||'');return String(q.get('schoolId')||q.get('school_id')||sessionStorage.getItem('smart_school_tab_school_v1')||localStorage.getItem('active_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||'')}
-  function activeRole(){var u=user();return norm(sessionStorage.getItem('smart_school_tab_role_v1')||localStorage.getItem('smart_school_active_role')||localStorage.getItem('currentRole')||u.activeRole||u.role||u.dbRole||'')}
+  function user(){return parse(sessionStorage.getItem('currentSchoolUser'),null)||parse(sessionStorage.getItem('currentUser'),null)||parse(sessionStorage.getItem('smart_school_current_session'),null)||{}}
+  function email(){var u=user();return norm(u.email||u.microsoftEmail||sessionStorage.getItem('currentUserEmail')||'')}
+  function userId(){var u=user();return String(u.id||u.user_id||sessionStorage.getItem('currentUserId')||'')}
+  function activeSchoolId(){var q=new URLSearchParams(location.search||'');return String(q.get('schoolId')||q.get('school_id')||sessionStorage.getItem('smart_school_tab_school_v1')||sessionStorage.getItem('current_school_id')||'')}
+  function activeRole(){var u=user();return norm(sessionStorage.getItem('smart_school_tab_role_v1')||sessionStorage.getItem('currentRole')||u.activeRole||u.role||u.dbRole||'')}
   function roleMeta(role){var r=norm(role);if(ROLE_META[r])return ROLE_META[r];if(/مدير|principal/.test(r))return ROLE_META.manager;if(/وكيل|deputy/.test(r))return ROLE_META.agency;if(/رياض/.test(r))return ROLE_META.kindergarten_teacher;if(/صحي|health/.test(r))return ROLE_META.health_advisor;if(/طلاب|مرشد|موجه/.test(r))return ROLE_META.student_advisor;if(/نشاط|activity/.test(r))return ROLE_META.activity_leader;if(/إداري|اداري|administrative|admin_staff/.test(r))return ROLE_META.administrative_employee;if(/معلم|teacher|performance/.test(r))return ROLE_META.performance;return {app:r||'performance',file:'index.html',label:role||'مستخدم'} }
   function roleLabel(role,label){return label||roleMeta(role).label||role||'مستخدم'}
 
@@ -50,48 +50,32 @@
     try{if(window.PlatformCloudSession&&PlatformCloudSession.valid&&PlatformCloudSession.valid()&&PlatformCloudSession.memberships){var p=await PlatformCloudSession.memberships();return unique(p.memberships||p||[])}}catch(e){console.warn('[MultiSchool] cloud memberships',e)}
     return [];
   }
-  async function directMemberships(){
-    var out=[],em=email(),uid=userId();
-    try{
-      if(window.SmartSchoolSupabase&&SmartSchoolSupabase.getClient){var sb=SmartSchoolSupabase.getClient();if(sb){
-        var rows=[];
-        if(uid){try{var q1=await sb.from('school_members').select('*').eq('user_id',uid);if(q1.data)rows=rows.concat(q1.data)}catch(e){}}
-        if(em){try{var q2=await sb.from('school_members').select('*').eq('email',em);if(q2.data)rows=rows.concat(q2.data)}catch(e){} try{var q3=await sb.from('school_members').select('*').eq('microsoft_email',em);if(q3.data)rows=rows.concat(q3.data)}catch(e){}}
-        rows=unique(rows);var ids=[...new Set(rows.map(function(x){return x.schoolId}).filter(Boolean))];var schools={};
-        if(ids.length){try{var qs=await sb.from('schools').select('*').in('id',ids);(qs.data||[]).forEach(function(s){schools[String(s.id)]=s})}catch(e){}}
-        rows.forEach(function(m){var s=schools[m.schoolId]||{};m.schoolName=m.schoolName||s.school_name||s.schoolName||'';m.schoolCode=m.schoolCode||s.school_code||s.schoolCode||'';out.push(m)});
-        if(em){try{var qu=await sb.from('users').select('id,school_id,email,role,status,name').eq('email',em).neq('status','deleted');var us=qu.data||[];var uids=[...new Set(us.map(function(x){return String(x.school_id||'')}).filter(Boolean))];var missing=uids.filter(function(id){return !schools[id]});if(missing.length){var qss=await sb.from('schools').select('*').in('id',missing);(qss.data||[]).forEach(function(s){schools[String(s.id)]=s})}us.forEach(function(x){var s=schools[String(x.school_id)]||{};out.push({membershipId:'user:'+x.id,schoolId:x.school_id,schoolName:s.school_name||s.schoolName||'',schoolCode:s.school_code||s.schoolCode||'',role:x.role,userId:x.id,status:x.status})})}catch(e){}}
-        if(em){['manager_email','email','principal_email','admin_email','owner_email'].forEach(function(col){out.__managerPromises=out.__managerPromises||[];out.__managerPromises.push((async function(){try{var q=await sb.from('schools').select('*').eq(col,em).limit(1000);(q.data||[]).forEach(function(s){out.push({membershipId:'manager:'+s.id,schoolId:s.id,schoolName:s.school_name||s.schoolName||'',schoolCode:s.school_code||s.schoolCode||'',role:'manager',userId:uid||userId(),status:s.status||'active',isPrimary:true})})}catch(e){}})())})}
-        if(out.__managerPromises){await Promise.all(out.__managerPromises);delete out.__managerPromises}
-      }}
-    }catch(e){console.warn('[MultiSchool] direct memberships',e)}
-    return unique(out);
+  // RL33: intentionally no direct-table or localStorage membership enumeration.
+  // Membership discovery is server-authoritative; the only fallback is the current verified tab context.
+  async function getMemberships(){
+    var a=await cloudMemberships();if(a&&a.length)return unique(a);
+    // RL33: no browser-side enumeration. Fallback is only the verified tab context itself.
+    var sid=sessionStorage.getItem('smart_school_tab_school_v1')||sessionStorage.getItem('platform_file_session_school_id')||'';
+    var uid=sessionStorage.getItem('currentUserId')||sessionStorage.getItem('platform_file_session_user_id')||'';
+    var role=sessionStorage.getItem('smart_school_tab_role_v1')||sessionStorage.getItem('platform_file_session_role')||'';
+    return sid&&uid&&role?unique([{schoolId:sid,userId:uid,role:role,status:'active'}]):[];
   }
-  function localMemberships(){
-    var out=[],u=user(),em=email();
-    var lists=['smart_school_memberships','school_memberships','user_school_memberships'];
-    lists.forEach(function(k){var a=parse(localStorage.getItem(k),[]);if(Array.isArray(a))a.forEach(function(m){if(!em||!m.email||norm(m.email)===em)out.push(m)})});
-    if(Array.isArray(u.memberships))out=out.concat(u.memberships);
-    if(Array.isArray(u.managedSchools))u.managedSchools.forEach(function(s){out.push({schoolId:s.schoolId||s.id,schoolName:s.schoolName||s.school_name,schoolCode:s.schoolCode||s.school_code,role:u.role||'manager',userId:u.id})});
-    var sid=activeSchoolId();if(sid)out.push({membershipId:localStorage.getItem(ACTIVE_MEMBERSHIP)||'current',schoolId:sid,schoolName:localStorage.getItem('current_school_name')||localStorage.getItem('active_school_name')||u.schoolName||'',schoolCode:localStorage.getItem('school_code')||u.schoolCode||'',role:activeRole()||u.role||'performance',userId:u.id,status:'active'});
-    return unique(out);
-  }
-  async function getMemberships(){var a=await cloudMemberships();var b=await directMemberships();return unique([].concat(a||[],b||[],localMemberships()||[]))}
 
   var SCOPE_RX=/(reports?_archive|category_goals|readiness|meeting|attendance|survey|evaluation|improvement|evidence|portfolio|discipline|student[_-]|teacher[_-]records|advisor[_-]|activity[_-]|weekly[_-]tasks|section[_-]library|records?_index|records?_participation|records?_attendance|records?_student|school_data|schoolData|operational|execution|plan_data|draft)/i;
   var GLOBAL_RX=/(supabase|session|token|password|currentuser|current_user|currentrole|active_school|current_school|school_id|school_name|membership|multiSchool|theme|app_activated|device|microsoft|onedrive|system_admin|smart_school_schools|smartSchool\.currentSchool|cloud|auth)/i;
   function scopeKeys(){var a=[];for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(k&&SCOPE_RX.test(k)&&!GLOBAL_RX.test(k)&&!/^schoolWorkspaceVault:/.test(k))a.push(k)}return a}
-  function saveWorkspace(sid){if(!sid)return;var d={};scopeKeys().forEach(function(k){try{d[k]=localStorage.getItem(k)}catch(e){}});try{localStorage.setItem('schoolWorkspaceVault:'+sid,JSON.stringify(d))}catch(e){}}
-  function restoreWorkspace(sid){if(!sid)return;scopeKeys().forEach(function(k){try{localStorage.removeItem(k)}catch(e){}});var d=parse(localStorage.getItem('schoolWorkspaceVault:'+sid),{});Object.keys(d||{}).forEach(function(k){try{localStorage.setItem(k,d[k])}catch(e){}})}
+  function workspaceVaultKey(sid,uid,role){return 'schoolWorkspaceVault:'+String(sid||'')+':'+String(uid||'anonymous')+':'+String(roleMeta(role||activeRole()).app||role||'unknown')}
+  function saveWorkspace(sid,uid,role){if(!sid||!uid)return;var d={};scopeKeys().forEach(function(k){try{d[k]=localStorage.getItem(k)}catch(e){}});try{localStorage.setItem(workspaceVaultKey(sid,uid,role),JSON.stringify(d))}catch(e){}}
+  function restoreWorkspace(sid,uid,role){if(!sid||!uid)return;scopeKeys().forEach(function(k){try{localStorage.removeItem(k)}catch(e){}});var d=parse(localStorage.getItem(workspaceVaultKey(sid,uid,role)),{});Object.keys(d||{}).forEach(function(k){try{localStorage.setItem(k,d[k])}catch(e){}})}
 
   function setContext(m){
     try{sessionStorage.setItem('smart_school_tab_role_v1',m.app||m.role||'');sessionStorage.setItem('smart_school_tab_school_v1',m.schoolId||'');sessionStorage.setItem('smart_school_tab_membership_v1',m.membershipId||'')}catch(e){}
-    var old=activeSchoolId();if(old&&old!==m.schoolId)saveWorkspace(old);if(old!==m.schoolId)restoreWorkspace(m.schoolId);
+    var old=activeSchoolId(),oldUid=userId(),oldRole=activeRole(),nextUid=m.userId||oldUid;if(old&&(old!==m.schoolId||roleMeta(oldRole).app!==m.app))saveWorkspace(old,oldUid,oldRole);if(old!==m.schoolId||roleMeta(oldRole).app!==m.app)restoreWorkspace(m.schoolId,nextUid,m.role);
     var pairs={active_school_id:m.schoolId,current_school_id:m.schoolId,school_id:m.schoolId,smart_school_id:m.schoolId,active_school_name:m.schoolName,current_school_name:m.schoolName,school_name:m.schoolName,persist_school:m.schoolName,smart_school_active_role:m.app,currentRole:m.role,currentUserId:m.userId||userId()};
-    Object.keys(pairs).forEach(function(k){if(pairs[k]!=null)localStorage.setItem(k,String(pairs[k]))});if(m.schoolCode){localStorage.setItem('active_school_code',m.schoolCode);localStorage.setItem('school_code',m.schoolCode)}if(m.membershipId)localStorage.setItem(ACTIVE_MEMBERSHIP,m.membershipId);
+    Object.keys(pairs).forEach(function(k){if(pairs[k]!=null)sessionStorage.setItem(k,String(pairs[k]))});if(m.schoolCode){sessionStorage.setItem('active_school_code',m.schoolCode);sessionStorage.setItem('school_code',m.schoolCode)}if(m.membershipId)sessionStorage.setItem(ACTIVE_MEMBERSHIP,m.membershipId);
     localStorage.removeItem(NS+'_follow_context');sessionStorage.removeItem(NS+'_follow_context');
     var u=user();u.schoolId=m.schoolId;u.activeSchoolId=m.schoolId;u.schoolName=m.schoolName;u.schoolCode=m.schoolCode;u.role=m.role;u.dbRole=m.role;u.activeRole=m.app;u.membershipId=m.membershipId;if(m.userId)u.id=m.userId;
-    try{localStorage.setItem('currentSchoolUser',JSON.stringify(u));localStorage.setItem('currentUser',JSON.stringify(u));localStorage.setItem('smart_school_current_session',JSON.stringify(u));localStorage.setItem('smartSchool.currentSchool',JSON.stringify({id:m.schoolId,schoolId:m.schoolId,schoolName:m.schoolName,schoolCode:m.schoolCode}))}catch(e){}
+    try{sessionStorage.setItem('currentSchoolUser',JSON.stringify(u));sessionStorage.setItem('currentUser',JSON.stringify(u));sessionStorage.setItem('smart_school_current_session',JSON.stringify(u));sessionStorage.setItem('smart_school_tab_school_v1',m.schoolId);sessionStorage.setItem('smart_school_tab_role_v1',m.role);sessionStorage.setItem('current_school_name',m.schoolName||'')}catch(e){}
     window.dispatchEvent(new CustomEvent('smart-school-context-changed',{detail:m}));
   }
 
@@ -117,9 +101,9 @@
   function group(rows){var map={};rows.forEach(function(m){if(!map[m.schoolId])map[m.schoolId]={id:m.schoolId,name:m.schoolName||'المدرسة',code:m.schoolCode||'',roles:[]};map[m.schoolId].roles.push(m)});return Object.values(map)}
   function closeModal(){var m=document.getElementById('multiSchoolModal');if(m)m.remove()}
   function openModal(rows,force){ensureStyle();closeModal();rows=rows||cache;var sid=activeSchoolId(),ar=roleMeta(activeRole()).app,groups=group(rows);var modal=document.createElement('div');modal.id='multiSchoolModal';modal.innerHTML='<div class="msShade"></div><div class="msBox"><div class="msHead"><div><h2>المدرسة والدور الحالي</h2><p>يمكن للحساب الواحد العمل في أكثر من مدرسة أو دور. كل مدرسة تحتفظ ببياناتها وتقاريرها وملفاتها مستقلة تمامًا.</p></div><button class="msClose" type="button">×</button></div>'+(groups.length?'<div class="msGrid">'+groups.map(function(g){var cur=String(g.id)===String(sid);return '<section class="msCard '+(cur?'current':'')+'"><div class="msSchoolName"><span>🏫 '+esc(g.name)+'</span><span class="msState '+(cur?'active':'')+'">'+(cur?'المدرسة النشطة':'غير نشطة')+'</span></div><div class="msCode">'+esc(g.code||g.id)+'</div><div class="msRoles">'+g.roles.map(function(m){var c=cur&&m.app===ar;return '<button type="button" class="msRole '+(c?'current':'')+'" data-ms="'+esc(m.membershipId||m.schoolId+'|'+m.role)+'">'+esc(roleLabel(m.role,m.roleLabel))+(c?' — الحالي':'')+'</button>'}).join('')+'</div></section>'}).join('')+'</div>':'<div class="msEmpty">لم يتم العثور على عضويات مدارس لهذا الحساب. ستبقى المدرسة الحالية دون تغيير.</div>')+'</div>';document.body.appendChild(modal);modal.querySelector('.msClose').onclick=function(){if(!force)closeModal()};modal.querySelector('.msShade').onclick=function(){if(!force)closeModal()};Array.from(modal.querySelectorAll('.msRole')).forEach(function(btn){btn.onclick=function(){var id=btn.getAttribute('data-ms');var m=rows.find(function(x){return (x.membershipId||x.schoolId+'|'+x.role)===id});switchTo(m)}})}
-  function buttonText(m){var sn=m&&m.schoolName||localStorage.getItem('current_school_name')||localStorage.getItem('active_school_name')||'المدرسة الحالية';var rl=m?roleLabel(m.role,m.roleLabel):roleLabel(activeRole());return '<span>🏫</span><span class="msSchool">'+esc(sn)+'</span><span class="msRoleTxt">— '+esc(rl)+'</span><span class="msChevron">▼</span>'}
+  function buttonText(m){var sn=m&&m.schoolName||sessionStorage.getItem('current_school_name')||sessionStorage.getItem('active_school_name')||'المدرسة الحالية';var rl=m?roleLabel(m.role,m.roleLabel):roleLabel(activeRole());return '<span>🏫</span><span class="msSchool">'+esc(sn)+'</span><span class="msRoleTxt">— '+esc(rl)+'</span><span class="msChevron">▼</span>'}
   function mountButton(rows){ensureStyle();var sid=activeSchoolId(),ar=roleMeta(activeRole()).app;var cur=rows.find(function(m){return String(m.schoolId)===String(sid)&&m.app===ar})||rows.find(function(m){return String(m.schoolId)===String(sid)})||rows[0];var btn=document.getElementById('multiSchoolContextBtn');if(!btn){btn=document.createElement('button');btn.id='multiSchoolContextBtn';btn.type='button';var anchor=document.querySelector('.im-static-messaging-btn');var host=anchor&&anchor.parentElement;if(host)host.insertBefore(btn,anchor);else{var toolbar=document.querySelector('.toolbar,#supervisorToolbar,header .flex.gap-2,header');if(toolbar)toolbar.appendChild(btn);else document.body.insertBefore(btn,document.body.firstChild)}}btn.innerHTML=buttonText(cur);btn.title='تغيير المدرسة أو الدور';btn.onclick=function(){openModal(cache,false)}}
-  async function boot(){try{cache=await getMemberships();mountButton(cache);var sid=activeSchoolId(),ar=roleMeta(activeRole()).app;var valid=cache.some(function(m){return String(m.schoolId)===String(sid)&&m.app===ar});if(cache.length>1&&(!sid||!valid)&&!sessionStorage.getItem(NS+'_membership_prompted')){sessionStorage.setItem(NS+'_membership_prompted','1');setTimeout(function(){openModal(cache,true)},350)}}catch(e){console.warn('[MultiSchool] boot',e);mountButton(localMemberships())}}
+  async function boot(){try{cache=await getMemberships();mountButton(cache);var sid=activeSchoolId(),ar=roleMeta(activeRole()).app;var valid=cache.some(function(m){return String(m.schoolId)===String(sid)&&m.app===ar});if(cache.length>1&&(!sid||!valid)&&!sessionStorage.getItem(NS+'_membership_prompted')){sessionStorage.setItem(NS+'_membership_prompted','1');setTimeout(function(){openModal(cache,true)},350)}}catch(e){console.warn('[MultiSchool] boot',e);mountButton([])}}
   document.addEventListener('DOMContentLoaded',boot);window.addEventListener('platform-cloud-session-ready',function(){setTimeout(boot,100)});setTimeout(boot,900);
-  window.MultiSchoolSwitcher={open:async function(){cache=await getMemberships();mountButton(cache);openModal(cache,false)},getMemberships:getMemberships,switchTo:switchTo,setContext:setContext,current:function(){return {schoolId:activeSchoolId(),role:activeRole(),membershipId:localStorage.getItem(ACTIVE_MEMBERSHIP)||''}}};
+  window.MultiSchoolSwitcher={open:async function(){cache=await getMemberships();mountButton(cache);openModal(cache,false)},getMemberships:getMemberships,switchTo:switchTo,setContext:setContext,current:function(){return {schoolId:activeSchoolId(),role:activeRole(),membershipId:sessionStorage.getItem(ACTIVE_MEMBERSHIP)||''}}};
 })();

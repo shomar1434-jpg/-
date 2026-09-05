@@ -6,7 +6,7 @@
 <style>
 *{box-sizing:border-box}body{margin:0;min-height:100vh;font-family:Tajawal,Arial;background:linear-gradient(145deg,#edf8f3,#f8fbff 55%,#fff8e8);color:#17324d;display:grid;place-items:center;padding:24px}.shell{width:min(980px,100%);display:grid;grid-template-columns:1.05fr .95fr;background:#fff;border:1px solid #dbe9e2;border-radius:32px;overflow:hidden;box-shadow:0 28px 80px #0b3d2f22}.brand{padding:42px;background:linear-gradient(145deg,#0b3d2f,#11845d);color:#fff;display:flex;flex-direction:column;justify-content:center}.brand img{width:82px;background:#fff;border-radius:20px;padding:10px;margin-bottom:24px}.brand h1{font-size:30px;margin:0 0 10px}.brand p{line-height:1.9;opacity:.9}.badge{display:inline-flex;width:max-content;gap:8px;align-items:center;background:#ffffff18;border:1px solid #ffffff2d;border-radius:999px;padding:8px 13px;font-size:12px;font-weight:800;margin-top:15px}.form{padding:42px}.form h2{margin:0 0 8px;color:#0b3d2f}.sub{color:#64748b;font-size:13px;line-height:1.8;margin-bottom:22px}.field{width:100%;border:1px solid #d7e4dd;border-radius:14px;padding:13px 14px;font-family:inherit;font-size:14px;margin:7px 0 14px;outline:none}.field:focus{border-color:#11845d;box-shadow:0 0 0 3px #11845d18}.btn{width:100%;border:0;border-radius:14px;padding:13px;font-family:inherit;font-weight:900;background:#0f6b4a;color:#fff;cursor:pointer}.btn:disabled{opacity:.6;cursor:wait}.msg{min-height:44px;margin-top:14px;border-radius:12px;padding:10px 12px;font-size:12px;font-weight:800;display:none}.msg.err{display:block;background:#fff1f2;color:#be123c}.msg.ok{display:block;background:#ecfdf5;color:#047857}.schoolBox{display:none;background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:12px;margin-bottom:14px}.schoolBox.show{display:block}.note{margin-top:16px;background:#fff7ed;border-right:4px solid #f59e0b;border-radius:12px;padding:10px 12px;color:#7c2d12;font-size:12px;line-height:1.8}.back{display:inline-block;margin-top:16px;color:#0f6b4a;font-weight:800;text-decoration:none;font-size:12px}@media(max-width:760px){.shell{grid-template-columns:1fr}.brand{padding:28px}.form{padding:28px}}
 </style>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="supabase-bridge.js"></script><script src="platform-cloud-session.js?v=20260818-clean-session-v1"></script></head>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="supabase-bridge.js"></script><script src="platform-cloud-session.js?v=20260905-RL33-complete-tab-role-isolation"></script></head>
 <body><main class="shell"><section class="brand"><img src="https://salogos.b-cdn.net/logos/svg/1774895141785-5zgexuf8.svg" alt="شعار وزارة التعليم"><h1>بوابة الموظف الإداري</h1><p>واجهة دخول مستقلة للموظفين الإداريين المسجلين من الرابط الخاص بالمدرسة. لا تسمح هذه الواجهة بأي دور آخر.</p><span class="badge">🔐 الدخول بعد تفعيل المسؤول المباشر فقط</span></section><section class="form"><h2>تسجيل الدخول</h2><p class="sub" id="schoolTitle">أدخل بيانات الحساب الذي سجلته من رابط الموظف الإداري.</p><div id="schoolBox" class="schoolBox"><label>المدرسة</label><select id="schoolSelect" class="field"></select></div><form id="loginForm"><label>البريد الإلكتروني</label><input id="email" class="field" type="email" dir="ltr" required autocomplete="username"><label>كلمة المرور</label><input id="password" class="field" type="password" required autocomplete="current-password"><button id="loginBtn" class="btn" type="submit">دخول بوابة الموظف الإداري</button></form><div id="msg" class="msg"></div><div class="note">إذا سجلت حديثًا ولم يقم المسؤول الذي أرسل رابط التسجيل بتفعيل حسابك بعد، فلن يسمح النظام بالدخول. بعد التفعيل ستفتح بوابتك وخطة الأداء والتكليفات الإضافية الخاصة بك فقط.</div><a class="back" href="school-login.html">← العودة إلى بوابة المدرسة العامة</a></section></main>
 <script>
 (function(){'use strict';
@@ -22,33 +22,11 @@ function normRole(r){r=String(r||'').trim().toLowerCase();return r==='admin_empl
 function supervisorFromLabel(label){const m=String(label||'').match(/^ADMIN_EMPLOYEE_SUPERVISOR:(manager|agent)$/i);return m?m[1].toLowerCase():'manager'}
 async function verifySchoolLink(){
   if(!schoolId)throw new Error('رابط دخول الموظف الإداري غير مرتبط بمدرسة. استخدم الرابط الصادر من المدير أو الوكيل.');
-  const sb=window.SmartSchoolSupabase?.getClient?.();
-  if(!sb)throw new Error('مصدر المدرسة غير متاح.');
-  const q=await sb.from('schools').select('id,school_name,school_code,status').eq('id',schoolId).maybeSingle();
-  if(q.error)throw q.error;
-  const row=q.data;
-  if(!row||String(row.id)!==schoolId)throw new Error('رابط الدخول لا يطابق مدرسة فعالة.');
-  if(['disabled','inactive','suspended','deleted'].includes(String(row.status||'active').toLowerCase()))throw new Error('المدرسة غير مفعلة.');
-  if(schoolCode&&String(row.school_code||'')!==schoolCode)throw new Error('رمز المدرسة في رابط الدخول غير مطابق.');
-  schoolCode=String(row.school_code||schoolCode||'');
-  schoolName=String(row.school_name||schoolName||'');
-  $('schoolTitle').textContent='الدخول إلى بوابة الموظف الإداري — '+schoolName;
-  return row;
+  if(!window.SmartSchoolSupabase?.platformDirectoryCall)throw new Error('مصدر المدرسة الآمن غير متاح.');
+  const d=await window.SmartSchoolSupabase.platformDirectoryCall('inspect-school',{schoolId,schoolCode},false),row=d.school||null;if(!row||String(row.id)!==schoolId)throw new Error('رابط الدخول لا يطابق مدرسة فعالة.');if(schoolCode&&String(row.school_code||'')!==schoolCode)throw new Error('رمز المدرسة في رابط الدخول غير مطابق.');schoolCode=String(row.school_code||schoolCode||'');schoolName=String(row.school_name||schoolName||'');$('schoolTitle').textContent='الدخول إلى بوابة الموظف الإداري — '+schoolName;return row;
 }
-async function activeAdministrativeMembership(email){
-  const sb=window.SmartSchoolSupabase?.getClient?.();
-  if(!sb)throw new Error('مصدر المستخدمين غير متاح.');
-  const q=await sb.from('school_members').select('id,school_id,user_id,email,role,role_label,status')
-    .eq('school_id',schoolId).eq('email',String(email||'').trim().toLowerCase())
-    .in('role',['administrative_employee','admin_employee']).limit(2);
-  if(q.error)throw q.error;
-  const rows=q.data||[];
-  const active=rows.find(x=>String(x.status||'').toLowerCase()==='active');
-  if(active)return active;
-  if(rows.some(x=>String(x.status||'').toLowerCase()==='pending'))throw new Error('حساب الموظف الإداري بانتظار التفعيل من المسؤول المباشر.');
-  if(rows.some(x=>String(x.status||'').toLowerCase()==='disabled'))throw new Error('حساب الموظف الإداري معطل من المسؤول المباشر.');
-  throw new Error('لا توجد عضوية موظف إداري لهذا البريد في المدرسة المحددة.');
-}
+async function activeAdministrativeMembership(){const d=await window.SmartSchoolSupabase.platformDirectoryCall('me',{});const m=d.membership||{};if(normRole(m.role)!=='administrative_employee'||String(m.status||'').toLowerCase()!=='active')throw new Error('عضوية الموظف الإداري غير مفعلة.');return m}
+
 function saveAdministrativeContext(member,cloud,email){
   const ctx={
     version:2,userId:String(member.user_id||cloud.userId||''),email:String(email||'').toLowerCase(),
@@ -76,13 +54,8 @@ function writeLegacyCompatibility(ctx){
     sessionStorage.setItem('current_school_name',ctx.schoolName);
   }catch(_){}
 }
-async function resolveName(ctx){
-  try{
-    const sb=window.SmartSchoolSupabase?.getClient?.();if(!sb)return;
-    const q=await sb.from('users').select('id,full_name,email').eq('id',ctx.userId).maybeSingle();
-    if(!q.error&&q.data)ctx.name=String(q.data.full_name||'');
-  }catch(_){}
-}
+async function resolveName(ctx){try{const d=await window.SmartSchoolSupabase.platformDirectoryCall('me',{});ctx.name=String(d.user?.full_name||'');}catch(_){}}
+
 async function init(){
   $('schoolBox').classList.remove('show');
   try{await verifySchoolLink()}catch(e){msg(e.message||'تعذر التحقق من رابط الدخول.');$('loginBtn').disabled=true;}
@@ -94,12 +67,12 @@ $('loginForm').addEventListener('submit',async e=>{
     await verifySchoolLink();
     const email=$('email').value.trim().toLowerCase(),password=$('password').value.trim();
     if(!email||!password)throw new Error('أدخل البريد وكلمة المرور.');
-    const member=await activeAdministrativeMembership(email);
     if(!window.PlatformCloudSession||typeof PlatformCloudSession.open!=='function')throw new Error('محرك جلسة المدرسة غير متاح.');
     const cloud=await PlatformCloudSession.open(email,password,schoolId);
     if(!cloud?.token)throw new Error('تعذر إنشاء جلسة المدرسة السحابية.');
     if(String(cloud.schoolId||'')!==schoolId)throw new Error('جلسة الحساب مرتبطة بمدرسة مختلفة.');
     if(normRole(cloud.role)!=='administrative_employee')throw new Error('جلسة الحساب لا تحمل دور الموظف الإداري.');
+    const member=await activeAdministrativeMembership();
     const ms=await PlatformCloudSession.memberships();
     const current=ms?.current||{};
     const verified=(ms?.memberships||[]).find(x=>

@@ -459,18 +459,15 @@
                 async getInformationCenterStudents(forceRefresh = false) {
                     try {
                         if (!window.SchoolInformationSource || typeof SchoolInformationSource.getStudents !== 'function') return [];
-                        if (forceRefresh && typeof SchoolInformationSource.refresh === 'function') {
-                            // التحديث الصريح فقط يذهب للسحابة؛ الفتح العادي يقرأ النسخة الدائمة مباشرة.
-                            await SchoolInformationSource.refresh();
-                        }
-                        const rows = await SchoolInformationSource.getStudents(false);
+                        if (forceRefresh && typeof SchoolInformationSource.refresh === 'function') await SchoolInformationSource.refresh();
+                        const rows = await SchoolInformationSource.getStudents();
                         this.centerImportStatus = `تم جلب ${(rows||[]).length} طالب/طالبة مباشرة من مركز المعلومات.`;
                         return Array.isArray(rows) ? rows : [];
                     } catch (e) { console.error('تعذر قراءة مركز المعلومات الموحد:', e); return []; }
                 },
 
                 async fetchStudentsFromSupabaseIfAvailable() {
-                    return this.getInformationCenterStudents(false);
+                    return this.getInformationCenterStudents(true);
                 },
 
                 classNameFromImport(form) {
@@ -2859,7 +2856,7 @@
     </style>
 
 <!-- Unified Cloud File Engine v3 -->
-<script src="platform-cloud-session.js?v=20260828-session-continuity-v2"></script>
+<script src="platform-cloud-session.js?v=20260905-RL33-complete-tab-role-isolation"></script>
 <script src="cloud-file-engine.js"></script>
 <script src="cloud-file-bootstrap.js"></script>
 <script src="cloud-upload-hub.js"></script>
@@ -2873,6 +2870,7 @@
   <script src="evidence-library-source.js"></script>
 
 <script src="school-information-source.js?v=20260830-records-final-v4"></script>
+<script src="student-roster-linker.js?v=20260831-student-cascade-v1"></script>
 <script src="internal-messaging.js"></script>
 <script defer src="unified_workspace.js"></script>
 <script defer src="school_navigation_guard.js"></script>

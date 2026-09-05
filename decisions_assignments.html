@@ -119,8 +119,8 @@ button{border:0;border-radius:9px;padding:10px 13px;font:700 12px 'Alyamama';cur
 <script src="platform-cloud-session.js?v=20260905-RL33-complete-tab-role-isolation"></script>
 <script src="cloud-file-engine.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js?v=20260830"></script>
-<script src="internal-messaging.js?v=20260829-decisions-send-v2"></script>
-<meta name="decisions-assignments-version" content="2026.09.04-RL22-save-first-lazy-pdf-engine">
+<script src="internal-messaging.js?v=20260904-RL23-badges-send-compatible"></script>
+<meta name="decisions-assignments-version" content="2026.09.04-RL25-cloud-commit-recovery-historical-reconcile">
 <script src="platform-page-navigation.js?v=20260830-nav2" defer></script>
 </head>
 <body>
@@ -699,25 +699,120 @@ function selectedAssigneeIdentity(){
    name:normalizePersonName(sel?.value||'')
  };
 }
-async function verifyCloudDecisionRecord(record){
+function decisionDelay(ms){return new Promise(resolve=>setTimeout(resolve,Math.max(0,Number(ms)||0)));}
+async function probeCloudDecisionRecord(id){
+  const rid=String(id||'').trim();
+  if(!rid)return {status:'absent',record:null};
+  try{
+    const g=await DecisionArchiveService.get(rid);
+    const rec=g?.record||null;
+    if(rec&&String(rec.id||'')===rid&&String(rec.recordType||'')==='decision_assignment'){
+      rec.cloudFileId=String(rec.cloudFileId||g?.fileId||'');
+      return {status:'found',record:rec};
+    }
+    // لا نعتبر السجل مفقودًا إلا إذا نجح الطلب السحابي نفسه وأعاد عدم وجود سجل.
+    return {status:'absent',record:null};
+  }catch(error){
+    return {status:'error',record:null,error};
+  }
+}
+async function reconcileHistoricalDecisionStates(){
+  // RL25: مصالحة آمنة للقرارات القديمة. لا حذف، لا إعادة إرسال، ولا رفع تلقائي لسجل محلي غير مؤكد.
+  // المصدر السحابي هو المرجع؛ localStorage هنا فهرس واجهة فقط.
+  const localRows=archiveRead();
+  let cloudRows=[];
+  try{
+    const r=await DecisionArchiveService.list();
+    cloudRows=(Array.isArray(r?.records)?r.records:Array.isArray(r?.rows)?r.rows:Array.isArray(r?.items)?r.items:[])
+      .filter(x=>x&&String(x.recordType||'')==='decision_assignment');
+  }catch(error){
+    console.warn('[RL25 historical reconcile skipped: cloud unavailable]',error);
+    return {ok:false,reason:'cloud_unavailable',local:localRows.length,cloud:0};
+  }
+  const cloudMap=new Map(cloudRows.map(r=>[String(r.id||''),r]).filter(x=>x[0]));
+  const merged=[];
+  const seen=new Set();
+  for(const local of localRows){
+    const id=String(local?.id||''); if(!id||seen.has(id))continue; seen.add(id);
+    const cloud=cloudMap.get(id);
+    if(cloud){
+      merged.push(Object.assign({},local,cloud,{
+        cloudSynced:true,
+        historicalRecoveryStatus:cloud.sentMessageId?'sent':'saved_not_sent',
+        historicalReconciledAt:new Date().toISOString()
+      }));
+    }else{
+      merged.push(Object.assign({},local,{
+        cloudSynced:false,
+        historicalRecoveryStatus:'local_only_unverified',
+        historicalReconciledAt:new Date().toISOString()
+      }));
+    }
+  }
+  for(const cloud of cloudRows){
+    const id=String(cloud?.id||''); if(!id||seen.has(id))continue; seen.add(id);
+    merged.push(Object.assign({},cloud,{
+      cloudSynced:true,
+      historicalRecoveryStatus:cloud.sentMessageId?'sent':'saved_not_sent',
+      historicalReconciledAt:new Date().toISOString()
+    }));
+  }
+  merged.sort((a,b)=>String(b.updatedAt||b.savedAt||b.createdAt||'').localeCompare(String(a.updatedAt||a.savedAt||a.createdAt||'')));
+  archiveWrite(merged);
+  try{localStorage.setItem('manager_decisions_archive_changed_v1',JSON.stringify({ts:Date.now(),source:'RL25-historical-reconcile'}));}catch(_){ }
+  return {
+    ok:true,total:merged.length,
+    sent:merged.filter(r=>r.historicalRecoveryStatus==='sent').length,
+    savedNotSent:merged.filter(r=>r.historicalRecoveryStatus==='saved_not_sent').length,
+    localOnly:merged.filter(r=>r.historicalRecoveryStatus==='local_only_unverified').length
+  };
+}
+async function verifyCloudDecisionRecord(record,options={}){
  if(!record?.id)return null;
- // RL19: التحقق المرجعي المباشر من خدمة القرارات، لا من list الذي قد يتأخر في الفهرسة.
- try{
-   const g=await DecisionArchiveService.get(String(record.id));
-   const rec=g?.record||null;
-   if(rec){
-     const sameId=String(rec.id||'')===String(record.id||'');
-     const sameType=String(rec.recordType||'')==='decision_assignment';
-     const sameFolder=String(rec.folderId||DECISIONS_FOLDER_ID)===DECISIONS_FOLDER_ID;
-     const sameAssignee=normalizePersonName(rec.assigneeName||'')===normalizePersonName(record.assigneeName||'');
-     if(sameId&&sameType&&sameFolder&&sameAssignee){
-       rec.cloudFileId=String(rec.cloudFileId||g.fileId||record.cloudFileId||'');
-       rec.cloudSynced=true;
-       return rec;
+ // RL24: التحقق المرجعي المباشر مع Retry محدود لنفس Logical Decision ID.
+ // لا نعتمد list ولا ننشئ معرفًا جديدًا أثناء الانتظار، لذلك تأخر الفهرسة لا يسبب قرارًا مكررًا.
+ const waits=Array.isArray(options.waits)&&options.waits.length?options.waits:[0,350,750,1250,2000,3000];
+ let lastError=null;
+ for(let i=0;i<waits.length;i++){
+   if(waits[i]>0)await decisionDelay(waits[i]);
+   try{
+     const g=await DecisionArchiveService.get(String(record.id));
+     const rec=g?.record||null;
+     if(rec){
+       const sameId=String(rec.id||'')===String(record.id||'');
+       const sameType=String(rec.recordType||'')==='decision_assignment';
+       const sameFolder=String(rec.folderId||DECISIONS_FOLDER_ID)===DECISIONS_FOLDER_ID;
+       const sameAssignee=normalizePersonName(rec.assigneeName||'')===normalizePersonName(record.assigneeName||'');
+       if(sameId&&sameType&&sameFolder&&sameAssignee){
+         rec.cloudFileId=String(rec.cloudFileId||g.fileId||record.cloudFileId||'');
+         rec.cloudSynced=true;
+         rec.cloudConfirmedAt=new Date().toISOString();
+         return rec;
+       }
      }
-   }
- }catch(e){console.warn('[decision authoritative verify]',e);}
+   }catch(e){lastError=e;console.warn('[decision authoritative verify attempt '+(i+1)+']',e);}
+ }
+ if(lastError)console.warn('[decision authoritative verify exhausted]',lastError);
  return null;
+}
+async function persistDecisionSendState(record){
+ // RL24: حالة الإرسال تُحفظ على نفس السجل وبـ Retry؛ لا نعيد إرسال الرسالة لمجرد بطء تحديث الأرشيف.
+ const waits=[0,400,900,1600,2600];
+ let lastError=null;
+ for(let i=0;i<waits.length;i++){
+   if(waits[i]>0)await decisionDelay(waits[i]);
+   try{
+     const saved=await DecisionArchiveService.save(record,true);
+     if(saved?.record?.id&&String(saved.record.id)===String(record.id)){
+       const verified=await verifyCloudDecisionRecord(record,{waits:[0,300,700,1200]});
+       if(verified&&String(verified.sentMessageId||'')===String(record.sentMessageId||'')){
+         return {record:Object.assign({},saved.record,verified),fileId:String(saved.fileId||verified.cloudFileId||record.cloudFileId||'')};
+       }
+     }
+   }catch(e){lastError=e;console.warn('[decision send-state save attempt '+(i+1)+']',e);}
+ }
+ if(lastError)throw lastError;
+ throw new Error('تعذر تأكيد تحديث حالة الإرسال في أرشيف القرار بعد عدة محاولات.');
 }
 function findArchivedDecision(id){
  return archiveRead().find(r=>String(r.id)===String(id)&&r.recordType==='decision_assignment')||null;
@@ -758,6 +853,8 @@ async function init(){
  if($('name'))$('name').value='';
  // V6: لا استعادة تلقائية للأسماء المحذوفة أو قوائم المستخدمين القديمة.
  await loadAssigneeNames('');
+ // RL25: مصالحة القرارات القديمة عند فتح القسم دون إرسال تلقائي أو حذف أي سجل.
+ try{await reconcileHistoricalDecisionStates();}catch(e){console.warn('[RL25 historical reconcile]',e);}
  const editing=await loadArchiveRecordForEdit();
  if(!editing)render();
 }
@@ -829,9 +926,33 @@ async function saveData(options={}){
    baseSettingsSource:'manager-custom-settings'
  };
  try{
-   const saved=await DecisionArchiveService.save(record,editingExisting);
-   if(!saved?.record?.id||String(saved.record.id)!==String(id))throw new Error('تعذر التحقق من القرار المحفوظ في الخدمة السحابية');
-   const finalRecord=Object.assign({},record,saved.record,{cloudSynced:true,cloudFileId:String(saved.fileId||saved.record.cloudFileId||''),cloudConfirmedAt:new Date().toISOString()});
+   let saved=null;
+   let saveError=null;
+   let cloudEditing=editingExisting;
+   if(editingExisting){
+     const probe=await probeCloudDecisionRecord(id);
+     if(probe.status==='error')throw new Error('تعذر التحقق من حالة القرار القديم سحابيًا. لم تتم إعادة إنشائه أو إرساله لحماية البيانات.');
+     // إذا أكد الخادم أن السجل القديم غير موجود، نستعيد نفس ID كإنشاء واحد؛ لا نولد ID جديدًا.
+     if(probe.status==='absent')cloudEditing=false;
+   }
+   try{
+     saved=await DecisionArchiveService.save(record,cloudEditing);
+   }catch(e){
+     // قد يصل الحفظ للخادم ثم يتأخر/ينقطع الرد. لا نكرر CREATE مباشرة؛ نتحقق أولًا من نفس ID.
+     saveError=e;
+     console.warn('[decision save response delayed/failed — verifying same id]',e);
+   }
+   let confirmed=null;
+   if(saved?.record?.id&&String(saved.record.id)===String(id)){
+     confirmed=await verifyCloudDecisionRecord(Object.assign({},record,saved.record),{waits:[0,300,700,1200,2000]});
+   }else{
+     confirmed=await verifyCloudDecisionRecord(record,{waits:forSend?[0,500,1100,2000,3500,5000]:[0,400,900,1600,2600]});
+   }
+   if(!confirmed){
+     if(saveError)throw saveError;
+     throw new Error('تعذر التحقق من القرار المحفوظ في الخدمة السحابية');
+   }
+   const finalRecord=Object.assign({},record,saved?.record||{},confirmed,{cloudSynced:true,cloudFileId:String(saved?.fileId||confirmed.cloudFileId||saved?.record?.cloudFileId||''),cloudConfirmedAt:new Date().toISOString(),historicalRecoveryStatus:'saved_not_sent'});
    const next=rows.filter(r=>String(r.id)!==String(id));next.unshift(finalRecord);archiveWrite(next);
    currentArchiveRecordId=id;
    try{localStorage.setItem('manager_decisions_archive_changed_v1',JSON.stringify({id,ts:Date.now(),source:'manager-decisions-service'}));if(typeof BroadcastChannel==='function'){const bc=new BroadcastChannel('manager_decisions_archive_v1');bc.postMessage({id,ts:Date.now()});bc.close();}}catch(_){ }
@@ -997,7 +1118,7 @@ async function sendSavedAssignmentToAssignee(){
  if(btn){btn.disabled=true;btn.textContent='جارٍ حفظ القرار والتحقق...';}
  let pdfUpload=null, messageConfirmed=false;
  try{
-   // RL19: زر الإرسال يكمل الدورة بنفسه. لا يعتمد على سرعة ظهور القرار في list أو على ضغط زر الحفظ مسبقًا.
+   // RL25: زر الإرسال يكمل الدورة بنفسه، ويستعيد السجل القديم فقط بعد تأكيد غيابه سحابيًا. لا يعتمد على سرعة ظهور القرار في list أو على ضغط زر الحفظ مسبقًا.
    const savedRecord=await saveData({forSend:true,silent:true});
    if(!savedRecord?.id)throw new Error('تعذر حفظ قرار التكليف سحابيًا قبل الإرسال. لم يتم إرسال أي رسالة.');
    currentArchiveRecordId=String(savedRecord.id);
@@ -1039,10 +1160,11 @@ async function sendSavedAssignmentToAssignee(){
    const updated=Object.assign({},record,{
      sentToAssigneeAt:new Date().toISOString(),sentMessageId:String(r.messageId),sentPdfFileId:pdfUpload.fileId,sentPdfFileName:pdfUpload.fileName,
      sentToUserId:String(user.id||user.user_id),assigneeUserId:String(user.id||user.user_id),
-     assigneeEmail:String(user.email||user.user_email||record.assigneeEmail||'').trim().toLowerCase(),updatedAt:new Date().toISOString()
+     assigneeEmail:String(user.email||user.user_email||record.assigneeEmail||'').trim().toLowerCase(),updatedAt:new Date().toISOString(),
+     historicalRecoveryStatus:'sent',historicalReconciledAt:new Date().toISOString()
    });
    if(btn)btn.textContent='جارٍ تسجيل حالة الإرسال...';
-   const persisted=await DecisionArchiveService.save(updated,true);
+   const persisted=await persistDecisionSendState(updated);
    if(!persisted?.record)throw new Error('تم إرسال القرار وPDF، لكن تعذر تأكيد تحديث حالة الإرسال في أرشيف القرار');
    Object.assign(updated,persisted.record,{cloudFileId:String(persisted.fileId||persisted.record.cloudFileId||updated.cloudFileId||''),cloudSynced:true});
    const rows=archiveRead().filter(x=>String(x.id)!==String(updated.id));rows.unshift(updated);archiveWrite(rows);

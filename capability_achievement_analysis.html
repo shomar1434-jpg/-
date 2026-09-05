@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>تحليل القدرات و التحصيلي</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<style>
+:root{
+ --teal:#0d6b63;--teal2:#148f80;--mint:#eaf7f4;--blue:#2e6da4;--gold:#d39b2c;
+ --ink:#17313b;--muted:#6b7c84;--line:#dfe8eb;--bg:#f4f8f8;--white:#fff;
+ --red:#b84b4b;--green:#18825f;--amber:#b47a18;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:'Tajawal',sans-serif;background:var(--bg);color:var(--ink)}
+button,input,select,textarea{font-family:inherit}
+.topbar{background:linear-gradient(135deg,#0c5d56,#0d796c 60%,#199783);color:#fff;padding:18px 26px;position:sticky;top:0;z-index:10;box-shadow:0 5px 18px #0b3c3528}
+.topbar-inner{max-width:1400px;margin:auto;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.brand{display:flex;align-items:center;gap:14px}.brand-badge{width:52px;height:52px;border:2px solid #ffffff66;border-radius:16px;display:grid;place-items:center;font-size:26px;background:#ffffff12}
+.brand h1{margin:0;font-size:23px}.brand p{margin:3px 0 0;font-size:12px;opacity:.86}
+.actions{display:flex;gap:8px;flex-wrap:wrap}.btn{border:0;border-radius:11px;padding:10px 14px;font-weight:800;cursor:pointer}
+.btn-white{background:#fff;color:var(--teal)}.btn-dark{background:#073e39;color:#fff}.btn-gold{background:#f0b645;color:#1f2937}.btn-soft{background:#edf6f5;color:var(--teal);border:1px solid #cfe5e1}
+.layout{max-width:1400px;margin:22px auto;padding:0 18px;display:grid;grid-template-columns:260px 1fr;gap:18px}
+.sidebar{background:#fff;border:1px solid var(--line);border-radius:18px;padding:14px;align-self:start;position:sticky;top:105px;box-shadow:0 8px 25px #24454a0c}
+.navbtn{width:100%;text-align:right;padding:12px 13px;border-radius:11px;border:0;background:transparent;color:#41555d;font-weight:700;cursor:pointer;margin:2px 0}.navbtn.active,.navbtn:hover{background:var(--mint);color:var(--teal)}
+.content{min-width:0}.view{display:none}.view.active{display:block}
+.hero{background:#fff;border:1px solid var(--line);border-radius:20px;padding:22px;box-shadow:0 8px 30px #24454a0d;margin-bottom:16px}
+.hero h2{margin:0 0 6px;font-size:22px}.hero p{margin:0;color:var(--muted);font-size:13px}
+.grid{display:grid;gap:14px}.g2{grid-template-columns:repeat(2,minmax(0,1fr))}.g3{grid-template-columns:repeat(3,minmax(0,1fr))}.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 8px 25px #24454a0b}
+.card h3{margin:0 0 13px;font-size:16px}.small{font-size:12px;color:var(--muted)}
+.dropzone{border:2px dashed #70b9ad;border-radius:18px;background:#f6fffd;padding:34px;text-align:center;cursor:pointer}
+.dropzone .icon{font-size:38px}.dropzone strong{display:block;margin:9px 0 4px}.dropzone input{display:none}
+.status{margin-top:10px;border-radius:10px;padding:9px 12px;font-size:12px;font-weight:700;background:#eef3f4;color:#46636b}
+.status.good{background:#e5f7ef;color:#137252}.status.warn{background:#fff4d8;color:#8a6416}.status.bad{background:#fdeaea;color:#a33333}
+.form-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.field label{display:block;font-size:11px;font-weight:800;color:#5c6e75;margin-bottom:5px}.field input,.field select,.field textarea{width:100%;border:1px solid #cfdcdf;border-radius:10px;padding:10px;background:#fff;color:#203940;outline:none}.field input:focus,.field select:focus,.field textarea:focus{border-color:#3da795;box-shadow:0 0 0 3px #3da7951a}
+.kpi{padding:16px;border-radius:16px;background:linear-gradient(180deg,#fff,#fbfdfd);border:1px solid var(--line)}.kpi .label{font-size:11px;color:var(--muted);font-weight:700}.kpi .value{font-size:27px;font-weight:800;margin:5px 0}.delta{font-size:11px;font-weight:800}.up{color:var(--green)}.down{color:var(--red)}.flat{color:var(--amber)}
+.tabs{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px}.tab{border:1px solid #d7e4e6;background:#fff;color:#52666d;padding:8px 12px;border-radius:10px;font-weight:800;cursor:pointer}.tab.active{background:var(--teal);color:#fff;border-color:var(--teal)}
+.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:12px}table{border-collapse:collapse;width:100%;min-width:650px}th,td{padding:10px 11px;border-bottom:1px solid #edf2f3;font-size:12px;text-align:right}th{background:#f5f9f9;color:#52656c}.scorebar{height:8px;border-radius:9px;background:#e7eff0;overflow:hidden}.scorebar span{display:block;height:100%;background:linear-gradient(90deg,#59b8a8,#0c7769)}
+.insight{border-right:4px solid var(--teal);background:#f7fbfa;padding:11px 13px;border-radius:9px;margin:7px 0;font-size:12px;line-height:1.8}
+.print-title{display:none}
+canvas{max-height:330px}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border-radius:999px;font-size:10px;font-weight:800;background:#e7f7f3;color:#116f62}
+.section-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px}
+.source-card{background:linear-gradient(135deg,#ffffff,#f7fbfa);border:1px solid #cfe1df;border-radius:20px;padding:18px;margin-bottom:14px;box-shadow:0 8px 25px #24454a0b}
+.source-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding-bottom:12px;border-bottom:1px solid #e3ecec;margin-bottom:12px}
+.source-title{display:flex;align-items:center;gap:10px}.source-icon{width:42px;height:42px;border-radius:12px;background:var(--mint);display:grid;place-items:center;font-size:21px}.source-title h3{margin:0;font-size:16px}.source-title p{margin:3px 0 0;font-size:11px;color:var(--muted)}
+.source-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.source-item{background:#fff;border:1px solid #e5eeee;border-radius:12px;padding:10px 11px;min-height:62px}.source-item span{display:block;font-size:10px;color:#71848a;font-weight:700;margin-bottom:4px}.source-item b{display:block;font-size:12px;line-height:1.5;color:#203a42;word-break:break-word}
+.source-tests{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:10px}.source-test{border-radius:12px;padding:10px 12px;background:#eef8f6;border:1px solid #d5ebe6;font-size:11px;line-height:1.8}.source-test strong{color:var(--teal)}
+.provenance{display:inline-flex;align-items:center;gap:6px;background:#e6f8f1;color:#157357;border:1px solid #bfe8d8;padding:6px 9px;border-radius:999px;font-size:10px;font-weight:800;white-space:nowrap}
+
+.report-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:10px}
+.report-metric{background:#f8fbfb;border:1px solid #e2ecec;border-radius:11px;padding:9px 10px;font-size:11px;line-height:1.65}
+.report-metric span{display:block;color:#708187;font-size:9px;font-weight:800;margin-bottom:2px}
+.subject-analysis-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.subject-analysis-card{border:1px solid #dbe8e8;background:#fff;border-radius:14px;padding:13px}
+.subject-analysis-card .name{font-size:11px;font-weight:900;color:#546a71}
+.subject-analysis-card .score{font-size:24px;font-weight:900;color:var(--teal);margin:5px 0}
+.subject-analysis-card .meta{font-size:10px;color:#718087;line-height:1.7}
+.memory-note{background:#fff8e7;border:1px solid #f0dfad;color:#765919;padding:9px 11px;border-radius:10px;font-size:10px;line-height:1.7;margin-bottom:10px}
+@media(max-width:1000px){.report-metrics,.subject-analysis-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){.report-metrics,.subject-analysis-grid{grid-template-columns:1fr}}
+
+@media(max-width:850px){.source-grid{grid-template-columns:repeat(2,1fr)}.source-head{flex-direction:column}.source-tests{grid-template-columns:1fr}}
+@media(max-width:520px){.source-grid{grid-template-columns:1fr}}
+@media(max-width:980px){.layout{grid-template-columns:1fr}.sidebar{position:static}.g4,.g3{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:620px){.g2,.g3,.g4,.form-grid{grid-template-columns:1fr}.topbar-inner{align-items:flex-start;flex-direction:column}.actions{width:100%}.actions .btn{flex:1}.layout{padding:0 10px}.brand h1{font-size:19px}}
+@media print{
+ .topbar,.sidebar,.no-print{display:none!important}.layout{display:block;margin:0;padding:0}.content{width:100%}.view{display:none!important}.view.printable{display:block!important}
+ body{background:#fff}.card,.hero{box-shadow:none;border-color:#cfd8dc;break-inside:avoid}.print-title{display:block;text-align:center;margin:0 0 15px}
+ @page{size:A4 landscape;margin:10mm}
+}
+
+/* MOE-inspired UI/UX visual layer */
+:root{--moe:#0B6B5C;--moe-dark:#075347;--moe-soft:#EAF6F3;--aqua:#18A999;--ink2:#18333B;--border2:#DDE8E8;--shadow2:0 12px 35px rgba(20,67,70,.08)}
+body{background:radial-gradient(circle at 90% 0%,rgba(24,169,153,.08),transparent 26rem),linear-gradient(180deg,#F8FBFB,#F3F8F7);color:var(--ink2)}
+.topbar{background:linear-gradient(115deg,#07584D,#087264 52%,#159483);padding:16px 26px;border-bottom:1px solid #ffffff24;box-shadow:0 10px 30px rgba(7,70,62,.18)}
+.topbar-inner{max-width:1440px}.brand-badge{width:54px;height:54px;border-radius:17px;background:#ffffff1f;border:1px solid #ffffff47}
+.brand h1{font-size:22px;font-weight:800}.brand p{font-size:12px;line-height:1.7}.actions{gap:9px}
+.btn{min-height:42px;border-radius:12px;padding:10px 15px;transition:.18s;display:inline-flex;align-items:center;justify-content:center;gap:7px}.btn:hover{transform:translateY(-1px);box-shadow:0 8px 18px rgba(4,63,56,.15)}
+.btn-dark{background:#06483F}.btn-gold{background:#F0B944}.layout{max-width:1440px;grid-template-columns:250px minmax(0,1fr);gap:20px;margin-top:24px}
+.sidebar{border-color:var(--border2);border-radius:20px;padding:12px;box-shadow:var(--shadow2);top:103px}.sidebar:before{content:"التنقل الرئيسي";display:block;padding:8px 10px 12px;font-size:10px;font-weight:800;color:#84969B;border-bottom:1px solid #EEF3F3;margin-bottom:7px}
+.navbtn{min-height:45px;padding:11px 12px;border-radius:12px;margin:3px 0;transition:.16s;border:1px solid transparent}.navbtn.active{background:linear-gradient(90deg,#E7F5F2,#F2FAF8);color:var(--moe-dark);border-color:#D4EAE5;box-shadow:inset -3px 0 var(--aqua)}.navbtn:hover{background:#F0F8F6;color:var(--moe)}
+.hero,.card,.source-card{border-color:var(--border2);box-shadow:var(--shadow2)}.hero{border-radius:22px;padding:21px 22px;position:relative;overflow:hidden}.hero:after{content:"";position:absolute;top:0;right:0;width:5px;height:100%;background:linear-gradient(var(--moe),var(--aqua))}.hero h2{font-size:21px;font-weight:800}.hero p{font-size:12px;line-height:1.9}
+.card{border-radius:18px}.card h3{font-size:15px;font-weight:800;color:#29464D}.source-card{border-radius:20px;background:linear-gradient(135deg,#FFF,#FBFDFD)}.source-icon{background:linear-gradient(135deg,#E2F5F1,#F1FAF8);color:var(--moe);border:1px solid #D4EAE5}
+.provenance,.badge{background:#E8F7F1;color:#11715A;border-color:#C5E8DA}.source-item{background:#FCFEFE;border-color:#E6EEEE}.source-test{background:linear-gradient(135deg,#EDF8F6,#F8FCFB);border-color:#D4E9E5}
+.kpi{border-radius:17px;border-color:#DFE9E9;position:relative;overflow:hidden;box-shadow:0 8px 24px rgba(30,74,78,.05)}.kpi:before{content:"";position:absolute;right:0;top:0;width:4px;height:100%;background:linear-gradient(var(--moe),var(--aqua))}.kpi .label{font-size:10px;font-weight:800}.kpi .value{font-size:26px;color:#183C43}
+.dropzone{background:linear-gradient(145deg,#F6FCFA,#FBFEFD);border-color:#72BDB0;border-radius:19px;transition:.2s}.dropzone:hover{border-color:var(--moe);background:#F0FAF7}.dropzone .icon{width:58px;height:58px;margin:auto;display:grid;place-items:center;border-radius:18px;background:#E7F6F2}
+.field label{font-size:10px;color:#60757C}.field input,.field select,.field textarea{min-height:42px;border-color:#D4E0E1;border-radius:11px;background:#FCFEFE}.field input:focus,.field select:focus,.field textarea:focus{background:#fff;border-color:#3BA493;box-shadow:0 0 0 3px #3BA4931f}
+.tabs{background:#F1F6F6;padding:4px;border-radius:13px;display:inline-flex}.tab{border:0;background:transparent}.tab.active{background:#fff;color:var(--moe);box-shadow:0 3px 10px rgba(27,76,79,.08)}
+.table-wrap{border-color:#DFE9E9;border-radius:14px;background:#fff}th{background:#F2F7F7;color:#536B72;font-size:10px}td{color:#304A51;line-height:1.7}tbody tr:hover{background:#F8FBFB}.insight{border-right-color:var(--moe);background:linear-gradient(90deg,#FAFDFC,#F4FAF8);border-radius:11px;line-height:1.9}
+@media(max-width:980px){.sidebar{display:flex;gap:5px;overflow:auto;white-space:nowrap;padding:8px;position:static}.sidebar:before{display:none}.navbtn{width:auto;min-width:max-content;text-align:center}.navbtn.active{box-shadow:inset 0 -3px var(--aqua)}}
+@media(max-width:620px){.topbar{padding:14px 15px}.brand-badge{width:46px;height:46px}.brand h1{font-size:18px}.brand p{font-size:10px}.actions{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.actions .btn{font-size:11px;padding:8px}.layout{margin-top:12px}.hero,.card,.source-card{border-radius:16px}}
+@media print{body{background:#fff!important}.source-card,.card,.hero,.kpi{box-shadow:none!important}}
+
+</style>
+<meta name="capability-achievement-analysis-version" content="2026.09.05-RL42-manager-integration">
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="brand-badge">🎯</div>
+      <div><h1>بطاقة تحليل القدرات والتحصيلي</h1><p>منظومة تحليل مؤشرات الاختبارات وبناء خطط التحسين وقياس الأثر</p></div>
+    </div>
+    <div class="actions">
+      <button class="btn btn-white" onclick="returnToManager()">↩ العودة إلى أقسام المدير</button>
+      <button class="btn btn-white" onclick="go('import')">▣ استيراد البطاقة</button>
+      <button class="btn btn-gold" onclick="saveSnapshot()">▤ حفظ نسخة</button>
+      <button class="btn btn-dark" onclick="printCurrent()">▧ طباعة / PDF</button>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar no-print">
+    <button class="navbtn active" data-view="import" onclick="go('import',this)">📥 الاستيراد والمراجعة</button>
+    <button class="navbtn" data-view="dashboard" onclick="go('dashboard',this)">📊 لوحة القيادة</button>
+    <button class="navbtn" data-view="qudrat" onclick="go('qudrat',this)">🧠 تحليل القدرات</button>
+    <button class="navbtn" data-view="tahsili" onclick="go('tahsili',this)">🔬 تحليل التحصيلي</button>
+    <button class="navbtn" data-view="compare" onclick="go('compare',this)">📈 المقارنة الزمنية</button>
+    <button class="navbtn" data-view="plan" onclick="go('plan',this)">🛠️ خطة التحسين</button>
+    <button class="navbtn" data-view="summary" onclick="go('summary',this)">📄 الملخص التنفيذي</button>
+  </aside>
+
+  <main class="content">
+    <section id="view-import" class="view active printable">
+      <div class="hero"><span class="badge">نظام تحليلي تفاعلي</span><h2>استيراد بطاقة الاختبارات ومراجعة البيانات</h2><p>يقرأ النظام بيانات البطاقة ومؤشراتها آليًا، ثم يتيح مراجعتها قبل اعتماد التحليل وبناء خطة التحسين.</p></div>
+      <div class="grid g2">
+        <div class="card">
+          <h3>1. استيراد البطاقة</h3>
+          <div class="dropzone" onclick="document.getElementById('pdfInput').click()">
+            <div class="icon">📄</div><strong>اسحب بطاقة PDF هنا أو اضغط للاختيار</strong>
+            <span class="small">يدعم ملفًا يحتوي بطاقة القدرات و/أو التحصيلي</span>
+            <input id="pdfInput" type="file" accept="application/pdf" onchange="readPdf(this.files[0])">
+          </div>
+          <div id="status" class="status">بانتظار ملف PDF.</div>
+          <div style="margin-top:12px"><button class="btn btn-soft" onclick="loadDemo()">تعبئة نموذج استدلالي للمعاينة</button></div>
+        </div>
+        <div class="card">
+          <div class="section-head"><h3>2. مراجعة بيانات المدرسة</h3><span class="small">يمكن تعديل أي حقل قبل الاعتماد</span></div>
+          <div class="form-grid">
+            <div class="field"><label>اسم المدرسة</label><input id="school" value=""></div>
+            <div class="field"><label>الرقم الوزاري</label><input id="code" value=""></div>
+            <div class="field"><label>إدارة التعليم</label><input id="edu" value=""></div>
+            <div class="field"><label>المنطقة</label><input id="region" value=""></div>
+            <div class="field"><label>جنس المدرسة</label><input id="gender" value=""></div>
+            <div class="field"><label>المرحلة الدراسية</label><input id="stage" value=""></div>
+            <div class="field"><label>العام الدراسي</label><input id="year" value=""></div>
+            <div class="field"><label>عدد المختبرين - القدرات</label><input id="qCount" type="number"></div>
+            <div class="field"><label>عدد المختبرين - التحصيلي</label><input id="tCount" type="number"></div>
+          </div>
+          <div style="margin-top:12px"><button class="btn btn-dark" style="width:100%" onclick="applyForm()">اعتماد البيانات وبناء التحليل</button></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <h3>3. مؤشرات الاختبارات</h3>
+        <div class="tabs">
+          <button class="tab active" onclick="switchDataTab('q',this)">القدرات</button>
+          <button class="tab" onclick="switchDataTab('t',this)">التحصيلي</button>
+        </div>
+        <div id="data-q">
+          <div class="form-grid">
+            <div class="field"><label>المتوسط العام للقدرات</label><input id="qAvg" type="number" step=".01"></div>
+            <div class="field"><label>القسم اللفظي</label><input id="qVerbal" type="number" step=".01"></div>
+            <div class="field"><label>القسم الكمي</label><input id="qQuant" type="number" step=".01"></div>
+            <div class="field"><label>المتوسط المرجعي / المقارن</label><input id="qRef" type="number" step=".01"></div>
+          </div>
+        </div>
+        <div id="data-t" style="display:none">
+          <div class="form-grid">
+            <div class="field"><label>المتوسط العام للتحصيلي</label><input id="tAvg" type="number" step=".01"></div>
+            <div class="field"><label>العلوم الطبيعية</label><input id="tScience" type="number" step=".01"></div>
+            <div class="field"><label>الرياضيات</label><input id="tMath" type="number" step=".01"></div>
+            <div class="field"><label>المتوسط المرجعي / المقارن</label><input id="tRef" type="number" step=".01"></div>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <div class="section-head"><h3>4. المؤشرات المستخرجة من البطاقة</h3><span id="parseQuality" class="badge">بانتظار بطاقة</span></div>
+        <div id="officialExtract" class="small">ستظهر هنا مستويات الأداء والترتيب والمقارنات بعد قراءة البطاقة.</div>
+      </div>
+      <details class="card no-print" style="margin-top:14px"><summary style="cursor:pointer;font-weight:800">تشخيص القارئ (للفحص فقط)</summary><pre id="debugText" style="white-space:pre-wrap;direction:rtl;text-align:right;font-size:10px;max-height:260px;overflow:auto;background:#f7faf9;padding:10px;border-radius:10px"></pre></details>
+    </section>
+
+    <section id="view-dashboard" class="view printable">
+      <div id="sourceDashboard" class="source-card"></div>
+      <div class="hero"><h2>لوحة القيادة التنفيذية</h2><p id="dashMeta">—</p></div>
+      <div class="grid g4">
+        <div class="kpi"><div class="label">متوسط القدرات</div><div id="kQ" class="value">—</div><div id="dQ" class="delta">—</div></div>
+        <div class="kpi"><div class="label">متوسط التحصيلي</div><div id="kT" class="value">—</div><div id="dT" class="delta">—</div></div>
+        <div class="kpi"><div class="label">الفجوة اللفظي / الكمي</div><div id="kGap" class="value">—</div><div class="small">كلما اقتربت من صفر كان الأداء أكثر توازنًا</div></div>
+        <div class="kpi"><div class="label">المؤشر المركب</div><div id="kComp" class="value">—</div><div class="small">متوسط مرجح استدلالي للعرض القيادي</div></div>
+      </div>
+      <div class="grid g2" style="margin-top:14px">
+        <div class="card"><h3>مقارنة المؤشرات الرئيسية</h3><canvas id="mainChart"></canvas></div>
+        <div class="card"><h3>قراءة تنفيذية للمؤشرات</h3><div id="insights"></div></div>
+      </div>
+    </section>
+
+    <section id="view-qudrat" class="view printable">
+      <div id="sourceQudrat" class="source-card"></div>
+      <div class="hero"><h2>تحليل اختبار القدرات العامة</h2><p>مقارنة اللفظي والكمي وتحديد فجوات التوازن والأولوية في التدخل.</p></div>
+      <div class="grid g3">
+        <div class="kpi"><div class="label">اللفظي</div><div id="qV" class="value">—</div></div>
+        <div class="kpi"><div class="label">الكمي</div><div id="qQ" class="value">—</div></div>
+        <div class="kpi"><div class="label">المتوسط العام</div><div id="qA" class="value">—</div></div>
+      </div>
+      <div class="grid g2" style="margin-top:14px">
+        <div class="card"><h3>توازن مكونات القدرات</h3><canvas id="qChart"></canvas></div>
+        <div class="card"><h3>تحليل وتشخيص الأداء</h3><div id="qInsight"></div></div>
+      </div>
+    </section>
+
+    <section id="view-tahsili" class="view printable">
+      <div id="sourceTahsili" class="source-card"></div>
+      <div class="hero"><h2>تحليل الاختبار التحصيلي</h2><p>قياس المستوى العام ومجالات العلوم والرياضيات بحسب البيانات المتاحة في البطاقة.</p></div>
+      <div class="grid g3">
+        <div class="kpi"><div class="label">العلوم الطبيعية</div><div id="tS" class="value">—</div></div>
+        <div class="kpi"><div class="label">الرياضيات</div><div id="tM" class="value">—</div></div>
+        <div class="kpi"><div class="label">المتوسط العام</div><div id="tA" class="value">—</div></div>
+      </div>
+      <div class="grid g2" style="margin-top:14px">
+        <div class="card"><h3>تفصيل المؤشرات</h3><canvas id="tChart"></canvas></div>
+        <div class="card"><h3>تحليل وتشخيص الأداء</h3><div id="tInsight"></div></div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <div class="section-head">
+          <h3>تحليل مواد التحصيلي حسب المسار</h3>
+          <span id="tPathLabel" class="badge">المسار: —</span>
+        </div>
+        <div class="memory-note">ذاكرة المواد تُستخدم لاستعادة أسماء المواد المتوقعة فقط عند اختفاء بعض المسميات من إخراج PDF، ولا تُنشئ درجات غير موجودة في البطاقة.</div>
+        <div id="tSubjectAnalysis" class="subject-analysis-grid"></div>
+        <div class="table-wrap" style="margin-top:12px">
+          <table>
+            <thead><tr><th>المادة</th><th>درجة المدرسة</th><th>الفجوة عن متوسط التحصيلي</th><th>مستوى الأداء</th><th>أولوية التحسين</th></tr></thead>
+            <tbody id="tSubjectTable"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-compare" class="view printable">
+      <div id="sourceCompare" class="source-card"></div>
+      <div class="hero"><h2>المقارنة الزمنية بين البطاقات</h2><p>يمكن حفظ لقطة لكل عام ثم مقارنة اتجاه التحسن أو التراجع داخل المتصفح.</p></div>
+      <div class="card">
+        <div class="section-head"><h3>السجل الزمني</h3><button class="btn btn-soft no-print" onclick="clearHistory()">حذف السجل</button></div>
+        <div class="table-wrap"><table><thead><tr><th>العام</th><th>المدرسة</th><th>القدرات</th><th>التحصيلي</th><th>اللفظي</th><th>الكمي</th></tr></thead><tbody id="historyBody"></tbody></table></div>
+      </div>
+      <div class="card" style="margin-top:14px"><h3>اتجاه الأداء</h3><canvas id="historyChart"></canvas></div>
+    </section>
+
+    <section id="view-plan" class="view printable">
+      <div id="sourcePlan" class="source-card"></div>
+      <div class="hero"><h2>خطة التحسين وقياس الأثر</h2><p>تُولد الأولويات تلقائيًا من فجوات الأداء الحالية، ويمكن تعديلها قبل اعتمادها.</p></div>
+      <div class="card">
+        <div class="table-wrap"><table>
+          <thead><tr><th>الأولوية</th><th>المؤشر</th><th>الوضع الحالي</th><th>المستهدف</th><th>الإجراء المقترح</th><th>مؤشر القياس</th></tr></thead>
+          <tbody id="planBody"></tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <section id="view-summary" class="view printable">
+      <div id="sourceSummary" class="source-card"></div>
+      <h1 class="print-title">الملخص التنفيذي — بطاقة القدرات والتحصيلي</h1>
+      <div class="hero"><h2>الملخص التنفيذي</h2><p id="sumMeta">—</p></div>
+      <div class="grid g2">
+        <div class="card"><h3>النتائج الأساسية</h3><div id="summaryResults"></div></div>
+        <div class="card"><h3>أبرز الاستنتاجات</h3><div id="summaryInsights"></div></div>
+      </div>
+      <div class="card" style="margin-top:14px"><h3>التوصيات التنفيذية</h3><div id="summaryRecs"></div></div>
+    </section>
+  </main>
+</div>
+
+<script>
+function returnToManager(){try{window.top.location.href='manager.html';}catch(e){window.location.href='manager.html';}}
+pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+let charts={};
+
+// ======================================================
+// ذاكرة داخلية مرجعية لمواد مسارات الاختبار التحصيلي
+// الغرض: الاحتفاظ بأسماء المواد فقط لاستخدامها لاحقًا عند الحاجة
+// ملاحظة: هذه الذاكرة لا تتدخل في قراءة PDF ولا التحليل ولا واجهة النموذج.
+// ======================================================
+const TAHSILI_SUBJECT_MEMORY = Object.freeze({
+  scientific: Object.freeze({
+    id: 'scientific',
+    label: 'المسار العلمي',
+    aliases: Object.freeze(['علمي', 'المسار العلمي', 'التحصيلي - علمي', 'التحصيلي علمي']),
+    subjects: Object.freeze([
+      Object.freeze({ key: 'math', label: 'الرياضيات', aliases: Object.freeze(['رياضيات', 'الرياضيات']) }),
+      Object.freeze({ key: 'physics', label: 'الفيزياء', aliases: Object.freeze(['فيزياء', 'الفيزياء']) }),
+      Object.freeze({ key: 'chemistry', label: 'الكيمياء', aliases: Object.freeze(['كيمياء', 'الكيمياء']) }),
+      Object.freeze({ key: 'biology', label: 'الأحياء', aliases: Object.freeze(['أحياء', 'احياء', 'الأحياء']) })
+    ])
+  }),
+  literary: Object.freeze({
+    id: 'literary',
+    label: 'المسار الأدبي / الإنساني',
+    aliases: Object.freeze(['أدبي', 'ادبي', 'إنساني', 'انساني', 'المسار الأدبي', 'المسار الإنساني']),
+    subjects: Object.freeze([
+      Object.freeze({ key: 'tawhid', label: 'التوحيد', aliases: Object.freeze(['التوحيد', 'توحيد']) }),
+      Object.freeze({ key: 'fiqh', label: 'الفقه', aliases: Object.freeze(['الفقه', 'فقه']) }),
+      Object.freeze({ key: 'hadith', label: 'الحديث', aliases: Object.freeze(['الحديث', 'حديث']) }),
+      Object.freeze({ key: 'rhetoric', label: 'البلاغة والنقد', aliases: Object.freeze(['البلاغة والنقد', 'بلاغة ونقد']) }),
+      Object.freeze({ key: 'grammar', label: 'النحو والصرف', aliases: Object.freeze(['النحو والصرف', 'نحو وصرف']) }),
+      Object.freeze({ key: 'history', label: 'التاريخ', aliases: Object.freeze(['التاريخ', 'تاريخ']) }),
+      Object.freeze({ key: 'geography', label: 'الجغرافيا', aliases: Object.freeze(['الجغرافيا', 'جغرافيا']) })
+    ])
+  })
+});
+
+// دوال مساعدة للوصول إلى الذاكرة عند الحاجة مستقبلًا.
+// لا يتم استدعاؤها تلقائيًا من قارئ البطاقة الحالي.
+function getTahsiliSubjectsFromMemory(pathId) {
+  const path = TAHSILI_SUBJECT_MEMORY[pathId];
+  return path ? path.subjects.map(subject => ({ ...subject })) : [];
+}
+
+function getTahsiliPathFromMemory(pathId) {
+  const path = TAHSILI_SUBJECT_MEMORY[pathId];
+  return path ? { id: path.id, label: path.label, aliases: [...path.aliases] } : null;
+}
+
+function detectTahsiliPathFromText(value) {
+  const n = normalizeArabic(value || '');
+  for (const [id, path] of Object.entries(TAHSILI_SUBJECT_MEMORY)) {
+    if ((path.aliases || []).some(alias => n.includes(normalizeArabic(alias)))) return id;
+  }
+  return '';
+}
+
+function currentTahsiliPathId() {
+  const x = state.rawParsed || state || {};
+  if (x.tPath && TAHSILI_SUBJECT_MEMORY[x.tPath]) return x.tPath;
+  const dbg = document.getElementById('debugText')?.textContent || '';
+  const detected = detectTahsiliPathFromText(dbg);
+  if (detected) return detected;
+  // البيانات الحالية المستخرجة من بطاقة علمي تحتوي مفاتيح الأحياء/الفيزياء/الكيمياء/الرياضيات.
+  const f = x.tFields || state.tFields || {};
+  if (f.biology || f.physics || f.chemistry || f.math) return 'scientific';
+  return '';
+}
+
+function tahsiliSubjectsForAnalysis() {
+  const x = state.rawParsed || state || {};
+  const pathId = currentTahsiliPathId();
+  const expected = getTahsiliSubjectsFromMemory(pathId);
+  const fields = x.tFields || state.tFields || {};
+  const scoreByKey = {
+    math: Number(fields.math) || Number(state.tMath) || 0,
+    physics: Number(fields.physics) || 0,
+    chemistry: Number(fields.chemistry) || 0,
+    biology: Number(fields.biology) || 0
+  };
+  return {
+    pathId,
+    path: getTahsiliPathFromMemory(pathId),
+    subjects: expected.map(s => ({...s, score: Number(scoreByKey[s.key]) || 0}))
+  };
+}
+
+function scoreBand(v){
+  if(!v) return 'الدرجة غير مستخرجة';
+  if(v>=75) return 'مرتفع';
+  if(v>=65) return 'متوسط';
+  if(v>=55) return 'منخفض';
+  return 'منخفض جدًا';
+}
+function subjectPriority(v){
+  if(!v) return 'بانتظار الدرجة';
+  if(v<55) return 'عالية جدًا';
+  if(v<65) return 'عالية';
+  if(v<75) return 'متوسطة';
+  return 'متابعة وتعزيز';
+}
+
+
+let state={school:'',code:'',edu:'',region:'',gender:'',stage:'',year:'',sourceFile:'',pagesRead:0,pagesExpected:0,qCount:0,tCount:0,qAvg:0,qVerbal:0,qQuant:0,qRef:0,tAvg:0,tScience:0,tMath:0,tRef:0,qChange:0,tChange:0,qPerf:null,tPerf:null,qPercentileK:0,qPercentileE:0,tPercentileK:0,tPercentileE:0,qRankK:'',qRankE:'',tRankK:'',tRankE:'',qMeans:[],tMeans:[],tFields:{},rawParsed:null};
+
+function go(v,btn){
+ document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
+ document.getElementById('view-'+v).classList.add('active');
+ document.querySelectorAll('.navbtn').forEach(x=>x.classList.remove('active'));
+ const target=btn||document.querySelector(`.navbtn[data-view="${v}"]`); if(target)target.classList.add('active');
+}
+function switchDataTab(which,el){
+ document.getElementById('data-q').style.display=which==='q'?'block':'none';
+ document.getElementById('data-t').style.display=which==='t'?'block':'none';
+ document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active')); el.classList.add('active');
+}
+function num(id){return parseFloat(document.getElementById(id).value)||0}
+function text(id){return document.getElementById(id).value.trim()}
+function applyForm(){
+ state={...state,school:text('school'),code:text('code'),edu:text('edu'),region:text('region'),gender:text('gender'),stage:text('stage'),year:text('year'),qCount:num('qCount'),tCount:num('tCount'),
+ qAvg:num('qAvg'),qVerbal:num('qVerbal'),qQuant:num('qQuant'),qRef:num('qRef'),tAvg:num('tAvg'),tScience:num('tScience'),tMath:num('tMath'),tRef:num('tRef')};
+ renderAll(); go('dashboard');
+}
+function setVal(id,v){if(v!==undefined&&v!==null&&v!=='')document.getElementById(id).value=v}
+function loadDemo(){
+ const d={school:'ثانوية النموذج',code:'S-10001',edu:'الإدارة العامة للتعليم',year:'1447 هـ',qCount:82,tCount:76,qAvg:72.4,qVerbal:75.1,qQuant:69.7,qRef:70,tAvg:68.8,tScience:70.3,tMath:67.3,tRef:69.5};
+ Object.entries(d).forEach(([k,v])=>{const map={school:'school',code:'code',edu:'edu',region:'region',gender:'gender',stage:'stage',year:'year',qCount:'qCount',tCount:'tCount',qAvg:'qAvg',qVerbal:'qVerbal',qQuant:'qQuant',qRef:'qRef',tAvg:'tAvg',tScience:'tScience',tMath:'tMath',tRef:'tRef'};setVal(map[k],v)});
+ document.getElementById('status').className='status good';document.getElementById('status').textContent='تم تحميل بيانات استدلالية للمعاينة. استبدلها ببيانات بطاقتك عند الاستخدام الفعلي.';
+}
+async function readPdf(file){
+ if(!file)return;
+ const st=document.getElementById('status'); st.className='status'; st.textContent='جاري قراءة بطاقة القدرات والتحصيلي الرسمية...';
+ try{
+   const buf=await file.arrayBuffer(),pdf=await pdfjsLib.getDocument({data:buf}).promise;
+   let pages=[], full='';
+   for(let i=1;i<=pdf.numPages;i++){
+     const p=await pdf.getPage(i),c=await p.getTextContent();
+     const source=c.items.map(x=>x.str).join(' ');
+     const spatial=buildSpatialText(c.items);
+     const raw=source+'\n'+spatial;
+     pages.push({raw,source,spatial,page:p,items:c.items}); full+='\n--- PAGE '+i+' ---\n'+raw;
+   }
+   const extracted=await extractOfficialCardData(pages,pdf);
+   extracted.sourceFile=file.name||'بطاقة القدرات والتحصيلي.pdf';
+   const map={school:'school',code:'code',edu:'edu',region:'region',gender:'gender',stage:'stage',year:'year',qCount:'qCount',tCount:'tCount',qAvg:'qAvg',qVerbal:'qVerbal',qQuant:'qQuant',qRef:'qRef',tAvg:'tAvg',tScience:'tScience',tMath:'tMath',tRef:'tRef'};
+   Object.entries(map).forEach(([k,id])=>{ if(extracted[k]!==undefined && extracted[k]!==null && extracted[k]!=='') setVal(id,extracted[k]); });
+   state={...state,...extracted,rawParsed:extracted};
+   document.getElementById('debugText').textContent=full;
+   renderOfficialExtract(extracted);
+   const core=['school','code','edu','region','gender','stage','year','qCount','qAvg','tCount','tAvg'].filter(k=>extracted[k]!==''&&extracted[k]!==undefined&&extracted[k]!==0).length;
+   const fullPages = extracted.pagesRead === extracted.pagesExpected && extracted.pagesRead >= 4;
+   const domainCount = (extracted.tFields?Object.keys(extracted.tFields).length:0) + ((extracted.qQuant?1:0)+(extracted.qVerbal?1:0));
+   st.className=(fullPages&&core>=10)?'status good':core>=7?'status warn':'status bad';
+   st.textContent=(fullPages&&core>=10)
+     ? `تمت قراءة الملف كاملًا (${extracted.pagesRead}/${extracted.pagesExpected} صفحات) واستخراج البيانات الأساسية للقدرات والتحصيلي، مع ${domainCount}/6 من مؤشرات المجالات الرسومية. راجع القيم ثم اضغط اعتماد.`
+     : core>=7
+       ? `تمت قراءة ${extracted.pagesRead||0}/${extracted.pagesExpected||pdf.numPages} صفحات، لكن بعض البيانات الأساسية لم تُلتقط آليًا. راجع الحقول قبل الاعتماد.`
+       : 'تم فتح PDF لكن لم يتم التعرف على بنية بطاقة القدرات والتحصيلي الرسمية.';
+ }catch(e){console.error(e);st.className='status bad';st.textContent='تعذر تحليل البطاقة: '+(e?.message||'خطأ غير معروف');}
+}
+function buildSpatialText(items){
+ const pts=items.filter(i=>String(i.str||'').trim()).map(i=>({s:String(i.str).trim(),x:i.transform?.[4]||0,y:i.transform?.[5]||0}));
+ pts.sort((a,b)=>Math.abs(b.y-a.y)>2?b.y-a.y:b.x-a.x);
+ const lines=[];
+ for(const it of pts){
+   let line=lines.find(l=>Math.abs(l.y-it.y)<2.5);
+   if(!line){line={y:it.y,items:[]};lines.push(line)}
+   line.items.push(it);
+ }
+ lines.sort((a,b)=>b.y-a.y);
+ return lines.map(l=>l.items.sort((a,b)=>b.x-a.x).map(i=>i.s).join(' ')).join('\n');
+}
+function normalizeArabic(s){
+ return (s||'').normalize('NFKC').replace(/[إأآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/ؤ/g,'و').replace(/ئ/g,'ي').replace(/ـ/g,'').replace(/[\u064B-\u065F]/g,'').replace(/\s+/g,' ').trim();
+}
+function cleanForParse(s){
+ return normalizeArabic(s).replace(/https?:\/\/\S+/g,' ').replace(/صفحه\s*\d+\s*من\s*\d+/g,' ').replace(/\s+/g,' ').trim();
+}
+function firstMatch(s,res){for(const re of res){const m=s.match(re);if(m)return (m[1]||m[0]).trim()}return ''}
+function reversePhrase(s){return String(s||'').split(/\s+/).reverse().join(' ').replace(/\s+-\s+/g,' - ').trim()}
+
+function canonicalSaudiRegion(value){
+ const n=normalizeArabic(value);
+ const compact=n.replace(/\s+/g,'');
+ if(/الرشقي|الشرقي/.test(compact)) return 'الشرقية';
+ const regions=[
+  ['الشرقية',/(?:ال)?شرقي|الرش\s*قي|الرشقي|الشر\s*قي/],
+  ['الرياض',/رياض/],
+  ['مكة المكرمة',/مك[هة].*مكرم/],
+  ['المدينة المنورة',/مدين[هة].*منور/],
+  ['القصيم',/قصيم/],
+  ['عسير',/عسير/],
+  ['تبوك',/تبوك/],
+  ['حائل',/حايل|حائل/],
+  ['الحدود الشمالية',/حدود.*شمالي/],
+  ['جازان',/جازان|جيزان/],
+  ['نجران',/نجران/],
+  ['الباحة',/باح[هة]/],
+  ['الجوف',/جوف/]
+ ];
+ for(const [label,re] of regions) if(re.test(n)) return label;
+ return polishArabic(value);
+}
+function polishArabic(value){
+ let s=String(value||'').replace(/\s+/g,' ').trim();
+ const fixes=[
+  [/الثانويه/g,'الثانوية'],[/الخامسه/g,'الخامسة'],[/الرابعه/g,'الرابعة'],[/الثالثه/g,'الثالثة'],
+  [/الثانيه/g,'الثانية'],[/الاولى/g,'الأولى'],[/الاداره/g,'الإدارة'],[/العامه/g,'العامة'],
+  [/المرحله/g,'المرحلة'],[/المدرسه/g,'المدرسة'],[/المنطقه/g,'المنطقة'],
+  [/الشرقيه/g,'الشرقية'],[/الغربيه/g,'الغربية'],[/الشماليه/g,'الشمالية'],[/الجنوبيه/g,'الجنوبية'],
+  [/مكرمه/g,'مكرمة'],[/منوره/g,'منورة'],[/الباحه/g,'الباحة']
+ ];
+ for(const [re,to] of fixes) s=s.replace(re,to);
+ return s;
+}
+function canonicalHeaderFields(out){
+ out=out||{};
+ out.school=polishArabic(out.school);
+ out.gender=/بنات/.test(normalizeArabic(out.gender))?'بنات':(/بنين/.test(normalizeArabic(out.gender))?'بنين':polishArabic(out.gender));
+ out.stage=/ثانوي/.test(normalizeArabic(out.stage))?'المرحلة الثانوية':
+           (/متوسط/.test(normalizeArabic(out.stage))?'المرحلة المتوسطة':
+           (/ابتدا/.test(normalizeArabic(out.stage))?'المرحلة الابتدائية':polishArabic(out.stage)));
+ out.region=canonicalSaudiRegion(out.region);
+ if(/الرش\s*قية|الرشقية|الشر\s*قية/.test(String(out.region||''))) out.region='الشرقية';
+ // إدارة التعليم في البطاقة الرسمية تُعرض بصيغة إدارية سليمة. إذا تشوهت حروفها داخل PDF
+ // نعيد بناء الصياغة من المنطقة المستخرجة بدل عرض النص المشوه للمستخدم.
+ const en=normalizeArabic(out.edu);
+ const enc=en.replace(/\s+/g,'');
+ if(!out.region && /الرشقي|الشرقي/.test(enc)) out.region='الشرقية';
+ if(out.region && (en.includes('التعليم') || en.includes('الاداره') || en.length>8)){
+   out.edu = out.region==='الشرقية'
+     ? 'الإدارة العامة للتعليم بالمنطقة الشرقية'
+     : `الإدارة العامة للتعليم بمنطقة ${out.region}`;
+ } else {
+   out.edu=polishArabic(out.edu);
+ }
+ if(out.year){
+   const ym=String(out.year).match(/14\d{2}/);
+   if(ym) out.year=ym[0]+' هـ';
+ }
+ return out;
+}
+
+
+function hasValue(v){
+  return v!==undefined && v!==null && v!=='' && !(typeof v==='number' && Number.isNaN(v));
+}
+function showValue(v,suffix=''){
+  return hasValue(v) && v!==0 ? `${v}${suffix}` : 'غير متاح في البطاقة';
+}
+function repairExtractedData(out){
+  out=canonicalHeaderFields(out||{});
+
+  // توحيد العلاقات بين المؤشرات المستخرجة من التقرير الرسمي.
+  if(!out.tRef && out.tKingdomMean) out.tRef=out.tKingdomMean;
+  if(!out.qRef && out.qKingdomMean) out.qRef=out.qKingdomMean;
+
+  if(out.tFields){
+    if(!out.tMath && out.tFields.math) out.tMath=out.tFields.math;
+    if(!out.tScience && out.tFields.biology && out.tFields.physics && out.tFields.chemistry){
+      out.tScience=+((out.tFields.biology+out.tFields.physics+out.tFields.chemistry)/3).toFixed(1);
+    }
+  }
+
+  // متوسط المدرسة في مخطط المقارنة يساوي أو يقترب من المتوسط العام.
+  // لا نستخدم المتوسط العام إلا كمسار احتياطي إذا اختفت قيمة الرسم النصية بالكامل.
+  if(!out.tSchoolMean && out.tAvg) out.tSchoolMean=out.tAvg;
+  if(!out.qSchoolMean && out.qAvg) out.qSchoolMean=out.qAvg;
+
+  // استعادة المنطقة من الصياغة الإدارية إذا اختفى حقل المنطقة وحده.
+  if(!out.region && out.edu){
+    const n=normalizeArabic(out.edu);
+    if(n.includes('الشرقي')) out.region='الشرقية';
+    else if(n.includes('الرياض')) out.region='الرياض';
+    else if(n.includes('مكه')) out.region='مكة المكرمة';
+    else if(n.includes('المدينه')) out.region='المدينة المنورة';
+  }
+
+  return out;
+}
+function extractionCompleteness(x){
+  const required=[
+    ['اسم المدرسة',x.school],
+    ['الرقم الوزاري',x.code],
+    ['إدارة التعليم',x.edu],
+    ['المنطقة',x.region],
+    ['جنس المدرسة',x.gender],
+    ['المرحلة الدراسية',x.stage],
+    ['عدد مختبري التحصيلي',x.tCount],
+    ['متوسط التحصيلي',x.tAvg],
+    ['توزيع مستويات التحصيلي',x.tPerf],
+    ['مواد التحصيلي',x.tFields && Object.keys(x.tFields).length>=4],
+    ['مئين التحصيلي - المملكة',x.tPercentileK],
+    ['مئين التحصيلي - إدارة التعليم',x.tPercentileE],
+    ['عدد مختبري القدرات',x.qCount],
+    ['متوسط القدرات',x.qAvg],
+    ['توزيع مستويات القدرات',x.qPerf],
+    ['الكمي واللفظي',x.qQuant && x.qVerbal],
+    ['مئين القدرات - المملكة',x.qPercentileK],
+    ['مئين القدرات - إدارة التعليم',x.qPercentileE]
+  ];
+  const missing=required.filter(([,v])=>!v).map(([label])=>label);
+  return {total:required.length,found:required.length-missing.length,missing,complete:missing.length===0};
+}
+
+function numberAfter(s,label,window=110){const n=normalizeArabic(label),i=s.indexOf(n);if(i>=0){const m=s.slice(i+n.length,i+n.length+window).match(/[-+]?\d{1,4}(?:\.\d+)?/);if(m)return parseFloat(m[0])} const rev=n.split(/\s+/).reverse().join(' '),j=s.indexOf(rev);if(j>=0){const m=s.slice(j+rev.length,j+rev.length+window).match(/[-+]?\d{1,4}(?:\.\d+)?/);if(m)return parseFloat(m[0])} return 0}
+function decimalsBetween(s,startLabel,endLabel){
+ const a=s.indexOf(normalizeArabic(startLabel));if(a<0)return[];let z=s.length;if(endLabel){const j=s.indexOf(normalizeArabic(endLabel),a+5);if(j>a)z=j}
+ return [...s.slice(a,z).matchAll(/(?<!\d)(\d{2,3}(?:\.\d{1,2})?)(?:\s*%)?/g)].map(m=>parseFloat(m[1])).filter(v=>v>=40&&v<=100);
+}
+function parsePerformance(s){
+ let vals=[];
+ const a=s.indexOf('توزيع طلبه المدرسه علي مستويات الاداء');
+ if(a>=0)vals=[...s.slice(a,a+360).matchAll(/(\d{1,3}(?:\.\d+)?)\s*%/g)].map(m=>parseFloat(m[1]));
+ if(vals.length<4)vals=[...s.matchAll(/(?<![-\d])(\d{1,3}(?:\.\d+)?)\s*%/g)].map(m=>parseFloat(m[1])).filter(v=>v>=0&&v<=100);
+ for(let i=0;i<=vals.length-4;i++){const v=vals.slice(i,i+4);if(v.every(x=>x<80)&&Math.abs(v.reduce((a,b)=>a+b,0)-100)<1.2)return {high:v[0],medium:v[1],low:v[2],veryLow:v[3]}}
+ return null;
+}
+function extractMeanTriple(s){
+ const vals=[...s.matchAll(/(?<![-\d])(\d{2,3}(?:\.\d{1,2}))\s*%/g)].map(m=>parseFloat(m[1])).filter(v=>v>=40&&v<90);
+ return vals.slice(-3);
+}
+function parsePercentilePage(s){
+ const pct=[...s.matchAll(/(?:اعلي\s*من\s*%?\s*(\d{1,3}(?:\.\d+)?)|%\s*(\d{1,3}(?:\.\d+)?)\s*من\s*اعلي)/g)].map(m=>parseFloat(m[1]||m[2]));
+ const pairs=[...s.matchAll(/\(?\s*(\d{1,6})\s*من\s*(\d{1,6})\s*\)?/g)].map(m=>{const a=+m[1],b=+m[2];return {rank:Math.min(a,b),total:Math.max(a,b)}});
+ return {kingdom:pct[0]||0,education:pct[1]||0,kingdomRank:pairs[0]?`${pairs[0].rank} من ${pairs[0].total}`:'',educationRank:pairs[1]?`${pairs[1].rank} من ${pairs[1].total}`:''};
+}
+async function scanGreenBars(pageObj, bandStart=0, bandEnd=1){
+ try{
+    const page=pageObj.page||pageObj;
+    const viewport=page.getViewport({scale:1.35});
+    const canvas=document.createElement('canvas');
+    canvas.width=Math.ceil(viewport.width);
+    canvas.height=Math.ceil(viewport.height);
+
+    const ctx=canvas.getContext('2d',{willReadFrequently:true});
+    await page.render({canvasContext:ctx,viewport}).promise;
+
+    const data=ctx.getImageData(0,0,canvas.width,canvas.height).data;
+    const y0=Math.max(0,Math.floor(canvas.height*bandStart));
+    const y1=Math.min(canvas.height,Math.ceil(canvas.height*bandEnd));
+
+    // الرسم الرسمي للمجالات الفرعية يقع في النطاق الأفقي الأوسط من الصفحة.
+    // تقييد المسح هنا يمنع التقاط مساحات رمادية/خضراء أخرى من البطاقة.
+    const x0=Math.max(0,Math.floor(canvas.width*.12));
+    const x1=Math.min(canvas.width,Math.ceil(canvas.width*.84));
+
+    const rows=[];
+    for(let y=y0;y<y1;y+=2){
+      const greenXs=[], trackXs=[];
+
+      for(let x=x0;x<x1;x++){
+        const k=(y*canvas.width+x)*4;
+        const r=data[k],g=data[k+1],b=data[k+2];
+
+        // اللون الأخضر الفعلي لأشرطة المواد في بطاقة ETEC
+        // يقارب RGB(84,192,138). الحدود السابقة كانت تستبعده بسبب قيمة R.
+        const green=(
+          g>=165&&g<=225 &&
+          r>=65&&r<=140 &&
+          b>=95&&b<=190 &&
+          g>r+45 &&
+          g>b+25
+        );
+
+        const gray=(
+          r>=230&&r<=250 &&
+          g>=232&&g<=252 &&
+          b>=234&&b<=254 &&
+          Math.max(r,g,b)-Math.min(r,g,b)<=20
+        );
+
+        if(green)greenXs.push(x);
+        if(green||gray)trackXs.push(x);
+      }
+
+      // أبعاد الرسم في بطاقة الهيئة تجعل المسار الكامل أكبر من نصف عرض الصفحة تقريبًا.
+      if(greenXs.length>70 && trackXs.length>300){
+        const gs=Math.min(...greenXs), ge=Math.max(...greenXs);
+        const ts=Math.min(...trackXs), te=Math.max(...trackXs);
+        const span=te-ts+1;
+        const density=trackXs.length/span;
+
+        if(span>canvas.width*.55 && density>.80){
+          rows.push({
+            y,
+            value:((ge-gs+1)/span)*100
+          });
+        }
+      }
+    }
+
+    // تجميع صفوف البكسل المتجاورة إلى شريط واحد لكل مادة.
+    const groups=[];
+    for(const r of rows){
+      const last=groups[groups.length-1];
+      if(!last || r.y-last.lastY>4){
+        groups.push({lastY:r.y,values:[r.value]});
+      }else{
+        last.lastY=r.y;
+        last.values.push(r.value);
+      }
+    }
+
+    return groups
+      .filter(g=>g.values.length>=3)
+      .map(g=>{
+        const vals=[...g.values].sort((a,b)=>a-b);
+        return +vals[Math.floor(vals.length/2)].toFixed(1);
+      });
+
+ }catch(e){
+   console.warn('bar scan failed',e);
+   return[];
+ }
+}
+function officialTokens(pageObj){
+ return (pageObj?.items||[]).map(i=>({raw:String(i.str||'').trim(),n:normalizeArabic(String(i.str||'')),x:i.transform?.[4]||0,y:i.transform?.[5]||0})).filter(i=>i.raw);
+}
+function tokensInBox(pageObj,x1,x2,y1,y2){
+ return officialTokens(pageObj).filter(t=>t.x>=x1&&t.x<=x2&&t.y>=y1&&t.y<=y2);
+}
+function boxValue(pageObj,x1,x2,y1,y2,accept){
+ const arr=tokensInBox(pageObj,x1,x2,y1,y2).filter(t=>!accept||accept(t));
+ if(!arr.length)return '';
+ // بطاقة الهيئة عربية RTL؛ إذا كانت القيمة مجزأة نعيد ترتيب القطع من اليمين إلى اليسار.
+ arr.sort((a,b)=>Math.abs(b.y-a.y)>3?b.y-a.y:b.x-a.x);
+ return arr.map(t=>t.raw).join(' ').replace(/\s+/g,' ').trim();
+}
+function coordinateOfficialHeader(pageObj){
+ // خريطة موضعية للصفحة الأولى من بطاقة ETEC الرسمية (595×842 تقريبًا).
+ // استخدام الإحداثيات يمنع تشوه العبارات العربية الناتج عن ترتيب النص الداخلي في PDF.
+ const out={};
+ const scaleX=(pageObj?.page?.view?.[2]||595.2756)/595.2756;
+ const scaleY=(pageObj?.page?.view?.[3]||841.8898)/841.8898;
+ const bx=(a,b,c,d,accept)=>boxValue(pageObj,a*scaleX,b*scaleX,c*scaleY,d*scaleY,accept);
+ out.code=bx(465,548,655,682,t=>/^[A-Za-z0-9-]+$/.test(t.raw)&&/[0-9]/.test(t.raw));
+ out.school=bx(225,390,655,682,t=>!t.n.includes('اسم المدرسه'));
+ out.gender=bx(135,225,655,682,t=>/بنات|بنين/.test(t.n));
+ out.edu=bx(385,550,606,635,t=>!t.n.includes('اداره التعليم'));
+ out.region=bx(315,390,606,635,t=>!t.n.includes('المنطقه'));
+ out.stage=bx(135,225,606,635,t=>!t.n.includes('المرحله الدراسيه'));
+ // تنظيف ناتج القالب دون محاولة قلب الجملة؛ PDF.js يعيد كل قيمة غالبًا كقطعة عربية صحيحة.
+ for(const k of ['school','edu','region','stage','gender']) out[k]=String(out[k]||'').trim();
+ const sn=normalizeArabic(out.school); if(sn.startsWith('مسارات')&&sn.includes('الثانويه')) out.school=reversePhrase(out.school);
+ const en=normalizeArabic(out.edu); if(en.startsWith('الشرقيه')&&en.includes('التعليم')) out.edu=reversePhrase(out.edu);
+ const stn=normalizeArabic(out.stage); if(stn.includes('الثانويه')&&stn.includes('المرحله')) out.stage='المرحلة الثانوية';
+ const rn=normalizeArabic(out.region); if(rn.includes('الشرقيه')) out.region='الشرقية';
+ const gn=normalizeArabic(out.gender); if(gn.includes('بنات')) out.gender='بنات'; else if(gn.includes('بنين')) out.gender='بنين';
+ return canonicalHeaderFields(out);
+}
+function coordinateTestNumbers(pageObj,kind){
+ const out={};
+ // kind=t الصفحة الأولى، kind=q الصفحة الثالثة. الإحداثيات مبنية على قالب ETEC نفسه.
+ const yNum=kind==='t'?[535,570]:[682,715];
+ const yPerf=kind==='t'?[455,490]:[600,635];
+ const count=boxValue(pageObj,385,430,yNum[0],yNum[1],t=>/^\d{3,4}$/.test(t.raw));
+ const avg=boxValue(pageObj,215,265,yNum[0],yNum[1],t=>/^\d{2}(?:\.\d+)?$/.test(t.raw));
+ const change=boxValue(pageObj,60,120,yNum[0],yNum[1],t=>/^-?\d+(?:\.\d+)?%$/.test(t.raw));
+ out.count=parseInt(count)||0; out.avg=parseFloat(avg)||0; out.change=parseFloat(String(change).replace('%',''))||0;
+ const vals=tokensInBox(pageObj,60,470,yPerf[0],yPerf[1]).map(t=>{
+   const m=t.raw.match(/(\d{1,3}(?:\.\d+)?)\s*%/);return m?{x:t.x,v:parseFloat(m[1])}:null;
+ }).filter(Boolean).sort((a,b)=>b.x-a.x);
+ if(vals.length>=4){
+   // من اليمين إلى اليسار في الرسم: مرتفع، متوسط، منخفض، منخفض جدًا.
+   out.perf={high:vals[0].v,medium:vals[1].v,low:vals[2].v,veryLow:vals[3].v};
+ }
+ return out;
+}
+function firstNumberToken(tokens,pred){
+ for(const t of tokens){const m=t.raw.replace(/,/g,'.').match(/-?\d+(?:\.\d+)?/);if(m){const v=parseFloat(m[0]);if(pred(v,t.raw,t.n))return v}} return 0;
+}
+function exactOfficialHeader(pageObj){
+ const out=coordinateOfficialHeader(pageObj);
+ const toks=officialTokens(pageObj);
+ // احتياطيات بنيوية فقط إذا تعذر حقل موضعي بعينه.
+ if(!out.code)out.code=(toks.find(t=>/^[A-Za-z]\d{5,}$/.test(t.raw))||{}).raw||'';
+ if(!out.school){const t=toks.find(t=>t.n.includes('الثانويه')&&!t.n.includes('المرحله')&&t.n.length>12&&!t.n.includes('القدرات'));if(t)out.school=t.raw}
+ if(!out.edu){const t=toks.find(t=>t.n.includes('الاداره')&&t.n.includes('التعليم')&&t.n.length>18&&t.n.includes('المنطقه'));if(t)out.edu=t.raw}
+ if(!out.region){const t=toks.find(t=>/^(الشرقيه|المنطقه الشرقيه)$/.test(t.n));if(t)out.region=t.raw}
+ if(!out.gender){const t=toks.find(t=>/^(بنات|بنين)$/.test(t.n));if(t)out.gender=t.raw}
+ if(!out.stage){const t=toks.find(t=>t.n.includes('المرحله الثانويه')||t.n==='الثانويه المرحله');if(t)out.stage=t.raw}
+ const year=toks.find(t=>/^14\d{2}$/.test(t.raw));if(year)out.year=year.raw+' هـ';
+ return canonicalHeaderFields(out);
+}
+function parseOfficialTestNumbers(pageObj){
+ const toks=officialTokens(pageObj), joined=toks.map(t=>t.raw).join(' '), out={};
+ // عدد المختبرين: أول عدد صحيح من 3 خانات ليس 100 أو محورًا رسوميًا.
+ out.count=firstNumberToken(toks,(v,raw)=>Number.isInteger(v)&&v>=101&&v<=999);
+ // متوسط الدرجات: أول عدد عشري بين 55 و 95 وغير متبوع بعلامة %.
+ out.avg=firstNumberToken(toks,(v,raw)=>v>=55&&v<=95&&raw.includes('.')&&!raw.includes('%'));
+ const change=toks.map(t=>t.raw).join(' ').match(/(-\d{1,2}(?:\.\d+)?)\s*%/);out.change=change?parseFloat(change[1]):0;
+ const pct=[]; for(const t of toks){for(const m of t.raw.matchAll(/(\d{1,3}(?:\.\d+)?)\s*%/g)){const v=parseFloat(m[1]);if(v>=0&&v<=100)pct.push(v)}}
+ for(let i=0;i<=pct.length-4;i++){const a=pct.slice(i,i+4);if(a.every(v=>v<80)&&Math.abs(a.reduce((x,y)=>x+y,0)-100)<1.2){
+   // ترتيب PDF النصي يسار→يمين: منخفض جدًا، منخفض، متوسط، مرتفع.
+   out.perf={high:a[3],medium:a[2],low:a[1],veryLow:a[0]};break;
+ }}
+ const means=pct.filter(v=>v>=55&&v<90);
+ // استبعاد نسب مستويات الأداء؛ آخر ثلاث نسب في صفحة الاختبار هي: المدرسة، إدارة التعليم، المملكة.
+ if(means.length>=3){out.means=means.slice(-3)}else out.means=[];
+ return out;
+}
+async function extractOfficialCardData(pages,pdf){
+ const texts=pages.map(p=>cleanForParse(p.raw)); const p1=texts[0]||'', p2=texts[1]||'', p3=texts[2]||'', p4=texts[3]||'';
+ const all=texts.join(' '), out={pagesRead:pages.length,pagesExpected:pdf.numPages};
+ Object.assign(out,exactOfficialHeader(pages[0]));
+ // مسارات احتياطية للنص في حال جمّع PDF.js العبارات بصورة مختلفة.
+ if(!out.code)out.code=firstMatch(p1,[/([A-Z]\d{6,})/]);
+ if(!out.school){out.school=firstMatch(p1,[/اسم المدرسه\s+(.+?)(?=\s+(?:جنس المدرسه|اداره التعليم|المنطقه|المرحله الدراسيه|التحصيلي))/,/المدرسه اسم\s+(.+?)(?=\s+المدرسه جنس)/]);if(out.school&&/مسارات\s*-/.test(out.school))out.school=reversePhrase(out.school)}
+ if(!out.edu){out.edu=firstMatch(p1,[/اداره التعليم\s+(.+?)(?=\s+(?:المنطقه|المرحله الدراسيه|جنس المدرسه|التحصيلي))/,/التعليم اداره\s+(.+?)(?=\s+المنطقه)/]);if(out.edu&&out.edu.startsWith('الشرقيه'))out.edu=reversePhrase(out.edu)}
+ if(!out.year){out.year=firstMatch(all,[/(?<!\d)(14\d{2})(?!\d)/]);if(out.year)out.year+=' هـ'}
+ const tPage=pages.find((p,i)=>texts[i].includes('التحصيلي'))||pages[0];
+ const qPage=pages.find((p,i)=>texts[i].includes('القدرات العامه')||texts[i].includes('العامه القدرات'))||pages[2];
+ const tn={...parseOfficialTestNumbers(tPage),...coordinateTestNumbers(tPage,'t')}, qn={...parseOfficialTestNumbers(qPage),...coordinateTestNumbers(qPage,'q')};
+ out.tCount=tn.count||numberAfter(texts[pages.indexOf(tPage)]||p1,'عدد المختبرين');out.tAvg=tn.avg||numberAfter(texts[pages.indexOf(tPage)]||p1,'متوسط الدرجات');out.tChange=tn.change;out.tPerf=tn.perf||parsePerformance(p1);out.tMeans=tn.means||[];
+ out.qCount=qn.count||numberAfter(texts[pages.indexOf(qPage)]||p3,'عدد المختبرين');out.qAvg=qn.avg||numberAfter(texts[pages.indexOf(qPage)]||p3,'متوسط الدرجات');out.qChange=qn.change;out.qPerf=qn.perf||parsePerformance(p3);out.qMeans=qn.means||[];
+ if(out.tMeans.length>=3){out.tSchoolMean=out.tMeans[0];out.tEducationMean=out.tMeans[1];out.tKingdomMean=out.tMeans[2];out.tRef=out.tKingdomMean}
+ if(out.qMeans.length>=3){out.qSchoolMean=out.qMeans[0];out.qEducationMean=out.qMeans[1];out.qKingdomMean=out.qMeans[2];out.qRef=out.qKingdomMean}
+ const tp=parsePercentilePage(p2), qp=parsePercentilePage(p4);
+ out.tPercentileK=tp.kingdom;out.tPercentileE=tp.education;out.tRankK=tp.kingdomRank;out.tRankE=tp.educationRank;
+ out.qPercentileK=qp.kingdom;out.qPercentileE=qp.education;out.qRankK=qp.kingdomRank;out.qRankE=qp.educationRank;
+ // المجالات الفرعية ليست نصوص أرقام داخل PDF؛ تُستخرج من أطوال الأشرطة الملونة نفسها.
+ const tBars1=pages[0]?await scanGreenBars(pages[0],.78,.94):[];
+ const tBars2=pages[1]?await scanGreenBars(pages[1],0,.13):[];
+ const qBars=pages[2]?await scanGreenBars(pages[2],.62,.78):[];
+ // الصفحة الأولى: أحياء، رياضيات، فيزياء. الصفحة الثانية تكرر الفيزياء ثم تعرض الكيمياء.
+ if(tBars1.length>=3){
+   const chemistry=tBars2.length?tBars2[tBars2.length-1]:0;
+   if(chemistry)out.tFields={biology:tBars1[0],math:tBars1[1],physics:tBars1[2],chemistry};
+ }
+ if(qBars.length>=2){out.qQuant=qBars[0];out.qVerbal=qBars[1]}
+ if(!out.qVerbal||!out.qQuant){const nums=decimalsBetween(texts[2]||'','متوسط درجات المختبرين في المجالات الفرعيه','الترتيب علي مستوي');if(nums.length>=2){out.qQuant=nums[0];out.qVerbal=nums[1]}}
+ if(out.tFields?.math)out.tMath=out.tFields.math;
+ if(out.tFields?.biology&&out.tFields?.physics&&out.tFields?.chemistry)out.tScience=+((out.tFields.biology+out.tFields.physics+out.tFields.chemistry)/3).toFixed(1);
+ return repairExtractedData(out);
+}
+function renderOfficialExtract(x){
+ const perf=(p)=>p?`مرتفع ${p.high}% • متوسط ${p.medium}% • منخفض ${p.low}% • منخفض جدًا ${p.veryLow}%`:'غير متاح في البطاقة';
+ const fields=x.tFields&&Object.keys(x.tFields).length?`أحياء ${x.tFields.biology}% • رياضيات ${x.tFields.math}% • فيزياء ${x.tFields.physics}% • كيمياء ${x.tFields.chemistry}%`:'غير متاح في البطاقة';
+ const qFields=(x.qQuant&&x.qVerbal)?`كمي ${x.qQuant}% • لفظي ${x.qVerbal}%`:'غير متاح في البطاقة';
+ const identity=`${x.school||'—'} • ${x.code||'—'} • ${x.gender||'—'} • ${x.region||'—'} • ${x.stage||'—'} • ${x.year||'—'}`;
+ document.getElementById('officialExtract').innerHTML=`
+ <div class="insight"><b>بيانات المدرسة:</b> ${identity}<br><b>إدارة التعليم:</b> ${x.edu||'—'}<br><b>الصفحات:</b> ${x.pagesRead||0}/${x.pagesExpected||0}</div>
+ <div class="grid g2"><div class="insight"><b>التحصيلي - علمي:</b> ${x.tCount||'—'} مختبرة، المتوسط ${x.tAvg||'—'}، التغير ${x.tChange||'—'}%<br>${perf(x.tPerf)}<br>متوسطات المقارنة: المدرسة ${x.tSchoolMean||'—'}% • إدارة التعليم ${x.tEducationMean||'—'}% • المملكة ${x.tKingdomMean||'—'}%<br>المئين: المملكة ${x.tPercentileK||'—'}% (${x.tRankK||'—'})، إدارة التعليم ${x.tPercentileE||'—'}% (${x.tRankE||'—'})<br>${fields}</div>
+ <div class="insight"><b>القدرات العامة - علمي:</b> ${x.qCount||'—'} مختبرة، المتوسط ${x.qAvg||'—'}، التغير ${x.qChange||'—'}%<br>${perf(x.qPerf)}<br>متوسطات المقارنة: المدرسة ${x.qSchoolMean||'—'}% • إدارة التعليم ${x.qEducationMean||'—'}% • المملكة ${x.qKingdomMean||'—'}%<br>المئين: المملكة ${x.qPercentileK||'—'}% (${x.qRankK||'—'})، إدارة التعليم ${x.qPercentileE||'—'}% (${x.qRankE||'—'})<br>${qFields}</div></div>`;
+ const core=x.school&&x.code&&x.qAvg&&x.tAvg&&x.qCount&&x.tCount&&x.pagesRead===x.pagesExpected;
+ document.getElementById('parseQuality').textContent=core?'قراءة كاملة للبطاقة':'تحتاج مراجعة بعض الحقول';
+}
+function sourceCardHtml(testFocus='all'){
+ const x=state.rawParsed||state||{};
+ const school=x.school||state.school||'غير متاح في البطاقة', code=x.code||state.code||'غير متاح في البطاقة', edu=x.edu||state.edu||'غير متاح في البطاقة';
+ const region=x.region||state.region||'غير متاح في البطاقة', gender=x.gender||state.gender||'غير متاح في البطاقة', stage=x.stage||state.stage||'المرحلة الثانوية', year=x.year||state.year||'غير متاح في البطاقة';
+ const file=x.sourceFile||state.sourceFile||'بطاقة PDF المعتمدة';
+ const pages=(x.pagesRead||state.pagesRead||0) && (x.pagesExpected||state.pagesExpected||0) ? `${x.pagesRead||state.pagesRead}/${x.pagesExpected||state.pagesExpected} صفحات` : 'غير متاح في البطاقة';
+ const perf=(p)=>p?`مرتفع ${p.high}% • متوسط ${p.medium}% • منخفض ${p.low}% • منخفض جدًا ${p.veryLow}%`:'غير متاح في البطاقة';
+ const sInfo=tahsiliSubjectsForAnalysis();
+ const scoredSubjects=sInfo.subjects.filter(s=>s.score>0);
+ const subjectLine=scoredSubjects.length?scoredSubjects.map(s=>`${s.label} ${s.score.toFixed(1)}`).join(' • '):'لا توجد درجات مواد مستخرجة';
+ const quality=extractionCompleteness(x);
+ let tests='';
+ if(testFocus==='all'||testFocus==='t') tests+=`<div class="source-test"><strong>التحصيلي${sInfo.path?.label?' - '+sInfo.path.label:''}</strong><br>عدد المختبرين: <b>${state.tCount||x.tCount||'غير متاح في البطاقة'}</b> &nbsp;•&nbsp; متوسط الدرجات: <b>${state.tAvg||x.tAvg||'غير متاح في البطاقة'}</b>${(state.tChange||x.tChange)?` &nbsp;•&nbsp; التغير: <b>${state.tChange||x.tChange}%</b>`:''}<br>${perf(x.tPerf||state.tPerf)}<br><b>المواد:</b> ${subjectLine}</div>`;
+ if(testFocus==='all'||testFocus==='q') tests+=`<div class="source-test"><strong>القدرات العامة</strong><br>عدد المختبرين: <b>${state.qCount||x.qCount||'غير متاح في البطاقة'}</b> &nbsp;•&nbsp; متوسط الدرجات: <b>${state.qAvg||x.qAvg||'غير متاح في البطاقة'}</b>${(state.qChange||x.qChange)?` &nbsp;•&nbsp; التغير: <b>${state.qChange||x.qChange}%</b>`:''}<br>${perf(x.qPerf||state.qPerf)}<br><b>الكمي:</b> ${state.qQuant||x.qQuant||'غير متاح في البطاقة'} &nbsp;•&nbsp; <b>اللفظي:</b> ${state.qVerbal||x.qVerbal||'غير متاح في البطاقة'}</div>`;
+
+ let metrics='';
+ if(testFocus==='all'||testFocus==='t') metrics+=`
+   <div class="report-metric"><span>مئين التحصيلي - المملكة</span><b>${x.tPercentileK||state.tPercentileK||'غير متاح في البطاقة'}%</b><br>${x.tRankK||state.tRankK||''}</div>
+   <div class="report-metric"><span>مئين التحصيلي - إدارة التعليم</span><b>${x.tPercentileE||state.tPercentileE||'غير متاح في البطاقة'}%</b><br>${x.tRankE||state.tRankE||''}</div>`;
+ if(testFocus==='all'||testFocus==='q') metrics+=`
+   <div class="report-metric"><span>مئين القدرات - المملكة</span><b>${x.qPercentileK||state.qPercentileK||'غير متاح في البطاقة'}%</b><br>${x.qRankK||state.qRankK||''}</div>
+   <div class="report-metric"><span>مئين القدرات - إدارة التعليم</span><b>${x.qPercentileE||state.qPercentileE||'غير متاح في البطاقة'}%</b><br>${x.qRankE||state.qRankE||''}</div>`;
+
+ return `<div class="source-head"><div class="source-title"><div class="source-icon">🏫</div><div><h3>بيانات البطاقة ومصدر التحليل</h3><p>هوية المدرسة والمؤشرات الأصلية المستخرجة من ملف PDF المستخدم في هذا التقرير</p></div></div><span class="provenance">✓ مستخرج من البطاقة الأصلية</span></div>
+ <div class="source-grid">
+  <div class="source-item"><span>اسم المدرسة</span><b>${school}</b></div>
+  <div class="source-item"><span>الرقم الوزاري</span><b>${code}</b></div>
+  <div class="source-item"><span>إدارة التعليم</span><b>${edu}</b></div>
+  <div class="source-item"><span>المنطقة</span><b>${region}</b></div>
+  <div class="source-item"><span>جنس المدرسة</span><b>${gender}</b></div>
+  <div class="source-item"><span>المرحلة الدراسية</span><b>${stage}</b></div>
+  <div class="source-item"><span>العام الدراسي</span><b>${year}</b></div>
+  <div class="source-item"><span>ملف المصدر</span><b>${file}<br><small>${pages}</small></b></div>
+ </div>
+ <div class="source-tests">${tests}</div>
+ <div class="report-metrics">${metrics}</div>
+ <div class="insight" style="margin-top:10px"><b>جودة قراءة البطاقة:</b> ${quality.found}/${quality.total} مؤشرًا ${quality.complete?'— مكتملة':'— تحتاج مراجعة: '+quality.missing.join('، ')}</div>`;
+}
+function renderSourceCards(){
+ const targets=[['sourceDashboard','all'],['sourceQudrat','q'],['sourceTahsili','t'],['sourceCompare','all'],['sourcePlan','all'],['sourceSummary','all']];
+ targets.forEach(([id,focus])=>{const el=document.getElementById(id);if(el)el.innerHTML=sourceCardHtml(focus)});
+}
+function delta(v,r){if(!r)return {txt:'لا يوجد مرجع',cls:'flat'};const d=v-r;return {txt:(d>=0?'+':'')+d.toFixed(1)+' عن المرجع',cls:d>=0?'up':'down'}}
+function chart(id,type,data,options={}){
+ if(charts[id])charts[id].destroy();
+ charts[id]=new Chart(document.getElementById(id),{type,data,options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'}},scales:type==='bar'?{y:{beginAtZero:true,suggestedMax:100}}:{},...options}});
+}
+
+function renderSubjectAnalysis(){
+  const info=tahsiliSubjectsForAnalysis();
+  const pathLabel=document.getElementById('tPathLabel');
+  if(pathLabel) pathLabel.textContent='المسار: '+(info.path?.label || 'غير محدد');
+
+  const cards=document.getElementById('tSubjectAnalysis');
+  const table=document.getElementById('tSubjectTable');
+  if(!cards || !table) return;
+
+  if(!info.subjects.length){
+    cards.innerHTML='<div class="insight">لم يتم تحديد مسار التحصيلي بعد.</div>';
+    table.innerHTML='<tr><td colspan="5">لا توجد مواد مرجعية لهذا المسار حتى الآن.</td></tr>';
+    return;
+  }
+
+  cards.innerHTML=info.subjects.map(s=>{
+    const has=s.score>0;
+    const gap=has&&state.tAvg ? s.score-state.tAvg : null;
+    return `<div class="subject-analysis-card">
+      <div class="name">${s.label}</div>
+      <div class="score">${has?s.score.toFixed(1):'—'}</div>
+      <div class="scorebar"><span style="width:${has?Math.max(0,Math.min(100,s.score)):0}%"></span></div>
+      <div class="meta">${has?`المستوى: <b>${scoreBand(s.score)}</b><br>الفجوة عن المتوسط: <b class="${gap>=0?'up':'down'}">${gap>=0?'+':''}${gap.toFixed(1)}</b>`:'اسم المادة محفوظ في ذاكرة المسار؛ الدرجة غير ظاهرة في البطاقة.'}</div>
+    </div>`;
+  }).join('');
+
+  table.innerHTML=info.subjects.map(s=>{
+    const has=s.score>0;
+    const gap=has&&state.tAvg ? s.score-state.tAvg : null;
+    return `<tr>
+      <td><b>${s.label}</b>${!has?' <span class="small">(من ذاكرة المسار)</span>':''}</td>
+      <td>${has?s.score.toFixed(1):'غير ظاهرة'}</td>
+      <td class="${gap===null?'':gap>=0?'up':'down'}">${gap===null?'—':`${gap>=0?'+':''}${gap.toFixed(1)}`}</td>
+      <td>${has?scoreBand(s.score):'—'}</td>
+      <td>${has?subjectPriority(s.score):'بانتظار الدرجة'}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderAll(){
+ renderSourceCards();
+ const qd=delta(state.qAvg,state.qRef),td=delta(state.tAvg,state.tRef),gap=Math.abs(state.qVerbal-state.qQuant),comp=(state.qAvg*.5+state.tAvg*.5);
+ document.getElementById('dashMeta').textContent=`${state.school||'المدرسة'} • ${state.edu||'إدارة التعليم'} • ${state.year||'العام الدراسي'}`;
+ document.getElementById('kQ').textContent=state.qAvg?state.qAvg.toFixed(1):'غير متاح';document.getElementById('dQ').textContent=qd.txt;document.getElementById('dQ').className='delta '+qd.cls;
+ document.getElementById('kT').textContent=state.tAvg?state.tAvg.toFixed(1):'غير متاح';document.getElementById('dT').textContent=td.txt;document.getElementById('dT').className='delta '+td.cls;
+ document.getElementById('kGap').textContent=(state.qVerbal&&state.qQuant)?gap.toFixed(1):'غير متاح';document.getElementById('kComp').textContent=(state.qAvg&&state.tAvg)?comp.toFixed(1):'غير متاح';
+ ['qV','qQ','qA','tS','tM','tA'].forEach(x=>document.getElementById(x).textContent='غير متاح');
+ if(state.qVerbal)qV.textContent=state.qVerbal.toFixed(1);if(state.qQuant)qQ.textContent=state.qQuant.toFixed(1);if(state.qAvg)qA.textContent=state.qAvg.toFixed(1);
+ if(state.tScience)tS.textContent=state.tScience.toFixed(1);if(state.tMath)tM.textContent=state.tMath.toFixed(1);if(state.tAvg)tA.textContent=state.tAvg.toFixed(1);
+ chart('mainChart','bar',{labels:['القدرات','التحصيلي','اللفظي','الكمي'],datasets:[{label:'درجة المدرسة',data:[state.qAvg,state.tAvg,state.qVerbal,state.qQuant]}]});
+ chart('qChart','bar',{labels:['اللفظي','الكمي','المتوسط'],datasets:[{label:'القدرات',data:[state.qVerbal,state.qQuant,state.qAvg]}]});
+ chart('tChart','bar',{labels:['العلوم الطبيعية','الرياضيات','المتوسط'],datasets:[{label:'التحصيلي',data:[state.tScience,state.tMath,state.tAvg]}]});
+ renderSubjectAnalysis();renderInsights();renderPlan();renderSummary();renderHistory();
+}
+function level(v){return v>=80?'مرتفع جدًا':v>=70?'جيد':v>=60?'متوسط':'بحاجة إلى تدخل'}
+function box(s){return `<div class="insight">${s}</div>`}
+function renderInsights(){
+ let a=[];
+ if(state.qAvg)a.push(`مستوى القدرات الحالي <b>${level(state.qAvg)}</b> بمتوسط ${state.qAvg.toFixed(1)}.`);
+ if(state.tAvg)a.push(`مستوى التحصيلي الحالي <b>${level(state.tAvg)}</b> بمتوسط ${state.tAvg.toFixed(1)}.`);
+ if(state.qPercentileK)a.push(`القدرات أعلى من ${state.qPercentileK}% من مدارس المملكة، وأعلى من ${state.qPercentileE||'—'}% على مستوى إدارة التعليم.`);
+ if(state.tPercentileK)a.push(`التحصيلي أعلى من ${state.tPercentileK}% من مدارس المملكة، وأعلى من ${state.tPercentileE||'—'}% على مستوى إدارة التعليم.`);
+ if(state.qVerbal&&state.qQuant){const d=state.qVerbal-state.qQuant;a.push(Math.abs(d)<3?'الأداء اللفظي والكمي متوازن نسبيًا.':d>0?`اللفظي أعلى من الكمي بفارق ${Math.abs(d).toFixed(1)}؛ الأولوية لتحسين الجانب الكمي.`:`الكمي أعلى من اللفظي بفارق ${Math.abs(d).toFixed(1)}؛ الأولوية لتحسين الجانب اللفظي.`)}
+ insights.innerHTML=a.map(box).join('')||box('أدخل البيانات أولًا للحصول على قراءة قيادية.');
+ qInsight.innerHTML=(state.qAvg?box(`المتوسط العام ${state.qAvg.toFixed(1)}. `+(state.qRef?`الفارق عن المرجع ${(state.qAvg-state.qRef).toFixed(1)}.`:'')):'')+(state.qVerbal&&state.qQuant?box(`الفجوة بين اللفظي والكمي ${Math.abs(state.qVerbal-state.qQuant).toFixed(1)}.`):'');
+ const si=tahsiliSubjectsForAnalysis();
+ const scored=si.subjects.filter(s=>s.score>0).sort((a,b)=>b.score-a.score);
+ let tNotes=[];
+ if(state.tAvg)tNotes.push(`المتوسط العام للتحصيلي ${state.tAvg.toFixed(1)}${state.tRef?`، والفارق عن المرجع ${(state.tAvg-state.tRef).toFixed(1)}`:''}.`);
+ if(scored.length){
+   tNotes.push(`أعلى مادة هي <b>${scored[0].label}</b> بدرجة ${scored[0].score.toFixed(1)}.`);
+   const weak=scored[scored.length-1];
+   tNotes.push(`أولوية التحسين الأولى هي <b>${weak.label}</b> بدرجة ${weak.score.toFixed(1)}.`);
+   const missing=si.subjects.filter(s=>!s.score).map(s=>s.label);
+   if(missing.length)tNotes.push(`مواد متوقعة حسب ذاكرة المسار لم تظهر لها درجة واضحة في البطاقة: <b>${missing.join('، ')}</b>.`);
+ }
+ tInsight.innerHTML=tNotes.map(box).join('')||box('لا توجد بيانات تحصيلي كافية للتحليل.');
+}
+function renderPlan(){
+ const rows=[];
+ const add=(p,m,c,target,action,measure)=>rows.push(`<tr><td>${p}</td><td>${m}</td><td>${c}</td><td>${target}</td><td contenteditable="true">${action}</td><td contenteditable="true">${measure}</td></tr>`);
+ if(state.qAvg)add('1','متوسط القدرات',state.qAvg.toFixed(1),Math.min(100,Math.max(state.qAvg+5,state.qRef||0)).toFixed(1),'برنامج تدريبي تشخيصي + محاكاة دورية + تحليل أخطاء','متوسط محاكاة شهري');
+ if(state.qVerbal&&state.qQuant){const low=state.qVerbal<state.qQuant?'اللفظي':'الكمي',v=Math.min(state.qVerbal,state.qQuant);add('2','المكون الأضعف في القدرات: '+low,v.toFixed(1),(v+6).toFixed(1),'مجموعات علاجية مركزة واختبارات قصيرة متدرجة','تحسن متوسط المجال في 3 قياسات متتابعة')}
+ if(state.tAvg)add('3','متوسط التحصيلي',state.tAvg.toFixed(1),Math.min(100,Math.max(state.tAvg+5,state.tRef||0)).toFixed(1),'خطة مراجعة تراكمية مرتبطة بنواتج التعلم','اختبار تحصيلي محاكي كل 4 أسابيع');
+ const subjectPriorities=tahsiliSubjectsForAnalysis().subjects.filter(s=>s.score>0).sort((a,b)=>a.score-b.score);
+ subjectPriorities.slice(0,3).forEach((s,i)=>{
+   add(String(4+i),`مادة التحصيلي: ${s.label}`,s.score.toFixed(1),Math.min(100,s.score+5).toFixed(1),`برنامج تحسين تخصصي في ${s.label} مبني على تحليل الأخطاء والتدريب المتدرج`,`تحسن متوسط ${s.label} في القياسات الدورية`);
+ });
+ planBody.innerHTML=rows.join('')||'<tr><td colspan="6">لا توجد بيانات كافية لبناء الخطة.</td></tr>';
+}
+function renderSummary(){
+ sumMeta.textContent=`${state.school||'المدرسة'} — ${state.year||'العام الدراسي'}`;
+ const summarySubjects=tahsiliSubjectsForAnalysis().subjects;
+ const subjectItems=summarySubjects.map(s=>`${s.label}: <b>${s.score?s.score.toFixed(1):'الدرجة غير ظاهرة'}</b>`);
+ summaryResults.innerHTML=[`متوسط القدرات: <b>${state.qAvg||'—'}</b>`,`متوسط التحصيلي: <b>${state.tAvg||'—'}</b>`,`اللفظي: <b>${state.qVerbal||'—'}</b>`,`الكمي: <b>${state.qQuant||'—'}</b>`,...subjectItems].map(box).join('');
+ summaryInsights.innerHTML=insights.innerHTML;
+ let rec=[];if(state.qVerbal&&state.qQuant)rec.push(Math.abs(state.qVerbal-state.qQuant)>=3?'معالجة فجوة التوازن بين اللفظي والكمي بخطة تخصصية.':'المحافظة على توازن مكونات القدرات مع رفع المتوسط العام.');
+ if(state.tAvg)rec.push('تنفيذ قياس قبلي/بعدي للتحصيلي وربطه بالموضوعات الأعلى خطأً.');rec.push('حفظ بطاقة كل دورة اختبار لبناء مقارنة زمنية وقياس الأثر.');
+ summaryRecs.innerHTML=rec.map(box).join('');
+}
+function saveSnapshot(){
+ applyForm();
+ const arr=JSON.parse(localStorage.getItem('qat_history')||'[]');arr.push({...state,savedAt:Date.now()});localStorage.setItem('qat_history',JSON.stringify(arr));renderHistory();alert('تم حفظ لقطة النتائج في هذا المتصفح.');
+}
+function clearHistory(){if(confirm('حذف جميع اللقطات المحفوظة؟')){localStorage.removeItem('qat_history');renderHistory()}}
+function renderHistory(){
+ const arr=JSON.parse(localStorage.getItem('qat_history')||'[]');
+ historyBody.innerHTML=arr.length?arr.map(x=>`<tr><td>${x.year||'—'}</td><td>${x.school||'—'}</td><td>${x.qAvg||'—'}</td><td>${x.tAvg||'—'}</td><td>${x.qVerbal||'—'}</td><td>${x.qQuant||'—'}</td></tr>`).join(''):'<tr><td colspan="6">لا توجد بطاقات محفوظة بعد.</td></tr>';
+ chart('historyChart','line',{labels:arr.map(x=>x.year||'بطاقة'),datasets:[{label:'القدرات',data:arr.map(x=>x.qAvg)},{label:'التحصيلي',data:arr.map(x=>x.tAvg)}]});
+}
+function printCurrent(){
+ document.querySelectorAll('.view').forEach(v=>v.classList.remove('printable'));document.querySelector('.view.active').classList.add('printable');window.print();
+}
+renderAll();
+</script>
+</body>
+</html>

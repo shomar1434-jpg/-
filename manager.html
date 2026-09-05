@@ -4959,6 +4959,7 @@ document.addEventListener("click", function(e){
 </head><body>${editor.innerHTML}\n
 <!-- SCHOOL COMMAND CENTER M1-M4 -->
 
+<script id="SELF_EVAL_PERFORMANCE_STYLE_ARCHIVE_RL53">window.__SELF_EVAL_ARCHIVE_RL53__="2026.09.05";</script>
 </body></html>`;
       record.file = new Blob([htmlDoc], {type:'application/msword'});
       if(!/\.doc$/i.test(record.name)) record.name = record.name.replace(/\.(docx|doc)$/i,'') + '_معدل.doc';
@@ -5789,7 +5790,24 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
       return !!(r&&r.ok!==false);
     }catch(e){console.error('[manager canonical archive hydrate]',e);return false;}
   }
-  async function showArchive(kind){ var v=document.getElementById(viewId(kind)); if(!v){alert('واجهة '+title(kind)+' غير موجودة.');return;} hideAllManagerViews(); v.style.display='block'; if(v.classList)v.classList.remove('hidden'); var loadingBox=document.getElementById(contentId(kind)); if(loadingBox) loadingBox.innerHTML='<div class="bg-white/90 rounded-[28px] p-8 text-center text-slate-500 font-bold">جاري استعادة الأرشيف السحابي والتحقق من بيانات المدرسة...</div>'; if(kind==='manager'){await Promise.all([hydrateCanonicalManagerArchive(kind),syncDecisionsArchiveFromCloud()]);}else{await hydrateCanonicalManagerArchive(kind);await repairSelfEvaluationArchiveIndexRL30();} renderFolders(kind); }
+  
+window.SelfEvaluationArchiveV5=(function(){
+  'use strict';
+  const MODULE='self_evaluation',INDEX_KEY='self_eval_archive_index_v5',PREFIX='self_eval_archive_record_v5_';
+  let view=[];
+  const arr=v=>{try{const x=typeof v==='string'?JSON.parse(v):v;return Array.isArray(x)?x:[]}catch(_){return []}};
+  const obj=v=>{try{const x=typeof v==='string'?JSON.parse(v):v;return x&&typeof x==='object'&&!Array.isArray(x)?x:null}catch(_){return null}};
+  const idOf=x=>String(x?.id||'');
+  const keyOf=id=>PREFIX+String(id||'').replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,120);
+  async function engine(){if(window.PlatformCloudSession&&typeof PlatformCloudSession.ensure==='function')await PlatformCloudSession.ensure();let n=0;while((!window.PlatformStateEngine||typeof PlatformStateEngine.pull!=='function'||typeof PlatformStateEngine.bulkUpsert!=='function')&&n++<60)await new Promise(r=>setTimeout(r,50));if(!window.PlatformStateEngine)throw new Error('محرك أرشيف التقويم الذاتي V5 غير متاح');return window.PlatformStateEngine}
+  async function pull(keys){const E=await engine(),r=await E.pull(MODULE,'school',keys),rows=Array.isArray(r)?r:(r?.items||r?.rows||[]),vals={};for(const row of rows){if(row?.deleted_at||row?.deleted===true)continue;const k=String(row?.state_key||row?.key||'');if(!k)continue;const raw=row?.payload&&Object.prototype.hasOwnProperty.call(row.payload,'value')?row.payload.value:row?.value;if(raw!==undefined&&raw!==null)vals[k]=String(raw)}return vals}
+  async function hydrate(){const v=await pull([INDEX_KEY]);view=arr(v[INDEX_KEY]).map(x=>({...x,storageEngine:'SelfEvaluationArchiveV5',archiveFormat:'self-evaluation-v5-pdf-cloud',__archiveSource:'clean',readOnly:false}));window.__selfEvaluationArchiveV5View=view;return view.slice()}
+  async function fetch(id){const meta=view.find(x=>idOf(x)===String(id));if(!meta)return null;const k=meta.stateKey||keyOf(id),v=await pull([k]),row=obj(v[k]);return row?{...row,__archiveSource:'clean'}:meta}
+  async function remove(id){await hydrate();const meta=view.find(x=>idOf(x)===String(id));if(!meta)throw new Error('السجل غير موجود في أرشيف V5');const next=view.filter(x=>idOf(x)!==String(id)).map(x=>{const y={...x};delete y.__archiveSource;return y}),k=meta.stateKey||keyOf(id),E=await engine();await E.bulkUpsert(MODULE,'school',[{key:k,value:'',deleted:true},{key:INDEX_KEY,value:JSON.stringify(next),deleted:false}],{timeout:20000});const v=await pull([k,INDEX_KEY]);if(Object.prototype.hasOwnProperty.call(v,k))throw new Error('لم يكتمل حذف سجل التقويم الذاتي');if(arr(v[INDEX_KEY]).some(x=>idOf(x)===String(id)))throw new Error('لم يكتمل تحديث فهرس التقويم الذاتي');view=arr(v[INDEX_KEY]).map(x=>({...x,storageEngine:'SelfEvaluationArchiveV5',archiveFormat:'self-evaluation-v5-pdf-cloud',__archiveSource:'clean',readOnly:false}));return true}
+  return {MODULE,INDEX_KEY,PREFIX,hydrate,fetch,remove,getView:()=>view.slice(),find:id=>view.find(x=>idOf(x)===String(id))||null};
+})();
+
+async function showArchive(kind){ var v=document.getElementById(viewId(kind)); if(!v){alert('واجهة '+title(kind)+' غير موجودة.');return;} hideAllManagerViews(); v.style.display='block'; if(v.classList)v.classList.remove('hidden'); var loadingBox=document.getElementById(contentId(kind)); if(loadingBox) loadingBox.innerHTML='<div class="bg-white/90 rounded-[28px] p-8 text-center text-slate-500 font-bold">جاري استعادة الأرشيف السحابي والتحقق من بيانات المدرسة...</div>'; if(kind==='manager'){await Promise.all([hydrateCanonicalManagerArchive(kind),syncDecisionsArchiveFromCloud()]);}else{await Promise.all([hydrateCanonicalManagerArchive(kind),SelfEvaluationArchiveV5.hydrate()]);await repairSelfEvaluationArchiveIndexRL30();} renderFolders(kind); }
  function flattenLegacySelfEvaluationArchive(){
     var out=[];
     try{
@@ -5822,9 +5840,9 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
       return Array.from(mapM.values());
     }
     if(kind!=='self')return arr;
-    var legacy=flattenLegacySelfEvaluationArchive(),map=new Map();
-    arr.concat(legacy).forEach(function(r){
-      var k=String(r.id||'')+'|'+String(r.savedAt||r.createdAt||'')+'|'+String(r.title||'');
+    var clean=(window.SelfEvaluationArchiveV5?SelfEvaluationArchiveV5.getView():[]),legacy=flattenLegacySelfEvaluationArchive(),map=new Map();
+    clean.concat(arr,legacy).forEach(function(r){
+      var id=String(r&&r.id||'').trim(),k=id||String(r.savedAt||r.createdAt||'')+'|'+String(r.title||'');
       if(!map.has(k))map.set(k,r);
     });
     return Array.from(map.values());
@@ -5887,7 +5905,7 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
       +(rows.length?rows.map(function(r){
         var id=esc(r.id||r.createdAt||r.title||Math.random());
         return '<div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex justify-between items-center gap-3 flex-wrap">'
-          +'<div><h4 class="font-bold text-slate-800">'+esc(r.displayName||r.title||r.recordName||folder.name)+'</h4><p class="text-[10px] text-slate-400 font-bold mt-1">'+esc(r.createdAt||r.uploadedAt||r.savedAt||'')+'</p></div>'
+          +'<div><h4 class="font-bold text-slate-800">'+esc(r.displayName||r.title||r.recordName||folder.name)+'</h4><p class="text-[10px] text-slate-400 font-bold mt-1">'+esc(r.createdAt||r.uploadedAt||r.savedAt||'')+'</p>'+(r.archivePdfFileId?'<span class="inline-flex mt-2 bg-rose-50 text-rose-700 border border-rose-100 rounded-full px-2 py-1 text-[9px] font-bold">PDF سحابي موثّق</span>':'')+'</div>'
           +'<div class="flex gap-2 flex-wrap"><button data-preview-kind="'+kind+'" data-item-id="'+id+'" class="bg-teal-600 text-white px-4 py-2 rounded-xl text-[10px] font-bold">عرض</button><button data-print-kind="'+kind+'" data-item-id="'+id+'" class="bg-slate-700 text-white px-4 py-2 rounded-xl text-[10px] font-bold">طباعة</button>'+(kind==='manager'&&r.recordType==='decision_assignment'?'<button data-edit-decision-id="'+id+'" class="bg-amber-50 text-amber-700 px-4 py-2 rounded-xl text-[10px] font-bold">تعديل</button>':'')+'<button data-delete-kind="'+kind+'" data-item-id="'+id+'" class="bg-red-50 text-red-500 px-4 py-2 rounded-xl text-[10px] font-bold">حذف</button></div></div>';
       }).join(''):'<div class="bg-white border border-dashed border-slate-200 rounded-[30px] p-10 text-center text-slate-400 font-bold">لا توجد سجلات محفوظة داخل هذا المجلد.</div>')+'</section>';
     var back=c.querySelector('[data-back-kind]'); if(back) back.onclick=function(){renderFolders(this.getAttribute('data-back-kind'));};
@@ -5962,7 +5980,7 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
   async function previewItem(kind,id,autoPrint){
     var r=findItem(kind,id);if(!r){alert('تعذر العثور على السجل.');return;}
     if(kind==='manager'&&r.recordType==='decision_assignment'){try{var g=await DecisionArchiveService.get(id);if(g&&g.record)r=g.record;}catch(e){console.error('[manager decision preview get]',e);alert('تعذر تحميل القرار من الأرشيف السحابي: '+(e&&e.message||e));return;}}
-    if(kind==='self'&&!autoPrint&&r.archivePdfFileId&&window.CloudFileEngine&&typeof CloudFileEngine.signedUrl==='function'){
+    if(kind==='self'&&r.archivePdfFileId&&window.CloudFileEngine&&typeof CloudFileEngine.signedUrl==='function'){
       var popup=window.open('about:blank','_blank');if(!popup){alert('يرجى السماح بالنوافذ المنبثقة.');return;}
       try{if(window.PlatformCloudSession&&typeof PlatformCloudSession.ensure==='function')await PlatformCloudSession.ensure();var su=await CloudFileEngine.signedUrl(String(r.archivePdfFileId),600);if(!su||!su.signedUrl)throw new Error('لم يتم الحصول على رابط PDF');popup.location.replace(su.signedUrl);return;}catch(e){console.warn('[self evaluation PDF preview fallback]',e);try{popup.close()}catch(_){}}
     }
@@ -5979,6 +5997,14 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
         if((rows||[]).some(function(r){return String(r.id)===String(item.id)}))throw new Error('حُذف الطلب لكن القرار ما زال ظاهرًا في المصدر السحابي');
         alert('تم حذف قرار التكليف سحابيًا وتأكيد اختفائه من الأرشيف.');
       }catch(e){console.error('[manager authoritative decision delete]',e);alert('تعذر حذف قرار التكليف سحابيًا: '+(e&&e.message||e)+'\nلم يتم اعتبار الحذف ناجحًا.');return;}
+    }else if(kind==='self'&&item&&String(item.storageEngine||'')==='SelfEvaluationArchiveV5'){
+      try{
+        var pdfId=String(item.archivePdfFileId||'');
+        await SelfEvaluationArchiveV5.remove(item.id);
+        if(pdfId&&window.CloudFileEngine&&typeof CloudFileEngine.trash==='function'){try{await CloudFileEngine.trash(pdfId)}catch(e){console.warn('[SelfEvaluationArchiveV5 pdf trash]',e)}}
+        await SelfEvaluationArchiveV5.hydrate();
+        alert('تم حذف ملف PDF وسجل التقويم الذاتي من الأرشيف السحابي.');
+      }catch(e){console.error('[SelfEvaluationArchiveV5 delete]',e);alert('تعذر حذف سجل التقويم الذاتي سحابيًا: '+(e&&e.message||e));return;}
     }else if(kind==='self'){
       // RL39: الحذف يجب أن يزيل السجل من الفهرس المسطح ومن بنية المجلدات ثم يثبت ذلك سحابياً.
       var flatKey='manager_self_evaluation_archive_v1', objectKey='self_evaluation_archive_v1';

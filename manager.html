@@ -5972,6 +5972,7 @@ async function showArchive(kind){ var v=document.getElementById(viewId(kind)); i
     var r=findItem(kind,id);if(!r){alert('تعذر العثور على السجل.');return;}
     if(kind==='self'&&String(r.storageEngine||'')==='SelfEvaluationArchiveV5'){try{r=await SelfEvaluationArchiveV5.fetch(id);}catch(e){console.error('[SelfEvaluationArchiveV5 fetch]',e);alert('تعذر التحقق من سجل التقويم الذاتي سحابيًا: '+(e&&e.message||e));return;}}
     if(kind==='manager'&&r.recordType==='decision_assignment'){try{var g=await DecisionArchiveService.get(id);if(g&&g.record)r=g.record;}catch(e){console.error('[manager decision preview get]',e);alert('تعذر تحميل القرار من الأرشيف السحابي: '+(e&&e.message||e));return;}}
+    if(kind==='self'&&String(r.storageEngine||'')==='SelfEvaluationArchiveV5'&&!String(r.archivePdfFileId||'')){alert('السجل لا يحتوي مرجع PDF سحابي معتمد. أعد حفظه من سجل التقويم الذاتي.');return;}
     if(kind==='self'&&r.archivePdfFileId&&window.CloudFileEngine&&typeof CloudFileEngine.signedUrl==='function'){
       var popup=window.open('about:blank','_blank');if(!popup){alert('يرجى السماح بالنوافذ المنبثقة.');return;}
       try{if(window.PlatformCloudSession&&typeof PlatformCloudSession.ensure==='function')await PlatformCloudSession.ensure();var su=await CloudFileEngine.signedUrl(String(r.archivePdfFileId),600);if(!su||!su.signedUrl)throw new Error('لم يتم الحصول على رابط PDF');popup.location.replace(su.signedUrl);return;}catch(e){console.warn('[self evaluation PDF preview fallback]',e);try{popup.close()}catch(_){}}
@@ -6595,5 +6596,6 @@ window.__PERFORMANCE_ARCHIVE_CLEAN_V5_4__={pdfLikeReadonlyPreview:true,usesPrint
 <script id="SELF_EVAL_PDF_RENDER_FLASH_FIX_RL54">window.__SELF_EVAL_ARCHIVE_RL54__="2026.09.05";</script>
 <script id="PERFORMANCE_ARCHIVE_UNIFIED_RL61_MANAGER">window.__PERFORMANCE_ARCHIVE_UNIFIED_RL61__=true;</script>
 <script id="SELF_EVALUATION_END_TO_END_RL62">window.__SELF_EVALUATION_END_TO_END_RL62__=true;</script>
+<script id="SELF_EVALUATION_FRESH_PDF_RL63">window.__SELF_EVALUATION_FRESH_PDF_RL63__=true;</script>
 </body>
 </html>

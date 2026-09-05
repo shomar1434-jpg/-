@@ -5899,7 +5899,7 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
       raw=old.ok&&old.values[LEGACY]!==undefined?old.values[LEGACY]:(performanceRoleLocalGet(LEGACY)||'[]');
       if(arr(raw).length){const w=await G.writeExactValues({moduleKey:MODULE,scope:'user',values:{[CANON]:raw}});if(!w.ok)throw new Error(w.error||'تعذر ترحيل الأرشيف القديم');}
     }
-    raw=raw===undefined?'[]':raw;performanceRoleLocalSet(LEGACY,raw);return arr(raw);
+    raw=raw===undefined?'[]':raw;performanceRoleLocalSet(LEGACY,raw);const rows=arr(raw);try{window.dispatchEvent(new CustomEvent('performance-canonical-archive-updated',{detail:{module:MODULE,count:rows.length}}))}catch(_){}return rows;
   }
   async function saveCanonical(){
     const G=g();if(!G||typeof G.writeExactValues!=='function')throw new Error('محرك الأرشيف المرجعي V6 غير متاح');
@@ -5909,7 +5909,7 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
   }
   window.loadCanonicalPerformanceArchiveV6=loadCanonical;window.saveCanonicalPerformanceArchiveV6=saveCanonical;
   window.verifyReportArchiveCloud=async function(){return saveCanonical();};
-  const oldOpen=window.openArchiveView;if(typeof oldOpen==='function')window.openArchiveView=async function(){try{await loadCanonical();}catch(e){console.error('[performance canonical load]',e);if(typeof showToast==='function')showToast('تعذر استعادة أرشيف تقارير الأداء: '+(e.message||e));}return oldOpen.apply(this,arguments)};
+  const oldOpen=window.openArchiveView;if(typeof oldOpen==='function')window.openArchiveView=async function(){try{await loadCanonical();window.__performanceCanonicalReady=true;if(typeof refreshDashboardMetrics==='function')refreshDashboardMetrics();}catch(e){console.error('[performance canonical load]',e);if(typeof showToast==='function')showToast('تعذر استعادة أرشيف تقارير الأداء: '+(e.message||e));}return oldOpen.apply(this,arguments)};
 })();
 </script>
 <script id="CANONICAL_RECORD_MIGRATION_V6_DISABLED">/* لا ترحيل تلقائي للسجلات القديمة عند فتح القسم. */</script>
@@ -5922,6 +5922,28 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
     ['ssBack','uwHomeHeader'].forEach(function(id){var el=document.getElementById(id);if(!el||el.dataset.managerFollowBack==='1')return;el.dataset.managerFollowBack='1';el.addEventListener('click',function(ev){ev.preventDefault();ev.stopImmediatePropagation();ManagerFollowAccessBridge.returnToManager()},true)});
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bind);else bind();setTimeout(bind,300);setTimeout(bind,1200);
+})();
+</script>
+
+
+<script id="PERFORMANCE_ARCHIVE_SYNC_ALL_ROLES_RL49">
+(function(){
+  window.__performanceCanonicalReady=false;
+  async function bootstrap(){
+    if(typeof window.loadCanonicalPerformanceArchiveV6!=='function')return;
+    try{
+      await window.loadCanonicalPerformanceArchiveV6();
+      window.__performanceCanonicalReady=true;
+      if(typeof refreshDashboardMetrics==='function')refreshDashboardMetrics();
+      if(document.getElementById('archive-view')?.style.display==='block'&&typeof renderArchiveFolders==='function')renderArchiveFolders();
+    }catch(e){console.warn('[RL49 canonical bootstrap]',e)}
+  }
+  window.addEventListener('performance-canonical-archive-updated',function(){
+    if(!window.__performanceCanonicalReady)return;
+    try{if(typeof refreshDashboardMetrics==='function')refreshDashboardMetrics()}catch(_){}
+    try{if(document.getElementById('archive-view')?.style.display==='block'&&typeof renderArchiveFolders==='function')renderArchiveFolders()}catch(_){}
+  });
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(bootstrap,0),{once:true});else setTimeout(bootstrap,0);
 })();
 </script>
 

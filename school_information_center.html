@@ -1325,6 +1325,10 @@ window.readScopedStudentFile=async function(fileOverride,scopeOverride=null,impo
       const committedKeys=committed.map(keyOf).filter(Boolean).sort();
       const verifiedKeys=verifiedRows.map(keyOf).filter(Boolean).sort();
       if(committedKeys.length!==verifiedKeys.length||committedKeys.some((k,i)=>k!==verifiedKeys[i]))throw new Error('حفظ الخادم البيانات لكن إعادة قراءة الفصل لم تطابق نتيجة الاعتماد. تم إبقاء المعاينة دون إعلان نجاح نهائي.');
+      const centralVerify=await phase2Call('students-list-current-structure',{academicYear:year});
+      const centralRows=Array.isArray(centralVerify?.students)?centralVerify.students:[];
+      const centralKeys=new Set(centralRows.filter(r=>sameStudentScope(r,scope)).map(keyOf).filter(Boolean));
+      if(verifiedKeys.some(k=>!centralKeys.has(k)))throw new Error('تم حفظ الفصل لكن المصدر المركزي لم يعِد جميع طلابه؛ لم يتم إعلان نجاح.');
       reflectCommittedScopeImmediately(scope,verifiedRows);
       cloudCommitVerified=true;verifiedCount=verifiedRows.length;verifiedScope={...scope};
       $('scopePreviewCount').textContent='تم حفظ '+verifiedRows.length+' طالبًا والتحقق منهم سحابيًا — جارٍ تحديث المركز';
@@ -1398,24 +1402,26 @@ window.readExcel = async function(){
     try{
       if(!currentSchool.id) await detectSchool();
       const year=currentAcademicYear();
-      const q=await secureSchoolInfo('students-list',{academicYear:year});
-      if(!q||!Array.isArray(q.students))throw new Error('لم يعِد الخادم قائمة طلاب صالحة.');
-      // Regression Lock: أي استجابة أقدم لا يسمح لها بإعادة كتابة حالة واجهة أحدث.
+      // RL23: القراءة الوحيدة المعتمدة للطلاب تأتي من نفس الخدمة التي تحفظ الفصل.
+      const q=await phase2Call('students-list-current-structure',{academicYear:year});
+      if(!q||!Array.isArray(q.students))throw new Error('لم يعِد الخادم قائمة الطلاب المعتمدة.');
       if(requestId!==studentsCloudReadSerial)return allStudents;
-      const currentYear=currentAcademicYear();
-      if(currentYear!==year)return allStudents;
-      allStudents=q.students.map(r=>cleanStudent(r));
-      // المرآة المحلية كاش مساعد فقط بعد قراءة سحابية موثقة، ولا تستخدم كمصدر بديل للإحصاءات.
-      saveLocalCenterMirror(allStudents,year,'verified_cloud_load');
-      // RL21: لا نعيد بناء الهيكل من بيانات الطلاب.
-      if(requestId!==studentsCloudReadSerial)return allStudents;
+      if(currentAcademicYear()!==year)return allStudents;
+      if(q.structure&&Array.isArray(q.structure.stages)){
+        academicStructure=normalizeSavedAcademicStructure(q.structure);
+        renderAcademicStructure();
+      }
+      allStudents=q.students.map(r=>cleanStudent(r)).map(canonicalStudentLocation);
+      // لا نستخدم المرآة المحلية كمصدر قراءة للطلاب. هذه الكتابة للتشخيص فقط.
+      saveLocalCenterMirror(allStudents,year,'rl23_verified_cloud_only');
       rebuildFilters(false);rebuildClassRosterNavigator('stage');renderTree();renderStats();renderStudents();
-      if(!options.silent)setStatus('تم تحميل البيانات الفعلية من السحابة ومزامنة بنية المدرسة: '+allStudents.length+' طالبًا.','ok');
+      if(!options.silent)setStatus('تم تحميل '+allStudents.length+' طالبًا معتمدًا من السحابة مباشرة.','ok');
       return allStudents;
     }catch(e){
       if(requestId!==studentsCloudReadSerial)return allStudents;
-      // لا نستبدل الحالة الموثقة ببيانات localStorage قديمة عند تعذر الخادم.
-      if(!options.silent)setStatus('تعذر تحديث الطلاب من السحابة؛ لم يتم اعتماد أي نسخة محلية بديلة للإحصاءات: '+(e.message||e),'bad');
+      allStudents=[];
+      rebuildFilters(false);renderTree();renderStats();renderStudents();
+      if(!options.silent)setStatus('تعذر تحميل الطلاب من السحابة، ولن تُستخدم نسخة محلية بديلة: '+(e.message||e),'bad');
       throw e;
     }
   }
@@ -1766,7 +1772,7 @@ window.readExcel = async function(){
 <script src="delegated-access-guard.js"></script>
   <script src="evidence-library-source.js"></script>
 
-<script src="school-information-source.js?v=20260904-rl21-authoritative-structure-only"></script>
+<script src="school-information-source.js?v=20260905-rl23-cloud-students-single-source"></script>
 <script src="internal-messaging.js"></script>
 
 <script id="central-information-provider-ui">
@@ -1828,7 +1834,7 @@ window.readExcel = async function(){
 <script src="openai-engine.js"></script>
 <script src="top-ai-center.js"></script>
 <script src="platform-page-navigation.js?v=20260818-nav1"></script>
-<div id="r6RouteProof" style="position:fixed;left:14px;bottom:14px;z-index:99999;background:#0f766e;color:white;padding:8px 12px;border-radius:999px;font-weight:900;font-size:12px;box-shadow:0 8px 24px #0002">RL21 / الهيكل الحالي هو مصدر الطلاب المعتمد</div>
+<div id="r6RouteProof" style="position:fixed;left:14px;bottom:14px;z-index:99999;background:#0f766e;color:white;padding:8px 12px;border-radius:999px;font-weight:900;font-size:12px;box-shadow:0 8px 24px #0002">RL23 / السحابة هي المصدر الوحيد للطلاب / الهيكل الحالي هو مصدر الطلاب المعتمد</div>
 
 <script>
 (function(){

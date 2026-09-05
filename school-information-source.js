@@ -1,16 +1,16 @@
 (function(){
 'use strict';
-if(window.SchoolInformationSource&&String(window.SchoolInformationSource.VERSION||'')==='11.0.0-RL21-authoritative-structure-only')return;
-const VERSION='11.0.0-RL21-authoritative-structure-only';
+if(window.SchoolInformationSource&&String(window.SchoolInformationSource.VERSION||'')==='12.0.0-RL23-cloud-students-single-source')return;
+const VERSION='12.0.0-RL23-cloud-students-single-source';
 const SUPABASE_URL=(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'');
 const DEFAULT_SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
 const API_KEY=localStorage.getItem('smartSchoolSupabaseAnonKey')||DEFAULT_SUPABASE_KEY;
 const safe=v=>String(v==null?'':v).trim();
 const lower=v=>safe(v).toLowerCase();
-const state={school:null,students:[],staff:[],updatedAt:'',schoolId:'',accessMode:'',academicYear:'1448',loading:null,cacheHydrated:false,revalidating:null};
-const CACHE_DB='smart_school_information_cache_v2_rl21';
+const state={school:null,students:[],staff:[],updatedAt:'',schoolId:'',accessMode:'',academicYear:'1448',loading:null,cacheHydrated:false,revalidating:null,studentsCloudVerified:false};
+const CACHE_DB='smart_school_information_cache_v3_rl23';
 const CACHE_STORE='snapshots';
-const CACHE_SCHEMA_VERSION=2;
+const CACHE_SCHEMA_VERSION=3;
 const CACHE_MAX_AGE_MS=5*60*1000;
 const UPDATE_CHANNEL='school-information-updates-v2';
 const UPDATE_KEY='school_information_global_update_v2';
@@ -67,7 +67,8 @@ async function writePersistentCache(snapshot){
 function applySnapshotData(data,academicYear,fromCache=false){
  const sid=safe(data.schoolId||data.school?.id||targetSchoolId());
  state.school=data.school||null;
- state.students=(Array.isArray(data.students)?data.students:[]).filter(x=>safe(x.student_status)!=='محذوف'&&(!sid||safe(x.school_id||sid)===sid));
+ state.students=fromCache?[]:(Array.isArray(data.students)?data.students:[]).filter(x=>safe(x.student_status)!=='محذوف'&&(!sid||safe(x.school_id||sid)===sid));
+ state.studentsCloudVerified=!fromCache;
  state.staff=normalizeStaff(data.staff,sid);
  state.schoolId=sid;
  state.accessMode=safe(data.accessMode||(systemAdminRequested()?'system_admin':'school_manager'));
@@ -191,12 +192,22 @@ async function call(action,body={}){
  if(data.schoolId&&expected&&safe(data.schoolId)!==safe(expected))throw new Error('SCHOOL_INFORMATION_RESPONSE_SCOPE_MISMATCH');
  return data;
 }
+async function callStructure(action,body={}){
+ const admin=systemAdminRequested();const sid=targetSchoolId();
+ const headers={'content-type':'application/json','apikey':API_KEY};const payload={...body,action};
+ if(admin){if(!sid)throw new Error('SYSTEM_ADMIN_SCHOOL_REQUIRED');headers.authorization='Bearer '+await adminAccessToken();payload.schoolId=sid;}
+ else{if(window.PlatformCloudSession?.ensure)await window.PlatformCloudSession.ensure();const token=safe(window.PlatformCloudSession?.token?.()||sessionStorage.getItem('platform_tab_session_token_v1')||sessionStorage.getItem('platform_session_token')||'');if(!token)throw new Error('SCHOOL_SESSION_REQUIRED');headers['x-platform-session']=token;}
+ const r=await fetch(SUPABASE_URL+'/functions/v1/school-information-structure',{method:'POST',headers,body:JSON.stringify(payload),cache:'no-store'});
+ const data=await r.json().catch(()=>({}));if(!r.ok)throw new Error(data.error||'تعذر قراءة الطلاب المعتمدين');
+ const expected=targetSchoolId();if(data.schoolId&&expected&&safe(data.schoolId)!==safe(expected))throw new Error('SCHOOL_INFORMATION_RESPONSE_SCOPE_MISMATCH');return data;
+}
 async function refresh(){
  if(state.loading)return state.loading;
  state.loading=(async()=>{
    const academicYear=currentAcademicYear();
-   const data=await call('bootstrap',{academicYear});
-   return applySnapshotData({...data,updatedAt:new Date().toISOString()},academicYear,false);
+   const [base,studentsData]=await Promise.all([call('bootstrap',{academicYear}),callStructure('students-list-current-structure',{academicYear})]);
+   const merged={...base,students:Array.isArray(studentsData.students)?studentsData.students:[],updatedAt:new Date().toISOString()};
+   const snap=applySnapshotData(merged,academicYear,false);state.studentsCloudVerified=true;return snap;
  })().finally(()=>{state.loading=null});
  return state.loading;
 }
@@ -216,10 +227,10 @@ async function ensureFresh(force){
  const same=state.updatedAt&&state.schoolId===sid&&state.academicYear===year;
  if(force){await refresh();return}
  if(!same){
-   const cached=await hydratePersistentCache();
-   if(!cached){await refresh();return}
+   await hydratePersistentCache();
  }
- // البيانات المحفوظة تظهر فورًا. إن كانت قديمة تتم المزامنة بالخلفية دون تعطيل القسم.
+ // RL23: لا تُسلَّم قائمة طلاب من الكاش. يجب إتمام قراءة سحابية في هذه الصفحة.
+ if(!state.studentsCloudVerified){await refresh();return}
  if(!cacheIsFresh())revalidateInBackground();
 }
 async function getSnapshot(force=false){await ensureFresh(force);return getSnapshotSync()}

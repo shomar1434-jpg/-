@@ -4754,7 +4754,7 @@ body{overflow-x:hidden}
         }, true);
 
         const __enhancedEnterApp = enterApp;
-        enterApp = function() { return __enhancedEnterApp(); };
+        enterApp = function() { const r=__enhancedEnterApp(); try{ refreshDashboardMetrics(); }catch(e){ console.warn('[teacher RL56 metrics after enter]',e); } return r; };
         const __enhancedGoHome = goHome;
         goHome = function() { if (typeof teacherIsFollowMode === 'function' && teacherIsFollowMode()) { __enhancedGoHome(); refreshDashboardMetrics(); return; } saveDraftSnapshot(true); __enhancedGoHome(); refreshDashboardMetrics(); };
         const __enhancedSaveReportToArchive = saveReportToArchive;
@@ -4765,7 +4765,7 @@ body{overflow-x:hidden}
   function run(){
     try{ if(typeof setupDateDropdown==='function') setupDateDropdown(); }catch(e){ console.warn('[teacher report init] date',e); }
     try{ if(typeof populateBeneficiaries==='function') populateBeneficiaries(); }catch(e){ console.warn('[teacher report init] beneficiaries',e); }
-    try{ if(window.__TEACHER_SYSTEM_OPENED__&&window.__teacherPerformanceArchiveReady&&typeof refreshDashboardMetrics==='function') refreshDashboardMetrics(); }catch(e){ console.warn('[teacher report init] metrics',e); }
+    try{ if(window.__teacherPerformanceArchiveReady&&typeof refreshDashboardMetrics==='function') refreshDashboardMetrics(); }catch(e){ console.warn('[teacher report init] metrics',e); }
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',run,{once:true}); else run();
 })();
@@ -5427,35 +5427,15 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
     dashboard.scrollTop=0;
 
     window.__TEACHER_SYSTEM_OPENED__=true;
-
-    // RL57: أظهر لوحة المعلم أولاً. أرشيف الأداء والعدادات مهمة خلفية ولا يجوز أن تحجب الدخول.
-    if(!window.__TEACHER_POST_ENTRY_ARCHIVE_SCHEDULED_RL57__){
-      window.__TEACHER_POST_ENTRY_ARCHIVE_SCHEDULED_RL57__=true;
-      const startArchiveAfterEntry=async function(){
-        try{
-          // امنح الواجهة فرصة لتكتمل وتستجيب للنقر قبل أي قراءة سحابية ثقيلة.
-          await new Promise(r=>setTimeout(r,650));
-          if(!window.__TEACHER_SYSTEM_OPENED__) return;
-          if(window.__teacherPerformanceArchiveReady){
-            try{if(typeof refreshDashboardMetrics==='function')refreshDashboardMetrics()}catch(e){console.warn('[teacher RL57 metrics]',e)}
-            return;
-          }
-          if(typeof window.teacherPerformanceArchiveBootstrap==='function'){
-            await window.teacherPerformanceArchiveBootstrap(false);
-          }else if(typeof window.performanceArchiveUnifiedBootstrap==='function'){
-            await window.performanceArchiveUnifiedBootstrap(false);
-          }
-        }catch(e){
-          // فشل الأرشيف لا يعيد المستخدم لبوابة الدخول ولا يخفي لوحة المعلم.
-          console.warn('[teacher RL57 deferred archive bootstrap]',e);
-        }
-      };
-      if('requestIdleCallback' in window){
-        requestIdleCallback(()=>startArchiveAfterEntry(),{timeout:1200});
-      }else{
-        setTimeout(()=>startArchiveAfterEntry(),0);
+    try{
+      if(window.__teacherPerformanceArchiveReady && typeof refreshDashboardMetrics==='function'){
+        refreshDashboardMetrics();
+      }else if(typeof window.teacherPerformanceArchiveBootstrap==='function'){
+        window.teacherPerformanceArchiveBootstrap(false).catch(e=>console.warn('[teacher RL56 archive bootstrap]',e));
+      }else if(typeof window.performanceArchiveUnifiedBootstrap==='function'){
+        window.performanceArchiveUnifiedBootstrap(false).catch(e=>console.warn('[teacher RL56 archive bootstrap]',e));
       }
-    }
+    }catch(e){console.warn('[teacher RL56 dashboard metrics]',e)}
     return false;
   }
 
@@ -5809,8 +5789,8 @@ window.addEventListener('teacher-performance-archive-view-updated',function(){
 });
 
 window.__PERFORMANCE_ARCHIVE_CLEAN_V5__={role:MODULE,indexKey:INDEX_KEY,reportPrefix:REPORT_PREFIX,oneReportPerStateKey:true,legacyReadOnly:false,legacyDeleteSupported:true,userValuesWin:true,fastAppearance:true};
-// RL57: لا يبدأ أرشيف الأداء أثناء تحميل صفحة المعلم.
-window.__TEACHER_PERFORMANCE_ARCHIVE_BOOTSTRAP_DEFERRED_RL57__=true;
+// RL57B: تعطيل القراءة السحابية الثقيلة أثناء تحميل صفحة المعلم فقط.
+window.__TEACHER_PERFORMANCE_ARCHIVE_EARLY_BOOTSTRAP_DISABLED_RL57B__=true;
 })();
 </script>
 <script id="PERFORMANCE_ARCHIVE_CLEAN_V5_OVERRIDES">
@@ -5820,19 +5800,7 @@ function uniqueId(){return String(Date.now())+'_'+Math.random().toString(36).sli
 function programName(){return String(document.getElementById('field_prog_name')?.innerText||document.getElementById('field_prog_name')?.textContent||'').trim()}
 function rerender(cat){try{if(document.getElementById('archive-view')?.style.display==='block'){if(cat&&typeof openArchiveFolder==='function')openArchiveFolder(cat);else if(typeof renderArchiveFolders==='function')renderArchiveFolders()}}catch(_){}}
 window.saveReportToArchive=async function(){const selected=selectedPerformanceArchiveDomain(),cat=String(selected.id||'').trim();if(!cat){showToast('اختر المجال أولاً ⚠️');return false}const name=programName();if(!name){showToast('أدخل اسم البرنامج قبل الحفظ ⚠️');return false}const folderName=String(selected.name||(typeof performanceArchiveFolderName==='function'?performanceArchiveFolderName(cat):cat)||cat).trim();showToast('جاري إرسال «'+name+'» إلى «'+folderName+'»...');try{if(typeof freezeReportDOMForArchive==='function')freezeReportDOMForArchive();const editId=window.__performanceExplicitEditId?String(window.__performanceExplicitEditId):'';const existing=editId?PerformanceArchiveCleanV5.find(editId):null;const canEdit=!!(existing&&existing.__archiveSource==='clean');const data={id:canEdit?existing.id:uniqueId(),programName:name,title:name,category:cat,categoryName:folderName,archiveFolderId:cat,archiveFolderName:folderName,archiveRole:'teacher',archiveType:'performanceReport',createdAt:(canEdit&&existing.createdAt)||new Date().toLocaleDateString('ar-SA-u-ca-islamic-umalqura'),content:document.getElementById('report-content-container').innerHTML,updatedAt:new Date().toISOString()};const result=await PerformanceArchiveCleanV5.saveFast(data);currentEditingId=null;window.__performanceExplicitEditId=null;rerender(cat);showToast('تم حفظ «'+name+'» وظهر في الأرشيف ✅');result.verification.then(()=>{}).catch(e=>{console.error('[Performance V5 verify]',e);showToast('ظهر التقرير، لكن تعذر التحقق السحابي النهائي: '+String(e?.message||e))});return true}catch(e){console.error('[Performance V5 save]',e);showToast('تعذر حفظ التقرير: '+String(e?.message||e));return false}};
-window.openArchiveView=function(){
-  const w=document.getElementById('welcome-dashboard');if(w)w.style.display='none';
-  const a=document.getElementById('archive-view');if(a)a.style.display='block';
-  const load=(typeof window.teacherPerformanceArchiveBootstrap==='function')
-    ? window.teacherPerformanceArchiveBootstrap(false)
-    : (typeof window.performanceArchiveUnifiedBootstrap==='function'
-        ? window.performanceArchiveUnifiedBootstrap(false)
-        : Promise.resolve([]));
-  Promise.resolve(load).catch(e=>{
-    console.error('[teacher RL57 archive on-demand]',e);
-    try{if(typeof showToast==='function')showToast('تعذر تحميل بعض محتويات الأرشيف: '+String(e?.message||e))}catch(_){}
-  });
-};
+window.openArchiveView=function(){const w=document.getElementById('welcome-dashboard');if(w)w.style.display='none';const a=document.getElementById('archive-view');if(a)a.style.display='block';window.teacherPerformanceArchiveBootstrap(false).catch(e=>{console.error('[Performance V5 archive]',e);showToast('تعذر تحميل بعض محتويات الأرشيف: '+String(e?.message||e))})};
 window.loadReport=async function(id){try{const r=await PerformanceArchiveCleanV5.fetchReport(id);if(!r){showToast('تعذر العثور على التقرير');return}if(r.__archiveSource==='legacy'){showToast('هذا تقرير تاريخي للقراءة فقط');return}document.getElementById('report-content-container').innerHTML=r.content||'';document.querySelectorAll('#report-content-container select[data-saved-value]').forEach(sel=>{const v=sel.getAttribute('data-saved-value');if(Array.from(sel.options).some(o=>o.value===v))sel.value=v});currentEditingId=r.id;window.__performanceExplicitEditId=String(r.id);document.getElementById('archive-view').style.display='none';document.getElementById('main-report-app').classList.remove('hidden');if(typeof updateReportProgress==='function')updateReportProgress()}catch(e){showToast('تعذر فتح التقرير: '+String(e?.message||e))}};
 window.previewArchivedReadOnly=async function(id){try{const r=await PerformanceArchiveCleanV5.fetchReport(id);if(!r){showToast('تعذر العثور على التقرير');return}const title=String(r.programName||r.title||'تقرير أداء').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));const win=window.open('','_blank');if(win){win.document.open();win.document.write('<!doctype html><html dir="rtl"><head><meta charset="utf-8"><title>'+title+'</title></head><body><div style="direction:rtl;padding:18px;font-family:Tajawal,Arial"><h3>'+title+'</h3><div style="color:#64748b;margin-bottom:12px">'+String(r.archiveFolderName||'')+'</div>'+(r.content||'')+'</div></body></html>');win.document.close()}}catch(e){showToast('تعذر معاينة التقرير: '+String(e?.message||e))}};
 window.requestDeleteReport=async function(id){if(!confirm('هل تريد حذف هذا التقرير نهائيًا من أرشيف هذه المدرسة؟'))return;try{const x=PerformanceArchiveCleanV5.find(id);if(!x)throw new Error('تعذر العثور على التقرير');if(x.__archiveSource==='legacy'){showToast('جاري حذف التقرير التاريخي من مصدره السحابي...');await PerformanceArchiveCleanV5.removeLegacy(id);rerender(window.__performanceV5CurrentArchiveFolder);if(typeof refreshDashboardMetrics==='function')refreshDashboardMetrics();showToast('تم حذف التقرير التاريخي والتحقق منه سحابيًا ✅');return}const result=await PerformanceArchiveCleanV5.remove(id);rerender(window.__performanceV5CurrentArchiveFolder);if(typeof refreshDashboardMetrics==='function')refreshDashboardMetrics();showToast('تم حذف التقرير من الأرشيف ✅');result.verification.catch(e=>showToast('تم تحديث العرض لكن تعذر التحقق النهائي من الحذف: '+String(e?.message||e)))}catch(e){showToast('تعذر حذف التقرير: '+String(e?.message||e))}};
@@ -6109,6 +6077,6 @@ window.__PERFORMANCE_ARCHIVE_CLEAN_V5_4__={pdfLikeReadonlyPreview:true,usesPrint
 </script>
 
 <script id="TEACHER_ENTER_BUTTON_FIX_RL56">window.__TEACHER_ENTER_BUTTON_FIX_RL56__="2026.09.05";</script>
-<script id="TEACHER_DEFER_ARCHIVE_BOOTSTRAP_RL57">window.__TEACHER_DEFER_ARCHIVE_BOOTSTRAP_RL57__="2026.09.05";</script>
+<script id="TEACHER_SAFE_ARCHIVE_DEFER_RL57B">window.__TEACHER_SAFE_ARCHIVE_DEFER_RL57B__="2026.09.05";</script>
 </body>
 </html>

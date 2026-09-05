@@ -2475,7 +2475,8 @@ async function selfEvalPdfUploadExact(htmlContent,title,rowId,folderId,folderNam
 
   const frame=document.createElement(&#x27;iframe&#x27;);
   frame.setAttribute(&#x27;aria-hidden&#x27;,&#x27;true&#x27;);
-  frame.style.cssText=&#x27;position:fixed;left:0;top:0;width:794px;height:1123px;border:0;pointer-events:none;z-index:-2147483000;background:#fff&#x27;;
+  frame.setAttribute(&#x27;data-self-eval-archive-renderer&#x27;,&#x27;RL64&#x27;);
+  frame.style.cssText=&#x27;position:fixed;left:-100000px;top:0;width:794px;height:1123px;border:0;pointer-events:none;visibility:hidden;opacity:0;z-index:-2147483000;background:#fff&#x27;;
   let src=String(htmlContent);
   const inject=`&lt;style id=&quot;self-eval-pdf-capture-fix&quot;&gt;html,body{background:#fff!important;margin:0!important;padding:0!important;overflow:visible!important}.no-print,.noPrint,button{display:none!important}&lt;/style&gt;&lt;script src=&quot;https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js&quot;&gt;&lt;\/script&gt;`;
   src=/&lt;\/head&gt;/i.test(src)?src.replace(/&lt;\/head&gt;/i,inject+&#x27;&lt;/head&gt;&#x27;):inject+src;
@@ -2490,6 +2491,7 @@ async function selfEvalPdfUploadExact(htmlContent,title,rowId,folderId,folderNam
     });
 
     const w=frame.contentWindow,d=w&amp;&amp;w.document;if(!w||!d)throw new Error(&#x27;تعذر تجهيز مستند PDF&#x27;);
+    frame.style.visibility=&#x27;visible&#x27;;
     for(let i=0;i&lt;100&amp;&amp;(!w.html2canvas||!w.jspdf?.jsPDF);i++)await new Promise(r=&gt;setTimeout(r,100));
     if(!w.html2canvas||!w.jspdf?.jsPDF)throw new Error(&#x27;تعذر تحميل محرك PDF/Canvas&#x27;);
 
@@ -2967,12 +2969,10 @@ input,textarea,select{display:none!important}
             },
             async renderArchivePreviewExact(row,autoPrint=false){
                 if(!row)return;
-                // انتظر دورة Vue كاملة حتى يظهر نفس التبويب الذي سيطبعه المستخدم.
-                if(row.type===&#x27;operational_plan&#x27;)this.isPrinting=true;
+                // RL64: المعاينة تُبنى من نسخة مستقلة دون تبديل وضع الطباعة في الواجهة المرئية.
                 await this.$nextTick();
-                await new Promise(r=&gt;requestAnimationFrame(()=&gt;requestAnimationFrame(r)));
+                await new Promise(r=&gt;requestAnimationFrame(r));
                 const html=this.buildArchivePrintSnapshot(row.title||this.archiveTypeConfig(row.type).title,row.type,autoPrint);
-                if(row.type===&#x27;operational_plan&#x27;)this.isPrinting=false;
                 if(!html){this.showToast(&#x27;تعذر إنشاء معاينة الطباعة لهذا الملف.&#x27;);return}
                 document.open();document.write(html);document.close();
             },
@@ -3006,13 +3006,10 @@ input,textarea,select{display:none!important}
                     const workingSaved=await this.saveWorkingDataOnly(true);
                     if(!workingSaved)throw new Error(&#x27;تعذر تثبيت بيانات الصفحة سحابيًا قبل الأرشفة&#x27;);
                     await this.$nextTick();
-                    const prevPrinting=this.isPrinting;
-                    if(type===&#x27;operational_plan&#x27;)this.isPrinting=true;
-                    await this.$nextTick();
-                    await new Promise(r=&gt;requestAnimationFrame(()=&gt;requestAnimationFrame(r)));
-                    await this.selfEvalWait(220);
+                    // RL64: لا نغيّر isPrinting في DOM المرئي أثناء الحفظ.
+                    // نسخة الأرشيف تُبنى مباشرة ثم تُرسم داخل iframe معزول في selfEvalPdfUploadExact.
+                    await new Promise(r=&gt;requestAnimationFrame(r));
                     const htmlContent=this.buildArchivePrintSnapshot(title,type,false);
-                    this.isPrinting=prevPrinting;
                     if(!htmlContent||htmlContent.length&lt;300)throw new Error(&#x27;تعذر إنشاء مستند الطباعة المعزول لهذا السجل&#x27;);
                     const candidateEditId=String(this._archiveEditId||&#x27;&#x27;),candidateOld=this._archiveEditRow||{};
                     const sameEditIdentity=!!candidateEditId&amp;&amp;String(candidateOld.id||&#x27;&#x27;)===candidateEditId&amp;&amp;String(candidateOld.type||&#x27;&#x27;)===String(type)&amp;&amp;String(candidateOld.folderId||&#x27;&#x27;)===String(folderId);
@@ -4112,7 +4109,8 @@ async function selfEvalPdfUploadExact(htmlContent,title,rowId,folderId,folderNam
 
   const frame=document.createElement(&#x27;iframe&#x27;);
   frame.setAttribute(&#x27;aria-hidden&#x27;,&#x27;true&#x27;);
-  frame.style.cssText=&#x27;position:fixed;left:0;top:0;width:794px;height:1123px;border:0;pointer-events:none;z-index:-2147483000;background:#fff&#x27;;
+  frame.setAttribute(&#x27;data-self-eval-archive-renderer&#x27;,&#x27;RL64&#x27;);
+  frame.style.cssText=&#x27;position:fixed;left:-100000px;top:0;width:794px;height:1123px;border:0;pointer-events:none;visibility:hidden;opacity:0;z-index:-2147483000;background:#fff&#x27;;
   let src=String(htmlContent);
   const inject=`&lt;style id=&quot;self-eval-pdf-capture-fix&quot;&gt;html,body{background:#fff!important;margin:0!important;padding:0!important;overflow:visible!important}.no-print,.noPrint,button{display:none!important}&lt;/style&gt;&lt;script src=&quot;https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js&quot;&gt;&lt;\/script&gt;`;
   src=/&lt;\/head&gt;/i.test(src)?src.replace(/&lt;\/head&gt;/i,inject+&#x27;&lt;/head&gt;&#x27;):inject+src;
@@ -4127,6 +4125,7 @@ async function selfEvalPdfUploadExact(htmlContent,title,rowId,folderId,folderNam
     });
 
     const w=frame.contentWindow,d=w&amp;&amp;w.document;if(!w||!d)throw new Error(&#x27;تعذر تجهيز مستند PDF&#x27;);
+    frame.style.visibility=&#x27;visible&#x27;;
     for(let i=0;i&lt;100&amp;&amp;(!w.html2canvas||!w.jspdf?.jsPDF);i++)await new Promise(r=&gt;setTimeout(r,100));
     if(!w.html2canvas||!w.jspdf?.jsPDF)throw new Error(&#x27;تعذر تحميل محرك PDF/Canvas&#x27;);
 
@@ -4698,5 +4697,6 @@ activateSelfEvaluationModule('committeesFrame');
 <script src="openai-engine.js"></script>
 <script src="top-ai-center.js"></script>
 <script src="platform-page-navigation.js?v=20260818-nav1"></script>
-<script id="self-eval-archive-runtime-preview-boot">(function(){try{var q=new URLSearchParams(location.search||'');if(q.get('previewArchive')){document.addEventListener('DOMContentLoaded',function(){document.body.classList.add('self-eval-archive-preview');var f=document.getElementById('committeesFrame');document.querySelectorAll('.moduleFrame').forEach(function(x){x.classList.remove('active')});if(f)f.classList.add('active');});}}catch(e){console.error('[self eval preview boot]',e)}})();</script></body>
+<script id="self-eval-archive-runtime-preview-boot">(function(){try{var q=new URLSearchParams(location.search||'');if(q.get('previewArchive')){document.addEventListener('DOMContentLoaded',function(){document.body.classList.add('self-eval-archive-preview');var f=document.getElementById('committeesFrame');document.querySelectorAll('.moduleFrame').forEach(function(x){x.classList.remove('active')});if(f)f.classList.add('active');});}}catch(e){console.error('[self eval preview boot]',e)}})();</script><script id="SELF_EVALUATION_NO_SAVE_FLASH_RL64">window.__SELF_EVALUATION_NO_SAVE_FLASH_RL64__=true;</script>
+</body>
 </html>

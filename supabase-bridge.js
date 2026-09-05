@@ -646,7 +646,7 @@
     const sess=await sb.auth.getSession();const token=sess?.data?.session?.access_token||'';
     if(!token)throw new Error('يلزم تسجيل دخول مدير النظام');
     const endpoint=(SUPABASE_URL||localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'')+'/functions/v1/system-admin';
-    const r=await fetch(endpoint,{method:'POST',headers:{'content-type':'application/json','apikey':SUPABASE_ANON_KEY||localStorage.getItem('smartSchoolSupabaseAnonKey')||'','authorization':'Bearer '+token},body:JSON.stringify({action,...payload})});
+    const r=await fetch(endpoint,{method:'POST',headers:{'content-type':'application/json','apikey':SUPABASE_KEY||localStorage.getItem('smartSchoolSupabaseAnonKey')||'','authorization':'Bearer '+token},body:JSON.stringify({action,...payload})});
     const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||d.details||'تعذر تنفيذ عملية مدير النظام');return d;
   }
   async function safeListSchools(){const d=await systemAdminCall('list_schools');return(d.schools||[]).map(normalizeSchool)}
@@ -657,7 +657,7 @@
   // RL33 — sensitive school directory operations are server-authoritative.
   async function platformDirectoryCall(action,payload={},requiresSession=true){
     const endpoint=(SUPABASE_URL||localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'')+'/functions/v1/platform-directory';
-    const headers={'content-type':'application/json','apikey':SUPABASE_ANON_KEY||localStorage.getItem('smartSchoolSupabaseAnonKey')||''};
+    const headers={'content-type':'application/json','apikey':SUPABASE_KEY||localStorage.getItem('smartSchoolSupabaseAnonKey')||''};
     if(requiresSession){if(!window.PlatformCloudSession)throw new Error('جلسة المنصة غير متاحة');await PlatformCloudSession.ensure();headers['x-platform-session']=PlatformCloudSession.token()}
     const r=await fetch(endpoint,{method:'POST',headers,body:JSON.stringify({action,...payload})});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||d.details||'تعذر تنفيذ العملية السحابية');return d;
   }

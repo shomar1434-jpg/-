@@ -1534,6 +1534,7 @@ body{overflow-x:hidden}
 }
 </style>
 <link rel="stylesheet" href="responsive-layout.css?v=20260818-responsive-1">
+<meta name="platform-patch" content="2026.09.05-RL36-final-links-contract">
 </head>
 <body class="global-app-bg" data-ss-role="agent">
 <script data-openai-engine="true" defer="" src="./openai-engine.js"></script>
@@ -3651,7 +3652,6 @@ function openWakilRecordsNewTab() {
       html+=btn('ssActivityLeaders','🏃','الدخول على رائد/ة النشاط','');
       html+=btn('ssAgents','👥','الدخول على الوكلاء','');
       html+=btn('ssActivate','✅','تنشيط المستخدمين وإدارة الصلاحيات','gold');
-      html+=btn('ssRegLink','🔗','إرسال رابط التسجيل','blue');
       html+=btn('ssAlert','📣','إرسال التنبيهات','');
       html+=btn('ssMeetWallet','📁','محفظة الاجتماعات','');
       html+=btn('ssMeetingRoom','🎥','قاعة الاجتماعات','');
@@ -3673,7 +3673,7 @@ function openWakilRecordsNewTab() {
     }
     b.innerHTML=html;
   }
-  function attach(){var q=function(id){return document.getElementById(id)}; q('ssBack')&&q('ssBack').addEventListener('click',function(){location.href='index.html'}); q('ssExit')&&q('ssExit').addEventListener('click',function(){location.href='index.html'}); q('ssTeachers')&&q('ssTeachers').addEventListener('click',function(){showUsers('teacher')}); q('ssActivityLeaders')&&q('ssActivityLeaders').addEventListener('click',function(){showUsers('activity_leader')}); q('ssAgents')&&q('ssAgents').addEventListener('click',function(){showUsers('agent')}); q('ssActivate')&&q('ssActivate').addEventListener('click',showActivation); q('ssRegLink')&&q('ssRegLink').addEventListener('click',showRegLink); q('ssAlert')&&q('ssAlert').addEventListener('click',showAlert); q('ssInbox')&&q('ssInbox').addEventListener('click',showInbox); q('ssMeetWallet')&&q('ssMeetWallet').addEventListener('click',showWallet); q('ssMeetingRoom')&&q('ssMeetingRoom').addEventListener('click',showMeetingRoom); q('ssCloud')&&q('ssCloud').addEventListener('click',showCloud); }
+  function attach(){var q=function(id){return document.getElementById(id)}; q('ssBack')&&q('ssBack').addEventListener('click',function(){location.href='index.html'}); q('ssExit')&&q('ssExit').addEventListener('click',function(){location.href='index.html'}); q('ssTeachers')&&q('ssTeachers').addEventListener('click',function(){showUsers('teacher')}); q('ssActivityLeaders')&&q('ssActivityLeaders').addEventListener('click',function(){showUsers('activity_leader')}); q('ssAgents')&&q('ssAgents').addEventListener('click',function(){showUsers('agent')}); q('ssActivate')&&q('ssActivate').addEventListener('click',showActivation); q('ssAlert')&&q('ssAlert').addEventListener('click',showAlert); q('ssInbox')&&q('ssInbox').addEventListener('click',showInbox); q('ssMeetWallet')&&q('ssMeetWallet').addEventListener('click',showWallet); q('ssMeetingRoom')&&q('ssMeetingRoom').addEventListener('click',showMeetingRoom); q('ssCloud')&&q('ssCloud').addEventListener('click',showCloud); }
   function showUsers(role){
     var list=users().filter(function(u){return u.role===role && u.status==='active'});
     var title=role==='teacher'?'المعلمون':'الوكلاء';
@@ -3698,7 +3698,6 @@ function openWakilRecordsNewTab() {
   window.ssFinalActivate=function(id){var a=users().map(function(u){if(u.id===id)u.status='active';return u});saveUsers(a);showActivation();}
   window.ssFinalEditUser=function(id){var u=users().find(function(x){return x.id===id}); if(!u)return; panel('تعديل المستخدم','<div class="ss-field"><label>الاسم</label><input id="eName" value="'+esc(u.name)+'"></div><div class="ss-field"><label>الدور</label><select id="eRole"><option value="agent">وكيل/ة</option><option value="teacher">معلم/ة</option><option value="student_advisor">موجه/موجهة طلابية</option><option value="activity_leader">رائد/ة النشاط</option></select></div><div class="ss-field"><label>الحالة</label><select id="eStatus"><option value="pending">بانتظار التفعيل</option><option value="active">مفعل</option></select></div><div class="ss-field"><label>الصلاحيات</label><input id="ePerm" value="'+esc((u.permissions||[]).join(', '))+'"></div><button class="ss-action" id="saveEdit">حفظ التعديل</button>'); document.getElementById('eRole').value=u.role; document.getElementById('eStatus').value=u.status; document.getElementById('saveEdit').onclick=function(){var a=users().map(function(x){if(x.id===id){x.name=val('eName');x.role=val('eRole');x.status=val('eStatus');x.permissions=val('ePerm').split(',').map(function(p){return p.trim()}).filter(Boolean)}return x});saveUsers(a);showActivation();}}
   function val(id){var e=document.getElementById(id); return e?e.value:''}
-  function showRegLink(){var token=localStorage.getItem(NS+'_reg_token')||('REG-'+Math.random().toString(36).slice(2,8).toUpperCase()); localStorage.setItem(NS+'_reg_token',token); var basePath=location.href.split('?')[0].replace(/[^\/]*$/,''); var link=basePath+'register.html?register='+encodeURIComponent(token)+'&token='+encodeURIComponent(token)+'&admin='+encodeURIComponent(NS)+'&source=manager_link'; panel('إرسال رابط التسجيل','<div class="ss-card"><b>رابط التسجيل الخاص بحساب المدير</b><div class="ss-muted">المستخدم الذي يسجل من هذا الرابط يظهر في حساب هذا المدير فقط، وبعد التفعيل يدخل إلى قسمه المخصص.</div><input id="regLink" value="'+esc(link)+'" readonly></div><div class="ss-actions"><button class="ss-action" id="copyReg">نسخ الرابط</button></div>'); document.getElementById('copyReg').onclick=function(){navigator.clipboard&&navigator.clipboard.writeText(val('regLink')); alert('تم نسخ الرابط')};}
   function ssRoleLabel(role){return role==='agent'?'وكيل':(role==='student_advisor'?'موجه/موجهة طلابية':(role==='activity_leader'?'رائد/ة النشاط':(role==='manager'?'مدير/ة':'معلم/ة')))}
   function ssRecipientScope(mode){
     if(ROLE==='manager'){

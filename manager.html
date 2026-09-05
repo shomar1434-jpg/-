@@ -1372,6 +1372,7 @@ body{overflow-x:hidden}
 #ssFinalBackdrop.uw-workspace-dialog .ss-final-head{position:sticky;top:0;background:#fff;z-index:5;padding-top:4px}
 </style>
 <link rel="stylesheet" href="responsive-layout.css?v=20260818-responsive-1">
+<meta name="platform-patch" content="2026.09.05-RL36-final-links-contract">
 </head>
 <body class="global-app-bg" data-ss-role="manager">
 <script data-openai-engine="true" defer="" src="./openai-engine.js"></script>
@@ -4038,28 +4039,18 @@ async function legacyPerformanceSave_DISABLED() {
   window.ssFinalEditUser=function(id){var u=users().find(function(x){return x.id===id}); if(!u)return; panel('تعديل المستخدم','<div class="ss-field"><label>الاسم</label><input id="eName" value="'+esc(u.name)+'"></div><div class="ss-field"><label>الدور</label><select id="eRole"><option value="agent">وكيل/وكيلة</option><option value="student_advisor">موجه/موجهة طلابية</option><option value="teacher">معلم/ة</option><option value="health_advisor">الموجه الصحي</option><option value="kindergarten_teacher">معلمة رياض الأطفال</option><option value="activity_leader">رائد/ة النشاط</option></select></div><div class="ss-field" id="eAgencyField"><label>تصنيفات الوكيل/الوكيلة</label>'+agencyCheckboxes('eAgency',u.agent_categories||u.agency_categories||u.agency_type||u.agencyType)+'</div><div class="ss-field" id="eTeacherExtraField"><label>التكليفات الإضافية للمعلم/المعلمة</label>'+teacherExtraRoleCheckboxes('eTeacherExtra',getTeacherExtraRolesForUser(u))+'<div class="ss-muted">عند تفعيل التوجيه الصحي يظهر مجلد وسجلات التوجيه الصحي داخل مكتبة المعلم/المعلمة.</div></div><div class="ss-field"><label>الحالة</label><select id="eStatus"><option value="pending">بانتظار التفعيل</option><option value="active">مفعل</option></select></div><div class="ss-field"><label>الصلاحيات</label><input id="ePerm" value="'+esc((u.permissions||[]).join(', '))+'"></div><button class="ss-action" id="saveEdit">حفظ التعديل</button>'); document.getElementById('eRole').value=u.role; document.getElementById('eStatus').value=u.status; function sync(){document.getElementById('eAgencyField').style.display=val('eRole')==='agent'?'grid':'none'; var tf=document.getElementById('eTeacherExtraField'); if(tf) tf.style.display=val('eRole')==='teacher'?'grid':'none'} document.getElementById('eRole').onchange=sync; sync(); document.getElementById('saveEdit').onclick=async function(){var nextCats=val('eRole')==='agent'?selectedAgencyList('eAgency'):[]; var nextTeacherExtra=val('eRole')==='teacher'?selectedTeacherExtraRoles('eTeacherExtra'):[]; if(val('eRole')==='agent'&&!nextCats.length){alert('يجب اختيار اختصاص واحد على الأقل للوكيل');return;} var edited=null;var a=users().map(function(x){if(x.id===id){x.name=val('eName');x.role=val('eRole');x.status=val('eStatus');x.permissions=val('ePerm').split(',').map(function(p){return p.trim()}).filter(Boolean);x.agent_categories=nextCats;x.agency_categories=nextCats;x.agency_types=nextCats;x.agency_type=nextCats.join(',');x.agencyType=x.agency_type;x.teacher_extra_roles=nextTeacherExtra;x.additional_assignments=nextTeacherExtra;x.extra_roles=nextTeacherExtra; edited=x;}return x});try{if(edited&&window.SmartSchoolSupabase)await window.SmartSchoolSupabase.upsertSchoolUser(edited);if(edited&&edited.role==='agent')await persistDeputyClassification(edited,nextCats);if(edited){saveAgencyForUser(edited,nextCats);saveTeacherExtraRolesForUser(edited,nextTeacherExtra);}saveUsers(a);await hydrateUsersFromSupabase();showActivation();}catch(e){alert(e.message||e);}}}
   function val(id){var e=document.getElementById(id); return e?e.value:''}
   async function showRegLink(){
-    var ctx=await resolveManagerSchoolContext();
-    var sid=String(ctx.schoolId||currentSchoolId()||'').trim();
-    var scode=String(ctx.schoolCode||currentSchoolCode()||'').trim();
-    var sname=String(ctx.schoolName||currentSchoolName()||'المدرسة').trim();
-    var token=String(ctx.registrationCode||localStorage.getItem(NS+'_reg_token')||'').trim();
-    if(!token){token='REG-'+Math.random().toString(36).slice(2,10).toUpperCase();localStorage.setItem(NS+'_reg_token',token);}
-    if(!sid && !scode){
-      panel('إرسال رابط التسجيل','<div class="ss-card red"><b>تعذر تحديد المدرسة الحالية</b><div class="ss-muted">الجلسة الحالية لا تحتوي على school_id صالح. اضغط «تحديث بيانات المدرسة»، وإذا استمرت المشكلة سجّل الخروج ثم ادخل من رابط المدرسة المستقلة.</div></div><div class="ss-actions"><button class="ss-action secondary" id="refreshCtx">تحديث بيانات المدرسة</button></div>');
-      var rr=document.getElementById('refreshCtx');if(rr)rr.onclick=function(){showRegLink()};return;
-    }
-    var basePath=location.origin+location.pathname.replace(/[^\/]*$/,'');
-    var params=new URLSearchParams();
-    if(sid){params.set('schoolId',sid);params.set('school_id',sid);}
-    if(scode){params.set('school',scode);params.set('schoolCode',scode);}
-    params.set('register',token);params.set('token',token);params.set('reg',token);
-    params.set('admin',NS);params.set('schoolName',sname);params.set('school_name',sname);
-    params.set('source','manager_school_registration');params.set('schoolMode','independent');
-    var link=basePath+'register.html?'+params.toString();
-    panel('إرسال رابط التسجيل','<div class="ss-card"><b>رابط تسجيل المستخدمين داخل المدرسة المستقلة</b><div class="ss-muted">المدرسة: <b>'+esc(sname)+'</b><br>معرف المدرسة: <b>'+esc(sid||scode)+'</b><br>يمكن نسخ الرابط أو فتحه مباشرة. أي طلب تسجيل سيبقى مرتبطًا بهذه المدرسة.</div><input id="regLink" value="'+esc(link)+'" readonly style="direction:ltr;text-align:left"></div><div class="ss-actions"><button class="ss-action blue" id="openReg">فتح واجهة تسجيل المستخدمين</button><button class="ss-action" id="copyReg">نسخ الرابط</button><button class="ss-action secondary" id="refreshCtx">تحديث بيانات المدرسة</button></div>');
-    document.getElementById('copyReg').onclick=async function(){try{await navigator.clipboard.writeText(val('regLink'));alert('تم نسخ رابط التسجيل بنجاح')}catch(e){var el=document.getElementById('regLink');el.select();document.execCommand('copy');alert('تم نسخ رابط التسجيل')}};
-    document.getElementById('openReg').onclick=function(){window.open(val('regLink'),'_blank','noopener')};
-    document.getElementById('refreshCtx').onclick=function(){showRegLink()};
+    try{
+      if(!window.SmartSchoolSupabase?.platformDirectoryCall)throw new Error('محرك دليل المدرسة غير متاح');
+      var d=await window.SmartSchoolSupabase.platformDirectoryCall('school-registration-context',{},true);
+      var school=d.school||{},sid=String(school.id||'').trim(),scode=String(school.school_code||'').trim(),sname=String(school.school_name||'المدرسة').trim(),token=String(school.registration_code||'').trim(),managerUserId=String(d.generalRegistrationOwnerUserId||d.supervisorUserId||'').trim(),generalToken=String(d.generalRegistrationToken||'').trim();
+      if(!sid||!scode||!token||!managerUserId||!generalToken)throw new Error('بيانات رابط التسجيل العام للمدرسة غير مكتملة أو أن الجلسة ليست جلسة مدير');
+      var basePath=location.origin+location.pathname.replace(/[^\/]*$/,'');
+      var params=new URLSearchParams({schoolId:sid,school_id:sid,school:scode,schoolCode:scode,register:token,token:token,reg:token,managerUserId:managerUserId,generalToken:generalToken,admin:NS,schoolName:sname,school_name:sname,source:'manager_school_registration',schoolMode:'independent'});
+      var link=basePath+'register.html?'+params.toString();
+      panel('إرسال رابط التسجيل','<div class="ss-card"><b>رابط تسجيل المستخدمين داخل المدرسة المستقلة</b><div class="ss-muted">المدرسة: <b>'+esc(sname)+'</b><br>معرف المدرسة: <b>'+esc(sid)+'</b><br>الرابط مولد من بيانات المدرسة السحابية الموثقة، وأي طلب تسجيل سيبقى مرتبطًا بهذه المدرسة فقط.</div><input id="regLink" value="'+esc(link)+'" readonly style="direction:ltr;text-align:left"></div><div class="ss-actions"><button class="ss-action blue" id="openReg">فتح واجهة تسجيل المستخدمين</button><button class="ss-action" id="copyReg">نسخ الرابط</button></div>');
+      document.getElementById('copyReg').onclick=async function(){try{await navigator.clipboard.writeText(val('regLink'));alert('تم نسخ رابط التسجيل بنجاح')}catch(e){var el=document.getElementById('regLink');el.select();document.execCommand('copy');alert('تم نسخ رابط التسجيل')}};
+      document.getElementById('openReg').onclick=function(){window.open(val('regLink'),'_blank','noopener')};
+    }catch(e){panel('إرسال رابط التسجيل','<div class="ss-card red"><b>تعذر إنشاء رابط تسجيل موثق</b><div class="ss-muted">'+esc(e.message||e)+'</div></div>')}
   }
   window.showRegLink=showRegLink;
   function ssRoleLabel(role){return role==='agent'?'وكيل':(role==='student_advisor'?'موجه/موجهة طلابية':(role==='activity_leader'?'رائد/ة النشاط':(role==='manager'?'مدير/ة':'معلم/ة')))}

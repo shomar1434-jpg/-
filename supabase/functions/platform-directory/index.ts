@@ -13,6 +13,8 @@ Deno.serve(async(req)=>{
  const sb=createClient(url,service,{auth:{persistSession:false,autoRefreshToken:false}}),requestId=crypto.randomUUID();
  const adminLinkToken=async(schoolId:string,supervisorUserId:string,supervisorRole:string,exp:number)=>`${exp}.${await hmacHex(service,`${schoolId}|${supervisorUserId}|${supervisorRole}|${exp}`)}`;
  const verifyAdminLinkToken=async(token:string,schoolId:string,supervisorUserId:string,supervisorRole:string)=>{const [expRaw,sig]=String(token||'').split('.');const exp=Number(expRaw);if(!Number.isFinite(exp)||Date.now()>exp||!sig)return false;const expected=await hmacHex(service,`${schoolId}|${supervisorUserId}|${supervisorRole}|${exp}`);if(expected.length!==sig.length)return false;let diff=0;for(let i=0;i<expected.length;i++)diff|=expected.charCodeAt(i)^sig.charCodeAt(i);return diff===0};
+ const generalLinkToken=async(schoolId:string,managerUserId:string,exp:number)=>`${exp}.${await hmacHex(service,`GENERAL|${schoolId}|${managerUserId}|${exp}`)}`;
+ const verifyGeneralLinkToken=async(token:string,schoolId:string,managerUserId:string)=>{const [expRaw,sig]=String(token||'').split('.');const exp=Number(expRaw);if(!Number.isFinite(exp)||Date.now()>exp||!sig)return false;const expected=await hmacHex(service,`GENERAL|${schoolId}|${managerUserId}|${exp}`);if(expected.length!==sig.length)return false;let diff=0;for(let i=0;i<expected.length;i++)diff|=expected.charCodeAt(i)^sig.charCodeAt(i);return diff===0};
  try{
   const body:any=await req.json().catch(()=>({})),action=t(body.action,80);
   const findSchool=async()=>{
@@ -37,7 +39,14 @@ Deno.serve(async(req)=>{
     if(source!=='administrative_employee_link'||!supervisorUserId||!['manager','agent'].includes(supervisorRole)||!(await verifyAdminLinkToken(adminRegistrationToken,schoolId,supervisorUserId,supervisorRole)))return json({error:'ADMIN_REGISTRATION_LINK_INVALID_OR_EXPIRED'},403);
     const sq=await sb.from('school_members').select('user_id,role,status').eq('school_id',schoolId).eq('user_id',supervisorUserId).eq('status','active');if(sq.error)throw sq.error;
     const roles=(sq.data||[]).map((x:any)=>low(x.role));if(!roles.includes(supervisorRole))return json({error:'ADMIN_SUPERVISOR_NOT_AUTHORIZED'},403);
-   } else {supervisorUserId='';supervisorRole='';}
+   } else {
+    const managerUserId=t(body.managerUserId||body.manager_user_id,100),generalRegistrationToken=t(body.generalRegistrationToken||body.generalToken,500);
+    if(source!=='manager_school_registration'||!managerUserId||!(await verifyGeneralLinkToken(generalRegistrationToken,schoolId,managerUserId)))return json({error:'MANAGER_REGISTRATION_LINK_INVALID_OR_EXPIRED'},403);
+    const mq0=await sb.from('school_members').select('user_id,role,status').eq('school_id',schoolId).eq('user_id',managerUserId).eq('status','active');if(mq0.error)throw mq0.error;
+    const managerRoles=(mq0.data||[]).map((x:any)=>low(x.role));
+    if(!managerRoles.some((r:string)=>managers.has(r)))return json({error:'GENERAL_REGISTRATION_REQUIRES_MANAGER'},403);
+    supervisorUserId='';supervisorRole='';
+   }
    let uq=await sb.from('users').select('*').eq('email',email).limit(1).maybeSingle();if(uq.error)throw uq.error;let user:any=uq.data||null;
    if(user&&t(user.password)&&t(user.password)!==password)return json({error:'EXISTING_IDENTITY_PASSWORD_MISMATCH'},409);
    if(!user){const ins=await sb.from('users').insert({school_id:schoolId,full_name:name,email,password,role,status:'pending',active:false}).select('*').single();if(ins.error)throw ins.error;user=ins.data}
@@ -60,12 +69,14 @@ Deno.serve(async(req)=>{
     const q=await sb.from('school_members').select('user_id').eq('school_id',schoolId).eq('role',kind).eq('status','active');if(q.error)throw q.error;const ids=[...new Set((q.data||[]).map((x:any)=>String(x.user_id||'')).filter(Boolean))];if(ids.length!==1||ids[0]!==userId)return false;
     const up=await sb.from('school_members').update({supervisor_user_id:userId,updated_at:now}).eq('id',target.id).is('supervisor_user_id',null);if(up.error)throw up.error;return true;
   };
-  if(action==='health')return json({ok:true,version:'1.0.0-RL33-directory-isolation',schoolId,userId,role,requestId});
+  if(action==='health')return json({ok:true,version:'1.1.0-RL36-final-link-contract',schoolId,userId,role,requestId});
   if(action==='school-registration-context'){
    if(!isManager&&!isAgent)return json({error:'SUPERVISOR_REQUIRED'},403);
    const full=await sb.from('schools').select('id,school_name,school_code,registration_code,status').eq('id',schoolId).maybeSingle();if(full.error)throw full.error;if(!full.data)return json({error:'SCHOOL_NOT_FOUND'},404);
    const sr=isAgent?'agent':'manager',exp=Date.now()+24*60*60*1000,adminRegistrationToken=await adminLinkToken(schoolId,userId,sr,exp);
-   return json({ok:true,school:full.data,supervisorUserId:userId,supervisorRole:sr,adminRegistrationToken,adminRegistrationExpiresAt:new Date(exp).toISOString(),requestId});
+   let generalRegistrationToken='',generalRegistrationOwnerUserId='',generalRegistrationExpiresAt='';
+   if(isManager){const gexp=Date.now()+24*60*60*1000;generalRegistrationToken=await generalLinkToken(schoolId,userId,gexp);generalRegistrationOwnerUserId=userId;generalRegistrationExpiresAt=new Date(gexp).toISOString();}
+   return json({ok:true,school:full.data,supervisorUserId:userId,supervisorRole:sr,adminRegistrationToken,adminRegistrationExpiresAt:new Date(exp).toISOString(),generalRegistrationToken,generalRegistrationOwnerUserId,generalRegistrationExpiresAt,canCreateGeneralRegistration:isManager,requestId});
   }
   if(action==='me'){return json({ok:true,user:await ownUser(),school:schoolQ.data,membership:(membership.data||[]).find((x:any)=>low(x.role)===role)||membership.data?.[0]||null,requestId});}
   if(action==='list-admin-employees'){

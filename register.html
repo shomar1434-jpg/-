@@ -194,6 +194,7 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
 <link rel="stylesheet" href="premium-ui.css">
 <script defer src="premium-ui.js"></script>
 <link rel="stylesheet" href="responsive-layout.css?v=20260818-responsive-1">
+<meta name="platform-patch" content="2026.09.05-RL36-final-links-contract">
 </head>
 <body>
     <script src="./openai-engine.js" defer data-openai-engine="true"></script>
@@ -228,17 +229,22 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
 </div>
 <script>
 (function(){
-  const qs=new URLSearchParams(location.search);
+  const __rl35Search=new URLSearchParams(location.search||'');
+  const __rl35HashRaw=String(location.hash||'').replace(/^#/,'');
+  const __rl35Hash=new URLSearchParams(__rl35HashRaw.indexOf('?')>=0?__rl35HashRaw.slice(__rl35HashRaw.indexOf('?')+1):__rl35HashRaw);
+  const qv=(...names)=>{for(const n of names){const a=__rl35Search.get(n),b=__rl35Hash.get(n);if(a)return a;if(b)return b;}return ''};
   const invite={
-    admin:qs.get('admin')||qs.get('owner')||'smartSchoolUnifiedOpsV2',
-    token:qs.get('token')||qs.get('register')||qs.get('reg')||'',
-    schoolId:qs.get('schoolId')||qs.get('school_id')||'',
-    schoolCode:qs.get('school')||qs.get('schoolCode')||qs.get('school_code')||'',
-    schoolName:qs.get('schoolName')||qs.get('school_name')||'',
-    adminEmployee:qs.get('adminEmployee')==='1'||qs.get('source')==='administrative_employee_registration',
-    adminSupervisor:(qs.get('supervisor')||qs.get('adminSupervisor')||'').toLowerCase()==='agent'?'agent':'manager',
-    supervisorUserId:qs.get('supervisorUserId')||qs.get('supervisor_user_id')||'',
-    adminRegistrationToken:qs.get('adminToken')||qs.get('adminRegistrationToken')||''
+    admin:qv('admin','owner')||'smartSchoolUnifiedOpsV2',
+    token:qv('token','register','reg'),
+    schoolId:qv('schoolId','school_id','sid'),
+    schoolCode:qv('school','schoolCode','school_code','code'),
+    schoolName:qv('schoolName','school_name'),
+    adminEmployee:qv('adminEmployee')==='1'||qv('source')==='administrative_employee_registration',
+    adminSupervisor:(qv('supervisor','adminSupervisor')||'').toLowerCase()==='agent'?'agent':'manager',
+    supervisorUserId:qv('supervisorUserId','supervisor_user_id'),
+    adminRegistrationToken:qv('adminToken','adminRegistrationToken'),
+    managerUserId:qv('managerUserId','manager_user_id'),
+    generalRegistrationToken:qv('generalToken','generalRegistrationToken')
   };
   function configureRoleFromInvite(){
     const roleEl=document.getElementById('role');
@@ -254,13 +260,27 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
     }
   }
   configureRoleFromInvite();
+  const RL35_SUPABASE_URL='https://cijhgvbtrvmmlcssgxht.supabase.co';
+  const RL35_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJIUzI1NiIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
+  async function rl35Directory(action,payload){
+    if(window.SmartSchoolSupabase?.platformDirectoryCall){
+      try{return await window.SmartSchoolSupabase.platformDirectoryCall(action,payload||{},false)}catch(e){console.warn('[RL35 bridge fallback]',e)}
+    }
+    const r=await fetch(RL35_SUPABASE_URL+'/functions/v1/platform-directory',{method:'POST',cache:'no-store',headers:{'content-type':'application/json','apikey':RL35_ANON_KEY},body:JSON.stringify({action,...(payload||{})})});
+    const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'تعذر التحقق من رابط التسجيل');return d;
+  }
   async function resolveInviteSchool(){
     try{
-      if(!window.SmartSchoolSupabase?.platformDirectoryCall)throw new Error('مصدر المدارس الآمن غير متاح');
-      const d=await window.SmartSchoolSupabase.platformDirectoryCall('inspect-school',{schoolId:invite.schoolId||'',schoolCode:invite.schoolCode||'',registrationCode:invite.token||''},false),raw=d.school||null;
-      if(!raw)return null;const sid=String(raw.id||''),scode=String(raw.school_code||'');if(invite.schoolId&&invite.schoolId!==sid)return null;if(invite.schoolCode&&invite.schoolCode!==scode)return null;
-      invite.schoolId=sid;invite.schoolCode=scode||invite.schoolCode;invite.schoolName=String(raw.school_name||'');const title=document.getElementById('school-title');if(title)title.textContent='رابط تسجيل خاص بمدرسة: '+(invite.schoolName||'المدرسة');return {raw,school:raw,schoolId:sid,schoolCode:scode,registrationCode:invite.token};
-    }catch(e){console.warn('[registration-school-contract]',e);return null}
+      if(!invite.token)throw new Error('رمز التسجيل مفقود');
+      if(!invite.schoolId&&!invite.schoolCode)throw new Error('تعريف المدرسة مفقود');
+      const d=await rl35Directory('inspect-school',{schoolId:invite.schoolId||'',schoolCode:invite.schoolCode||'',registrationCode:invite.token||''}),raw=d.school||null;
+      if(!raw)return null;const sid=String(raw.id||raw.school_id||''),scode=String(raw.school_code||'');
+      if(invite.schoolId&&invite.schoolId!==sid)return null;if(invite.schoolCode&&scode&&invite.schoolCode!==scode)return null;
+      invite.schoolId=sid;invite.schoolCode=scode||invite.schoolCode;invite.schoolName=String(raw.school_name||invite.schoolName||'');
+      sessionStorage.setItem('registration_school_id',invite.schoolId);sessionStorage.setItem('registration_school_code',invite.schoolCode||'');sessionStorage.setItem('registration_school_name',invite.schoolName||'');
+      const title=document.getElementById('school-title');if(title)title.textContent='رابط تسجيل خاص بمدرسة: '+(invite.schoolName||'المدرسة');
+      return {raw,school:raw,schoolId:sid,schoolCode:scode,registrationCode:invite.token};
+    }catch(e){console.warn('[registration-school-contract-RL35]',e);return null}
   }
   resolveInviteSchool();
   document.getElementById('reg-form').addEventListener('submit',async function(e){
@@ -268,6 +288,8 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
     const msg=document.getElementById('msg'); msg.textContent=''; msg.className='text-center text-xs font-bold err';
     const verifiedSchool=await resolveInviteSchool();
     if(!verifiedSchool || !invite.schoolId || !invite.schoolCode || !invite.token){ msg.textContent='رابط التسجيل غير صالح أو لا يطابق مدرسة واحدة بشكل صريح. اطلب رابطًا جديدًا من مدير المدرسة.'; return; }
+    if(!invite.adminEmployee && (!invite.managerUserId || !invite.generalRegistrationToken)){ msg.textContent='رابط تسجيل المستخدمين قديم أو غير موثق. اطلب رابطًا جديدًا من مدير المدرسة.'; return; }
+    if(invite.adminEmployee && (!invite.supervisorUserId || !invite.adminRegistrationToken)){ msg.textContent='رابط تسجيل الموظف الإداري غير مكتمل. اطلب رابطًا جديدًا من المسؤول المباشر.'; return; }
     const name=document.getElementById('name').value.trim();
     const email=document.getElementById('email').value.trim().toLowerCase();
     const password=document.getElementById('password').value.trim();
@@ -280,21 +302,20 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
       phone:'',nationalId:'',schoolName:invite.schoolName,schoolId:invite.schoolId,
       isActive:false,status:'pending',source:'registration_link',
       adminOwnerId:invite.admin,registrationToken:invite.token,registeredViaManagerLink:true,
-      registrationSource:invite.adminEmployee?'administrative_employee_link':'general_registration',adminSupervisor:invite.adminEmployee?invite.adminSupervisor:'',
+      registrationSource:invite.adminEmployee?'administrative_employee_link':'manager_school_registration',adminSupervisor:invite.adminEmployee?invite.adminSupervisor:'',
       permissions:[],
       dateJoined:new Date().toLocaleString('ar-SA')
     };
     try{
-      if(window.SmartSchoolSupabase && (invite.schoolId || invite.schoolCode || invite.token)){
-        await window.SmartSchoolSupabase.registerSchoolUser({schoolId:invite.schoolId, schoolCode:invite.schoolCode, registrationCode:invite.token, name, email, password, role, adminSupervisor:invite.adminEmployee?invite.adminSupervisor:'', supervisorUserId:invite.adminEmployee?invite.supervisorUserId:'', adminRegistrationToken:invite.adminEmployee?invite.adminRegistrationToken:'', registrationSource:invite.adminEmployee?'administrative_employee_link':'general_registration'});
-      }
+      const regPayload={schoolId:invite.schoolId,schoolCode:invite.schoolCode,registrationCode:invite.token,name,email,password,role,adminSupervisor:invite.adminEmployee?invite.adminSupervisor:'',supervisorUserId:invite.adminEmployee?invite.supervisorUserId:'',adminRegistrationToken:invite.adminEmployee?invite.adminRegistrationToken:'',managerUserId:invite.adminEmployee?'':invite.managerUserId,generalRegistrationToken:invite.adminEmployee?'':invite.generalRegistrationToken,registrationSource:invite.adminEmployee?'administrative_employee_link':'manager_school_registration'};
+      await rl35Directory('register-user',regPayload)
     }catch(err){
       msg.textContent=err.message||'تعذر إرسال الطلب إلى السحابة';
       return;
     }
     // RL33: لا تُنسخ هويات المستخدمين إلى localStorage المشترك بين التبويبات.
     document.getElementById('reg-form').classList.add('hide');
-    if(invite.adminEmployee){const p=document.querySelector('#success p');if(p)p.innerHTML='تم تسجيل طلب الموظف الإداري. سيظهر لدى المسؤول في المدرسة بحالة <b>بانتظار التفعيل</b>، ولن تتمكن من الدخول قبل أن يقوم مدير المدرسة بتفعيل الحساب.';const box=document.getElementById('success');const a=document.createElement('a');a.href='administrative_employee_login.html?'+new URLSearchParams({schoolId:invite.schoolId||'',schoolCode:invite.schoolCode||'',schoolName:invite.schoolName||'',source:'administrative_employee_login',scope:'school'}).toString();a.textContent='فتح بوابة دخول الموظف الإداري';a.style.cssText='display:inline-block;margin-top:18px;background:#0f6b4a;color:#fff;padding:11px 18px;border-radius:12px;font-weight:900;text-decoration:none';box.appendChild(a);}
+    if(invite.adminEmployee){const p=document.querySelector('#success p');if(p)p.innerHTML='تم تسجيل طلب الموظف الإداري. سيظهر لدى المسؤول في المدرسة بحالة <b>بانتظار التفعيل</b>، ولن تتمكن من الدخول قبل أن يقوم المسؤول المباشر الذي أصدر الرابط بتفعيل الحساب.';const box=document.getElementById('success');const a=document.createElement('a');a.href='administrative_employee_login.html?'+new URLSearchParams({schoolId:invite.schoolId||'',schoolCode:invite.schoolCode||'',schoolName:invite.schoolName||'',source:'administrative_employee_login',scope:'school'}).toString();a.textContent='فتح بوابة دخول الموظف الإداري';a.style.cssText='display:inline-block;margin-top:18px;background:#0f6b4a;color:#fff;padding:11px 18px;border-radius:12px;font-weight:900;text-decoration:none';box.appendChild(a);}
     document.getElementById('success').style.display='block';
   });
 })();

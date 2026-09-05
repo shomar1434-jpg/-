@@ -35,6 +35,7 @@
 <script src="platform-persistence-guard.js"></script>
 <script defer src="school-base-settings-source.js"></script>
 <link rel="stylesheet" href="responsive-layout.css?v=20260818-responsive-1">
+<meta name="platform-patch" content="2026.09.05-RL36-final-links-contract">
 </head>
 <body>
 <div class="wrap">
@@ -75,11 +76,9 @@ function currentActualRole(){
     const candidates=[
       sessionStorage.getItem('smart_school_tab_role_v1'),
       safeJsonRole(sessionStorage.getItem('smart_school_current_session')),
-      safeJsonRole(localStorage.getItem('smart_school_current_session')),
-      safeJsonRole(localStorage.getItem('currentSchoolUser')),
-      safeJsonRole(localStorage.getItem('currentUser')),
-      localStorage.getItem('smart_school_active_role'),
-      localStorage.getItem('currentRole')
+      sessionStorage.getItem('smart_school_active_role'),
+      sessionStorage.getItem('currentRole'),
+      (window.PlatformCloudSession&&typeof PlatformCloudSession.role==='function'?PlatformCloudSession.role():'')
     ];
     for(const v of candidates){
       const n=normalizeSupervisor(v);
@@ -183,23 +182,22 @@ function closeArchive(){archivePanel.classList.remove('show')}
 function currentSchoolScope(){
   try{
     const q=new URLSearchParams(location.search||'');
-    const fromUrl=q.get('schoolId')||q.get('school_id')||q.get('school')||'';
-    if(fromUrl)return String(fromUrl);
+    const fromUrl=q.get('schoolId')||q.get('school_id')||'';
     const tab=sessionStorage.getItem('smart_school_tab_school_v1')||sessionStorage.getItem('current_school_id')||'';
-    if(tab)return String(tab);
     const cloud=window.PlatformCloudSession&&typeof PlatformCloudSession.schoolId==='function'?PlatformCloudSession.schoolId():'';
-    if(cloud)return String(cloud);
-    const keys=['current_school_id','active_school_id','activeSchoolId','selected_school_id','school_id','smart_school_id'];
-    for(const k of keys){const v=localStorage.getItem(k); if(v) return String(v);}
-    const x=JSON.parse(localStorage.getItem('active_school')||localStorage.getItem('activeSchool')||'null');
-    return x&&(x.id||x.schoolId)||'';
-  }catch(e){return ''}
+    const trusted=String(tab||cloud||'').trim();
+    if(fromUrl&&trusted&&String(fromUrl)!==trusted)throw new Error('رابط القسم لا يطابق مدرسة جلسة التبويب');
+    return String(fromUrl||trusted||'');
+  }catch(e){console.warn('[admin employee school scope]',e);return ''}
 }
 async function resolveAdministrativeEmployeeSchoolLinkContext(){
   if(!window.SmartSchoolSupabase?.platformDirectoryCall)throw new Error('خدمة المدرسة الآمنة غير متاحة');
   const d=await window.SmartSchoolSupabase.platformDirectoryCall('school-registration-context',{}),row=d.school||{};
   if(!row.id||!row.school_code||!row.registration_code)throw new Error('بيانات رابط التسجيل غير مكتملة');
-  return {schoolId:String(row.id),schoolName:String(row.school_name||''),schoolCode:String(row.school_code||''),registrationCode:String(row.registration_code||''),supervisorUserId:String(d.supervisorUserId||''),supervisorRole:String(d.supervisorRole||supervisor||'manager'),adminRegistrationToken:String(d.adminRegistrationToken||'')};
+  const resolvedRole=normalizeSupervisor(d.supervisorRole||'');
+  if(resolvedRole!==supervisor)throw new Error('جهة الإشراف في الصفحة لا تطابق جلسة المسؤول الحالي');
+  if(!d.supervisorUserId||!d.adminRegistrationToken)throw new Error('تعذر إثبات هوية المسؤول المباشر لإنشاء رابط الموظف الإداري');
+  return {schoolId:String(row.id),schoolName:String(row.school_name||''),schoolCode:String(row.school_code||''),registrationCode:String(row.registration_code||''),supervisorUserId:String(d.supervisorUserId||''),supervisorRole:resolvedRole,adminRegistrationToken:String(d.adminRegistrationToken||'')};
 }
 async function copyAdministrativeEmployeeLoginLink(){
   try{

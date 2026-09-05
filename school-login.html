@@ -35,6 +35,7 @@
 <link rel="stylesheet" href="premium-ui.css">
 <script defer src="premium-ui.js"></script>
 <link rel="stylesheet" href="responsive-layout.css?v=20260818-responsive-1">
+<meta name="platform-patch" content="2026.09.05-RL36-final-links-contract">
 </head>
 <body>
   <main class="login-card" aria-label="بوابة المدرسة المستقلة">
@@ -66,14 +67,15 @@
   }catch(e){}
 })();
 </script>
-<script id="independent-school-login-engine" data-version="clean-baseline-v3">
+<script id="independent-school-login-engine" data-version="RL34-school-link-identity-direct-safe">
 (function(){
   'use strict';
 
   const params = new URLSearchParams(location.search || '');
+  const hashParams = (()=>{ try{ const h=String(location.hash||'').replace(/^#/,''); return new URLSearchParams(h.includes('?')?h.slice(h.indexOf('?')+1):h); }catch(_){ return new URLSearchParams(); }})();
   const first = (names) => {
     for (const n of names) {
-      const v = params.get(n);
+      const v = params.get(n) || hashParams.get(n);
       if (v) return String(v).trim();
     }
     return '';
@@ -126,12 +128,25 @@
     return 'teacher.html';
   }
 
+  const RL34_SUPABASE_URL='https://cijhgvbtrvmmlcssgxht.supabase.co';
+  const RL34_SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
+  async function inspectSchoolDirect(){
+    const r=await fetch(RL34_SUPABASE_URL+'/functions/v1/platform-directory',{method:'POST',cache:'no-store',headers:{'content-type':'application/json','apikey':RL34_SUPABASE_ANON_KEY},body:JSON.stringify({action:'inspect-school',schoolId:targetSchoolId||'',schoolCode:targetSchoolCode||''})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(d.error||d.details||'تعذر التحقق من هوية المدرسة');
+    return d;
+  }
   async function resolveSchool(){
     if(resolvedSchool)return resolvedSchool;if(!targetSchoolId&&!targetSchoolCode)return null;
-    const bridge=window.SmartSchoolSupabase;if(!bridge?.platformDirectoryCall)throw new Error('محرك دليل المدارس الآمن غير متاح.');
-    const d=await bridge.platformDirectoryCall('inspect-school',{schoolId:targetSchoolId||'',schoolCode:targetSchoolCode||''},false),row=d.school||null;if(!row)return null;
+    let d=null, bridgeError=null;
+    const bridge=window.SmartSchoolSupabase;
+    if(bridge?.platformDirectoryCall){try{d=await bridge.platformDirectoryCall('inspect-school',{schoolId:targetSchoolId||'',schoolCode:targetSchoolCode||''},false)}catch(e){bridgeError=e}}
+    if(!d?.school){try{d=await inspectSchoolDirect()}catch(e){throw bridgeError||e}}
+    const row=d?.school||null;if(!row)return null;
     const sid=text(row.id),scode=text(row.school_code);if(targetSchoolId&&sid!==targetSchoolId)return null;if(targetSchoolCode&&scode&&scode!==targetSchoolCode)return null;
-    targetSchoolId=sid;targetSchoolCode=scode||targetSchoolCode;resolvedSchool=row;return row;
+    targetSchoolId=sid;targetSchoolCode=scode||targetSchoolCode;resolvedSchool=row;
+    try{sessionStorage.setItem('smart_school_tab_school_v1',sid);sessionStorage.setItem('current_school_id',sid);if(scode)sessionStorage.setItem('active_school_code',scode)}catch(_){}
+    return row;
   }
   function renderSchool(school){
     if(!school) return;
@@ -265,7 +280,7 @@
       renderSchool(school);
     }catch(err){
       console.error('[independent-school-init]',err);
-      setMsg('تعذر التحقق من رابط المدرسة. تحقق من الاتصال ثم أعد المحاولة.');
+      setMsg((targetSchoolId||targetSchoolCode)?'تعذر التحقق من هوية هذه المدرسة. أعد فتح رابط المدرسة الأصلي أو حدّث الصفحة.':'رابط الدخول لا يحتوي تعريف المدرسة. استخدم رابط الدخول الخاص بالمدرسة من إدارة المدارس.');
     }
   }
 

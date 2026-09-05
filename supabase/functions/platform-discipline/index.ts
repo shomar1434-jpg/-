@@ -4,6 +4,19 @@ const json=(b:unknown,s=200)=>new Response(JSON.stringify(b),{status:s,headers:{
 const sha256=async(v:string)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(v)))).map(x=>x.toString(16).padStart(2,'0')).join('');
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const text=(v:unknown)=>String(v??'').trim();
+
+const movementTypeToDb=(label:string)=>({
+ 'حاضر':'present','تأخر':'late','غياب بعذر':'absence','غياب بدون عذر':'absence','استئذان':'permission','انصراف مبكر':'early_leave',
+ 'إجازة':'leave','تكليف':'assignment','دورة':'course',
+ present:'present',late:'late',absence:'absence',permission:'permission',early_leave:'early_leave',leave:'leave',assignment:'assignment',course:'course'
+} as Record<string,string>)[text(label)]||'';
+const movementTypeToUi=(row:any)=>{
+ const explicit=text(row?.movement_label);if(explicit)return explicit;
+ const code=text(row?.movement_type);
+ if(code==='absence')return text(row?.excuse_type)?'غياب بعذر':'غياب بدون عذر';
+ return ({present:'حاضر',late:'تأخر',permission:'استئذان',early_leave:'انصراف مبكر',leave:'إجازة',assignment:'تكليف',course:'دورة'} as Record<string,string>)[code]||code||'حاضر';
+};
+const movementForUi=(row:any)=>row?{...row,movement_type:movementTypeToUi(row)}:row;
 Deno.serve(async(req)=>{
  if(req.method==='OPTIONS')return new Response('ok',{headers:cors});
  const url=Deno.env.get('SUPABASE_URL'),key=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -21,13 +34,13 @@ Deno.serve(async(req)=>{
    const q2=await sb.from('school_members').select('id').eq('school_id',s.school_id).eq('user_id',uid).eq('status','active').limit(1).maybeSingle();
    if(q2.error)throw q2.error;return !!q2.data;
   };
-  if(action==='health')return json({ok:true,service:'platform-discipline',version:'2.0.0-atomic-movement-state'});
+  if(action==='health')return json({ok:true,service:'platform-discipline',version:'2.1.0-RL27-db-enum-compatibility'});
   if(action==='load'){
    const [{data:st,error:ste},{data:mov,error:me}]=await Promise.all([
     sb.from('school_staff_discipline_states').select('state,updated_at').eq('school_id',s.school_id).eq('academic_year',year).maybeSingle(),
-    sb.from('staff_discipline_movements').select('*').eq('school_id',s.school_id).neq('status','deleted').order('start_at',{ascending:false}).limit(5000)
+    sb.from('staff_discipline_movements').select('*').eq('school_id',s.school_id).eq('status','approved').order('start_at',{ascending:false}).limit(5000)
    ]);
-   if(ste)throw ste;if(me)throw me;return json({state:st?.state||null,updatedAt:st?.updated_at||null,movements:mov||[]});
+   if(ste)throw ste;if(me)throw me;return json({state:st?.state||null,updatedAt:st?.updated_at||null,movements:(mov||[]).map(movementForUi)});
   }
   if(action==='save'){
    const state=body.state&&typeof body.state==='object'?body.state:{};
@@ -41,24 +54,25 @@ Deno.serve(async(req)=>{
    if(!(await ensureSchoolUser(uid)))return json({error:'الموظف غير مرتبط بهذه المدرسة'},403);
    const date=text(m.date).slice(0,10);if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return json({error:'تاريخ الحركة غير صالح'},400);
    const type=text(m.type||m.movement_type||'حاضر');
-   const absence=type==='غياب بعذر'||type==='غياب بدون عذر';
-   const row={id,school_id:s.school_id,user_id:uid,movement_type:type,start_at:date+'T00:00:00.000Z',end_at:null,
+   const dbType=movementTypeToDb(type);if(!dbType)return json({error:'نوع الحركة غير مدعوم'},400);
+   const absence=dbType==='absence';
+   const row={id,school_id:s.school_id,user_id:uid,movement_type:dbType,movement_label:type,start_at:date+'T00:00:00.000Z',end_at:null,
     minutes:absence?0:Math.max(0,Number(m.minutes||0)||0),
     absence_days:absence?Math.max(1,Number(m.days||m.absence_days||1)||1):0,
     excuse_type:absence?text(m.excuse||m.excuse_type)||null:null,
     excuse_status:absence?text(m.excuseStatus||m.excuse_status)||null:null,
-    notes:text(m.notes),source:text(m.source||'attendance-discipline'),created_by:s.user_id,status:'active',updated_at:now};
+    notes:text(m.notes),source:'manual',created_by:s.user_id,status:'approved',updated_at:now};
    const {data,error}=await sb.from('staff_discipline_movements').upsert(row,{onConflict:'id'}).select('*').single();if(error)throw error;
    if(action==='save_movement'){
     const state=body.state&&typeof body.state==='object'?body.state:{};
     const sr=await sb.from('school_staff_discipline_states').upsert({school_id:s.school_id,academic_year:year,state,updated_by:s.user_id,updated_at:now},{onConflict:'school_id,academic_year'});
     if(sr.error)throw sr.error;
    }
-   return json({ok:true,movement:data,stateSaved:action==='save_movement'});
+   return json({ok:true,movement:movementForUi(data),stateSaved:action==='save_movement'});
   }
   if(action==='delete_movement'){
    const id=text(body.id);if(!uuid.test(id))return json({error:'معرف الحركة غير صالح'},400);
-   const {error}=await sb.from('staff_discipline_movements').update({status:'deleted',updated_at:now}).eq('id',id).eq('school_id',s.school_id);if(error)throw error;
+   const {error}=await sb.from('staff_discipline_movements').update({status:'cancelled',updated_at:now}).eq('id',id).eq('school_id',s.school_id);if(error)throw error;
    if(body.state&&typeof body.state==='object'){
     const sr=await sb.from('school_staff_discipline_states').upsert({school_id:s.school_id,academic_year:year,state:body.state,updated_by:s.user_id,updated_at:now},{onConflict:'school_id,academic_year'});if(sr.error)throw sr.error;
    }

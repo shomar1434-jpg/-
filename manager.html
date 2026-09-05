@@ -1373,6 +1373,7 @@ body{overflow-x:hidden}
 </style>
 <link rel="stylesheet" href="responsive-layout.css?v=20260818-responsive-1">
 <meta name="platform-patch" content="2026.09.05-RL36-final-links-contract">
+<meta name="self-evaluation-delete-fix" content="2026.09.05-RL39-dual-index-cloud-delete">
 </head>
 <body class="global-app-bg" data-ss-role="manager">
 <script data-openai-engine="true" defer="" src="./openai-engine.js"></script>
@@ -5888,6 +5889,37 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
         if((rows||[]).some(function(r){return String(r.id)===String(item.id)}))throw new Error('حُذف الطلب لكن القرار ما زال ظاهرًا في المصدر السحابي');
         alert('تم حذف قرار التكليف سحابيًا وتأكيد اختفائه من الأرشيف.');
       }catch(e){console.error('[manager authoritative decision delete]',e);alert('تعذر حذف قرار التكليف سحابيًا: '+(e&&e.message||e)+'\nلم يتم اعتبار الحذف ناجحًا.');return;}
+    }else if(kind==='self'){
+      // RL39: الحذف يجب أن يزيل السجل من الفهرس المسطح ومن بنية المجلدات ثم يثبت ذلك سحابياً.
+      var flatKey='manager_self_evaluation_archive_v1', objectKey='self_evaluation_archive_v1';
+      var beforeFlat=localStorage.getItem(flatKey), beforeObj=localStorage.getItem(objectKey);
+      try{
+        var flat=[];try{flat=JSON.parse(beforeFlat||'[]');if(!Array.isArray(flat))flat=[];}catch(_){flat=[];}
+        flat=flat.filter(function(r){return String(r&& (r.id||r.createdAt||r.title))!==String(id);});
+        var obj={};try{obj=JSON.parse(beforeObj||'{}')||{};}catch(_){obj={};}
+        if(obj.folders&&typeof obj.folders==='object'){
+          Object.keys(obj.folders).forEach(function(fn){var f=obj.folders[fn]||{};if(Array.isArray(f.items))f.items=f.items.filter(function(r){return String(r&& (r.id||r.createdAt||r.title))!==String(id);});});
+        }
+        localStorage.setItem(flatKey,JSON.stringify(flat));localStorage.setItem(objectKey,JSON.stringify(obj));
+        var g=window.PlatformPersistenceGuard;
+        if(!g||typeof g.commitExact!=='function'||typeof g.readExactValues!=='function')throw new Error('طبقة الاستمرارية السحابية غير متاحة للحذف');
+        var c=await g.commitExact({moduleKey:'self_evaluation',scope:'school',keys:[flatKey,objectKey]});
+        if(!c||c.ok===false)throw new Error(c&&c.error||'فشل حفظ الحذف سحابياً');
+        var vr=await g.readExactValues({moduleKey:'self_evaluation',scope:'school',keys:[flatKey,objectKey]});
+        if(!vr||vr.ok===false)throw new Error(vr&&vr.error||'فشل التحقق من الحذف سحابياً');
+        var vf=[];try{vf=JSON.parse(vr.values&&vr.values[flatKey]||'[]');}catch(_){vf=[];}
+        var vo={};try{vo=JSON.parse(vr.values&&vr.values[objectKey]||'{}')||{};}catch(_){vo={};}
+        var stillFlat=Array.isArray(vf)&&vf.some(function(r){return String(r&& (r.id||r.createdAt||r.title))===String(id);});
+        var stillObj=false;Object.keys(vo.folders||{}).forEach(function(fn){var a=vo.folders[fn]&&vo.folders[fn].items;if(Array.isArray(a)&&a.some(function(r){return String(r&& (r.id||r.createdAt||r.title))===String(id);}))stillObj=true;});
+        if(stillFlat||stillObj)throw new Error('السجل ما زال موجوداً بعد إعادة القراءة السحابية');
+        // تنظيف مفاتيح التوافق القديمة لنفس السجل حتى لا يعاد حقنه عند فتح الأرشيف.
+        ['self_evaluation_archive','school_self_evaluation_archive_v1'].forEach(function(k){try{var a=JSON.parse(localStorage.getItem(k)||'[]');if(Array.isArray(a)){a=a.filter(function(r){return String(r&& (r.id||r.createdAt||r.title))!==String(id);});localStorage.setItem(k,JSON.stringify(a));}}catch(_){}});
+        alert('تم حذف سجل التقويم الذاتي وتأكيد اختفائه من المصدر السحابي.');
+      }catch(e){
+        if(beforeFlat===null)localStorage.removeItem(flatKey);else localStorage.setItem(flatKey,beforeFlat);
+        if(beforeObj===null)localStorage.removeItem(objectKey);else localStorage.setItem(objectKey,beforeObj);
+        console.error('[RL39 self evaluation delete]',e);alert('تعذر تأكيد حذف السجل سحابياً: '+(e&&e.message||e)+'\nلم يتم اعتبار الحذف ناجحاً.');return;
+      }
     }else{
       var key=primaryKey(kind);
       var arr=readArray([key]).filter(function(r){return String(r.id||r.createdAt||r.title)!==String(id);});

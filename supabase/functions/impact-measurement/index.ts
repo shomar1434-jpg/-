@@ -16,11 +16,13 @@ Deno.serve(async(req)=>{
   const s:any=sq.data; if(!s?.school_id||!s?.user_id)return json({error:'SESSION_INVALID',requestId},401);
   const mq=await sb.from('school_members').select('role,status').eq('school_id',s.school_id).eq('user_id',s.user_id).eq('status','active'); if(mq.error)throw mq.error;
   const sessionRole=txt(s.role,100), memberRoles=(mq.data||[]).map((x:any)=>txt(x.role,100)),sessionCanonical=canonicalRole(sessionRole),memberCanonical=memberRoles.map(canonicalRole);
+  // RL107: the authoritative security boundary is an ACTIVE membership for the same user in the SAME school.
+  // Role labels can legitimately differ between legacy/new UI contracts, so a textual role mismatch must not block the survey.
   if(!memberRoles.length)return json({error:'MEMBERSHIP_INACTIVE',requestId},403);
-  if(!memberCanonical.includes(sessionCanonical))return json({error:'MEMBERSHIP_ROLE_MISMATCH',sessionRole,memberRoles,requestId},403);
-  const body:any=await req.json().catch(()=>({})),action=txt(body.action,80),schoolId=String(s.school_id),userId=String(s.user_id),isManager=sessionCanonical==='manager';
+  const effectiveCanonical = memberCanonical.includes(sessionCanonical) ? sessionCanonical : (memberCanonical[0] || sessionCanonical);
+  const body:any=await req.json().catch(()=>({})),action=txt(body.action,80),schoolId=String(s.school_id),userId=String(s.user_id),isManager=sessionCanonical==='manager'||memberCanonical.includes('manager');
   const ownerSurvey=async(id:string)=>{const q=await sb.from('impact_surveys').select('*').eq('id',id).eq('school_id',schoolId).eq('creator_user_id',userId).maybeSingle();if(q.error)throw q.error;return q.data};
-  if(action==='health')return json({ok:true,version:'1.2.0-RL106-canonical-role-contract',schoolId,userId,role:sessionRole,requestId});
+  if(action==='health')return json({ok:true,version:'1.3.0-RL107-active-membership-school-scope',schoolId,userId,role:sessionRole,requestId});
   if(action==='list'){
    const managerView=body.managerView===true&&isManager;
    let sqry=sb.from('impact_surveys').select('*').eq('school_id',schoolId).order('created_at',{ascending:false}); if(!managerView)sqry=sqry.eq('creator_user_id',userId);

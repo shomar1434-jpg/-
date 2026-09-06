@@ -198,9 +198,9 @@ async function activateAdministrativeEmployee(userId){if(!isCurrentSupervisorSes
 async function disableAdministrativeEmployee(userId){if(!isCurrentSupervisorSession())return alert('تعطيل الموظف الإداري متاح فقط للمسؤول المباشر.');try{if(window.PlatformStateEngine?.updateAdministrativeEmployeeStatus)await PlatformStateEngine.updateAdministrativeEmployeeStatus(userId,'disabled');else await SmartSchoolSupabase.updateAdministrativeEmployeeStatus({schoolId:currentSchoolScope(),userId,status:'disabled',supervisor});await render();alert('تم تعطيل دخول الموظف الإداري.');}catch(e){alert('تعذر التعطيل: '+(e.message||e));}}
 async function approve(id){const p=combinedEmployees().find(x=>String(x.id)===String(id));if(!p||!p._hasPlan)return alert('لا توجد خطة مرسلة للاعتماد.');if(String(p.status||'draft')!=='pending')return alert(p.status==='approved'?'الخطة معتمدة بالفعل.':'يجب أن يرسل الموظف الخطة للاعتماد قبل اعتمادها.');if(!isCurrentSupervisorSession())return alert('اعتماد خطة الموظف الإداري متاح فقط للمسؤول المباشر الذي أرسل رابط التسجيل.');const ctx=validateEmployeeSupervisorContext(p);if(!ctx.ok)return alert(ctx.message);p.supervisor=normalizeSupervisor(p.supervisor||supervisor)||supervisor;p.status='approved';initExecutionForPlan(p);snapshot(p,'اعتماد الخطة','تم اعتماد خطة الأداء الوظيفي وبدء مرحلة التنفيذ');try{await persistEmployeePlanCloud(p,p._ownerUserId);let a=allPlans().filter(x=>String(x.id)!==String(p.id));a.push(p);saveAll(a);await render();alert('تم اعتماد الخطة. أصبحت مرحلة تنفيذ الأهداف متاحة الآن للموظف الإداري.');}catch(e){alert('تعذر اعتماد الخطة سحابيًا: '+(e.message||e));}}
 async function returnPlan(id){if(!isCurrentSupervisorSession())return alert('إعادة خطة الموظف الإداري متاحة فقط للمسؤول المباشر.');const p=combinedEmployees().find(x=>String(x.id)===String(id));if(!p||!p._hasPlan)return;let note=prompt('ملاحظة الإعادة للموظف/ة:')||'تحتاج الخطة إلى تعديل.';p.status='returned';p.reviewNotes=note;snapshot(p,'إعادة الخطة للتعديل',note);try{await persistEmployeePlanCloud(p,p._ownerUserId);await render();alert('تمت إعادة الخطة للموظف للتعديل.');}catch(e){alert('تعذر إعادة الخطة سحابيًا: '+(e.message||e));}}
-function openExecution(id,ownerUid){location.href='administrative_employee_execution.html?emp='+encodeURIComponent(id)+'&owner_uid='+encodeURIComponent(ownerUid||'')+'&supervisor='+encodeURIComponent(supervisor)+(currentSchoolScope()?'&school='+encodeURIComponent(currentSchoolScope()):'')}
-function openEval(id,ownerUid){location.href='administrative_employee_evaluation.html?comp_model=4&emp='+encodeURIComponent(id)+'&owner_uid='+encodeURIComponent(ownerUid||'')+'&supervisor='+encodeURIComponent(supervisor)+(currentSchoolScope()?'&school='+encodeURIComponent(currentSchoolScope()):'')}
-function openImprovement(id,ownerUid){location.href='administrative_employee_improvement.html?emp='+encodeURIComponent(id)+'&owner_uid='+encodeURIComponent(ownerUid||'')+'&supervisor='+encodeURIComponent(supervisor)+(currentSchoolScope()?'&school='+encodeURIComponent(currentSchoolScope()):'')}
+function openExecution(id,ownerUid){const s=currentSchoolScope();const q=new URLSearchParams({emp:String(id||''),owner_uid:String(ownerUid||''),supervisor:String(supervisor||'manager'),mode:'supervisor',viewerRole:String(supervisor||'manager'),returnRole:String(supervisor||'manager')});if(s){q.set('school',s);q.set('schoolId',s)}location.href='administrative_employee_execution.html?'+q.toString()}
+function openEval(id,ownerUid){const s=currentSchoolScope();const q=new URLSearchParams({comp_model:'4',emp:String(id||''),owner_uid:String(ownerUid||''),supervisor:String(supervisor||'manager'),mode:'supervisor',viewerRole:String(supervisor||'manager'),returnRole:String(supervisor||'manager')});if(s){q.set('school',s);q.set('schoolId',s)}location.href='administrative_employee_evaluation.html?'+q.toString()}
+function openImprovement(id,ownerUid){const s=currentSchoolScope();const q=new URLSearchParams({emp:String(id||''),owner_uid:String(ownerUid||''),supervisor:String(supervisor||'manager'),mode:'supervisor',viewerRole:String(supervisor||'manager'),returnRole:String(supervisor||'manager')});if(s){q.set('school',s);q.set('schoolId',s)}location.href='administrative_employee_improvement.html?'+q.toString()}
 function transferEmployee(id){let target=prompt('اكتب الجهة الجديدة: manager للمدير أو agent للوكيل', supervisor==='manager'?'agent':'manager');if(!target)return;target=String(target).trim();if(['vice','wakil','وكيل','الوكيل'].includes(target))target='agent';if(['مدير','المدير'].includes(target))target='manager';if(!['manager','agent'].includes(target)){alert('الرجاء اختيار manager أو agent');return;}updateOne(id,p=>{let old=p.supervisor;p.supervisor=target;snapshot(p,'نقل الموظف','تم نقل الإشراف من '+supLabel(old)+' إلى '+supLabel(target));});alert('تم نقل الموظف مع حفظ خططه وتقييماته وأرشيفه.');}
 function toggleEmployee(id){updateOne(id,p=>{p.active=!(p.active!==false);snapshot(p,p.active?'تفعيل الموظف':'تعطيل الموظف',p.active?'تمت إعادة التفعيل':'تم تعطيل الدخول دون حذف البيانات');});}
 function showArchive(id){let p=allPlans().map(normalizePlan).find(x=>String(x.id)===String(id));if(!p)return;archiveTitle.textContent='أرشيف الموظف الإداري — '+(p.name||'-');let evalData='';try{evalData=localStorage.getItem('administrative_employee_eval_'+p.id)||''}catch(e){}let archive=(p.archive||[]);archiveRows.innerHTML=(archive.length?archive.map((a,i)=>`<div class="archiveItem"><b>${i+1}. ${a.action||'حفظ'}</b><div class="mini">${new Date(a.updatedAt||Date.now()).toLocaleString('ar-SA')} — العام: ${a.year||'-'} — الحالة: ${statusText(a.status)}</div><div>${a.note||''}</div></div>`).join(''):'<div class="archiveItem">لا يوجد أرشيف تاريخي بعد.</div>')+(evalData?'<div class="archiveItem"><b>📊 توجد بيانات تقييم محفوظة لهذا الموظف</b><div class="mini">مرتبطة بالمفتاح: administrative_employee_eval_'+p.id+'</div></div>':'');archivePanel.classList.add('show');archivePanel.scrollIntoView({behavior:'smooth'});}
@@ -226,6 +226,21 @@ async function resolveAdministrativeEmployeeSchoolLinkContext(){
   if(!d.supervisorUserId||!d.adminRegistrationToken)throw new Error('تعذر إثبات هوية المسؤول المباشر لإنشاء رابط الموظف الإداري');
   return {schoolId:String(row.id),schoolName:String(row.school_name||''),schoolCode:String(row.school_code||''),registrationCode:String(row.registration_code||''),supervisorUserId:String(d.supervisorUserId||''),supervisorRole:resolvedRole,adminRegistrationToken:String(d.adminRegistrationToken||'')};
 }
+
+function openAdministrativeEmployeesPortal(){
+  const school=currentSchoolScope();
+  const q=new URLSearchParams();
+  q.set('mode','supervisor');
+  q.set('supervisor',supervisor||'manager');
+  q.set('viewerRole',supervisor||'manager');
+  q.set('returnRole',supervisor||'manager');
+  if(school){
+    q.set('school',school);
+    q.set('schoolId',school);
+  }
+  location.href='administrative_employee_portal.html?'+q.toString();
+}
+
 async function copyAdministrativeEmployeeLoginLink(){
   try{
     const ctx=await resolveAdministrativeEmployeeSchoolLinkContext();
@@ -275,7 +290,7 @@ window.__ADMIN_EMPLOYEE_MANAGEMENT_RENDER_PENDING__=true;
 </script>
 
 <!-- Unified Comprehensive Cloud Storage -->
-<script src="platform-cloud-session.js?v=20260905-RL73-admin-supervisor-route"></script>
+<script src="platform-cloud-session.js?v=20260906-RL74-admin-supervisor-navigation"></script>
 <script src="cloud-file-engine.js"></script>
 <script src="cloud-file-bootstrap.js"></script>
 <script src="cloud-upload-hub.js"></script>

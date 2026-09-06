@@ -430,6 +430,28 @@
       return '';
     }
 
+    // RL74: supervisor views of admin-employee subpages must keep the
+    // manager/agent session instead of being reclassified as employee.
+    if([
+      'administrative_employee_portal.html',
+      'administrative_employee_evaluation.html',
+      'administrative_employee_execution.html',
+      'administrative_employee_improvement.html'
+    ].includes(file)){
+      try{
+        const q=new URLSearchParams(location.search||'');
+        const supervisorMode=String(q.get('mode')||'').trim().toLowerCase()==='supervisor';
+        const s=String(q.get('supervisor')||q.get('viewerRole')||q.get('returnRole')||'').trim().toLowerCase();
+        if(supervisorMode){
+          if(['agent','deputy','vice','wakil','agency','وكيل','وكيلة'].includes(s))return 'agent';
+          if(['manager','principal','school_manager','leadership','مدير','مديرة'].includes(s))return 'manager';
+          const current=String(role()||'').trim().toLowerCase();
+          if(['agent','deputy','vice','wakil','agency','وكيل','وكيلة'].includes(current))return 'agent';
+          if(['manager','principal','school_manager','leadership','مدير','مديرة'].includes(current))return 'manager';
+        }
+      }catch(_){}
+    }
+
     const rules=[
       [/^administrative_employee|^admin_employee/,'administrative_employee'],
       [/^kindergarten_teacher/,'kindergarten_teacher'],

@@ -184,9 +184,47 @@ function renderSurveyQuestions(){const box=document.getElementById('surveyQuesti
 function addSurveyQuestion(){surveyQuestions.push({text:'',type:'scale'});renderSurveyQuestions();}
 function basePageUrl(){if(location.protocol==='file:')return'';const u=new URL(location.href);u.search='';u.hash='';return u.toString()}
 function publicSurveyUrl(survey){const base=basePageUrl();if(!base)return'';const u=new URL(base);u.searchParams.set('survey',survey.publicToken||survey.id);return u.toString()}
-async function ensureAssessmentForSurvey(){if(currentAssessmentId)return currentAssessmentId;const ok=await saveAssessment(false,true);return ok?currentAssessmentId:null}
-async function createSurveyLink(){const program=document.getElementById('programName').value.trim();if(!program)return toast('أدخل اسم البرنامج أولاً');if(location.protocol==='file:')return toast('افتح النسخة السحابية عبر HTTPS لإنشاء رابط عام صالح');if(!surveyQuestions.length)loadSurveyTemplate(document.getElementById('surveyTemplate').value);const questions=surveyQuestions.filter(q=>q.text.trim());if(!questions.length)return toast('أضف سؤالاً واحداً على الأقل');const assessmentId=await ensureAssessmentForSurvey();if(!assessmentId)return;const type=document.getElementById('surveyTemplate').value,id='survey_'+Date.now()+'_'+currentUserId().slice(0,6),publicToken=securePublicToken();const row={id,public_token:publicToken,source_section:IMPACT_CONTEXT.sourceSection,source_record_id:IMPACT_CONTEXT.sourceRecordId||null,assessment_id:assessmentId,survey_type:type,program_name:program,title:document.getElementById('surveyTitle').value.trim()||((portfolioNames[type]||'استمارة')+': '+program),audience:document.getElementById('surveyAudience').value.trim()||document.getElementById('target').value,role_label:currentRoleLabel(),template:type,questions,measure_date:document.getElementById('measureDate').value||null};try{const d=await impactCall('create-survey',{survey:row});activeSurvey=surveyFromRow(d.survey);await loadCloudSurveyData();renderSurveyShare(activeSurvey);await refreshSurveyAnalytics();toast('تم إنشاء الاستبانة وربطها بالمستخدم والقسم ونموذج قياس الأثر')}catch(e){toast('فشل الحفظ السحابي للاستبانة: '+e.message)}}
-function renderSurveyShare(survey){const box=document.getElementById('surveyShareBox');if(!box||!survey)return;const link=publicSurveyUrl(survey);if(!link){box.innerHTML='<b>تعذر إنشاء الرابط العام</b>';return}box.innerHTML=`<b>${esc(survey.title)}</b><div class="share-link" id="surveyPublicLink">${esc(link)}</div><div class="qr-box"><div id="surveyQrCanvas"></div><div class="actions-row"><button class="btn secondary" type="button" onclick="copySurveyLink()">نسخ الرابط</button><button class="btn secondary" type="button" onclick="window.open(document.getElementById('surveyPublicLink').textContent,'_blank','noopener')">فتح الاستبانة</button><button class="btn secondary" type="button" onclick="downloadSurveyQr()">حفظ الباركود</button></div></div><span class="small">المحفظة: ${esc(portfolioNames[survey.template]||survey.template)} — القسم: ${esc(survey.sourceSection||currentRoleLabel())}</span>`;const qr=document.getElementById('surveyQrCanvas');if(window.QRCode&&qr)new QRCode(qr,{text:link,width:132,height:132,correctLevel:QRCode.CorrectLevel.M});}
+async function ensureAssessmentForSurvey(){return currentAssessmentId||null}
+async function createSurveyLink(){
+ const btn=[...document.querySelectorAll('#surveyBuilderSection button')].find(b=>b.textContent.includes('إنشاء رابط'));
+ const original=btn?.textContent||'إنشاء رابط وباركود';
+ try{
+  const program=document.getElementById('programName').value.trim();
+  if(!program){toast('أدخل اسم البرنامج أولاً حتى ترتبط الاستبانة به');document.getElementById('programName')?.focus();return}
+  if(location.protocol==='file:'){toast('افتح النسخة السحابية عبر HTTPS لإنشاء رابط عام صالح');return}
+  if(!IMPACT_CONTEXT.schoolId||!IMPACT_CONTEXT.userId){await resolveImpactContext()}
+  if(!surveyQuestions.length)loadSurveyTemplate(document.getElementById('surveyTemplate').value);
+  const questions=surveyQuestions.filter(q=>String(q.text||'').trim());
+  if(!questions.length){toast('أضف سؤالاً واحداً على الأقل');return}
+  if(btn){btn.disabled=true;btn.textContent='جاري إنشاء الاستبانة...'}
+  const type=document.getElementById('surveyTemplate').value;
+  const id='survey_'+Date.now()+'_'+currentUserId().slice(0,6);
+  const publicToken=securePublicToken();
+  const row={
+    id,public_token:publicToken,source_section:IMPACT_CONTEXT.sourceSection,
+    source_record_id:IMPACT_CONTEXT.sourceRecordId||null,
+    assessment_id:currentAssessmentId||null,
+    survey_type:type,program_name:program,
+    title:document.getElementById('surveyTitle').value.trim()||((portfolioNames[type]||'استمارة')+': '+program),
+    audience:document.getElementById('surveyAudience').value.trim()||document.getElementById('target').value,
+    role_label:currentRoleLabel(),template:type,questions,
+    measure_date:document.getElementById('measureDate').value||null
+  };
+  const d=await impactCall('create-survey',{survey:row});
+  if(!d?.survey)throw new Error('لم تُرجع الخدمة بيانات الاستبانة بعد إنشائها');
+  activeSurvey=surveyFromRow(d.survey);
+  await loadCloudSurveyData();
+  activeSurvey=loadSurveys().find(x=>x.id===id)||activeSurvey;
+  renderSurveyShare(activeSurvey);
+  await refreshSurveyAnalytics();
+  document.getElementById('surveyShareBox')?.scrollIntoView({behavior:'smooth',block:'center'});
+  toast('تم إنشاء استمارة قياس الأثر والرابط والباركود بنجاح');
+ }catch(e){
+  console.error('[impact survey create]',e);
+  toast('تعذر إنشاء استمارة قياس الأثر: '+(e?.message||String(e)));
+ }finally{if(btn){btn.disabled=false;btn.textContent=original}}
+}
+function renderSurveyShare(survey){const box=document.getElementById('surveyShareBox');if(!box||!survey)return;const link=publicSurveyUrl(survey);if(!link){box.innerHTML='<b>تعذر إنشاء الرابط العام</b>';return}box.innerHTML=`<b>${esc(survey.title)}</b><div class="share-link" id="surveyPublicLink">${esc(link)}</div><div class="qr-box"><div id="surveyQrCanvas"></div><div class="actions-row"><button class="btn secondary" type="button" onclick="copySurveyLink()">نسخ الرابط</button><button class="btn secondary" type="button" onclick="window.open(document.getElementById('surveyPublicLink').textContent,'_blank','noopener')">فتح الاستبانة</button><button class="btn secondary" type="button" onclick="downloadSurveyQr()">حفظ الباركود</button></div></div><span class="small">المحفظة: ${esc(portfolioNames[survey.template]||survey.template)} — القسم: ${esc(survey.sourceSection||currentRoleLabel())}</span>`;const qr=document.getElementById('surveyQrCanvas');if(qr){qr.innerHTML='';if(window.QRCode){new QRCode(qr,{text:link,width:132,height:132,correctLevel:QRCode.CorrectLevel.M})}else{qr.innerHTML='<div class="small" style="max-width:150px">تم إنشاء الرابط، وتعذر تحميل مكتبة الباركود. حدّث الصفحة لإظهار الباركود.</div>'}}}
 async function copySurveyLink(){const txt=document.getElementById('surveyPublicLink')?.textContent||'';if(!txt)return;try{await navigator.clipboard.writeText(txt);toast('تم نسخ رابط الاستبانة')}catch(e){prompt('انسخ الرابط:',txt)}}
 function downloadSurveyQr(){const root=document.getElementById('surveyQrCanvas');const canvas=root?.querySelector('canvas'),img=root?.querySelector('img');const href=canvas?.toDataURL('image/png')||img?.src;if(!href)return toast('لم يتم توليد الباركود بعد');const a=document.createElement('a');a.href=href;a.download='impact-survey-qr.png';a.click()}
 function surveyStats(survey){const responses=loadResponses().filter(r=>r.surveyId===survey.id);let numeric=[],positive=0,numericCount=0;responses.forEach(r=>(r.answers||[]).forEach(a=>{if(typeof a.value==='number'&&a.value>0){numeric.push(a.value);numericCount++;if(a.value>=4)positive++;}}));const avg=numeric.length?Math.round((numeric.reduce((s,v)=>s+v,0)/numeric.length)*20):0,completed=responses.length,positiveRate=numericCount?Math.round(positive/numericCount*100):0;const level=avg>=90?'ممتاز':avg>=75?'مرتفع':avg>=60?'متوسط':avg>0?'منخفض':'لا توجد بيانات';const confidence=completed>=30?'مرتفع':completed>=10?'متوسط':completed>0?'محدود':'لا توجد بيانات';const questionStats=(survey.questions||[]).map((q,i)=>{const vals=responses.map(r=>(r.answers||[])[i]?.value).filter(v=>typeof v==='number'&&v>0);const qavg=vals.length?Math.round(vals.reduce((a,b)=>a+b,0)/vals.length*20):0;return{text:q.text,avg:qavg,count:vals.length}});const ranked=questionStats.filter(x=>x.count).sort((a,b)=>b.avg-a.avg);return{responses,completed,avg,level,positiveRate,confidence,questionStats,strongest:ranked[0]||null,weakest:ranked[ranked.length-1]||null}}

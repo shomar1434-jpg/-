@@ -4656,27 +4656,17 @@ document.querySelectorAll('.tabBtn').forEach(btn=>{
 });
 activateSelfEvaluationModule('committeesFrame');
 </script>
-<script>
-(function(){
-  const MANAGER_ARCHIVE_KEY='manager_self_evaluation_archive_v1';
-  const EXTRA_FOLDERS=['الخطة التشغيلية','قرارات اللجان والفرق','اجتماعات اللجان والفرق'];
-  function saveToManagerArchive(payload){
-    try{
-      const target = (window.parent && window.parent !== window && window.parent.localStorage) ? window.parent.localStorage : window.localStorage;
-      let arr=[];
-      try{ arr=JSON.parse(target.getItem(MANAGER_ARCHIVE_KEY)||'[]')||[]; }catch(e){ arr=[]; }
-      const name=payload.recordName||payload.folderName||payload.title||'سجل التقويم الذاتي';
-      if(!payload.htmlContent&&!payload.archivePdfFileId)return;
-      const item={id:payload.id||Date.now(), folderId:payload.folderId||'', folderName:name, recordName:name, title:payload.title||name, displayName:payload.displayName||name, htmlContent:payload.htmlContent||'', archivePdfFileId:payload.archivePdfFileId||'', createdAt:payload.createdAt||new Date().toLocaleString('ar-SA'), data:payload.data||null};
-      arr=arr.filter(x=>String(x&&x.id)!==String(item.id));arr.push(item);
-      target.setItem(MANAGER_ARCHIVE_KEY, JSON.stringify(arr));
-    }catch(e){}
-  }
-  window.addEventListener('message',function(event){
-    const d=event.data||{};
-    if(d && (d.type==='SELF_EVAL_RECORD_SAVED' || d.type==='SELF_EVAL_ARCHIVE_SAVE')) saveToManagerArchive(d);
-  });
-})();
+<script id="SELF_EVALUATION_CANONICAL_WRITER_RL79">
+/* RL79: legacy manager archive is recovery-only.
+   New records are written only through SelfEvaluationArchiveV5 after verified working-state + PDF persistence.
+   Historical keys remain hydrated/readable so existing schools can be migrated non-destructively by manager.html. */
+window.__SELF_EVALUATION_CANONICAL_WRITER_RL79__={
+  version:'RL79',
+  canonicalIndex:'self_eval_archive_index_v5',
+  canonicalPrefix:'self_eval_archive_record_v5_',
+  legacyWriteDisabled:true,
+  legacyPreserved:true
+};
 </script>
 <!-- Unified Cloud File Engine v3 -->
 <script src="platform-cloud-session.js?v=20260905-RL33-complete-tab-role-isolation"></script>

@@ -5750,15 +5750,16 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
       const g=window.PlatformPersistenceGuard;
       if(!g||typeof g.readExact!=='function')return false;
       if(kind==='self'){
-        const r=await g.readExact({moduleKey:'self_evaluation',scope:'school',keys:['manager_self_evaluation_archive_v1','self_evaluation_archive_v1']});
+        // RL79: legacy is recovery-only. Reading it is non-destructive and scoped to the active school.
+        const r=await g.readExact({moduleKey:'self_evaluation',scope:'school',keys:['manager_self_evaluation_archive_v1','self_evaluation_archive_v1','self_evaluation_archive','school_self_evaluation_archive_v1']});
         return !!(r&&r.ok!==false);
       }
       const r=await hydrateManagerRecordsCanonicalV6();
       return !!(r&&r.ok!==false);
     }catch(e){console.error('[manager canonical archive hydrate]',e);return false;}
   }
-  async function showArchive(kind){ var v=document.getElementById(viewId(kind)); if(!v){alert('واجهة '+title(kind)+' غير موجودة.');return;} hideAllManagerViews(); v.style.display='block'; if(v.classList)v.classList.remove('hidden'); var loadingBox=document.getElementById(contentId(kind)); if(loadingBox) loadingBox.innerHTML='<div class="bg-white/90 rounded-[28px] p-8 text-center text-slate-500 font-bold">جاري استعادة الأرشيف السحابي والتحقق من بيانات المدرسة...</div>'; if(kind==='manager'){await Promise.all([hydrateCanonicalManagerArchive(kind),syncDecisionsArchiveFromCloud()]);}else{await hydrateCanonicalManagerArchive(kind);} renderFolders(kind); }
- function flattenLegacySelfEvaluationArchive(){
+
+  function flattenLegacySelfEvaluationArchive(){
     var out=[];
     try{
       var obj=JSON.parse(localStorage.getItem('self_evaluation_archive_v1')||'{}')||{};
@@ -5767,35 +5768,89 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
         var folder=fs[folderName]||{}, items=Array.isArray(folder.items)?folder.items:[];
         items.forEach(function(x){
           var f=folderByName(selfFolders,folderName);
-          out.push(Object.assign({},x,{
-            folderId:x.folderId||(f&&f.id)||'',
-            folderName:x.folderName||folderName,
-            recordName:x.recordName||folderName
-          }));
+          out.push(Object.assign({},x,{folderId:x.folderId||(f&&f.id)||'',folderName:x.folderName||folderName,recordName:x.recordName||folderName}));
         });
       });
     }catch(e){}
     return out;
   }
-  function archive(kind){
-    var arr=readArray(keys(kind));
-    if(kind==='manager'){
-      // دمج فهرس المدير مع أرشيف القرارات المتخصص مع إزالة التكرار حسب id.
-      var mapM=new Map();
-      arr.concat(decisionRowsLocal()).forEach(function(r){
-        if(!r)return;
-        var k=String(r.id||r.createdAt||r.title||'');
-        if(k&&!mapM.has(k))mapM.set(k,r);
-      });
-      return Array.from(mapM.values());
-    }
-    if(kind!=='self')return arr;
-    var legacy=flattenLegacySelfEvaluationArchive(),map=new Map();
-    arr.concat(legacy).forEach(function(r){
-      var k=String(r.id||'')+'|'+String(r.savedAt||r.createdAt||'')+'|'+String(r.title||'');
-      if(!map.has(k))map.set(k,r);
+  function legacySelfRowsRL79(){
+    var all=[];
+    keys('self').forEach(function(k){
+      try{var raw=localStorage.getItem(k);if(!raw)return;var v=JSON.parse(raw);if(Array.isArray(v))all=all.concat(v);}catch(_){}
     });
+    all=all.concat(flattenLegacySelfEvaluationArchive());
+    var map=new Map();
+    all.forEach(function(r){if(!r)return;var id=String(r.id||r.savedAt||r.createdAt||r.title||'');if(!id)return;var old=map.get(id);var richness=function(x){return (String(x&&x.htmlContent||'').length>300?100:0)+(x&&x.archivePdfFileId?100:0)+(x&&x.data?20:0)+(x&&x.folderId?5:0);};if(!old||richness(r)>richness(old))map.set(id,r);});
     return Array.from(map.values());
+  }
+  function stableLegacyIdRL79(r){
+    var raw=String(r&&r.id||'').trim();if(raw)return raw;
+    var s=[r&&r.folderId,r&&r.folderName,r&&r.recordName,r&&r.title,r&&r.savedAt,r&&r.createdAt].map(String).join('|'),h=2166136261;
+    for(var i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}
+    return 'legacy-'+(h>>>0).toString(36);
+  }
+  function canonicalLegacyFolderRL79(r){
+    var exact=String(r&&r.folderId||r&&r.recordId||'');if(exact&&selfFolders.some(function(f){return String(f.id)===exact;}))return exact;
+    var folder=String(r&&r.folderName||r&&r.recordName||'');
+    if(folder==='قرارات اللجان والفرق'||folder==='اجتماعات اللجان والفرق'){
+      var probe=String(r&&r.title||'')+' '+String(r&&r.data&& (r.data.name||r.data.formationName)||r&&r.name||''),meet=folder==='اجتماعات اللجان والفرق';
+      if(probe.indexOf('مجلس')>-1)return meet?'selfEval_59':'selfEval_58';if(probe.indexOf('فريق')>-1)return meet?'selfEval_57':'selfEval_56';return meet?'selfEval_55':'selfEval_54';
+    }
+    var f=folderByName(selfFolders,folder||String(r&&r.title||''));return String(f&&f.id||'selfEval_63');
+  }
+
+  window.SelfEvaluationArchiveV5=(function(){
+    'use strict';
+    const MODULE='self_evaluation',INDEX_KEY='self_eval_archive_index_v5',PREFIX='self_eval_archive_record_v5_',LEDGER_KEY='self_eval_archive_migration_ledger_v1';
+    let view=[],migrationOk=true;
+    const arr=v=>{try{const x=typeof v==='string'?JSON.parse(v):v;return Array.isArray(x)?x:[]}catch(_){return []}};
+    const obj=v=>{try{const x=typeof v==='string'?JSON.parse(v):v;return x&&typeof x==='object'&&!Array.isArray(x)?x:null}catch(_){return null}};
+    const idOf=x=>String(x&&x.id||'');
+    const keyOf=id=>PREFIX+String(id||'').replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,120);
+    async function engine(){if(window.PlatformCloudSession&&typeof PlatformCloudSession.ensure==='function')await PlatformCloudSession.ensure();let n=0;while((!window.PlatformStateEngine||typeof PlatformStateEngine.pull!=='function'||typeof PlatformStateEngine.bulkUpsert!=='function')&&n++<60)await new Promise(r=>setTimeout(r,50));if(!window.PlatformStateEngine)throw new Error('محرك أرشيف التقويم الذاتي V5 غير متاح');return window.PlatformStateEngine}
+    async function pull(keys){const E=await engine(),r=await E.pull(MODULE,'school',keys),rows=Array.isArray(r)?r:(r&& (r.items||r.rows)||[]),vals={};for(const row of rows){if(row&& (row.deleted_at||row.deleted===true))continue;const k=String(row&& (row.state_key||row.key)||'');if(!k)continue;const raw=row&&row.payload&&Object.prototype.hasOwnProperty.call(row.payload,'value')?row.payload.value:row&&row.value;if(raw!==undefined&&raw!==null)vals[k]=String(raw)}return vals}
+    function meta(row){return {id:String(row.id),title:String(row.title||row.folderName||'سجل التقويم الذاتي'),type:String(row.type||'legacy_self_evaluation_record'),folderId:String(row.folderId||''),folderName:String(row.folderName||''),recordName:String(row.recordName||row.folderName||''),source:String(row.source||'التقويم الذاتي'),savedAt:String(row.savedAt||row.createdAt||''),updatedAt:String(row.updatedAt||row.savedAt||row.createdAt||''),schoolName:String(row.schoolName||''),academicYear:String(row.academicYear||''),archivePdfFileId:String(row.archivePdfFileId||''),archiveFormat:String(row.archiveFormat||'self-evaluation-v5'),stateKey:keyOf(row.id),storageEngine:'SelfEvaluationArchiveV5',archiveType:'selfEvaluation',readOnly:false,migratedFromLegacy:!!row.migratedFromLegacy};}
+    async function hydrate(){
+      migrationOk=true;
+      const legacyReady=await hydrateCanonicalManagerArchive('self');
+      const first=await pull([INDEX_KEY,LEDGER_KEY]),idx=arr(first[INDEX_KEY]),ledger=obj(first[LEDGER_KEY])||{version:1,entries:{}};if(!ledger.entries||typeof ledger.entries!=='object')ledger.entries={};
+      const byId=new Map(idx.map(x=>[idOf(x),x])),legacy=legacyReady?legacySelfRowsRL79():[],writes=[],migrated=[];
+      legacy.forEach(function(old){
+        var id=stableLegacyIdRL79(old),le=ledger.entries[id];if(le&&le.status==='deleted')return;if(byId.has(id)){if(!le)ledger.entries[id]={status:'already_v5',source:'legacy-detected',at:new Date().toISOString()};return;}
+        var fid=canonicalLegacyFolderRL79(old),folder=selfFolders.find(f=>String(f.id)===fid)||{id:'selfEval_63',name:'سجلات التقويم الذاتي والمؤشرات'};
+        var row=Object.assign({},old,{id:id,folderId:folder.id,folderName:folder.name,recordName:folder.name,type:String(old.type||'legacy_self_evaluation_record'),title:String(old.title||old.displayName||folder.name),savedAt:String(old.savedAt||old.createdAt||new Date().toISOString()),updatedAt:String(old.updatedAt||old.savedAt||old.createdAt||new Date().toISOString()),storageEngine:'SelfEvaluationArchiveV5',archiveFormat:String(old.archiveFormat||'legacy-preserved-rl79'),migratedFromLegacy:true,legacySourceKey:String(old.__legacySourceKey||'legacy-self-evaluation')});
+        row.stateKey=keyOf(id);var m=meta(row);idx.unshift(m);byId.set(id,m);writes.push({key:row.stateKey,value:JSON.stringify(row),deleted:false});migrated.push({id:id,key:row.stateKey});ledger.entries[id]={status:'migrated_verified_pending',source:row.legacySourceKey,at:new Date().toISOString(),folderId:folder.id};
+      });
+      if(writes.length){
+        try{
+          const E=await engine();writes.push({key:INDEX_KEY,value:JSON.stringify(idx),deleted:false},{key:LEDGER_KEY,value:JSON.stringify(ledger),deleted:false});await E.bulkUpsert(MODULE,'school',writes,{timeout:30000});
+          const verify=await pull([INDEX_KEY,LEDGER_KEY].concat(migrated.map(x=>x.key))),vIdx=arr(verify[INDEX_KEY]),vIds=new Set(vIdx.map(idOf));for(const m of migrated){if(!vIds.has(m.id)||!obj(verify[m.key]))throw new Error('فشل التحقق من ترحيل السجل '+m.id);ledger.entries[m.id].status='migrated_verified';ledger.entries[m.id].verifiedAt=new Date().toISOString();}
+          await E.bulkUpsert(MODULE,'school',[{key:LEDGER_KEY,value:JSON.stringify(ledger),deleted:false}],{timeout:20000});
+        }catch(e){migrationOk=false;console.error('[RL79 legacy self evaluation migration]',e);}
+      }
+      const fresh=await pull([INDEX_KEY]),clean=arr(fresh[INDEX_KEY]).map(x=>Object.assign({},x,{storageEngine:'SelfEvaluationArchiveV5',__archiveSource:'clean',readOnly:false}));
+      if(migrationOk){view=clean;}else{
+        var map=new Map(clean.map(x=>[idOf(x),x]));legacy.forEach(function(r){var id=stableLegacyIdRL79(r);if(!map.has(id))map.set(id,Object.assign({},r,{id:id,folderId:canonicalLegacyFolderRL79(r),storageEngine:'LegacySelfEvaluationRecovery',__archiveSource:'legacy-fallback',readOnly:true}));});view=Array.from(map.values());
+      }
+      window.__selfEvaluationArchiveV5View=view;return view.slice();
+    }
+    async function fetch(id){const metaRow=view.find(x=>idOf(x)===String(id));if(!metaRow)return null;if(metaRow.__archiveSource==='legacy-fallback')return metaRow;const k=metaRow.stateKey||keyOf(id),v=await pull([k]),row=obj(v[k]);if(!row)throw new Error('تعذر إعادة قراءة سجل التقويم الذاتي من السحابة');if(String(row.id||'')!==String(metaRow.id||'')||String(row.folderId||'')!==String(metaRow.folderId||''))throw new Error('هوية السجل السحابي لا تطابق الفهرس');return Object.assign({},row,{__archiveSource:'clean'});}
+    async function remove(id){
+      await hydrate();const m=view.find(x=>idOf(x)===String(id));if(!m)throw new Error('السجل غير موجود في أرشيف V5');if(m.readOnly)throw new Error('السجل التاريخي ظاهر بوضع الاستعادة الآمن ولم يتم ترحيله؛ لن يتم حذفه.');
+      const v0=await pull([LEDGER_KEY]),ledger=obj(v0[LEDGER_KEY])||{version:1,entries:{}};if(!ledger.entries)ledger.entries={};ledger.entries[String(id)]={status:'deleted',at:new Date().toISOString(),preserveLegacySource:true};
+      const next=view.filter(x=>idOf(x)!==String(id)).map(x=>{const y=Object.assign({},x);delete y.__archiveSource;return y}),k=m.stateKey||keyOf(id),E=await engine();await E.bulkUpsert(MODULE,'school',[{key:k,value:'',deleted:true},{key:INDEX_KEY,value:JSON.stringify(next),deleted:false},{key:LEDGER_KEY,value:JSON.stringify(ledger),deleted:false}],{timeout:20000});const v=await pull([k,INDEX_KEY,LEDGER_KEY]);if(Object.prototype.hasOwnProperty.call(v,k))throw new Error('لم يكتمل حذف سجل التقويم الذاتي');if(arr(v[INDEX_KEY]).some(x=>idOf(x)===String(id)))throw new Error('لم يكتمل تحديث فهرس التقويم الذاتي');const l=obj(v[LEDGER_KEY]);if(!l||!l.entries||!l.entries[String(id)]||l.entries[String(id)].status!=='deleted')throw new Error('لم يثبت مانع إعادة ترحيل السجل التاريخي');view=arr(v[INDEX_KEY]).map(x=>Object.assign({},x,{storageEngine:'SelfEvaluationArchiveV5',__archiveSource:'clean',readOnly:false}));return true;
+    }
+    return {MODULE,INDEX_KEY,PREFIX,LEDGER_KEY,hydrate,fetch,remove,getView:()=>view.slice(),find:id=>view.find(x=>idOf(x)===String(id))||null,migrationOk:()=>migrationOk};
+  })();
+
+  async function showArchive(kind){
+    var v=document.getElementById(viewId(kind));if(!v){alert('واجهة '+title(kind)+' غير موجودة.');return;}hideAllManagerViews();v.style.display='block';if(v.classList)v.classList.remove('hidden');var loadingBox=document.getElementById(contentId(kind));if(loadingBox)loadingBox.innerHTML='<div class="bg-white/90 rounded-[28px] p-8 text-center text-slate-500 font-bold">جاري استعادة الأرشيف السحابي والتحقق من بيانات المدرسة...</div>';
+    if(kind==='manager')await Promise.all([hydrateCanonicalManagerArchive(kind),syncDecisionsArchiveFromCloud()]);else await SelfEvaluationArchiveV5.hydrate();renderFolders(kind);
+  }
+  function archive(kind){
+    var arr=readArray(keys(kind));if(kind==='manager'){var mapM=new Map();arr.concat(decisionRowsLocal()).forEach(function(r){if(!r)return;var k=String(r.id||r.createdAt||r.title||'');if(k&&!mapM.has(k))mapM.set(k,r);});return Array.from(mapM.values());}
+    if(kind!=='self')return arr;return window.SelfEvaluationArchiveV5?SelfEvaluationArchiveV5.getView():[];
   }
   function legacySelfArchiveFolderId(r){
     if(!r)return '';
@@ -5873,36 +5928,27 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
   }
   function findItem(kind,id){return archive(kind).find(function(r){return String(r.id||r.createdAt||r.title)===String(id);});}
   function safeDoc(r,autoPrint){
-    var html=(r&&(r.htmlContent||r.pdfHtml||r.officialHtml||r.templateHtml))||'';
-    if(!html) html='<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>'+esc((r&&r.title)||'سجل')+'</title></head><body style="font-family:Tajawal,Arial;padding:30px"><h2>'+esc((r&&r.title)||'سجل')+'</h2><div>'+esc((r&&r.notes)||'لا يوجد محتوى محفوظ لهذا السجل.')+'</div></body></html>';
-    var ps=autoPrint?'<script>window.addEventListener("load",function(){setTimeout(function(){window.print();},500);});<\\/script>':'';
-    if(autoPrint) html=html.replace(/<\/body>/i,ps+'</body>');
-    return html;
+    var html=(r&&(r.printSourceHtml||r.htmlContent||r.pdfHtml||r.officialHtml||r.templateHtml))||'';
+    if(!html)html='<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>'+esc((r&&r.title)||'سجل')+'</title></head><body style="font-family:Tajawal,Arial;padding:30px"><h2>'+esc((r&&r.title)||'سجل')+'</h2><div>'+esc((r&&r.notes)||'هذا سجل تاريخي محفوظ، ولا تتوفر له نسخة HTML كاملة. بياناته الأصلية لم تُحذف.')+'</div></body></html>';
+    var ps=autoPrint?'<script>window.addEventListener("load",function(){setTimeout(function(){window.print();},500);});<\\/script>':'';if(autoPrint)html=html.replace(/<\/body>/i,ps+'</body>');return html;
   }
   async function previewItem(kind,id,autoPrint){
     var r=findItem(kind,id);if(!r){alert('تعذر العثور على السجل.');return;}
-    if(kind==='manager'&&r.recordType==='decision_assignment'){
-      try{var g=await DecisionArchiveService.get(id);if(g&&g.record)r=g.record;}catch(e){console.error('[manager decision preview get]',e);alert('تعذر تحميل القرار من الأرشيف السحابي: '+(e&&e.message||e));return;}
+    if(kind==='self'&&window.SelfEvaluationArchiveV5){try{r=await SelfEvaluationArchiveV5.fetch(id)||r;}catch(e){console.error('[SelfEvaluationArchiveV5 fetch]',e);alert('تعذر التحقق من سجل التقويم الذاتي سحابيًا: '+(e&&e.message||e));return;}}
+    if(kind==='manager'&&r.recordType==='decision_assignment'){try{var g=await DecisionArchiveService.get(id);if(g&&g.record)r=g.record;}catch(e){console.error('[manager decision preview get]',e);alert('تعذر تحميل القرار من الأرشيف السحابي: '+(e&&e.message||e));return;}}
+    if(kind==='self'&&r.archivePdfFileId&&window.CloudFileEngine&&typeof CloudFileEngine.signedUrl==='function'){
+      var popup=window.open('about:blank','_blank');if(!popup){alert('يرجى السماح بالنوافذ المنبثقة.');return;}try{if(window.PlatformCloudSession&&typeof PlatformCloudSession.ensure==='function')await PlatformCloudSession.ensure();var su=await CloudFileEngine.signedUrl(String(r.archivePdfFileId),600);if(!su||!su.signedUrl)throw new Error('لم يتم الحصول على رابط PDF');popup.location.replace(su.signedUrl);return;}catch(e){console.warn('[self evaluation PDF preview fallback]',e);try{popup.close()}catch(_){}}
     }
     var w=window.open('','_blank');if(!w){alert('يرجى السماح بالنوافذ المنبثقة.');return;}w.document.open();w.document.write(safeDoc(r,autoPrint));w.document.close();
   }
   async function deleteItem(kind,id){
-    if(!confirm('هل تريد حذف هذا السجل؟'))return;
-    var item=findItem(kind,id);
+    if(!confirm('هل تريد حذف هذا السجل؟'))return;var item=findItem(kind,id);
     if(kind==='manager'&&item&&item.recordType==='decision_assignment'){
-      try{
-        var del=await DecisionArchiveService.delete(item.id);
-        if(!del||del.ok!==true)throw new Error('لم يتم تأكيد حذف القرار سحابيًا');
-        var rows=await syncDecisionsArchiveFromCloud();
-        if((rows||[]).some(function(r){return String(r.id)===String(item.id)}))throw new Error('حُذف الطلب لكن القرار ما زال ظاهرًا في المصدر السحابي');
-        alert('تم حذف قرار التكليف سحابيًا وتأكيد اختفائه من الأرشيف.');
-      }catch(e){console.error('[manager authoritative decision delete]',e);alert('تعذر حذف قرار التكليف سحابيًا: '+(e&&e.message||e)+'\nلم يتم اعتبار الحذف ناجحًا.');return;}
-    }else{
-      var key=primaryKey(kind);
-      var arr=readArray([key]).filter(function(r){return String(r.id||r.createdAt||r.title)!==String(id);});
-      writeArray(key,arr);
-    }
-    if(currentArchiveFolder&&currentArchiveFolder.kind===kind) openFolder(kind,currentArchiveFolder.id); else renderFolders(kind);
+      try{var del=await DecisionArchiveService.delete(item.id);if(!del||del.ok!==true)throw new Error('لم يتم تأكيد حذف القرار سحابيًا');var rows=await syncDecisionsArchiveFromCloud();if((rows||[]).some(function(r){return String(r.id)===String(item.id)}))throw new Error('حُذف الطلب لكن القرار ما زال ظاهرًا في المصدر السحابي');alert('تم حذف قرار التكليف سحابيًا وتأكيد اختفائه من الأرشيف.');}catch(e){console.error('[manager authoritative decision delete]',e);alert('تعذر حذف قرار التكليف سحابيًا: '+(e&&e.message||e)+'\nلم يتم اعتبار الحذف ناجحًا.');return;}
+    }else if(kind==='self'){
+      try{if(!window.SelfEvaluationArchiveV5)throw new Error('مستودع التقويم الذاتي غير متاح');var pdfId=String(item&&item.archivePdfFileId||'');await SelfEvaluationArchiveV5.remove(id);if(pdfId&&window.CloudFileEngine&&typeof CloudFileEngine.trash==='function'){try{await CloudFileEngine.trash(pdfId)}catch(e){console.warn('[SelfEvaluationArchiveV5 pdf trash]',e)}}await SelfEvaluationArchiveV5.hydrate();alert('تم حذف السجل من V5 مع إبقاء المصدر التاريخي القديم محفوظًا ومنع إعادة ترحيله تلقائيًا.');}catch(e){console.error('[SelfEvaluationArchiveV5 delete]',e);alert('تعذر حذف سجل التقويم الذاتي سحابيًا: '+(e&&e.message||e));return;}
+    }else{var key=primaryKey(kind);var arr=readArray([key]).filter(function(r){return String(r.id||r.createdAt||r.title)!==String(id);});writeArray(key,arr);}
+    if(currentArchiveFolder&&currentArchiveFolder.kind===kind)openFolder(kind,currentArchiveFolder.id);else renderFolders(kind);
   }
   window.openManagerRecordsArchiveView=function(){showArchive('manager');};
   window.closeManagerRecordsArchiveView=function(){var v=document.getElementById('manager-records-archive-view'); if(v){v.style.display='none'; if(v.classList)v.classList.add('hidden');} showDashboard();};
@@ -6390,5 +6436,7 @@ window.__PERFORMANCE_ARCHIVE_CLEAN_V5_4__={pdfLikeReadonlyPreview:true,usesPrint
 })();
 </script>
 
+
+<script id="SELF_EVALUATION_CANONICAL_ARCHIVE_RL79">window.__SELF_EVALUATION_CANONICAL_ARCHIVE_RL79__={version:'RL79',legacyPolicy:'preserve-copy-verify-no-delete',canonical:'SelfEvaluationArchiveV5'};</script>
 </body>
 </html>

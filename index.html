@@ -1526,18 +1526,29 @@ document.addEventListener("click", function(e){
   window.buildIndependentSchoolRegistrationUrl = function(school){
     const id=schoolId(school),code=schoolCode(school),reg=String((school&& (school.registration_code||school.registrationCode))||'').trim();
     const q=[];
-    if(id){q.push('schoolId='+enc(id));q.push('sid='+enc(id));}
-    if(code){q.push('school='+enc(code));q.push('schoolCode='+enc(code));}
-    if(reg){q.push('reg='+enc(reg));q.push('token='+enc(reg));}
-    q.push('source=supabase_school_registration');q.push('scope=school');
+    if(id)q.push('schoolId='+enc(id));
+    if(code)q.push('schoolCode='+enc(code));
+    if(reg)q.push('reg='+enc(reg));
+    q.push('source=school_registration');q.push('scope=school');
     const base=location.href.split('/').slice(0,-1).join('/')+'/register.html';
     return base+'?'+q.join('&');
   };
   window.copyRegistrationLink = async function(school){
-    const url=window.buildIndependentSchoolRegistrationUrl(school);
+    // RL92: مالك النظام ومدير المدرسة يستخدمان registration_code نفسه المخزن للمدرسة في Supabase.
+    var authoritative=school;
+    try{
+      if(window.SmartSchoolSupabase&&window.SmartSchoolSupabase.resolveSchool){
+        var ref=schoolId(school)||schoolCode(school);
+        var fetched=ref?await window.SmartSchoolSupabase.resolveSchool(ref):null;
+        if(fetched)authoritative=fetched;
+      }
+    }catch(e){console.warn('[RL92 owner registration context]',e)}
+    const reg=String((authoritative&&(authoritative.registration_code||authoritative.registrationCode))||'').trim();
+    if(!reg){if(typeof showToast==='function')showToast('لا يوجد رمز تسجيل معتمد لهذه المدرسة في Supabase');return '';}
+    const url=window.buildIndependentSchoolRegistrationUrl(authoritative);
     try{if(navigator.clipboard&&navigator.clipboard.writeText)await navigator.clipboard.writeText(url);else throw new Error('no clipboard');}
     catch(_){prompt('انسخ رابط تسجيل المستخدمين',url)}
-    if(typeof showToast==='function')showToast('تم نسخ رابط التسجيل الثابت للمدرسة');
+    if(typeof showToast==='function')showToast('تم نسخ رابط التسجيل الموحد للمدرسة');
     return url;
   };
   window.copyIndependentSchoolLoginLink = async function(school){

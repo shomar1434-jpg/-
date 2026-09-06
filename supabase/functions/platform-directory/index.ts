@@ -7,24 +7,37 @@ const hmacHex=async(secret:string,msg:string)=>{const key=await crypto.subtle.im
 const managers=new Set(['manager','owner','school_manager','principal','leadership','مدير','مديرة','مدير المدرسة','مديرة المدرسة']);
 const agents=new Set(['agent','deputy','vice','wakil','agency','وكيل','وكيلة']);
 const allowedRegistrationRoles=new Set(['agent','teacher','student_advisor','activity_leader','kindergarten_teacher','health_advisor','administrative_employee']);
-const REGISTRATION_CONTRACT_VERSION='RL91-school-scoped-registration-identity-v1';
+const REGISTRATION_CONTRACT_VERSION='RL92-school-bound-registration-v1';
 Deno.serve(async(req)=>{
  if(req.method==='OPTIONS')return new Response('ok',{headers:cors}); if(req.method!=='POST')return json({error:'METHOD_NOT_ALLOWED'},405);
  const url=Deno.env.get('SUPABASE_URL'),service=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');if(!url||!service)return json({error:'ENV_MISSING'},500);
  const sb=createClient(url,service,{auth:{persistSession:false,autoRefreshToken:false}}),requestId=crypto.randomUUID();
  const adminLinkToken=async(schoolId:string,supervisorUserId:string,supervisorRole:string,exp:number)=>`${exp}.${await hmacHex(service,`${schoolId}|${supervisorUserId}|${supervisorRole}|${exp}`)}`;
  const verifyAdminLinkToken=async(token:string,schoolId:string,supervisorUserId:string,supervisorRole:string)=>{const [expRaw,sig]=String(token||'').split('.');const exp=Number(expRaw);if(!Number.isFinite(exp)||Date.now()>exp||!sig)return false;const expected=await hmacHex(service,`${schoolId}|${supervisorUserId}|${supervisorRole}|${exp}`);if(expected.length!==sig.length)return false;let diff=0;for(let i=0;i<expected.length;i++)diff|=expected.charCodeAt(i)^sig.charCodeAt(i);return diff===0};
- const generalLinkToken=async(schoolId:string,managerUserId:string,exp:number)=>`${exp}.${await hmacHex(service,`GENERAL|${schoolId}|${managerUserId}|${exp}`)}`;
- const verifyGeneralLinkToken=async(token:string,schoolId:string,managerUserId:string)=>{const [expRaw,sig]=String(token||'').split('.');const exp=Number(expRaw);if(!Number.isFinite(exp)||Date.now()>exp||!sig)return false;const expected=await hmacHex(service,`GENERAL|${schoolId}|${managerUserId}|${exp}`);if(expected.length!==sig.length)return false;let diff=0;for(let i=0;i<expected.length;i++)diff|=expected.charCodeAt(i)^sig.charCodeAt(i);return diff===0};
  try{
   const body:any=await req.json().catch(()=>({})),action=t(body.action,80);
   if(action==='registration-contract-version')return json({ok:true,version:REGISTRATION_CONTRACT_VERSION,requestId});
   const findSchool=async()=>{
-   const sid=t(body.schoolId,100),scode=t(body.schoolCode,100),reg=t(body.registrationCode,160);let q:any=null;
-   if(sid)q=await sb.from('schools').select('*').eq('id',sid).maybeSingle();else if(reg)q=await sb.from('schools').select('*').eq('registration_code',reg).limit(2);else if(scode)q=await sb.from('schools').select('*').eq('school_code',scode).limit(2);else return null;
-   if(q.error)throw q.error;let row=Array.isArray(q.data)?(q.data.length===1?q.data[0]:null):q.data;if(!row)return null;
-   if(sid&&String(row.id)!==sid)return null;if(scode&&t(row.school_code)!==scode)return null;if(reg&&t(row.registration_code)!==reg)return null;
-   if(['disabled','inactive','suspended','deleted'].includes(low(row.status)))return null;return row;
+   const sid=t(body.schoolId,100),scode=t(body.schoolCode,100),reg=t(body.registrationCode,160);
+   if(!reg)return null;
+   let row:any=null;
+   // RL92: schoolId هو المرجع الأقوى. registrationCode هو مفتاح صلاحية الرابط.
+   // schoolCode يبقى مرجعًا احتياطيًا/وصفيًا ولا يبطل رابطًا صحيحًا إذا تغير لاحقًا.
+   if(sid){
+    const q=await sb.from('schools').select('*').eq('id',sid).maybeSingle();if(q.error)throw q.error;row=q.data||null;
+   }
+   if(!row){
+    const q=await sb.from('schools').select('*').eq('registration_code',reg).limit(2);if(q.error)throw q.error;
+    row=(q.data||[]).length===1?q.data[0]:null;
+   }
+   if(!row&&scode){
+    const q=await sb.from('schools').select('*').eq('school_code',scode).limit(2);if(q.error)throw q.error;
+    row=(q.data||[]).length===1?q.data[0]:null;
+   }
+   if(!row)return null;
+   if(t(row.registration_code,160)!==reg)return null;
+   if(['disabled','inactive','suspended','deleted'].includes(low(row.status)))return null;
+   return row;
   };
   if(action==='inspect-school'){
    const school=await findSchool();if(!school)return json({error:'SCHOOL_NOT_FOUND'},404);return json({ok:true,school:{id:school.id,school_id:school.id,school_name:school.school_name,school_code:school.school_code,status:school.status,school_edition:school.school_edition||'public'},contractVersion:REGISTRATION_CONTRACT_VERSION,requestId});
@@ -42,9 +55,9 @@ Deno.serve(async(req)=>{
     const sq=await sb.from('school_members').select('user_id,role,status').eq('school_id',schoolId).eq('user_id',supervisorUserId).eq('status','active');if(sq.error)throw sq.error;
     const roles=(sq.data||[]).map((x:any)=>low(x.role));if(!roles.includes(supervisorRole))return json({error:'ADMIN_SUPERVISOR_NOT_AUTHORIZED'},403);
    } else {
-    // RL90 — التسجيل العام موحد بين مالك النظام ومدير المدرسة.
-    // بعد نجاح findSchool ومطابقة registrationCode لا نطلب توقيع مدير ولا تاريخ انتهاء.
-    // التحكم النهائي بالحساب يبقى للمدير لأن العضوية تُنشأ pending فقط.
+    // RL92 — التسجيل العام هو رابط مدرسة واحد، بغض النظر عن الجهة التي نسخته.
+    // لا تاريخ انتهاء ولا توقيع مدير؛ الصلاحية = مدرسة فعالة + registration_code مطابق.
+    // الحساب لا يتفعل هنا، بل تبقى العضوية pending حتى يعتمدها مدير المدرسة.
     supervisorUserId='';supervisorRole='';
    }
    // RL91 — هوية التسجيل تُحسم أولًا داخل المدرسة، وليس بالبريد عالميًا.
@@ -82,14 +95,12 @@ Deno.serve(async(req)=>{
     const q=await sb.from('school_members').select('user_id').eq('school_id',schoolId).eq('role',kind).eq('status','active');if(q.error)throw q.error;const ids=[...new Set((q.data||[]).map((x:any)=>String(x.user_id||'')).filter(Boolean))];if(ids.length!==1||ids[0]!==userId)return false;
     const up=await sb.from('school_members').update({supervisor_user_id:userId,updated_at:now}).eq('id',target.id).is('supervisor_user_id',null);if(up.error)throw up.error;return true;
   };
-  if(action==='health')return json({ok:true,version:'1.3.0-RL90-unified-school-registration',schoolId,userId,role,requestId});
+  if(action==='health')return json({ok:true,version:'1.4.0-RL92-school-bound-registration',schoolId,userId,role,requestId});
   if(action==='school-registration-context'){
    if(!isManager&&!isAgent)return json({error:'SUPERVISOR_REQUIRED'},403);
    const full=await sb.from('schools').select('id,school_name,school_code,registration_code,status').eq('id',schoolId).maybeSingle();if(full.error)throw full.error;if(!full.data)return json({error:'SCHOOL_NOT_FOUND'},404);
    const sr=isAgent?'agent':'manager',exp=Date.now()+24*60*60*1000,adminRegistrationToken=await adminLinkToken(schoolId,userId,sr,exp);
-   let generalRegistrationToken='',generalRegistrationOwnerUserId='',generalRegistrationExpiresAt='';
-   if(isManager){const gexp=Date.now()+24*60*60*1000;generalRegistrationToken=await generalLinkToken(schoolId,userId,gexp);generalRegistrationOwnerUserId=userId;generalRegistrationExpiresAt=new Date(gexp).toISOString();}
-   return json({ok:true,school:full.data,supervisorUserId:userId,supervisorRole:sr,adminRegistrationToken,adminRegistrationExpiresAt:new Date(exp).toISOString(),generalRegistrationToken,generalRegistrationOwnerUserId,generalRegistrationExpiresAt,canCreateGeneralRegistration:isManager,requestId});
+   return json({ok:true,school:full.data,registrationCode:full.data.registration_code||'',supervisorUserId:userId,supervisorRole:sr,adminRegistrationToken,adminRegistrationExpiresAt:new Date(exp).toISOString(),canCreateGeneralRegistration:isManager,requestId});
   }
   if(action==='me'){return json({ok:true,user:await ownUser(),school:schoolQ.data,membership:(membership.data||[]).find((x:any)=>low(x.role)===role)||membership.data?.[0]||null,requestId});}
   if(action==='list-admin-employees'){

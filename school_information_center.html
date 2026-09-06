@@ -78,6 +78,7 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<!-- RL111: Noor PDF Arabic name reconstruction from OCR word geometry; Excel path unchanged. -->
   <style>
     :root{--teal:#0f766e;--slate:#0f172a;--muted:#64748b;--bg:#f1f5f9;--card:#ffffff;--border:#e2e8f0;--danger:#dc2626;--amber:#d97706;--indigo:#4f46e5;--emerald:#059669}
     *{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Tahoma,Arial,sans-serif;background:linear-gradient(135deg,#ecfeff,#f8fafc 45%,#ecfdf5);color:var(--slate)}
@@ -1124,11 +1125,101 @@ window.prepareStageGradesEditor=function(){
     })();
     return rl110OcrWorkerPromise;
   }
+  // RL111: إعادة بناء الاسم العربي من كلمات OCR ومواضعها بدل الاعتماد على text الخام.
+  // هذا يمنع دمج كلمات الاسم المتجاورة مثل «عبداللهالمالكي» عندما تكون هناك مسافة مرئية داخل خلية نور.
+  function rl111WordsFromTesseract(data){
+    const words=[];
+    const push=w=>{
+      const text=cleanOcrStudentName(w?.text||'');
+      if(!text||!/[\u0600-\u06FF]/.test(text))return;
+      const b=w?.bbox||{};
+      words.push({text,x0:Number(b.x0||0),x1:Number(b.x1||0),y0:Number(b.y0||0),y1:Number(b.y1||0),confidence:Number(w?.confidence||0)});
+    };
+    if(Array.isArray(data?.words))data.words.forEach(push);
+    if(!words.length&&Array.isArray(data?.blocks)){
+      for(const b of data.blocks||[])for(const p of b.paragraphs||[])for(const l of p.lines||[])for(const w of l.words||[])push(w);
+    }
+    return words;
+  }
+  function rl111BuildRtlNameFromWords(data){
+    const words=rl111WordsFromTesseract(data).filter(w=>w.text&&!isImportNoise(w.text));
+    if(!words.length)return'';
+    // أسماء نور عربية RTL؛ الترتيب الصحيح للكلمات من اليمين إلى اليسار.
+    words.sort((a,b)=>b.x0-a.x0);
+    const parts=[];
+    for(const w of words){
+      const t=cleanOcrStudentName(w.text);
+      if(!t)continue;
+      if(parts.length&&parts[parts.length-1]===t)continue;
+      parts.push(t);
+    }
+    return cleanOcrStudentName(parts.join(' '));
+  }
+  function rl111VisualWordSegments(cell){
+    const w=cell.width,h=cell.height;if(w<8||h<8)return[];
+    const gray=rl110CanvasGrayData(cell),ink=new Uint16Array(w);
+    // نستبعد حواف الخلية ونعد أعمدة الحبر فقط. النقاط العربية تبقى مرتبطة أفقيًا بالكلمة غالبًا.
+    const top=Math.max(1,Math.floor(h*.08)),bottom=Math.min(h-1,Math.ceil(h*.92));
+    for(let x=2;x<w-2;x++){
+      let n=0;for(let y=top;y<bottom;y++)if(gray[y*w+x]<175)n++;
+      ink[x]=n;
+    }
+    const active=[];for(let x=2;x<w-2;x++)if(ink[x]>=Math.max(1,Math.floor((bottom-top)*.025)))active.push(x);
+    if(!active.length)return[];
+    // فجوة الكلمة في ملفات نور أكبر بوضوح من الفجوات بين مكونات الكلمة العربية.
+    const splitGap=Math.max(7,Math.round(h*.13));
+    const segments=[];let start=active[0],prev=active[0];
+    for(let i=1;i<active.length;i++){
+      const x=active[i],gap=x-prev-1;
+      if(gap>=splitGap){segments.push([start,prev]);start=x;}
+      prev=x;
+    }
+    segments.push([start,prev]);
+    // حذف الشظايا الصغيرة ودمجها بأقرب كلمة إن كانت نقطة/تشويشًا منفردًا.
+    const minWidth=Math.max(3,Math.round(h*.045)),clean=[];
+    for(const seg of segments){
+      const width=seg[1]-seg[0]+1;
+      if(width>=minWidth)clean.push(seg);
+      else if(clean.length)clean[clean.length-1][1]=seg[1];
+    }
+    // RTL: من اليمين لليسار، وبحد أقصى 8 أجزاء لاسم طالب طبيعي.
+    return clean.filter(s=>s[1]-s[0]+1>=minWidth).sort((a,b)=>b[0]-a[0]).slice(0,8);
+  }
+  async function rl111OcrNameCell(cell,worker){
+    await worker.setParameters({tessedit_pageseg_mode:'7',preserve_interword_spaces:'1'});
+    const r=await worker.recognize(cell),byWords=rl111BuildRtlNameFromWords(r?.data),raw=cleanOcrStudentName(r?.data?.text||'');
+    if(isLikelyStudentName(byWords)&&byWords.split(/\s+/).length>=2)return byWords;
+
+    // إذا دمج Tesseract أكثر من كلمة في token واحد، نفصل مناطق الكلمات بصريًا ثم نقرأ كل منطقة منفردة.
+    const segs=rl111VisualWordSegments(cell),parts=[];
+    if(segs.length>=2){
+      for(const [x0,x1] of segs){
+        const seg=rl110CropCanvas(cell,x0,0,x1+1,cell.height,0);
+        try{
+          await worker.setParameters({tessedit_pageseg_mode:'8',preserve_interword_spaces:'1'});
+          const rr=await worker.recognize(seg);
+          let t=rl111BuildRtlNameFromWords(rr?.data)||cleanOcrStudentName(rr?.data?.text||'');
+          t=cleanOcrStudentName(t);
+          if(t&&/[\u0600-\u06FF]/.test(t)&&!isImportNoise(t))parts.push(t);
+        }catch(_){ }
+      }
+    }
+    const visual=cleanOcrStudentName(parts.join(' '));
+    if(isLikelyStudentName(visual))return visual;
+    if(isLikelyStudentName(byWords))return byWords;
+    return raw;
+  }
   function rl110LinesFromTesseract(data){
     const lines=[];
-    if(Array.isArray(data?.lines))for(const l of data.lines){const text=cleanOcrStudentName(l.text);if(text)lines.push({text,y0:l.bbox?.y0??0,y1:l.bbox?.y1??0});}
+    if(Array.isArray(data?.lines))for(const l of data.lines){
+      const text=rl111BuildRtlNameFromWords({words:l.words})||cleanOcrStudentName(l.text);
+      if(text)lines.push({text,y0:l.bbox?.y0??0,y1:l.bbox?.y1??0});
+    }
     if(!lines.length && Array.isArray(data?.blocks)){
-      for(const b of data.blocks||[])for(const p of b.paragraphs||[])for(const l of p.lines||[]){const text=cleanOcrStudentName(l.text);if(text)lines.push({text,y0:l.bbox?.y0??0,y1:l.bbox?.y1??0});}
+      for(const b of data.blocks||[])for(const p of b.paragraphs||[])for(const l of p.lines||[]){
+        const text=rl111BuildRtlNameFromWords({words:l.words})||cleanOcrStudentName(l.text);
+        if(text)lines.push({text,y0:l.bbox?.y0??0,y1:l.bbox?.y1??0});
+      }
     }
     return lines;
   }
@@ -1138,19 +1229,16 @@ window.prepareStageGradesEditor=function(){
     const crop=rl110CropCanvas(canvas,table.nameCol.x0,rows[0],table.nameCol.x1,rows[rows.length-1],1);
     let result=await worker.recognize(crop),lines=rl110LinesFromTesseract(result?.data);
     const out=[];
-    // إذا أعاد Tesseract عددًا قريبًا من الصفوف نربطها بالترتيب؛ هذا أكثر ثباتًا مع العربية RTL.
     const rowCount=rows.length-1;
     if(lines.length>=Math.max(2,Math.floor(rowCount*.65))){
       lines=lines.filter(x=>isLikelyStudentName(x.text));
       for(let i=0;i<Math.min(rowCount,lines.length);i++)out[i]=lines[i].text;
     }
-    // استكمال الصفوف التي لم تُقرأ عبر OCR خلية بخليّة؛ لا نشغل هذا المسار إلا للنواقص لتقليل الزمن.
+    // RL111: نعيد قراءة كل خلية اسم على حدة لإعادة المسافات من مواضع الكلمات الفعلية، حتى لو كان OCR العام قد أعاد اسمًا صالحًا شكليًا.
     for(let i=0;i<rowCount;i++){
-      if(isLikelyStudentName(out[i]||''))continue;
       const cell=rl110CropCanvas(canvas,table.nameCol.x0,rows[i],table.nameCol.x1,rows[i+1],2);
       try{
-        await worker.setParameters({tessedit_pageseg_mode:'7',preserve_interword_spaces:'1'});
-        const r=await worker.recognize(cell),name=cleanOcrStudentName(r?.data?.text||'');
+        const name=cleanOcrStudentName(await rl111OcrNameCell(cell,worker));
         if(isLikelyStudentName(name))out[i]=name;
       }catch(_){ }
     }

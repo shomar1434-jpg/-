@@ -3722,7 +3722,7 @@ async function legacyPerformanceSave_DISABLED() {
         localStorage.setItem('smartSchool.currentSchool',JSON.stringify(school));
       }
     }catch(e){console.warn('تعذر جلب سياق المدرسة من Supabase',e)}
-    return {school:school, schoolId:sid, schoolCode:scode, schoolName:sname, registrationCode:(school&&(school.registrationCode||school.registration_code))||''};
+    return {school:school, schoolId:sid, schoolCode:scode, schoolName:sname, registrationCode:(school&&(school.registrationCode||school.registration_code))||localStorage.getItem(NS+'_reg_token')||''};
   }
   function dbRoleToLocal(r){r=String(r||''); if(r==='manager'||r==='leadership')return 'manager'; if(r==='agent'||r==='agency')return 'agent'; if(r==='student_advisor')return 'student_advisor'; if(r==='activity_leader')return 'activity_leader'; if(r==='teacher'||r==='performance')return 'teacher'; if(r==='administrative_employee'||r==='admin_employee')return 'administrative_employee'; return r||'teacher'}
   function vpAgencyOptions(){return {educational:'وكيل/وكيلة الشؤون التعليمية',school_affairs:'وكيل/وكيلة الشؤون المدرسية',student_affairs:'وكيل/وكيلة شؤون الطلاب'}}
@@ -4042,36 +4042,21 @@ async function legacyPerformanceSave_DISABLED() {
     var sid=String(ctx.schoolId||currentSchoolId()||'').trim();
     var scode=String(ctx.schoolCode||currentSchoolCode()||'').trim();
     var sname=String(ctx.schoolName||currentSchoolName()||'المدرسة').trim();
-    var token=String(ctx.registrationCode||'').trim();
-    // RL92: ممنوع إنشاء رمز تسجيل محلي. الرابط يجب أن يحمل registration_code الفعلي للمدرسة في Supabase.
-    if(!token && window.SmartSchoolSupabase && window.SmartSchoolSupabase.resolveSchool){
-      try{
-        var authoritativeSchool=await window.SmartSchoolSupabase.resolveSchool(sid||scode);
-        if(authoritativeSchool){
-          sid=String(authoritativeSchool.schoolId||authoritativeSchool.id||sid||'').trim();
-          scode=String(authoritativeSchool.schoolCode||authoritativeSchool.school_code||scode||'').trim();
-          sname=String(authoritativeSchool.schoolName||authoritativeSchool.school_name||sname||'').trim();
-          token=String(authoritativeSchool.registrationCode||authoritativeSchool.registration_code||'').trim();
-        }
-      }catch(e){console.warn('[RL92 manager registration context]',e)}
-    }
-    if(!token){
-      panel('إرسال رابط التسجيل','<div class="ss-card red"><b>لا يوجد رمز تسجيل معتمد للمدرسة</b><div class="ss-muted">لن يتم إنشاء رابط مؤقت أو محلي. حدّث بيانات المدرسة من Supabase ثم أعد فتح الرابط.</div></div>');
-      return;
-    }
+    var token=String(ctx.registrationCode||localStorage.getItem(NS+'_reg_token')||'').trim();
+    if(!token){token='REG-'+Math.random().toString(36).slice(2,10).toUpperCase();localStorage.setItem(NS+'_reg_token',token);}
     if(!sid && !scode){
       panel('إرسال رابط التسجيل','<div class="ss-card red"><b>تعذر تحديد المدرسة الحالية</b><div class="ss-muted">الجلسة الحالية لا تحتوي على school_id صالح. اضغط «تحديث بيانات المدرسة»، وإذا استمرت المشكلة سجّل الخروج ثم ادخل من رابط المدرسة المستقلة.</div></div><div class="ss-actions"><button class="ss-action secondary" id="refreshCtx">تحديث بيانات المدرسة</button></div>');
       var rr=document.getElementById('refreshCtx');if(rr)rr.onclick=function(){showRegLink()};return;
     }
     var basePath=location.origin+location.pathname.replace(/[^\/]*$/,'');
     var params=new URLSearchParams();
-    if(sid)params.set('schoolId',sid);
-    if(scode)params.set('schoolCode',scode);
-    params.set('reg',token);
-    params.set('source','school_registration');
-    params.set('scope','school');
+    if(sid){params.set('schoolId',sid);params.set('school_id',sid);}
+    if(scode){params.set('school',scode);params.set('schoolCode',scode);}
+    params.set('register',token);params.set('token',token);params.set('reg',token);
+    params.set('admin',NS);params.set('schoolName',sname);params.set('school_name',sname);
+    params.set('source','manager_school_registration');params.set('schoolMode','independent');
     var link=basePath+'register.html?'+params.toString();
-    panel('إرسال رابط التسجيل','<div class="ss-card"><b>رابط التسجيل الموحد للمدرسة</b><div class="ss-muted">المدرسة: <b>'+esc(sname)+'</b><br>معرف المدرسة: <b>'+esc(sid||scode)+'</b><br>هذا هو نفس عقد رابط التسجيل الذي يصدر من مالك النظام. أي مستخدم يسجل منه يُربط بهذه المدرسة بحالة معلّق حتى يقوم المدير بالتفعيل.</div><input id="regLink" value="'+esc(link)+'" readonly style="direction:ltr;text-align:left"></div><div class="ss-actions"><button class="ss-action blue" id="openReg">فتح واجهة تسجيل المستخدمين</button><button class="ss-action" id="copyReg">نسخ الرابط</button><button class="ss-action secondary" id="refreshCtx">تحديث بيانات المدرسة</button></div>');
+    panel('إرسال رابط التسجيل','<div class="ss-card"><b>رابط تسجيل المستخدمين داخل المدرسة المستقلة</b><div class="ss-muted">المدرسة: <b>'+esc(sname)+'</b><br>معرف المدرسة: <b>'+esc(sid||scode)+'</b><br>يمكن نسخ الرابط أو فتحه مباشرة. أي طلب تسجيل سيبقى مرتبطًا بهذه المدرسة.</div><input id="regLink" value="'+esc(link)+'" readonly style="direction:ltr;text-align:left"></div><div class="ss-actions"><button class="ss-action blue" id="openReg">فتح واجهة تسجيل المستخدمين</button><button class="ss-action" id="copyReg">نسخ الرابط</button><button class="ss-action secondary" id="refreshCtx">تحديث بيانات المدرسة</button></div>');
     document.getElementById('copyReg').onclick=async function(){try{await navigator.clipboard.writeText(val('regLink'));alert('تم نسخ رابط التسجيل بنجاح')}catch(e){var el=document.getElementById('regLink');el.select();document.execCommand('copy');alert('تم نسخ رابط التسجيل')}};
     document.getElementById('openReg').onclick=function(){window.open(val('regLink'),'_blank','noopener')};
     document.getElementById('refreshCtx').onclick=function(){showRegLink()};
@@ -5953,6 +5938,9 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
     if(kind==='manager'&&r.recordType==='decision_assignment'){try{var g=await DecisionArchiveService.get(id);if(g&&g.record)r=g.record;}catch(e){console.error('[manager decision preview get]',e);alert('تعذر تحميل القرار من الأرشيف السحابي: '+(e&&e.message||e));return;}}
     if(kind==='self'&&r.archivePdfFileId&&window.CloudFileEngine&&typeof CloudFileEngine.signedUrl==='function'){
       var popup=window.open('about:blank','_blank');if(!popup){alert('يرجى السماح بالنوافذ المنبثقة.');return;}try{if(window.PlatformCloudSession&&typeof PlatformCloudSession.ensure==='function')await PlatformCloudSession.ensure();var su=await CloudFileEngine.signedUrl(String(r.archivePdfFileId),600);if(!su||!su.signedUrl)throw new Error('لم يتم الحصول على رابط PDF');popup.location.replace(su.signedUrl);return;}catch(e){console.warn('[self evaluation PDF preview fallback]',e);try{popup.close()}catch(_){}}
+    }
+    if(kind==='self'){
+      var u=new URL('self_evaluation_records.html',location.href);u.searchParams.set('previewArchive',String(r.id||id));if(autoPrint)u.searchParams.set('autoPrint','1');var qs=new URLSearchParams(location.search||'');['schoolId','school_id','sid','school','schoolCode','school_code','scode'].forEach(function(k){if(qs.get(k))u.searchParams.set(k,qs.get(k));});window.open(u.toString(),'_blank');return;
     }
     var w=window.open('','_blank');if(!w){alert('يرجى السماح بالنوافذ المنبثقة.');return;}w.document.open();w.document.write(safeDoc(r,autoPrint));w.document.close();
   }

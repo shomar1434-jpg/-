@@ -2988,9 +2988,32 @@ const { createApp } = Vue;
                 return true;
             },
             archiveCloneControls(source,clone){
+                // RL101: priority rows are flattened cell-by-cell before the generic control pass.
+                // This prevents the live control + template mirror + generated print value from
+                // co-existing in the same cell and creating the stacked dialog-box effect.
+                const srcPriorityCells=source.querySelectorAll(&#x27;.report-priorities-section .priority-static-cell&#x27;);
+                const dstPriorityCells=clone.querySelectorAll(&#x27;.report-priorities-section .priority-static-cell&#x27;);
+                srcPriorityCells.forEach((srcCell,index)=&gt;{
+                    const dstCell=dstPriorityCells[index];if(!dstCell)return;
+                    const control=srcCell.querySelector(&#x27;.priority-live-control,select,input,textarea&#x27;);
+                    let value=&#x27;&#x27;;
+                    if(control){
+                        if(control.tagName===&#x27;SELECT&#x27;)value=control.options[control.selectedIndex]?.text||control.value||&#x27;&#x27;;
+                        else value=control.value||&#x27;&#x27;;
+                    }else{
+                        value=srcCell.querySelector(&#x27;.priority-static-value&#x27;)?.textContent||srcCell.textContent||&#x27;&#x27;;
+                    }
+                    const d=document.createElement(&#x27;div&#x27;);
+                    d.className=&#x27;print-control-value archived-control-value priority-archive-text&#x27;;
+                    d.setAttribute(&#x27;data-archive-static&#x27;,&#x27;1&#x27;);
+                    d.textContent=String(value||&#x27;&#x27;).trim();
+                    dstCell.replaceChildren(d);
+                });
                 const srcControls=source.querySelectorAll(&#x27;input, textarea, select&#x27;);
                 const dstControls=clone.querySelectorAll(&#x27;input, textarea, select&#x27;);
                 srcControls.forEach((control,index)=&gt;{
+                    // Priority controls were already replaced by the cell-level flattening above.
+                    if(control.closest(&#x27;.report-priorities-section .priority-static-cell&#x27;))return;
                     const c=dstControls[index];if(!c)return;
                     const d=document.createElement(control.tagName===&#x27;TEXTAREA&#x27;?&#x27;div&#x27;:&#x27;span&#x27;);
                     d.className=&#x27;print-control-value archived-control-value&#x27;;
@@ -3044,6 +3067,9 @@ tr{break-inside:avoid!important;page-break-inside:avoid!important}
 input,textarea,select{display:none!important}
 .print-control-value,.archived-control-value{position:static!important;float:none!important;border:0!important;border-radius:0!important;box-shadow:none!important;background:transparent!important;overflow:visible!important;color:inherit!important;font:inherit!important}
 [data-archive-static=&quot;1&quot;]{display:block!important}
+.report-priorities-section .priority-static-cell{padding:4px 6px!important;vertical-align:top!important;overflow:visible!important;height:auto!important;min-height:0!important}
+.report-priorities-section .priority-archive-text{display:block!important;position:static!important;width:100%!important;max-width:100%!important;height:auto!important;min-height:0!important;margin:0!important;padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important;white-space:pre-wrap!important;overflow:visible!important;overflow-wrap:anywhere!important;word-break:break-word!important;line-height:1.55!important;text-align:right!important}
+.report-priorities-section td:nth-child(3) .priority-archive-text{text-align:center!important}
 *{box-sizing:border-box!important;max-height:none!important}
 &lt;/style&gt;&lt;/head&gt;&lt;body&gt;&lt;main id=&quot;self-eval-pdf-root&quot;&gt;${clone.outerHTML}&lt;/main&gt;${auto}&lt;/body&gt;&lt;/html&gt;`;
             },

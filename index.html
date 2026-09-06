@@ -1468,7 +1468,7 @@ document.addEventListener("click", function(e){
   function enc(v){return encodeURIComponent(String(v||''));}
   function cleanEmail(v){return String(v||'').trim().toLowerCase();}
   function schoolId(s){return s && (s.id || s.schoolId || s.school_id || '');}
-  function schoolCode(s){return s && (s.school_code || s.schoolCode || s.registration_code || s.registrationCode || '');}
+  function schoolCode(s){return s && (s.school_code || s.schoolCode || s.code || '');}
   function schoolName(s){return s && (s.school_name || s.schoolName || s.name || '');}
   function managerEmail(s){return cleanEmail(s && (s.manager_email || s.managerEmail || s.email || s.principal_email || s.admin_email || s.owner_email || ''));}
   function managerDisplayEmail(s){return cleanEmail(s && (s.school_email || s.manager_email_label || s.managerDisplayEmail || s.manager_email || s.managerEmail || ''));}
@@ -1552,11 +1552,25 @@ document.addEventListener("click", function(e){
     return url;
   };
   window.copyIndependentSchoolLoginLink = async function(school){
-    cacheIndependentSchoolContract(school);
-    var url = window.buildIndependentSchoolLoginUrl(school);
+    // RL96: رابط الدخول يجب أن يُبنى من سجل المدرسة الحقيقي في Supabase، لا من نسخة الجدول أو localStorage.
+    var authoritative = school || {};
+    try{
+      if(window.SmartSchoolSupabase && typeof window.SmartSchoolSupabase.resolveSchool === 'function'){
+        var ref = schoolId(school) || schoolCode(school) || String((school && (school.registration_code || school.registrationCode)) || '').trim();
+        var fetched = ref ? await window.SmartSchoolSupabase.resolveSchool(ref) : null;
+        if(fetched) authoritative = fetched;
+      }
+    }catch(e){ console.warn('[RL96 owner login school resolve]', e); }
+    var id = schoolId(authoritative);
+    if(!id){
+      if(typeof showToast === 'function') showToast('تعذر تحديد المعرّف الحقيقي للمدرسة في Supabase');
+      return '';
+    }
+    cacheIndependentSchoolContract(authoritative);
+    var url = window.buildIndependentSchoolLoginUrl(authoritative);
     try{ if(navigator.clipboard && navigator.clipboard.writeText) await navigator.clipboard.writeText(url); else throw new Error('no clipboard'); }
     catch(e){ prompt('انسخ رابط دخول المدرسة', url); }
-    if(typeof showToast === 'function') showToast('تم نسخ رابط دخول المدرسة المرتبط بالمدرسة ومديرها');
+    if(typeof showToast === 'function') showToast('تم نسخ رابط دخول المدرسة المرتبط بهوية المدرسة في Supabase');
     else alert('تم تجهيز رابط دخول المدرسة:\n' + url);
     return url;
   };

@@ -91,6 +91,12 @@
   let targetSchoolId = first(['schoolId','school_id','sid','id']);
   let targetSchoolCode = first(['school','schoolCode','school_code','scode','code']);
   let targetRegistrationCode = first(['registrationCode','registration_code','reg','token','ref']);
+  // RL96 compatibility: بعض روابط المالك القديمة كانت تضع registration_code في schoolCode.
+  // نعيد تفسيره كرمز تسجيل فقط بدل اعتباره school_code مختلفًا عن المدرسة.
+  if(targetSchoolCode && /^REG-/i.test(targetSchoolCode) && !targetRegistrationCode){
+    targetRegistrationCode = targetSchoolCode;
+    targetSchoolCode = '';
+  }
   if(!targetSchoolId && !targetSchoolCode && !targetRegistrationCode && legacyPathRef){
     if(/^REG-/i.test(legacyPathRef)) targetRegistrationCode=legacyPathRef;
     else if(/^SCH-/i.test(legacyPathRef)) targetSchoolCode=legacyPathRef;

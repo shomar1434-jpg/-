@@ -41,16 +41,18 @@ Deno.serve(async(req)=>{
     const roles=(sq.data||[]).map((x:any)=>low(x.role));if(!roles.includes(supervisorRole))return json({error:'ADMIN_SUPERVISOR_NOT_AUTHORIZED'},403);
    } else {
     const managerUserId=t(body.managerUserId||body.manager_user_id,100),generalRegistrationToken=t(body.generalRegistrationToken||body.generalToken,500);
-    if(source==='system_admin_school_registration'){
-     // RL83: رابط التسجيل الثابت الصادر من مالك النظام لا يعتمد على سجل عضوية المدير.
-     // findSchool تحقق قبل الوصول إلى هنا من تطابق schoolId / schoolCode / registrationCode
-     // ومن أن المدرسة ليست معطلة. هذا يحافظ على الروابط القديمة للمدارس التي سبقت توحيد school_members.
-     // لا نغيّر أي معرف أو رمز تسجيل ولا ننشئ رابطًا بديلًا.
-    }else{
-     if(source!=='manager_school_registration'||!managerUserId||!(await verifyGeneralLinkToken(generalRegistrationToken,schoolId,managerUserId)))return json({error:'MANAGER_REGISTRATION_LINK_INVALID_OR_EXPIRED'},403);
+    const hasManagerSignature=!!(managerUserId||generalRegistrationToken);
+    if(hasManagerSignature){
+     // RL86: وجود أي جزء من توقيع المدير يعني أن الرابط من مسار المدير،
+     // ولذلك يجب اكتمال التوقيع وصحته وملكية المدير للمدرسة. قيمة source ليست عنصر ثقة.
+     if(!managerUserId||!generalRegistrationToken||!(await verifyGeneralLinkToken(generalRegistrationToken,schoolId,managerUserId)))return json({error:'MANAGER_REGISTRATION_LINK_INVALID_OR_EXPIRED'},403);
      const mq0=await sb.from('school_members').select('user_id,role,status').eq('school_id',schoolId).eq('user_id',managerUserId).eq('status','active');if(mq0.error)throw mq0.error;
      const managerRoles=(mq0.data||[]).map((x:any)=>low(x.role));
      if(!managerRoles.some((r:string)=>managers.has(r)))return json({error:'GENERAL_REGISTRATION_REQUIRES_MANAGER'},403);
+    }else{
+     // RL86: رابط مالك النظام الثابت لا يعتمد على source أو عمر الرابط.
+     // findSchool أثبت بالفعل تطابق schoolId / schoolCode / registrationCode وأن المدرسة فعالة.
+     // registrationCode هو سر الرابط الثابت ولا يتم تغييره أو تدويره هنا.
     }
     supervisorUserId='';supervisorRole='';
    }
@@ -76,7 +78,7 @@ Deno.serve(async(req)=>{
     const q=await sb.from('school_members').select('user_id').eq('school_id',schoolId).eq('role',kind).eq('status','active');if(q.error)throw q.error;const ids=[...new Set((q.data||[]).map((x:any)=>String(x.user_id||'')).filter(Boolean))];if(ids.length!==1||ids[0]!==userId)return false;
     const up=await sb.from('school_members').update({supervisor_user_id:userId,updated_at:now}).eq('id',target.id).is('supervisor_user_id',null);if(up.error)throw up.error;return true;
   };
-  if(action==='health')return json({ok:true,version:'1.1.0-RL36-final-link-contract',schoolId,userId,role,requestId});
+  if(action==='health')return json({ok:true,version:'1.2.0-RL86-registration-contract-v2',schoolId,userId,role,requestId});
   if(action==='school-registration-context'){
    if(!isManager&&!isAgent)return json({error:'SUPERVISOR_REQUIRED'},403);
    const full=await sb.from('schools').select('id,school_name,school_code,registration_code,status').eq('id',schoolId).maybeSingle();if(full.error)throw full.error;if(!full.data)return json({error:'SCHOOL_NOT_FOUND'},404);

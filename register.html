@@ -289,8 +289,13 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
     const msg=document.getElementById('msg'); msg.textContent=''; msg.className='text-center text-xs font-bold err';
     const verifiedSchool=await resolveInviteSchool();
     if(!verifiedSchool || !invite.schoolId || !invite.schoolCode || !invite.token){ msg.textContent='رابط التسجيل غير صالح أو لا يطابق مدرسة واحدة بشكل صريح. اطلب رابطًا جديدًا من مدير المدرسة.'; return; }
-    const systemAdminSchoolLink=!invite.adminEmployee && (invite.source==='supabase_school_registration' || ((!invite.managerUserId && !invite.generalRegistrationToken) && !!invite.token && !!(invite.schoolId||invite.schoolCode)));
-    if(!invite.adminEmployee && !systemAdminSchoolLink && (!invite.managerUserId || !invite.generalRegistrationToken)){ msg.textContent='رابط تسجيل المستخدمين قديم أو غير موثق. اطلب رابطًا جديدًا من مدير المدرسة.'; return; }
+    // RL86: عقد التسجيل لا يعتمد على قيمة source ولا على إصدار الرابط.
+    // الخادم هو مصدر القرار الأمني الوحيد بعد التحقق من المدرسة ورمز التسجيل.
+    // - رابط الموظف الإداري: يتطلب توقيع المشرف.
+    // - رابط المدير: إذا وُجدت بيانات توقيع المدير، يتحقق الخادم منها.
+    // - رابط مالك النظام الثابت: إذا لم توجد بيانات توقيع مدير، يعتمد على schoolId/schoolCode/registrationCode فقط.
+    const managerSignedLink=!invite.adminEmployee && !!(invite.managerUserId || invite.generalRegistrationToken);
+    const systemAdminSchoolLink=!invite.adminEmployee && !managerSignedLink;
     if(invite.adminEmployee && (!invite.supervisorUserId || !invite.adminRegistrationToken)){ msg.textContent='رابط تسجيل الموظف الإداري غير مكتمل. اطلب رابطًا جديدًا من المسؤول المباشر.'; return; }
     const name=document.getElementById('name').value.trim();
     const email=document.getElementById('email').value.trim().toLowerCase();

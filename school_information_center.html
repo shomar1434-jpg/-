@@ -1011,26 +1011,28 @@ window.prepareStageGradesEditor=function(){
     const mojibake=(text.match(/[\u0370-\u03FF\u0400-\u04FF]/g)||[]).length;
     return {text,letters,arabic,mojibake,arabicRatio:letters?arabic/letters:0};
   }
+  function cleanOcrStudentName(v){
+    let s=normalizeImportCell(v)
+      .replace(/[0-9٠-٩]{8,12}/g,' ')
+      .replace(/^\s*[0-9٠-٩]{1,3}\s+/,' ')
+      .replace(/\s+[0-9٠-٩]{1,2}\s*$/,' ')
+      .replace(/[|:؛،_]+/g,' ')
+      .replace(/[\[\]{}()<>]/g,' ')
+      .replace(/\s+/g,' ').trim();
+    s=s.replace(/^(م|عدد|اسم\s*(الطالب|الطالبة))\s+/,'').replace(/\s+(الفصل|التوقيع)$/,'').trim();
+    return s;
+  }
   function extractStudentsFromOcrLines(lines,sheetName='PDF-OCR'){
     const out=[];
     for(let i=0;i<(lines||[]).length;i++){
-      let line=normalizeImportCell(lines[i]);
-      if(!line||isImportNoise(line))continue;
-      // تقارير نور تأتي غالبًا: رقم تسلسلي | رقم هوية/طالب | الاسم | الفصل، أو رقم تسلسلي | الاسم.
-      const ids=(line.match(/[0-9٠-٩]{8,12}/g)||[]).map(digitsOnly).filter(Boolean);
+      const raw=normalizeImportCell(lines[i]);
+      if(!raw||isImportNoise(raw))continue;
+      const ids=(raw.match(/[0-9٠-٩]{8,12}/g)||[]).map(digitsOnly).filter(Boolean);
       const nationalId=ids.find(x=>/^[12]\d{9}$/.test(x))||'';
       const studentNo=ids.find(x=>x!==nationalId)||nationalId||'';
-      let name=line
-        .replace(/[0-9٠-٩]{8,12}/g,' ')
-        .replace(/^\s*[0-9٠-٩]{1,3}\s+/,' ')
-        .replace(/\s+[0-9٠-٩]{1,2}\s*$/,' ')
-        .replace(/[|:؛،]+/g,' ')
-        .replace(/\s+/g,' ').trim();
-      // إزالة بقايا رؤوس الجداول الشائعة في تقارير نور.
-      name=name.replace(/^(م|عدد)\s+/,'').replace(/\s+(الفصل|التوقيع)$/,'').trim();
+      let name=cleanOcrStudentName(raw);
       if(!isLikelyStudentName(name)){
-        // أحيانًا يقرأ OCR الرقم في خلية منفصلة والاسم في السطر التالي؛ نبحث عن أفضل مقطع عربي داخل السطر.
-        const parts=line.split(/\s{2,}|[|]/).map(normalizeImportCell).filter(Boolean).filter(isLikelyStudentName);
+        const parts=raw.split(/\s{2,}|[|]/).map(cleanOcrStudentName).filter(Boolean).filter(isLikelyStudentName);
         name=parts.sort((a,b)=>arabicCount(b)-arabicCount(a)||b.length-a.length)[0]||'';
       }
       if(!name)continue;
@@ -1038,20 +1040,170 @@ window.prepareStageGradesEditor=function(){
     }
     return out;
   }
-  async function ocrPdfStudentFile(doc){
-    if(!window.Tesseract?.recognize)throw new Error('مكتبة التعرف الضوئي على PDF غير متاحة.');
-    const rows=[];
+  function rl110GroupBands(values,maxGap=2){
+    if(!values.length)return[];
+    const sorted=[...values].sort((a,b)=>a-b),bands=[];let cur=[sorted[0]];
+    for(let i=1;i<sorted.length;i++){
+      if(sorted[i]-sorted[i-1]<=maxGap)cur.push(sorted[i]);
+      else{bands.push(cur);cur=[sorted[i]]}
+    }
+    bands.push(cur);
+    return bands.map(a=>Math.round(a.reduce((x,y)=>x+y,0)/a.length));
+  }
+  function rl110CanvasGrayData(canvas){
+    const ctx=canvas.getContext('2d',{willReadFrequently:true}),img=ctx.getImageData(0,0,canvas.width,canvas.height),d=img.data;
+    const gray=new Uint8Array(canvas.width*canvas.height);
+    for(let i=0,j=0;i<d.length;i+=4,j++)gray[j]=(d[i]*30+d[i+1]*59+d[i+2]*11)/100;
+    return gray;
+  }
+  function rl110DetectNoorTable(canvas){
+    const w=canvas.width,h=canvas.height,gray=rl110CanvasGrayData(canvas),ys=[];
+    const y0=Math.floor(h*.12),y1=Math.floor(h*.88),stepX=Math.max(1,Math.floor(w/900));
+    for(let y=y0;y<y1;y++){
+      let dark=0;
+      for(let x=0;x<w;x+=stepX)if(gray[y*w+x]<90)dark++;
+      if(dark>(w/stepX)*.42)ys.push(y);
+    }
+    let hLines=rl110GroupBands(ys,3);
+    // نور: نبحث عن أكبر سلسلة خطوط أفقية منتظمة تمثل جدول الطلاب، ونستبعد خط التذييل المنفرد.
+    let best=[];
+    for(let i=0;i<hLines.length;i++){
+      const seq=[hLines[i]];
+      for(let j=i+1;j<hLines.length;j++){
+        const gap=hLines[j]-seq[seq.length-1];
+        if(gap>=14 && gap<=Math.max(150,h*.07))seq.push(hLines[j]);
+        else if(gap>Math.max(150,h*.07))break;
+      }
+      if(seq.length>best.length)best=seq;
+    }
+    if(best.length<4)return null;
+    // قص أي فجوة شاذة في بداية/نهاية السلسلة.
+    const gaps=best.slice(1).map((v,i)=>v-best[i]).filter(g=>g>0).sort((a,b)=>a-b),median=gaps.length?gaps[Math.floor(gaps.length/2)]:0;
+    if(median){
+      let a=0,b=best.length-1;
+      while(a+1<b && best[a+1]-best[a]>median*2.4)a++;
+      while(b-1>a && best[b]-best[b-1]>median*2.4)b--;
+      best=best.slice(a,b+1);
+    }
+    const top=best[0],bottom=best[best.length-1],tableH=bottom-top;
+    const xs=[],stepY=Math.max(1,Math.floor(tableH/900));
+    for(let x=0;x<w;x++){
+      let dark=0;
+      for(let y=top;y<=bottom;y+=stepY)if(gray[y*w+x]<100)dark++;
+      if(dark>(tableH/stepY)*.55)xs.push(x);
+    }
+    let vLines=rl110GroupBands(xs,3).filter(x=>x>w*.01&&x<w*.99);
+    if(vLines.length<3)return null;
+    // الاحتفاظ بحدود الجدول الواقعة بين أول وآخر خط رأسي متصل فعليًا.
+    const cols=[];
+    for(let i=0;i<vLines.length-1;i++){
+      const width=vLines[i+1]-vLines[i];
+      if(width>=Math.max(18,w*.015))cols.push({x0:vLines[i],x1:vLines[i+1],width,index:i});
+    }
+    if(!cols.length)return null;
+    const nameCol=[...cols].sort((a,b)=>b.width-a.width)[0];
+    const headerBottom=best[1],rowLines=best.slice(1); // أول فاصل بعد رأس الجدول ثم صفوف الطلاب.
+    return {top,bottom,hLines:best,rowLines,vLines,cols,nameCol,gray};
+  }
+  function rl110CropCanvas(canvas,x0,y0,x1,y1,pad=3){
+    x0=Math.max(0,Math.floor(x0+pad));y0=Math.max(0,Math.floor(y0+pad));x1=Math.min(canvas.width,Math.ceil(x1-pad));y1=Math.min(canvas.height,Math.ceil(y1-pad));
+    const c=document.createElement('canvas'),w=Math.max(2,x1-x0),h=Math.max(2,y1-y0),scale=Math.max(1,Math.min(2.2,80/Math.max(20,h)));
+    c.width=Math.ceil(w*scale);c.height=Math.ceil(h*scale);
+    const cx=c.getContext('2d');cx.fillStyle='#fff';cx.fillRect(0,0,c.width,c.height);cx.imageSmoothingEnabled=true;cx.drawImage(canvas,x0,y0,w,h,0,0,c.width,c.height);
+    return c;
+  }
+  let rl110OcrWorkerPromise=null;
+  async function rl110OcrWorker(){
+    if(!window.Tesseract?.createWorker)throw new Error('مكتبة التعرف الضوئي العربية غير متاحة في المتصفح.');
+    if(!rl110OcrWorkerPromise)rl110OcrWorkerPromise=(async()=>{
+      const worker=await Tesseract.createWorker('ara+eng',1,{logger:m=>{
+        if(m?.status==='recognizing text' && Number.isFinite(m.progress))setStatus('جارٍ قراءة أسماء الطلاب من خلايا جدول نور... '+Math.round(m.progress*100)+'%','note');
+      }});
+      try{await worker.setParameters({tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'});}catch(_){ }
+      return worker;
+    })();
+    return rl110OcrWorkerPromise;
+  }
+  function rl110LinesFromTesseract(data){
+    const lines=[];
+    if(Array.isArray(data?.lines))for(const l of data.lines){const text=cleanOcrStudentName(l.text);if(text)lines.push({text,y0:l.bbox?.y0??0,y1:l.bbox?.y1??0});}
+    if(!lines.length && Array.isArray(data?.blocks)){
+      for(const b of data.blocks||[])for(const p of b.paragraphs||[])for(const l of p.lines||[]){const text=cleanOcrStudentName(l.text);if(text)lines.push({text,y0:l.bbox?.y0??0,y1:l.bbox?.y1??0});}
+    }
+    return lines;
+  }
+  async function rl110OcrNameColumn(canvas,table,pageNo){
+    const worker=await rl110OcrWorker(),rows=table.rowLines;
+    if(rows.length<2)return[];
+    const crop=rl110CropCanvas(canvas,table.nameCol.x0,rows[0],table.nameCol.x1,rows[rows.length-1],1);
+    let result=await worker.recognize(crop),lines=rl110LinesFromTesseract(result?.data);
+    const out=[];
+    // إذا أعاد Tesseract عددًا قريبًا من الصفوف نربطها بالترتيب؛ هذا أكثر ثباتًا مع العربية RTL.
+    const rowCount=rows.length-1;
+    if(lines.length>=Math.max(2,Math.floor(rowCount*.65))){
+      lines=lines.filter(x=>isLikelyStudentName(x.text));
+      for(let i=0;i<Math.min(rowCount,lines.length);i++)out[i]=lines[i].text;
+    }
+    // استكمال الصفوف التي لم تُقرأ عبر OCR خلية بخليّة؛ لا نشغل هذا المسار إلا للنواقص لتقليل الزمن.
+    for(let i=0;i<rowCount;i++){
+      if(isLikelyStudentName(out[i]||''))continue;
+      const cell=rl110CropCanvas(canvas,table.nameCol.x0,rows[i],table.nameCol.x1,rows[i+1],2);
+      try{
+        await worker.setParameters({tessedit_pageseg_mode:'7',preserve_interword_spaces:'1'});
+        const r=await worker.recognize(cell),name=cleanOcrStudentName(r?.data?.text||'');
+        if(isLikelyStudentName(name))out[i]=name;
+      }catch(_){ }
+    }
+    try{await worker.setParameters({tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'});}catch(_){ }
+    return out;
+  }
+  function rl110ExtractIdsForRows(items,table,viewport){
+    // pdf.js يعيد الأرقام بصورة صحيحة في ملفات نور حتى عندما تكون خريطة الحروف العربية مكسورة.
+    // نحول إحداثيات PDF إلى إحداثيات Canvas ثم نربط رقم الهوية بأقرب صف.
+    const rows=table.rowLines,out=new Array(Math.max(0,rows.length-1)).fill('');
+    for(const it of items||[]){
+      const d=digitsOnly(it.text);if(!/^[12]\d{9}$/.test(d))continue;
+      const x=it.x*viewport.scale,y=canvasYFromPdfY(it.y,viewport);
+      for(let i=0;i<rows.length-1;i++)if(y>=rows[i]&&y<=rows[i+1]){out[i]=d;break;}
+    }
+    return out;
+  }
+  function canvasYFromPdfY(pdfY,viewport){return viewport.height-(Number(pdfY||0)*viewport.scale)}
+  async function rl110GridAwareNoorPdf(doc){
+    let rows=[];
     for(let p=1;p<=doc.numPages;p++){
-      setStatus('ملف نور يحتوي ترميزًا عربيًا غير قابل للقراءة مباشرة — جارٍ التعرف على أسماء الطلاب في الصفحة '+p+' من '+doc.numPages+'...','note');
-      const page=await doc.getPage(p),viewport=page.getViewport({scale:2.1}),canvas=document.createElement('canvas'),ctx=canvas.getContext('2d',{willReadFrequently:true});
-      canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
+      setStatus('جارٍ تحليل شبكة جدول نور في الصفحة '+p+' من '+doc.numPages+'...','note');
+      const page=await doc.getPage(p),scale=3,viewport=page.getViewport({scale}),canvas=document.createElement('canvas'),ctx=canvas.getContext('2d',{willReadFrequently:true});
+      canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
       await page.render({canvasContext:ctx,viewport}).promise;
-      const res=await Tesseract.recognize(canvas,'ara+eng',{logger:()=>{}});
-      const text=safe(res?.data?.text),lines=text.split(/\r?\n/).map(normalizeImportCell).filter(Boolean);
-      let pageRows=extractStudentsFromOcrLines(lines,'PDF-OCR-'+p);
-      // مسار احتياطي للقوالب التي يتعرف فيها OCR على أعمدة الجدول بشكل أفضل من السطور الحرة.
-      if(!pageRows.length)pageRows=extractStudentsFromMatrix(lines.map(x=>[x]),'PDF-OCR-'+p);
-      rows.push(...pageRows);
+      const table=rl110DetectNoorTable(canvas);
+      if(!table)continue;
+      const names=await rl110OcrNameColumn(canvas,table,p);
+      const tc=await page.getTextContent(),items=(tc.items||[]).map(x=>({text:safe(x.str),x:Number(x.transform?.[4]||0),y:Number(x.transform?.[5]||0)})).filter(x=>x.text);
+      const ids=rl110ExtractIdsForRows(items,table,viewport);
+      const count=Math.max(names.length,ids.length,table.rowLines.length-1);
+      for(let i=0;i<count;i++){
+        const name=cleanOcrStudentName(names[i]||'');
+        if(!isLikelyStudentName(name))continue;
+        const nid=ids[i]||'';
+        rows.push({student_name:name,student_number:nid||null,national_id:nid||null,stage:'',grade:'',track_name:'',section_name:'',noor_section_code:'',__sheetName:'PDF-NOOR-GRID-'+p,__row:i+1});
+      }
+    }
+    return dedupeImportedStudents(rows);
+  }
+  async function ocrPdfStudentFile(doc){
+    // المسار الأساسي الجديد: نقرأ شبكة جدول نور بصريًا ثم OCR لعمود الاسم فقط، بدل OCR الصفحة كلها.
+    let rows=await rl110GridAwareNoorPdf(doc);
+    if(rows.length)return rows;
+    // احتياط أخير للـPDF غير الجدولي.
+    if(!window.Tesseract?.recognize)throw new Error('مكتبة التعرف الضوئي على PDF غير متاحة.');
+    rows=[];
+    for(let p=1;p<=doc.numPages;p++){
+      setStatus('لم يتم التعرف على شبكة الجدول؛ جارٍ استخدام القراءة الضوئية العامة للصفحة '+p+' من '+doc.numPages+'...','note');
+      const page=await doc.getPage(p),viewport=page.getViewport({scale:2.5}),canvas=document.createElement('canvas'),ctx=canvas.getContext('2d',{willReadFrequently:true});
+      canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);await page.render({canvasContext:ctx,viewport}).promise;
+      const res=await Tesseract.recognize(canvas,'ara+eng',{logger:()=>{}}),text=safe(res?.data?.text),lines=text.split(/\r?\n/).map(normalizeImportCell).filter(Boolean);
+      rows.push(...extractStudentsFromOcrLines(lines,'PDF-OCR-'+p));
     }
     return dedupeImportedStudents(rows);
   }
@@ -1068,16 +1220,14 @@ window.prepareStageGradesEditor=function(){
     }
     rows=dedupeImportedStudents(rows);
     const arabicRatio=totalLetters?totalArabic/totalLetters:0;
-    // بعض PDF الصادرة من نور تحتوي نصًا كثيرًا لكن بخريطة خطوط مكسورة؛ في هذه الحالة pdf.js يرى النص، لكنه ليس عربيًا صالحًا.
     const looksLikeBrokenNoorArabic=(textChars>=30 && (arabicRatio<0.20 || totalMojibake>Math.max(8,totalArabic)));
+    // RL110: ملفات نور النموذجية ذات الخط العربي المرمّز لا نعتمد فيها على النص الداخلي إطلاقًا؛ نقرأ جدولها بصريًا.
     if(!rows.length || looksLikeBrokenNoorArabic){
-      const directRows=rows;
-      const ocrRows=await ocrPdfStudentFile(doc);
-      // عند فساد الترميز نثق بنتيجة OCR، أما عند جودة النص الجيدة فنستخدم OCR كمسار إضافي فقط.
+      const directRows=rows,ocrRows=await ocrPdfStudentFile(doc);
       rows=looksLikeBrokenNoorArabic?ocrRows:dedupeImportedStudents(directRows.concat(ocrRows));
     }
     rows=dedupeImportedStudents(rows);
-    if(!rows.length)throw new Error('تعذر التعرف على أسماء الطلاب في ملف PDF. تأكد أن الملف صادر من نور ويحتوي كشف أسماء/توزيع الطلاب، ثم أعد المحاولة.');
+    if(!rows.length)throw new Error('تعذر استخراج أسماء الطلاب من PDF نور حتى بعد تحليل شبكة الجدول بصريًا. تأكد أن الملف هو كشف أسماء/توزيع فصول واضح، أو استخدم Excel لهذا الفصل.');
     return rows;
   }
   

@@ -6,6 +6,41 @@ const sha256=async(v:string)=>Array.from(new Uint8Array(await crypto.subtle.dige
 const managers=new Set(['manager','owner','school_manager','principal','leadership','مدير','مديرة','مدير المدرسة','مديرة المدرسة']);
 const canonicalRole=(v:unknown)=>{const r=txt(v,100).toLowerCase().replace(/\s+/g,'_');const map:Record<string,string>={owner:'manager',school_manager:'manager',principal:'manager',leadership:'manager','مدير':'manager','مديرة':'manager','مدير_المدرسة':'manager','مديرة_المدرسة':'manager',agent:'agent',wakil:'agent',deputy:'agent',vice:'agent',agency:'agent','وكيل':'agent','وكيلة':'agent',teacher:'teacher',school_teacher:'teacher',performance:'teacher','معلم':'teacher','معلمة':'teacher',administrative_employee:'admin_employee',admin_employee:'admin_employee',employee_admin:'admin_employee',administrative:'admin_employee','موظف_إداري':'admin_employee','موظفة_إدارية':'admin_employee',student_advisor:'student_advisor',advisor:'student_advisor',counselor:'student_advisor','مرشد':'student_advisor','موجه':'student_advisor','موجه_طلابي':'student_advisor','الموجه_الطلابي':'student_advisor','موجهة_طلابية':'student_advisor',activity_leader:'activity_leader','activity-leader':'activity_leader',activity:'activity_leader','رائد_النشاط':'activity_leader','رائدة_النشاط':'activity_leader',health_advisor:'health_advisor','health-advisor':'health_advisor',health:'health_advisor','موجه_صحي':'health_advisor','الموجه_الصحي':'health_advisor','موجهة_صحية':'health_advisor',kindergarten_teacher:'kindergarten_teacher','kindergarten-teacher':'kindergarten_teacher',kindergarten:'kindergarten_teacher','معلمة_رياض_الأطفال':'kindergarten_teacher','معلمة_رياض_اطفال':'kindergarten_teacher'};return map[r]||r};
 const allowedSurveyStatus=new Set(['draft','active','closed','archived']);
+const activeStatus=(value:unknown)=>{
+ const status=txt(value||'active',100).toLowerCase();
+ return !['inactive','disabled','suspended','blocked','deleted','archived','pending','بانتظار التفعيل','غير فعال','معطل','موقوف','محذوف'].includes(status);
+};
+const resolveActiveMemberships=async(sb:any,s:any)=>{
+ const schoolId=String(s.school_id||''),userId=String(s.user_id||'');
+ const uq=await sb.from('users').select('*').eq('id',userId).limit(1).maybeSingle();
+ if(uq.error)throw uq.error;
+ const identity=uq.data||{};
+ const email=txt(identity.email||identity.microsoft_email||'',320).toLowerCase();
+ const rows:any[]=[];
+ const pushActive=(items:any[])=>{for(const item of items||[]){if(item&&String(item.school_id||'')===schoolId&&activeStatus(item.status))rows.push(item);}};
+ const byUser=await sb.from('school_members').select('*').eq('school_id',schoolId).eq('user_id',userId);
+ if(byUser.error)throw byUser.error; pushActive(byUser.data||[]);
+ if(email){
+  const byEmail=await sb.from('school_members').select('*').eq('school_id',schoolId).eq('email',email);
+  if(!byEmail.error)pushActive(byEmail.data||[]);
+  const byMs=await sb.from('school_members').select('*').eq('school_id',schoolId).eq('microsoft_email',email);
+  if(!byMs.error)pushActive(byMs.data||[]);
+ }
+ if(identity&&String(identity.school_id||'')===schoolId&&activeStatus(identity.status)){
+  rows.push({id:`user:${identity.id}`,school_id:schoolId,user_id:identity.id,role:identity.role||s.role,status:identity.status,__userRow:identity});
+ }
+ if(email){
+  const legacyUsers=await sb.from('users').select('*').eq('email',email).limit(1000);
+  if(!legacyUsers.error)for(const u of legacyUsers.data||[]){if(String(u.school_id||'')===schoolId&&activeStatus(u.status))rows.push({id:`user:${u.id}`,school_id:schoolId,user_id:u.id,role:u.role||s.role,status:u.status,__userRow:u});}
+  const schoolQ=await sb.from('schools').select('*').eq('id',schoolId).limit(1).maybeSingle();
+  if(!schoolQ.error&&schoolQ.data&&activeStatus(schoolQ.data.status)&&txt(schoolQ.data.manager_email,320).toLowerCase()===email){
+   rows.push({id:`manager:${schoolId}`,school_id:schoolId,user_id:userId,role:'manager',status:'active',is_primary_manager:true,__schoolRow:schoolQ.data});
+  }
+ }
+ const uniq=new Map<string,any>();
+ for(const r of rows){const key=`${String(r.school_id||'')}|${canonicalRole(r.role)}|${String(r.user_id||userId)}`;if(!uniq.has(key))uniq.set(key,r);}
+ return [...uniq.values()];
+};
 Deno.serve(async(req)=>{
  if(req.method==='OPTIONS')return new Response('ok',{headers:cors}); if(req.method!=='POST')return json({error:'METHOD_NOT_ALLOWED'},405);
  const url=Deno.env.get('SUPABASE_URL'),service=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'); if(!url||!service)return json({error:'ENV_MISSING'},500);
@@ -14,15 +49,15 @@ Deno.serve(async(req)=>{
   const raw=txt(req.headers.get('x-platform-session'),600); if(!raw)return json({error:'SESSION_MISSING',requestId},401);
   const h=await sha256(raw),now=new Date().toISOString(); const sq=await sb.from('platform_sessions').select('*').eq('session_token_hash',h).eq('status','active').gt('expires_at',now).maybeSingle(); if(sq.error)throw sq.error;
   const s:any=sq.data; if(!s?.school_id||!s?.user_id)return json({error:'SESSION_INVALID',requestId},401);
-  const mq=await sb.from('school_members').select('role,status').eq('school_id',s.school_id).eq('user_id',s.user_id).eq('status','active'); if(mq.error)throw mq.error;
-  const sessionRole=txt(s.role,100), memberRoles=(mq.data||[]).map((x:any)=>txt(x.role,100)),sessionCanonical=canonicalRole(sessionRole),memberCanonical=memberRoles.map(canonicalRole);
-  // RL107: the authoritative security boundary is an ACTIVE membership for the same user in the SAME school.
-  // Role labels can legitimately differ between legacy/new UI contracts, so a textual role mismatch must not block the survey.
-  if(!memberRoles.length)return json({error:'MEMBERSHIP_INACTIVE',requestId},403);
+  const activeMemberships=await resolveActiveMemberships(sb,s);
+  const sessionRole=txt(s.role,100), memberRoles=activeMemberships.map((x:any)=>txt(x.role,100)).filter(Boolean),sessionCanonical=canonicalRole(sessionRole),memberCanonical=memberRoles.map(canonicalRole);
+  // RL108: use the same compatibility contract as platform-session: same school + active identity/membership,
+  // with legacy email/microsoft_email/user-row/manager-email fallbacks. Do not require status === 'active' literally.
+  if(!activeMemberships.length)return json({error:'MEMBERSHIP_INACTIVE',requestId},403);
   const effectiveCanonical = memberCanonical.includes(sessionCanonical) ? sessionCanonical : (memberCanonical[0] || sessionCanonical);
   const body:any=await req.json().catch(()=>({})),action=txt(body.action,80),schoolId=String(s.school_id),userId=String(s.user_id),isManager=sessionCanonical==='manager'||memberCanonical.includes('manager');
   const ownerSurvey=async(id:string)=>{const q=await sb.from('impact_surveys').select('*').eq('id',id).eq('school_id',schoolId).eq('creator_user_id',userId).maybeSingle();if(q.error)throw q.error;return q.data};
-  if(action==='health')return json({ok:true,version:'1.3.0-RL107-active-membership-school-scope',schoolId,userId,role:sessionRole,requestId});
+  if(action==='health')return json({ok:true,version:'1.4.0-RL108-platform-session-membership-contract',schoolId,userId,role:sessionRole,requestId});
   if(action==='list'){
    const managerView=body.managerView===true&&isManager;
    let sqry=sb.from('impact_surveys').select('*').eq('school_id',schoolId).order('created_at',{ascending:false}); if(!managerView)sqry=sqry.eq('creator_user_id',userId);

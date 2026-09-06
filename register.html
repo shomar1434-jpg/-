@@ -194,7 +194,7 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
 <link rel="stylesheet" href="premium-ui.css">
 <script defer src="premium-ui.js"></script>
 <link rel="stylesheet" href="responsive-layout.css?v=20260818-responsive-1">
-<meta name="platform-patch" content="2026.09.06-RL85-legacy-owner-registration-link-compat">
+<meta name="platform-patch" content="2026.09.06-RL87-registration-contract-root-fix">
 </head>
 <body>
     <script src="./openai-engine.js" defer data-openai-engine="true"></script>
@@ -263,12 +263,18 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
   configureRoleFromInvite();
   const RL35_SUPABASE_URL='https://cijhgvbtrvmmlcssgxht.supabase.co';
   const RL35_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJIUzI1NiIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
+  const RL87_REGISTRATION_CONTRACT='RL87-owner-manager-split-v1';
+  let rl87ServerContract='';
   async function rl35Directory(action,payload){
-    if(window.SmartSchoolSupabase?.platformDirectoryCall){
-      try{return await window.SmartSchoolSupabase.platformDirectoryCall(action,payload||{},false)}catch(e){console.warn('[RL35 bridge fallback]',e)}
-    }
+    // RL87: one authoritative transport for public registration. No bridge/fallback divergence.
     const r=await fetch(RL35_SUPABASE_URL+'/functions/v1/platform-directory',{method:'POST',cache:'no-store',headers:{'content-type':'application/json','apikey':RL35_ANON_KEY},body:JSON.stringify({action,...(payload||{})})});
-    const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'تعذر التحقق من رابط التسجيل');return d;
+    const d=await r.json().catch(()=>({}));
+    if(d&&d.contractVersion)rl87ServerContract=String(d.contractVersion||'');
+    if(!r.ok){const e=new Error(d.error||'تعذر التحقق من رابط التسجيل');e.code=d.error||'';e.contractVersion=d.contractVersion||'';e.requestId=d.requestId||'';throw e}
+    return d;
+  }
+  async function ensureRL87ServerContract(){
+    try{const d=await rl35Directory('registration-contract-version',{});return d&&d.version===RL87_REGISTRATION_CONTRACT}catch(e){console.error('[RL87 contract probe]',e);return false}
   }
   async function resolveInviteSchool(){
     try{
@@ -294,9 +300,14 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
     // - رابط الموظف الإداري: يتطلب توقيع المشرف.
     // - رابط المدير: إذا وُجدت بيانات توقيع المدير، يتحقق الخادم منها.
     // - رابط مالك النظام الثابت: إذا لم توجد بيانات توقيع مدير، يعتمد على schoolId/schoolCode/registrationCode فقط.
-    const managerSignedLink=!invite.adminEmployee && !!(invite.managerUserId || invite.generalRegistrationToken);
-    const systemAdminSchoolLink=!invite.adminEmployee && !managerSignedLink;
+    const hasManagerUserId=!invite.adminEmployee && !!invite.managerUserId;
+    const hasManagerToken=!invite.adminEmployee && !!invite.generalRegistrationToken;
+    const managerSignedLink=hasManagerUserId&&hasManagerToken;
+    const systemAdminSchoolLink=!invite.adminEmployee&&!hasManagerUserId&&!hasManagerToken;
+    if(!invite.adminEmployee && hasManagerUserId!==hasManagerToken){msg.textContent='رابط تسجيل المدير غير مكتمل التوقيع. أعد إنشاء الرابط من حساب المدير.';return;}
     if(invite.adminEmployee && (!invite.supervisorUserId || !invite.adminRegistrationToken)){ msg.textContent='رابط تسجيل الموظف الإداري غير مكتمل. اطلب رابطًا جديدًا من المسؤول المباشر.'; return; }
+    const contractReady=await ensureRL87ServerContract();
+    if(!contractReady){msg.textContent='نسخة خدمة التسجيل السحابية لا تطابق نسخة الصفحة الحالية. أعد نشر platform-directory ثم أعد المحاولة.';return;}
     const name=document.getElementById('name').value.trim();
     const email=document.getElementById('email').value.trim().toLowerCase();
     const password=document.getElementById('password').value.trim();
@@ -317,7 +328,10 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
       const regPayload={schoolId:invite.schoolId,schoolCode:invite.schoolCode,registrationCode:invite.token,name,email,password,role,adminSupervisor:invite.adminEmployee?invite.adminSupervisor:'',supervisorUserId:invite.adminEmployee?invite.supervisorUserId:'',adminRegistrationToken:invite.adminEmployee?invite.adminRegistrationToken:'',managerUserId:invite.adminEmployee?'':invite.managerUserId,generalRegistrationToken:invite.adminEmployee?'':invite.generalRegistrationToken,registrationSource:invite.adminEmployee?'administrative_employee_link':(systemAdminSchoolLink?'system_admin_school_registration':'manager_school_registration')};
       await rl35Directory('register-user',regPayload)
     }catch(err){
-      msg.textContent=err.message||'تعذر إرسال الطلب إلى السحابة';
+      const code=String(err&&((err.code)||err.message)||'');
+      const labels={MANAGER_REGISTRATION_LINK_INVALID_OR_EXPIRED:'رابط التسجيل الصادر من المدير منتهي أو غير صالح.',MANAGER_REGISTRATION_SIGNATURE_INCOMPLETE:'رابط التسجيل الصادر من المدير غير مكتمل التوقيع.',REGISTRATION_LINK_INVALID:'رابط المدرسة لا يطابق رمز التسجيل الحالي.',SCHOOL_NOT_FOUND:'المدرسة غير موجودة أو غير فعالة.',EXISTING_IDENTITY_PASSWORD_MISMATCH:'يوجد حساب سابق بهذا البريد وكلمة المرور المدخلة لا تطابقه.'};
+      msg.textContent=labels[code]||code||'تعذر إرسال الطلب إلى السحابة';
+      console.error('[RL87 registration failed]',{code,contractVersion:err&&err.contractVersion||rl87ServerContract,requestId:err&&err.requestId||'',schoolId:invite.schoolId,schoolCode:invite.schoolCode,mode:systemAdminSchoolLink?'system-owner':(managerSignedLink?'manager-signed':'administrative')});
       return;
     }
     // RL33: لا تُنسخ هويات المستخدمين إلى localStorage المشترك بين التبويبات.

@@ -7,6 +7,7 @@ const hmacHex=async(secret:string,msg:string)=>{const key=await crypto.subtle.im
 const managers=new Set(['manager','owner','school_manager','principal','leadership','مدير','مديرة','مدير المدرسة','مديرة المدرسة']);
 const agents=new Set(['agent','deputy','vice','wakil','agency','وكيل','وكيلة']);
 const allowedRegistrationRoles=new Set(['agent','teacher','student_advisor','activity_leader','kindergarten_teacher','health_advisor','administrative_employee']);
+const REGISTRATION_CONTRACT_VERSION='RL87-owner-manager-split-v1';
 Deno.serve(async(req)=>{
  if(req.method==='OPTIONS')return new Response('ok',{headers:cors}); if(req.method!=='POST')return json({error:'METHOD_NOT_ALLOWED'},405);
  const url=Deno.env.get('SUPABASE_URL'),service=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');if(!url||!service)return json({error:'ENV_MISSING'},500);
@@ -17,6 +18,7 @@ Deno.serve(async(req)=>{
  const verifyGeneralLinkToken=async(token:string,schoolId:string,managerUserId:string)=>{const [expRaw,sig]=String(token||'').split('.');const exp=Number(expRaw);if(!Number.isFinite(exp)||Date.now()>exp||!sig)return false;const expected=await hmacHex(service,`GENERAL|${schoolId}|${managerUserId}|${exp}`);if(expected.length!==sig.length)return false;let diff=0;for(let i=0;i<expected.length;i++)diff|=expected.charCodeAt(i)^sig.charCodeAt(i);return diff===0};
  try{
   const body:any=await req.json().catch(()=>({})),action=t(body.action,80);
+  if(action==='registration-contract-version')return json({ok:true,version:REGISTRATION_CONTRACT_VERSION,requestId});
   const findSchool=async()=>{
    const sid=t(body.schoolId,100),scode=t(body.schoolCode,100),reg=t(body.registrationCode,160);let q:any=null;
    if(sid)q=await sb.from('schools').select('*').eq('id',sid).maybeSingle();else if(reg)q=await sb.from('schools').select('*').eq('registration_code',reg).limit(2);else if(scode)q=await sb.from('schools').select('*').eq('school_code',scode).limit(2);else return null;
@@ -25,7 +27,7 @@ Deno.serve(async(req)=>{
    if(['disabled','inactive','suspended','deleted'].includes(low(row.status)))return null;return row;
   };
   if(action==='inspect-school'){
-   const school=await findSchool();if(!school)return json({error:'SCHOOL_NOT_FOUND'},404);return json({ok:true,school:{id:school.id,school_id:school.id,school_name:school.school_name,school_code:school.school_code,status:school.status,school_edition:school.school_edition||'public'},requestId});
+   const school=await findSchool();if(!school)return json({error:'SCHOOL_NOT_FOUND'},404);return json({ok:true,school:{id:school.id,school_id:school.id,school_name:school.school_name,school_code:school.school_code,status:school.status,school_edition:school.school_edition||'public'},contractVersion:REGISTRATION_CONTRACT_VERSION,requestId});
   }
   if(action==='register-user'){
    const registrationCode=t(body.registrationCode,160);
@@ -41,18 +43,17 @@ Deno.serve(async(req)=>{
     const roles=(sq.data||[]).map((x:any)=>low(x.role));if(!roles.includes(supervisorRole))return json({error:'ADMIN_SUPERVISOR_NOT_AUTHORIZED'},403);
    } else {
     const managerUserId=t(body.managerUserId||body.manager_user_id,100),generalRegistrationToken=t(body.generalRegistrationToken||body.generalToken,500);
-    const hasManagerSignature=!!(managerUserId||generalRegistrationToken);
-    if(hasManagerSignature){
-     // RL86: وجود أي جزء من توقيع المدير يعني أن الرابط من مسار المدير،
-     // ولذلك يجب اكتمال التوقيع وصحته وملكية المدير للمدرسة. قيمة source ليست عنصر ثقة.
-     if(!managerUserId||!generalRegistrationToken||!(await verifyGeneralLinkToken(generalRegistrationToken,schoolId,managerUserId)))return json({error:'MANAGER_REGISTRATION_LINK_INVALID_OR_EXPIRED'},403);
+    const hasManagerUserId=!!managerUserId,hasManagerToken=!!generalRegistrationToken;
+    // RL87 ROOT CONTRACT:
+    // owner/system permanent link has NO manager signature fields. Its trust proof is the exact active school contract.
+    // manager link has BOTH managerUserId + generalRegistrationToken and must pass HMAC + active manager membership.
+    // a half signature is corrupt and is never downgraded to owner mode.
+    if(hasManagerUserId!==hasManagerToken)return json({error:'MANAGER_REGISTRATION_SIGNATURE_INCOMPLETE',contractVersion:REGISTRATION_CONTRACT_VERSION},403);
+    if(hasManagerUserId&&hasManagerToken){
+     if(!(await verifyGeneralLinkToken(generalRegistrationToken,schoolId,managerUserId)))return json({error:'MANAGER_REGISTRATION_LINK_INVALID_OR_EXPIRED',contractVersion:REGISTRATION_CONTRACT_VERSION},403);
      const mq0=await sb.from('school_members').select('user_id,role,status').eq('school_id',schoolId).eq('user_id',managerUserId).eq('status','active');if(mq0.error)throw mq0.error;
      const managerRoles=(mq0.data||[]).map((x:any)=>low(x.role));
-     if(!managerRoles.some((r:string)=>managers.has(r)))return json({error:'GENERAL_REGISTRATION_REQUIRES_MANAGER'},403);
-    }else{
-     // RL86: رابط مالك النظام الثابت لا يعتمد على source أو عمر الرابط.
-     // findSchool أثبت بالفعل تطابق schoolId / schoolCode / registrationCode وأن المدرسة فعالة.
-     // registrationCode هو سر الرابط الثابت ولا يتم تغييره أو تدويره هنا.
+     if(!managerRoles.some((r:string)=>managers.has(r)))return json({error:'GENERAL_REGISTRATION_REQUIRES_MANAGER',contractVersion:REGISTRATION_CONTRACT_VERSION},403);
     }
     supervisorUserId='';supervisorRole='';
    }
@@ -62,7 +63,7 @@ Deno.serve(async(req)=>{
    let mq=await sb.from('school_members').select('*').eq('school_id',schoolId).eq('user_id',user.id).eq('role',role).maybeSingle();if(mq.error)throw mq.error;
    const roleLabel=role==='administrative_employee'?`ADMIN_EMPLOYEE_SUPERVISOR:${supervisorRole}`:null;
    if(mq.data){const up=await sb.from('school_members').update({email,role_label:roleLabel,supervisor_user_id:supervisorUserId||null,status:'pending',updated_at:new Date().toISOString()}).eq('id',mq.data.id).select('*').single();if(up.error)throw up.error;mq=up}else{const ins=await sb.from('school_members').insert({school_id:schoolId,user_id:user.id,email,role,status:'pending',role_label:roleLabel,supervisor_user_id:supervisorUserId||null}).select('*').single();if(ins.error)throw ins.error;mq=ins}
-   return json({ok:true,user:{id:user.id,email,full_name:name},membership:mq.data,school:{id:schoolId,school_name:school.school_name},requestId});
+   return json({ok:true,user:{id:user.id,email,full_name:name},membership:mq.data,school:{id:schoolId,school_name:school.school_name},contractVersion:REGISTRATION_CONTRACT_VERSION,requestId});
   }
 
   const raw=t(req.headers.get('x-platform-session'),600);if(!raw)return json({error:'SESSION_MISSING',requestId},401);const h=await sha256(raw),now=new Date().toISOString();const ss=await sb.from('platform_sessions').select('*').eq('session_token_hash',h).eq('status','active').gt('expires_at',now).maybeSingle();if(ss.error)throw ss.error;const s:any=ss.data;if(!s)return json({error:'SESSION_INVALID',requestId},401);

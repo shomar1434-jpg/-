@@ -41,10 +41,18 @@ Deno.serve(async(req)=>{
     const roles=(sq.data||[]).map((x:any)=>low(x.role));if(!roles.includes(supervisorRole))return json({error:'ADMIN_SUPERVISOR_NOT_AUTHORIZED'},403);
    } else {
     const managerUserId=t(body.managerUserId||body.manager_user_id,100),generalRegistrationToken=t(body.generalRegistrationToken||body.generalToken,500);
-    if(source!=='manager_school_registration'||!managerUserId||!(await verifyGeneralLinkToken(generalRegistrationToken,schoolId,managerUserId)))return json({error:'MANAGER_REGISTRATION_LINK_INVALID_OR_EXPIRED'},403);
-    const mq0=await sb.from('school_members').select('user_id,role,status').eq('school_id',schoolId).eq('user_id',managerUserId).eq('status','active');if(mq0.error)throw mq0.error;
-    const managerRoles=(mq0.data||[]).map((x:any)=>low(x.role));
-    if(!managerRoles.some((r:string)=>managers.has(r)))return json({error:'GENERAL_REGISTRATION_REQUIRES_MANAGER'},403);
+    if(source==='system_admin_school_registration'){
+     // RL82: توافق خلفي آمن لروابط التسجيل التي يصدرها مالك النظام من إدارة المدارس.
+     // findSchool أعلاه تحقق بالفعل من schoolId/schoolCode/registrationCode، ونشترط هنا مديرًا فعّالًا داخل نفس المدرسة.
+     const mq0=await sb.from('school_members').select('user_id,role,status').eq('school_id',schoolId).eq('status','active');if(mq0.error)throw mq0.error;
+     const activeManager=(mq0.data||[]).some((x:any)=>managers.has(low(x.role)));
+     if(!activeManager)return json({error:'SYSTEM_ADMIN_REGISTRATION_REQUIRES_ACTIVE_MANAGER'},403);
+    }else{
+     if(source!=='manager_school_registration'||!managerUserId||!(await verifyGeneralLinkToken(generalRegistrationToken,schoolId,managerUserId)))return json({error:'MANAGER_REGISTRATION_LINK_INVALID_OR_EXPIRED'},403);
+     const mq0=await sb.from('school_members').select('user_id,role,status').eq('school_id',schoolId).eq('user_id',managerUserId).eq('status','active');if(mq0.error)throw mq0.error;
+     const managerRoles=(mq0.data||[]).map((x:any)=>low(x.role));
+     if(!managerRoles.some((r:string)=>managers.has(r)))return json({error:'GENERAL_REGISTRATION_REQUIRES_MANAGER'},403);
+    }
     supervisorUserId='';supervisorRole='';
    }
    let uq=await sb.from('users').select('*').eq('email',email).limit(1).maybeSingle();if(uq.error)throw uq.error;let user:any=uq.data||null;

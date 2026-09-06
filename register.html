@@ -194,7 +194,7 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
 <link rel="stylesheet" href="premium-ui.css">
 <script defer src="premium-ui.js"></script>
 <link rel="stylesheet" href="responsive-layout.css?v=20260818-responsive-1">
-<meta name="platform-patch" content="2026.09.05-RL36-final-links-contract">
+<meta name="platform-patch" content="2026.09.06-RL82-independent-school-registration-link-compat">
 </head>
 <body>
     <script src="./openai-engine.js" defer data-openai-engine="true"></script>
@@ -244,7 +244,8 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
     supervisorUserId:qv('supervisorUserId','supervisor_user_id'),
     adminRegistrationToken:qv('adminToken','adminRegistrationToken'),
     managerUserId:qv('managerUserId','manager_user_id'),
-    generalRegistrationToken:qv('generalToken','generalRegistrationToken')
+    generalRegistrationToken:qv('generalToken','generalRegistrationToken'),
+    source:qv('source')
   };
   function configureRoleFromInvite(){
     const roleEl=document.getElementById('role');
@@ -288,7 +289,8 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
     const msg=document.getElementById('msg'); msg.textContent=''; msg.className='text-center text-xs font-bold err';
     const verifiedSchool=await resolveInviteSchool();
     if(!verifiedSchool || !invite.schoolId || !invite.schoolCode || !invite.token){ msg.textContent='رابط التسجيل غير صالح أو لا يطابق مدرسة واحدة بشكل صريح. اطلب رابطًا جديدًا من مدير المدرسة.'; return; }
-    if(!invite.adminEmployee && (!invite.managerUserId || !invite.generalRegistrationToken)){ msg.textContent='رابط تسجيل المستخدمين قديم أو غير موثق. اطلب رابطًا جديدًا من مدير المدرسة.'; return; }
+    const systemAdminSchoolLink=!invite.adminEmployee && invite.source==='supabase_school_registration';
+    if(!invite.adminEmployee && !systemAdminSchoolLink && (!invite.managerUserId || !invite.generalRegistrationToken)){ msg.textContent='رابط تسجيل المستخدمين قديم أو غير موثق. اطلب رابطًا جديدًا من مدير المدرسة.'; return; }
     if(invite.adminEmployee && (!invite.supervisorUserId || !invite.adminRegistrationToken)){ msg.textContent='رابط تسجيل الموظف الإداري غير مكتمل. اطلب رابطًا جديدًا من المسؤول المباشر.'; return; }
     const name=document.getElementById('name').value.trim();
     const email=document.getElementById('email').value.trim().toLowerCase();
@@ -302,12 +304,12 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
       phone:'',nationalId:'',schoolName:invite.schoolName,schoolId:invite.schoolId,
       isActive:false,status:'pending',source:'registration_link',
       adminOwnerId:invite.admin,registrationToken:invite.token,registeredViaManagerLink:true,
-      registrationSource:invite.adminEmployee?'administrative_employee_link':'manager_school_registration',adminSupervisor:invite.adminEmployee?invite.adminSupervisor:'',
+      registrationSource:invite.adminEmployee?'administrative_employee_link':(systemAdminSchoolLink?'system_admin_school_registration':'manager_school_registration'),adminSupervisor:invite.adminEmployee?invite.adminSupervisor:'',
       permissions:[],
       dateJoined:new Date().toLocaleString('ar-SA')
     };
     try{
-      const regPayload={schoolId:invite.schoolId,schoolCode:invite.schoolCode,registrationCode:invite.token,name,email,password,role,adminSupervisor:invite.adminEmployee?invite.adminSupervisor:'',supervisorUserId:invite.adminEmployee?invite.supervisorUserId:'',adminRegistrationToken:invite.adminEmployee?invite.adminRegistrationToken:'',managerUserId:invite.adminEmployee?'':invite.managerUserId,generalRegistrationToken:invite.adminEmployee?'':invite.generalRegistrationToken,registrationSource:invite.adminEmployee?'administrative_employee_link':'manager_school_registration'};
+      const regPayload={schoolId:invite.schoolId,schoolCode:invite.schoolCode,registrationCode:invite.token,name,email,password,role,adminSupervisor:invite.adminEmployee?invite.adminSupervisor:'',supervisorUserId:invite.adminEmployee?invite.supervisorUserId:'',adminRegistrationToken:invite.adminEmployee?invite.adminRegistrationToken:'',managerUserId:invite.adminEmployee?'':invite.managerUserId,generalRegistrationToken:invite.adminEmployee?'':invite.generalRegistrationToken,registrationSource:invite.adminEmployee?'administrative_employee_link':(systemAdminSchoolLink?'system_admin_school_registration':'manager_school_registration')};
       await rl35Directory('register-user',regPayload)
     }catch(err){
       msg.textContent=err.message||'تعذر إرسال الطلب إلى السحابة';

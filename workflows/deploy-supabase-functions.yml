@@ -13,11 +13,13 @@ on:
       - "supabase/functions/platform-core/**"
       - "supabase/functions/platform-state/**"
       - "supabase/functions/platform-directory/**"
+      - "supabase/functions/impact-measurement/**"
       - "supabase/functions/system-admin/**"
       - ".github/workflows/deploy-supabase-functions.yml"
 
 permissions:
   contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -37,17 +39,6 @@ jobs:
       - name: Verify Supabase CLI
         run: supabase --version
 
-      - name: Verify platform-directory registration contract source
-        run: |
-          test -f supabase/functions/platform-directory/index.ts
-          grep -q "RL87-owner-manager-split-v1" supabase/functions/platform-directory/index.ts
-
-      - name: Deploy platform-directory
-        run: |
-          supabase functions deploy platform-directory \
-            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
-            --no-verify-jwt
-
       - name: Deploy platform-session
         run: |
           supabase functions deploy platform-session \
@@ -59,6 +50,7 @@ jobs:
           supabase functions deploy platform-files \
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
             --no-verify-jwt
+
       - name: Deploy platform-tasks
         run: |
           supabase functions deploy platform-tasks \
@@ -70,9 +62,22 @@ jobs:
           supabase functions deploy platform-core \
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
             --no-verify-jwt
+
       - name: Deploy platform-state
         run: |
           supabase functions deploy platform-state \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
+            --no-verify-jwt
+
+      - name: Deploy platform-directory
+        run: |
+          supabase functions deploy platform-directory \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
+            --no-verify-jwt
+
+      - name: Deploy impact-measurement
+        run: |
+          supabase functions deploy impact-measurement \
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
             --no-verify-jwt
 

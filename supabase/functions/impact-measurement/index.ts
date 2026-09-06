@@ -4,6 +4,7 @@ const json=(b:unknown,s=200)=>new Response(JSON.stringify(b),{status:s,headers:{
 const txt=(v:unknown,n=20000)=>String(v??'').trim().slice(0,n);
 const sha256=async(v:string)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(v)))).map(x=>x.toString(16).padStart(2,'0')).join('');
 const managers=new Set(['manager','owner','school_manager','principal','leadership','مدير','مديرة','مدير المدرسة','مديرة المدرسة']);
+const canonicalRole=(v:unknown)=>{const r=txt(v,100).toLowerCase().replace(/\s+/g,'_');const map:Record<string,string>={owner:'manager',school_manager:'manager',principal:'manager',leadership:'manager','مدير':'manager','مديرة':'manager','مدير_المدرسة':'manager','مديرة_المدرسة':'manager',wakil:'agent',deputy:'agent','وكيل':'agent','وكيلة':'agent',administrative_employee:'admin_employee',administrative:'admin_employee','موظف_إداري':'admin_employee','موظفة_إدارية':'admin_employee',advisor:'student_advisor',counselor:'student_advisor','موجه_طلابي':'student_advisor','موجهة_طلابية':'student_advisor',activity:'activity_leader','رائد_النشاط':'activity_leader','رائدة_النشاط':'activity_leader',health:'health_advisor','موجه_صحي':'health_advisor','موجهة_صحية':'health_advisor',kindergarten:'kindergarten_teacher','معلمة_رياض_الأطفال':'kindergarten_teacher'};return map[r]||r};
 const allowedSurveyStatus=new Set(['draft','active','closed','archived']);
 Deno.serve(async(req)=>{
  if(req.method==='OPTIONS')return new Response('ok',{headers:cors}); if(req.method!=='POST')return json({error:'METHOD_NOT_ALLOWED'},405);
@@ -14,11 +15,12 @@ Deno.serve(async(req)=>{
   const h=await sha256(raw),now=new Date().toISOString(); const sq=await sb.from('platform_sessions').select('*').eq('session_token_hash',h).eq('status','active').gt('expires_at',now).maybeSingle(); if(sq.error)throw sq.error;
   const s:any=sq.data; if(!s?.school_id||!s?.user_id)return json({error:'SESSION_INVALID',requestId},401);
   const mq=await sb.from('school_members').select('role,status').eq('school_id',s.school_id).eq('user_id',s.user_id).eq('status','active'); if(mq.error)throw mq.error;
-  const sessionRole=txt(s.role,100), memberRoles=(mq.data||[]).map((x:any)=>txt(x.role,100));
-  if(!memberRoles.includes(sessionRole) && !managers.has(sessionRole.toLowerCase()) && !managers.has(sessionRole))return json({error:'MEMBERSHIP_ROLE_MISMATCH',requestId},403);
-  const body:any=await req.json().catch(()=>({})),action=txt(body.action,80),schoolId=String(s.school_id),userId=String(s.user_id),isManager=managers.has(sessionRole.toLowerCase())||managers.has(sessionRole);
+  const sessionRole=txt(s.role,100), memberRoles=(mq.data||[]).map((x:any)=>txt(x.role,100)),sessionCanonical=canonicalRole(sessionRole),memberCanonical=memberRoles.map(canonicalRole);
+  if(!memberRoles.length)return json({error:'MEMBERSHIP_INACTIVE',requestId},403);
+  if(!memberCanonical.includes(sessionCanonical))return json({error:'MEMBERSHIP_ROLE_MISMATCH',sessionRole,memberRoles,requestId},403);
+  const body:any=await req.json().catch(()=>({})),action=txt(body.action,80),schoolId=String(s.school_id),userId=String(s.user_id),isManager=sessionCanonical==='manager';
   const ownerSurvey=async(id:string)=>{const q=await sb.from('impact_surveys').select('*').eq('id',id).eq('school_id',schoolId).eq('creator_user_id',userId).maybeSingle();if(q.error)throw q.error;return q.data};
-  if(action==='health')return json({ok:true,version:'1.0.0-RL33-user-isolated-impact',schoolId,userId,role:sessionRole,requestId});
+  if(action==='health')return json({ok:true,version:'1.1.0-RL94-canonical-membership-role',schoolId,userId,role:sessionRole,requestId});
   if(action==='list'){
    const managerView=body.managerView===true&&isManager;
    let sqry=sb.from('impact_surveys').select('*').eq('school_id',schoolId).order('created_at',{ascending:false}); if(!managerView)sqry=sqry.eq('creator_user_id',userId);
@@ -50,7 +52,6 @@ Deno.serve(async(req)=>{
   }
   if(action==='save-assessment'){
    const x=body.assessment||{},id=txt(x.id,180),program=txt(x.program_name||x.programName,400);if(!id||!program)return json({error:'ASSESSMENT_FIELDS_REQUIRED',requestId},400);
-   const existing=await sb.from('impact_assessments').select('id,school_id,creator_user_id').eq('id',id).maybeSingle();if(existing.error)throw existing.error;if(existing.data&&(String(existing.data.school_id)!==schoolId||String(existing.data.creator_user_id||'')!==userId))return json({error:'ASSESSMENT_ID_OWNERSHIP_CONFLICT',requestId},409);
    const existing=await sb.from('impact_assessments').select('id,school_id,creator_user_id').eq('id',id).maybeSingle();if(existing.error)throw existing.error;if(existing.data&&(String(existing.data.school_id)!==schoolId||String(existing.data.creator_user_id||'')!==userId))return json({error:'ASSESSMENT_ID_OWNERSHIP_CONFLICT',requestId},409);
    const row={id,school_id:schoolId,creator_user_id:userId,source_section:txt(x.source_section||x.sourceSection,160)||null,source_record_id:txt(x.source_record_id||x.sourceRecordId,200)||null,program_name:program,role:sessionRole,target_group:txt(x.target_group||x.target,200)||null,program_type:txt(x.program_type||x.programType,200)||null,measure_date:x.measure_date||x.measureDate||null,period_label:txt(x.period_label||x.period,200)||null,metrics:Array.isArray(x.metrics)?x.metrics:[],avg_improvement:Number(x.avg_improvement??x.avgImprovement??0)||0,impact_level:txt(x.impact_level||x.impactLevel,100)||null,findings:txt(x.findings)||null,conclusion:txt(x.conclusion)||null,recommendations:txt(x.recommendations)||null,evidence:Array.isArray(x.evidence)?x.evidence:[],external_evaluation:true,status:'active',survey_score:Number(x.survey_score??x.surveyScore??0)||0,response_count:Number(x.response_count??x.responseCount??0)||0,positive_rate:Number(x.positive_rate??x.positiveRate??0)||0,analysis:x.analysis&&typeof x.analysis==='object'?x.analysis:{},updated_at:now};
    const up=await sb.from('impact_assessments').upsert(row,{onConflict:'id'}).select('*').single();if(up.error)throw up.error;const vr=await sb.from('impact_assessments').select('*').eq('id',id).eq('school_id',schoolId).eq('creator_user_id',userId).maybeSingle();if(vr.error)throw vr.error;if(!vr.data)return json({error:'ASSESSMENT_VERIFY_FAILED',requestId},500);return json({ok:true,assessment:vr.data,requestId});

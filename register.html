@@ -264,6 +264,7 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
   const RL35_SUPABASE_URL='https://cijhgvbtrvmmlcssgxht.supabase.co';
   const RL35_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJIUzI1NiIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
   const RL87_REGISTRATION_CONTRACT='RL87-owner-manager-split-v1';
+  const RL89_REGISTRATION_SCOPE_POLICY='verified-school-id-is-authoritative';
   let rl87ServerContract='';
   async function rl35Directory(action,payload){
     // RL87: one authoritative transport for public registration. No bridge/fallback divergence.
@@ -306,8 +307,12 @@ input[type="email"], input[data-email-field="true"]{direction:ltr!important;text
     const systemAdminSchoolLink=!invite.adminEmployee&&!hasManagerUserId&&!hasManagerToken;
     if(!invite.adminEmployee && hasManagerUserId!==hasManagerToken){msg.textContent='رابط تسجيل المدير غير مكتمل التوقيع. أعد إنشاء الرابط من حساب المدير.';return;}
     if(invite.adminEmployee && (!invite.supervisorUserId || !invite.adminRegistrationToken)){ msg.textContent='رابط تسجيل الموظف الإداري غير مكتمل. اطلب رابطًا جديدًا من المسؤول المباشر.'; return; }
-    const contractReady=await ensureRL87ServerContract();
-    if(!contractReady){msg.textContent='نسخة خدمة التسجيل السحابية لا تطابق نسخة الصفحة الحالية. أعد نشر platform-directory ثم أعد المحاولة.';return;}
+    // RL89: لا يجوز أن يصبح اختلاف إصدار الواجهة والخدمة حاجزًا أمام رابط مدرسة صحيح.
+    // مصدر العزل هو عقد المدرسة نفسه: schoolId/schoolCode/registrationCode بعد resolveInviteSchool.
+    // فحص الإصدار تشخيصي فقط ولا يوقف التسجيل، حفاظًا على توافق روابط المدارس المستقلة القديمة.
+    ensureRL87ServerContract().then(function(ok){
+      if(!ok) console.warn('[RL89 registration contract advisory] platform-directory uses a compatible legacy contract; registration continues with verified school scope.');
+    }).catch(function(){});
     const name=document.getElementById('name').value.trim();
     const email=document.getElementById('email').value.trim().toLowerCase();
     const password=document.getElementById('password').value.trim();

@@ -2407,6 +2407,27 @@ h1{font-size:18px;margin:0;color:#0f3f75;font-weight:900}
         }
     ];
 
+    // RL79: تشكيل مطلوب غير هدّام لضمان ظهور فريق التخطيط للمدارس القائمة والجديدة
+    const REQUIRED_FORMATIONS = [
+        {
+            id: &quot;planning_team&quot;,
+            name: &quot;فريق التخطيط&quot;,
+            decisionDate: &quot;&quot;,
+            authority: &quot;وفق التنظيمات والتعليمات المعتمدة والخطة التشغيلية للمدرسة&quot;,
+            duration: &quot;عام دراسي&quot;,
+            goals: &quot;تنظيم أعمال التخطيط المدرسي ومتابعة بناء الخطة التشغيلية وربطها بالأولويات والمؤشرات ومتابعة التنفيذ والتحسين.&quot;,
+            rules: &quot;يُشكّل الفريق بقرار من مدير/مديرة المدرسة، وتُحدّد عضويته ومهامه وفق احتياج المدرسة والتنظيمات المعتمدة.&quot;,
+            tasks: [
+                &quot;تحليل واقع المدرسة وتحديد الأولويات والاحتياجات التخطيطية.&quot;,
+                &quot;إعداد ومراجعة الخطة التشغيلية وربط البرامج بالأهداف والمؤشرات.&quot;,
+                &quot;متابعة تنفيذ مبادرات وبرامج الخطة وقياس مستوى الإنجاز.&quot;,
+                &quot;توثيق الاجتماعات والتوصيات ورفع مقترحات التحسين.&quot;
+            ],
+            members: [],
+            meetings: []
+        }
+    ];
+
     const DEFAULT_OPERATIONAL_PLAN = [
         {
             id: &quot;goal1&quot;,
@@ -2773,6 +2794,7 @@ function selfEvalV5Upsert(row){
                 }
 
                 this.ensureUploadedPdfCommittees();
+                this.ensureRequiredFormations();
 
                 if (this.committees.length &gt; 0) {
                     this.selectedCommitteeId = this.committees[0].id;
@@ -2795,6 +2817,13 @@ function selfEvalV5Upsert(row){
                             sourceFile: current.sourceFile || pdfCommittee.sourceFile
                         };
                     }
+                });
+            },
+            ensureRequiredFormations() {
+                const required = JSON.parse(JSON.stringify(REQUIRED_FORMATIONS));
+                required.forEach(formation =&gt; {
+                    const exists = this.committees.some(c =&gt; String(c?.id||&#x27;&#x27;) === String(formation.id) || String(c?.name||&#x27;&#x27;).trim() === formation.name);
+                    if (!exists) this.committees.push(formation);
                 });
             },
             async selfEvalWait(ms){return new Promise(resolve=&gt;setTimeout(resolve,ms));},

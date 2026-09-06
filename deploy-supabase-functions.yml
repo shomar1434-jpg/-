@@ -2,6 +2,7 @@ name: Deploy Supabase Edge Functions
 
 on:
   workflow_dispatch:
+
   push:
     branches:
       - main
@@ -12,23 +13,18 @@ on:
       - "supabase/functions/platform-core/**"
       - "supabase/functions/platform-state/**"
       - "supabase/functions/platform-directory/**"
-      - "supabase/functions/impact-measurement/**"
       - "supabase/functions/system-admin/**"
-      - "supabase/functions/platform-messages/**"
-      - "supabase/functions/platform-performance/**"
-      - "supabase/functions/platform-discipline/**"
-      - "supabase/functions/platform-agent/**"
-      - "supabase/functions/platform-knowledge/**"
-      - "supabase/functions/school-information-structure/**"
-      - "supabase/migrations/**"
       - ".github/workflows/deploy-supabase-functions.yml"
 
 permissions:
   contents: read
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -38,90 +34,50 @@ jobs:
         with:
           version: 2.116.0
 
+      - name: Verify Supabase CLI
+        run: supabase --version
+
+      - name: Verify platform-directory registration contract source
+        run: |
+          test -f supabase/functions/platform-directory/index.ts
+          grep -q "RL87-owner-manager-split-v1" supabase/functions/platform-directory/index.ts
+
+      - name: Deploy platform-directory
+        run: |
+          supabase functions deploy platform-directory \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
+            --no-verify-jwt
+
       - name: Deploy platform-session
         run: |
           supabase functions deploy platform-session \
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
             --no-verify-jwt
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
       - name: Deploy platform-files
         run: |
           supabase functions deploy platform-files \
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
             --no-verify-jwt
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-
       - name: Deploy platform-tasks
         run: |
-          supabase functions deploy platform-tasks --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" --no-verify-jwt
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          supabase functions deploy platform-tasks \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
+            --no-verify-jwt
 
       - name: Deploy platform-core
         run: |
-          supabase functions deploy platform-core --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" --no-verify-jwt
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-
+          supabase functions deploy platform-core \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
+            --no-verify-jwt
       - name: Deploy platform-state
         run: |
-          supabase functions deploy platform-state --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" --no-verify-jwt
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-
-
-      - name: Deploy platform-directory
-        run: |
-          supabase functions deploy platform-directory --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" --no-verify-jwt
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-
-      - name: Deploy impact-measurement
-        run: |
-          supabase functions deploy impact-measurement --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" --no-verify-jwt
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          supabase functions deploy platform-state \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
+            --no-verify-jwt
 
       - name: Deploy system-admin
         run: |
-          supabase functions deploy system-admin --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      - name: Deploy platform-messages
-        run: |
-          supabase functions deploy platform-messages --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" --no-verify-jwt
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-
-
-      - name: Deploy platform-performance
-        run: |
-          supabase functions deploy platform-performance --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" --no-verify-jwt
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-
-      - name: Deploy platform-discipline
-        run: |
-          supabase functions deploy platform-discipline --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" --no-verify-jwt
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-
-      - name: Deploy platform-agent
-        run: |
-          supabase functions deploy platform-agent --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" --no-verify-jwt
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      - name: Deploy platform-knowledge
-        run: |
-          supabase functions deploy platform-knowledge --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      - name: Deploy school-information-structure
-        run: |
-          supabase functions deploy school-information-structure --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" --no-verify-jwt
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-
+          supabase functions deploy system-admin \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
+            --no-verify-jwt

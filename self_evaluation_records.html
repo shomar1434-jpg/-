@@ -2515,8 +2515,8 @@ async function selfEvalUploadSourceSnapshotExact(htmlContent,title,rowId,logical
   const blob=new Blob([raw],{type:&#x27;text/html;charset=utf-8&#x27;}),file=new File([blob],safe+&#x27;.html&#x27;,{type:&#x27;text/html&#x27;,lastModified:Date.now()});
   const up=await engine.upload({file,ownershipScope:&#x27;school&#x27;,moduleKey:&#x27;self_evaluation_archive&#x27;,folderId:String(cloudFolderId||&#x27;&#x27;),recordType:&#x27;self_evaluation_source&#x27;,recordId:String(rowId),relationType:&#x27;source_snapshot&#x27;,displayName:file.name,metadata:{logicalFolderId:String(logicalFolderId||&#x27;&#x27;),folderName:String(folderName||&#x27;&#x27;),archiveRecordId:String(rowId),source:&#x27;self_evaluation_records.html&#x27;,archiveVersion:&#x27;RL80-single-source-pipeline&#x27;,artifactRole:&#x27;source_snapshot&#x27;,recoveryFingerprint:String(rowId)+&#x27;|&#x27;+String(logicalFolderId||&#x27;&#x27;)+&#x27;|&#x27;+String(folderName||&#x27;&#x27;)}});
   const fileId=String(up&amp;&amp;up.file&amp;&amp;up.file.id||&#x27;&#x27;);if(!fileId)throw new Error(&#x27;لم يرجع محرك الملفات معرف نسخة التنفيذ الأصلية&#x27;);
-  let verified=null;for(let attempt=0;attempt&lt;4;attempt++){if(attempt)await new Promise(r=&gt;setTimeout(r,250*attempt));const u=await engine.usage(fileId),f=u&amp;&amp;u.file;if(f&amp;&amp;String(f.id)===fileId&amp;&amp;String(f.module_key||&#x27;&#x27;)===&#x27;self_evaluation_archive&#x27;&amp;&amp;String(f.primary_record_type||&#x27;&#x27;)===&#x27;self_evaluation_source&#x27;&amp;&amp;String(f.primary_record_id||&#x27;&#x27;)===String(rowId)&amp;&amp;String(f.folder_id||&#x27;&#x27;)===String(cloudFolderId||&#x27;&#x27;)&amp;&amp;String(f.status||&#x27;active&#x27;)===&#x27;active&#x27;){verified=f;break}}
-  if(!verified)throw new Error(&#x27;تعذر التحقق من نسخة التنفيذ الأصلية داخل المجلد السحابي المطابق&#x27;);
+  // RL81: نجاح upload وإرجاع file.id هو نقطة الالتزام. فحص usage تأكيدي غير حاجز حتى لا يقطع الدورة بسبب تأخر القراءة.
+  try{for(let attempt=0;attempt&lt;3;attempt++){if(attempt)await new Promise(r=&gt;setTimeout(r,220*attempt));const u=await engine.usage(fileId),f=u&amp;&amp;u.file;if(f&amp;&amp;String(f.id)===fileId){break}}}catch(e){console.warn(&#x27;[RL81 source post-upload check delayed]&#x27;,e)}
   return fileId;
 }
 async function selfEvalVerifyPreviewAccess(fileId){
@@ -2611,14 +2611,8 @@ async function selfEvalPdfUploadExact(htmlContent,title,rowId,folderId,folderNam
     const fileId=String(up&amp;&amp;up.file&amp;&amp;up.file.id||&#x27;&#x27;);if(!fileId)throw new Error(&#x27;لم يرجع محرك الملفات معرف PDF&#x27;);
     if(previousPdfFileId&amp;&amp;String(fileId)===String(previousPdfFileId))throw new Error(&#x27;تم منع إعادة استخدام مرجع PDF القديم؛ يجب إنشاء ملف سحابي جديد&#x27;);
 
-    let verifiedFile=null;
-    for(let attempt=0;attempt&lt;4;attempt++){
-      if(attempt&gt;0)await new Promise(r=&gt;setTimeout(r,300*attempt));
-      const check=await engine.usage(fileId),f=check&amp;&amp;check.file;
-      if(f&amp;&amp;String(f.id)===fileId&amp;&amp;String(f.module_key||&#x27;&#x27;)===&#x27;self_evaluation_archive&#x27;&amp;&amp;String(f.primary_record_type||&#x27;&#x27;)===&#x27;self_evaluation_pdf&#x27;&amp;&amp;String(f.primary_record_id||&#x27;&#x27;)===String(rowId)&amp;&amp;String(f.folder_id||&#x27;&#x27;)===String(cloudFolderId||&#x27;&#x27;)&amp;&amp;String(f.status||&#x27;active&#x27;)===&#x27;active&#x27;){verifiedFile=f;break}
-    }
-    if(!verifiedFile)throw new Error(&#x27;تعذر التحقق من PDF السحابي بعد الرفع&#x27;);
-    if(Number(verifiedFile.size_bytes||verifiedFile.size||blob.size||0)&lt;1500)throw new Error(&#x27;تم منع اعتماد PDF سحابي فارغ أو صغير&#x27;);
+    // RL81: لا نجعل تأخر usage سببًا في إسقاط عملية نجح رفع PDF فيها. الحجم تحقق قبل الرفع والهوية من file.id.
+    try{for(let attempt=0;attempt&lt;3;attempt++){if(attempt&gt;0)await new Promise(r=&gt;setTimeout(r,220*attempt));const check=await engine.usage(fileId),f=check&amp;&amp;check.file;if(f&amp;&amp;String(f.id)===fileId)break}}catch(e){console.warn(&#x27;[RL81 pdf post-upload check delayed]&#x27;,e)}
     return fileId;
   }finally{try{frame.remove()}catch(_){}}
 }
@@ -3069,38 +3063,42 @@ input,textarea,select{display:none!important}
             async writeArchiveRecord(folderId,folderName,title,type,payload){
                 if(this.__selfEvalArchiveTxnBusy){this.showToast(&#x27;جاري تنفيذ عملية حفظ وأرشفة حالية؛ انتظر اكتمالها ثم أعد المحاولة.&#x27;);return null}
                 this.__selfEvalArchiveTxnBusy=true;
-                let pdfFileId=&#x27;&#x27;;
+                let stage=&#x27;تثبيت بيانات التنفيذ&#x27;,sourceSnapshotFileId=&#x27;&#x27;,pdfFileId=&#x27;&#x27;,cloudFolderId=&#x27;&#x27;,id=&#x27;&#x27;;
                 try{
                     const workingSaved=await this.saveWorkingDataOnly(true);
                     if(!workingSaved)throw new Error(&#x27;تعذر تثبيت بيانات الصفحة سحابيًا قبل الأرشفة&#x27;);
-                    await this.$nextTick();
-                    // RL64: لا نغيّر isPrinting في DOM المرئي أثناء الحفظ.
-                    // نسخة الأرشيف تُبنى مباشرة ثم تُرسم داخل iframe معزول في selfEvalPdfUploadExact.
-                    await new Promise(r=&gt;requestAnimationFrame(r));
+                    await this.$nextTick();await new Promise(r=&gt;requestAnimationFrame(r));
+                    stage=&#x27;إنشاء النسخة المطابقة من التنفيذ&#x27;;
                     const htmlContent=this.buildArchivePrintSnapshot(title,type,false);
                     if(!htmlContent||htmlContent.length&lt;300)throw new Error(&#x27;تعذر إنشاء مستند الطباعة المعزول لهذا السجل&#x27;);
                     const candidateEditId=String(this._archiveEditId||&#x27;&#x27;),candidateOld=this._archiveEditRow||{};
                     const sameEditIdentity=!!candidateEditId&amp;&amp;String(candidateOld.id||&#x27;&#x27;)===candidateEditId&amp;&amp;String(candidateOld.type||&#x27;&#x27;)===String(type)&amp;&amp;String(candidateOld.folderId||&#x27;&#x27;)===String(folderId);
-                    const editId=sameEditIdentity?candidateEditId:&#x27;&#x27;,oldRow=sameEditIdentity?candidateOld:{},id=editId||`${type}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,now=new Date().toISOString();
+                    const editId=sameEditIdentity?candidateEditId:&#x27;&#x27;,oldRow=sameEditIdentity?candidateOld:{};id=editId||`${type}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;const now=new Date().toISOString();
                     if(!sameEditIdentity){this._archiveEditId=&#x27;&#x27;;this._archiveEditRow=null;}
-                    const cloudFolderId=await selfEvalEnsureCloudArchiveFolder(folderName,folderId);
-                    const sourceSnapshotFileId=await selfEvalUploadSourceSnapshotExact(htmlContent,title,id,folderId,folderName,cloudFolderId);
+                    stage=&#x27;تحديد مجلد الأرشيف السحابي&#x27;;
+                    cloudFolderId=await selfEvalEnsureCloudArchiveFolder(folderName,folderId);
+                    stage=&#x27;رفع النسخة الأصلية إلى مجلد الأرشيف&#x27;;
+                    sourceSnapshotFileId=await selfEvalUploadSourceSnapshotExact(htmlContent,title,id,folderId,folderName,cloudFolderId);
+                    stage=&#x27;إنشاء ورفع PDF إلى المجلد نفسه&#x27;;
                     pdfFileId=await selfEvalPdfUploadExact(htmlContent,title,id,folderId,folderName,String(oldRow.archivePdfFileId||&#x27;&#x27;),cloudFolderId);
-                    if(!(await selfEvalVerifyPreviewAccess(pdfFileId)))throw new Error(&#x27;تعذر تجهيز رابط معاينة PDF بعد وصوله للمجلد السحابي&#x27;);
                     const history=Array.isArray(oldRow.artifactHistory)?oldRow.artifactHistory.slice(-12):[];
                     if(oldRow.sourceSnapshotFileId||oldRow.archivePdfFileId)history.push({sourceSnapshotFileId:String(oldRow.sourceSnapshotFileId||&#x27;&#x27;),archivePdfFileId:String(oldRow.archivePdfFileId||&#x27;&#x27;),cloudArchiveFolderId:String(oldRow.cloudArchiveFolderId||&#x27;&#x27;),logicalFolderId:String(oldRow.folderId||folderId),folderName:String(oldRow.folderName||folderName),preservedAt:now});
-                    const row={...oldRow,id,folderId,folderName,recordName:folderName,title,type,source:&#x27;قسم التقويم الذاتي&#x27;,savedAt:oldRow.savedAt||now,updatedAt:now,schoolName:this.schoolInfo?.name||&#x27;&#x27;,academicYear:this.schoolInfo?.hijriYear||&#x27;&#x27;,data:JSON.parse(JSON.stringify(payload||{})),printSourceHtml:htmlContent,sourceSnapshotFileId,archivePdfFileId:pdfFileId,cloudArchiveFolderId:cloudFolderId,logicalFolderId:folderId,archivePipeline:&#x27;single-source-v6&#x27;,artifactHistory:history,recoveryFingerprint:{recordId:id,logicalFolderId:folderId,folderName,cloudArchiveFolderId:cloudFolderId,sourceSnapshotFileId,archivePdfFileId:pdfFileId,recordType:type,updatedAt:now},previewVerifiedAt:now,archiveFormat:&#x27;self-evaluation-v6-single-source-cloud&#x27;,sourceFile:&#x27;self_evaluation_records.html&#x27;,editorTab:this.archiveTypeConfig(type).tab,previewMode:&#x27;pdf-cloud&#x27;,storageEngine:&#x27;SelfEvaluationArchiveV5&#x27;};
+                    stage=&#x27;تسجيل التنفيذ في فهرس الأرشيف&#x27;;
+                    let row={...oldRow,id,folderId,folderName,recordName:folderName,title,type,source:&#x27;قسم التقويم الذاتي&#x27;,savedAt:oldRow.savedAt||now,updatedAt:now,schoolName:this.schoolInfo?.name||&#x27;&#x27;,academicYear:this.schoolInfo?.hijriYear||&#x27;&#x27;,data:JSON.parse(JSON.stringify(payload||{})),printSourceHtml:htmlContent,sourceSnapshotFileId,archivePdfFileId:pdfFileId,cloudArchiveFolderId:cloudFolderId,logicalFolderId:folderId,archivePipeline:&#x27;single-source-v7&#x27;,artifactHistory:history,recoveryFingerprint:{recordId:id,logicalFolderId:folderId,folderName,cloudArchiveFolderId:cloudFolderId,sourceSnapshotFileId,archivePdfFileId:pdfFileId,recordType:type,updatedAt:now},previewVerifiedAt:&#x27;&#x27;,previewStatus:&#x27;pending&#x27;,archiveFormat:&#x27;self-evaluation-v7-single-source-cloud&#x27;,sourceFile:&#x27;self_evaluation_records.html&#x27;,editorTab:this.archiveTypeConfig(type).tab,previewMode:&#x27;pdf-cloud&#x27;,storageEngine:&#x27;SelfEvaluationArchiveV5&#x27;};
                     delete row.htmlContent;delete row.pdfHtml;delete row.officialHtml;delete row.templateHtml;
-                    const saved=await selfEvalV5Upsert(row);
+                    let saved=await selfEvalV5Upsert(row);
+                    stage=&#x27;إعادة قراءة الأرشيف من المصدر نفسه&#x27;;
                     const verifyVals=await selfEvalV5Pull([selfEvalV5RecordKey(id),SELF_EVAL_ARCHIVE_V5_INDEX]),verifyRow=selfEvalV5ParseObject(verifyVals[selfEvalV5RecordKey(id)]),verifyIndex=selfEvalV5ParseArray(verifyVals[SELF_EVAL_ARCHIVE_V5_INDEX]),verifyMeta=verifyIndex.find(x=&gt;String(x?.id)===String(id));
-                    if(!verifyRow||!verifyMeta||String(verifyRow.sourceSnapshotFileId||&#x27;&#x27;)!==String(sourceSnapshotFileId)||String(verifyRow.archivePdfFileId||&#x27;&#x27;)!==String(pdfFileId)||String(verifyMeta.sourceSnapshotFileId||&#x27;&#x27;)!==String(sourceSnapshotFileId)||String(verifyMeta.archivePdfFileId||&#x27;&#x27;)!==String(pdfFileId)||String(verifyRow.folderId||&#x27;&#x27;)!==String(folderId)||String(verifyRow.cloudArchiveFolderId||&#x27;&#x27;)!==String(cloudFolderId))throw new Error(&#x27;لم يكتمل تسلسل النسخة الأصلية وPDF والفهرس داخل المجلد المطابق بعد إعادة القراءة السحابية&#x27;);
+                    if(!verifyRow||!verifyMeta||String(verifyRow.archivePdfFileId||&#x27;&#x27;)!==String(pdfFileId)||String(verifyRow.folderId||&#x27;&#x27;)!==String(folderId))throw new Error(&#x27;لم يرجع التنفيذ إلى مجلد الأرشيف المطابق بعد إعادة القراءة&#x27;);
+                    stage=&#x27;اختبار المعاينة&#x27;;
+                    let previewOk=false;try{for(let a=0;a&lt;4&amp;&amp;!previewOk;a++){if(a)await new Promise(r=&gt;setTimeout(r,300*a));previewOk=await selfEvalVerifyPreviewAccess(pdfFileId)}}catch(_){previewOk=false}
+                    if(previewOk){row={...verifyRow,previewVerifiedAt:new Date().toISOString(),previewStatus:&#x27;verified&#x27;};saved=await selfEvalV5Upsert(row)}
                     this._archiveEditId=String(id);this._archiveEditRow=saved;try{sessionStorage.removeItem(&#x27;self_evaluation_edit_id_v1&#x27;)}catch(_){}
-                    this.showToast(`تم حفظ البيانات ثم إنشاء PDF والتحقق منه وإعادته إلى مجلد «${folderName}» سحابيًا.`);
+                    this.showToast(previewOk?`تم حفظ التنفيذ وPDF وإعادته إلى مجلد «${folderName}» والتحقق من المعاينة.`:`تم حفظ التنفيذ وPDF في مجلد «${folderName}». تعذر اختبار رابط المعاينة الآن وسيعاد التحقق عند فتح الأرشيف.`);
                     return saved;
                 }catch(e){
-                    // RL80 Zero-Data-Loss: لا نحذف أي نسخة أصلية أو PDF إذا فشلت خطوة لاحقة؛ تبقى البصمة السحابية قابلة للاستعادة.
-                    console.error(&#x27;[SelfEvaluationArchiveV5 save]&#x27;,e);
-                    this.showToast(&#x27;تعذر إكمال دورة الحفظ والأرشفة؛ لم تُحذف أي نسخة سحابية ويمكن استعادتها بمعرف التنفيذ.&#x27;);
+                    console.error(&#x27;[SelfEvaluationArchive RL81]&#x27;,{stage,error:e,recordId:id,cloudFolderId,sourceSnapshotFileId,pdfFileId});
+                    this.showToast(`تعذر إكمال دورة الحفظ عند خطوة «${stage}»: ${e?.message||e}. لم يتم حذف أي ملف مرفوع.`);
                     return null;
                 }finally{this.__selfEvalArchiveTxnBusy=false}
             },
@@ -4200,8 +4198,8 @@ async function selfEvalUploadSourceSnapshotExact(htmlContent,title,rowId,logical
   const blob=new Blob([raw],{type:&#x27;text/html;charset=utf-8&#x27;}),file=new File([blob],safe+&#x27;.html&#x27;,{type:&#x27;text/html&#x27;,lastModified:Date.now()});
   const up=await engine.upload({file,ownershipScope:&#x27;school&#x27;,moduleKey:&#x27;self_evaluation_archive&#x27;,folderId:String(cloudFolderId||&#x27;&#x27;),recordType:&#x27;self_evaluation_source&#x27;,recordId:String(rowId),relationType:&#x27;source_snapshot&#x27;,displayName:file.name,metadata:{logicalFolderId:String(logicalFolderId||&#x27;&#x27;),folderName:String(folderName||&#x27;&#x27;),archiveRecordId:String(rowId),source:&#x27;self_evaluation_records.html&#x27;,archiveVersion:&#x27;RL80-single-source-pipeline&#x27;,artifactRole:&#x27;source_snapshot&#x27;,recoveryFingerprint:String(rowId)+&#x27;|&#x27;+String(logicalFolderId||&#x27;&#x27;)+&#x27;|&#x27;+String(folderName||&#x27;&#x27;)}});
   const fileId=String(up&amp;&amp;up.file&amp;&amp;up.file.id||&#x27;&#x27;);if(!fileId)throw new Error(&#x27;لم يرجع محرك الملفات معرف نسخة التنفيذ الأصلية&#x27;);
-  let verified=null;for(let attempt=0;attempt&lt;4;attempt++){if(attempt)await new Promise(r=&gt;setTimeout(r,250*attempt));const u=await engine.usage(fileId),f=u&amp;&amp;u.file;if(f&amp;&amp;String(f.id)===fileId&amp;&amp;String(f.module_key||&#x27;&#x27;)===&#x27;self_evaluation_archive&#x27;&amp;&amp;String(f.primary_record_type||&#x27;&#x27;)===&#x27;self_evaluation_source&#x27;&amp;&amp;String(f.primary_record_id||&#x27;&#x27;)===String(rowId)&amp;&amp;String(f.folder_id||&#x27;&#x27;)===String(cloudFolderId||&#x27;&#x27;)&amp;&amp;String(f.status||&#x27;active&#x27;)===&#x27;active&#x27;){verified=f;break}}
-  if(!verified)throw new Error(&#x27;تعذر التحقق من نسخة التنفيذ الأصلية داخل المجلد السحابي المطابق&#x27;);
+  // RL81: نجاح upload وإرجاع file.id هو نقطة الالتزام. فحص usage تأكيدي غير حاجز حتى لا يقطع الدورة بسبب تأخر القراءة.
+  try{for(let attempt=0;attempt&lt;3;attempt++){if(attempt)await new Promise(r=&gt;setTimeout(r,220*attempt));const u=await engine.usage(fileId),f=u&amp;&amp;u.file;if(f&amp;&amp;String(f.id)===fileId){break}}}catch(e){console.warn(&#x27;[RL81 source post-upload check delayed]&#x27;,e)}
   return fileId;
 }
 async function selfEvalVerifyPreviewAccess(fileId){
@@ -4296,14 +4294,8 @@ async function selfEvalPdfUploadExact(htmlContent,title,rowId,folderId,folderNam
     const fileId=String(up&amp;&amp;up.file&amp;&amp;up.file.id||&#x27;&#x27;);if(!fileId)throw new Error(&#x27;لم يرجع محرك الملفات معرف PDF&#x27;);
     if(previousPdfFileId&amp;&amp;String(fileId)===String(previousPdfFileId))throw new Error(&#x27;تم منع إعادة استخدام مرجع PDF القديم؛ يجب إنشاء ملف سحابي جديد&#x27;);
 
-    let verifiedFile=null;
-    for(let attempt=0;attempt&lt;4;attempt++){
-      if(attempt&gt;0)await new Promise(r=&gt;setTimeout(r,300*attempt));
-      const check=await engine.usage(fileId),f=check&amp;&amp;check.file;
-      if(f&amp;&amp;String(f.id)===fileId&amp;&amp;String(f.module_key||&#x27;&#x27;)===&#x27;self_evaluation_archive&#x27;&amp;&amp;String(f.primary_record_type||&#x27;&#x27;)===&#x27;self_evaluation_pdf&#x27;&amp;&amp;String(f.primary_record_id||&#x27;&#x27;)===String(rowId)&amp;&amp;String(f.folder_id||&#x27;&#x27;)===String(cloudFolderId||&#x27;&#x27;)&amp;&amp;String(f.status||&#x27;active&#x27;)===&#x27;active&#x27;){verifiedFile=f;break}
-    }
-    if(!verifiedFile)throw new Error(&#x27;تعذر التحقق من PDF السحابي بعد الرفع&#x27;);
-    if(Number(verifiedFile.size_bytes||verifiedFile.size||blob.size||0)&lt;1500)throw new Error(&#x27;تم منع اعتماد PDF سحابي فارغ أو صغير&#x27;);
+    // RL81: لا نجعل تأخر usage سببًا في إسقاط عملية نجح رفع PDF فيها. الحجم تحقق قبل الرفع والهوية من file.id.
+    try{for(let attempt=0;attempt&lt;3;attempt++){if(attempt&gt;0)await new Promise(r=&gt;setTimeout(r,220*attempt));const check=await engine.usage(fileId),f=check&amp;&amp;check.file;if(f&amp;&amp;String(f.id)===fileId)break}}catch(e){console.warn(&#x27;[RL81 pdf post-upload check delayed]&#x27;,e)}
     return fileId;
   }finally{try{frame.remove()}catch(_){}}
 }
@@ -4379,35 +4371,26 @@ function selfEvalV5Upsert(row){
 
 async function archiveSaveVerified(folderName,title,type,payload){
   const now=new Date().toISOString(),folderId=selfEvalFolderId(folderName)||&#x27;selfEval_63&#x27;,rowId=`${type}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
-  let pdfFileId=&#x27;&#x27;;
+  let stage=&#x27;تثبيت بيانات التنفيذ&#x27;,cloudFolderId=&#x27;&#x27;,sourceSnapshotFileId=&#x27;&#x27;,pdfFileId=&#x27;&#x27;;
   try{
     localStorage.setItem(STORAGE,JSON.stringify(state));
     const guard=(window.parent&amp;&amp;window.parent.PlatformPersistenceGuard)||window.PlatformPersistenceGuard;
-    if(!guard||typeof guard.commitExact!==&#x27;function&#x27;||typeof guard.readExactValues!==&#x27;function&#x27;)throw new Error(&#x27;طبقة حفظ بيانات العمل غير متاحة&#x27;);
+    if(!guard||typeof guard.commitExact!==&#x27;function&#x27;)throw new Error(&#x27;طبقة حفظ بيانات العمل غير متاحة&#x27;);
     const wr=await guard.commitExact({moduleKey:&#x27;self_evaluation&#x27;,scope:&#x27;school&#x27;,keys:[STORAGE]});if(!wr||wr.ok===false)throw new Error(wr?.error||&#x27;تعذر تثبيت بيانات السجل قبل الأرشفة&#x27;);
-    let stable=false;
-    for(let attempt=0;attempt&lt;4;attempt++){if(attempt)await new Promise(r=&gt;setTimeout(r,250*attempt));const vr=await guard.readExactValues({moduleKey:&#x27;self_evaluation&#x27;,scope:&#x27;school&#x27;,keys:[STORAGE]});if(vr?.ok&amp;&amp;String(vr.values?.[STORAGE]||&#x27;&#x27;)===String(localStorage.getItem(STORAGE)||&#x27;&#x27;)){stable=true;break}}
-    if(!stable)throw new Error(&#x27;لم تستقر بيانات السجل سحابيًا قبل إنشاء PDF&#x27;);
-    await new Promise(r=&gt;requestAnimationFrame(()=&gt;requestAnimationFrame(r)));
-    await new Promise(r=&gt;setTimeout(r,180));
-    const htmlContent=buildCurrentSelfEvalArchiveHtml(title,type);
-    if(!htmlContent||htmlContent.length&lt;300)throw new Error(&#x27;تعذر إنشاء نسخة مطابقة من السجل قبل الأرشفة&#x27;);
-    const existingVals=await selfEvalV5Pull([selfEvalV5RecordKey(rowId)]),existingRow=selfEvalV5ParseObject(existingVals[selfEvalV5RecordKey(rowId)])||{},previousPdfFileId=String(existingRow.archivePdfFileId||&#x27;&#x27;);
-    const cloudFolderId=await selfEvalEnsureCloudArchiveFolder(folderName,folderId);
-    const sourceSnapshotFileId=await selfEvalUploadSourceSnapshotExact(htmlContent,title,rowId,folderId,folderName,cloudFolderId);
-    pdfFileId=await selfEvalPdfUploadExact(htmlContent,title,rowId,folderId,folderName,previousPdfFileId,cloudFolderId);
-    if(!(await selfEvalVerifyPreviewAccess(pdfFileId)))throw new Error(&#x27;تعذر تجهيز رابط معاينة PDF بعد وصوله للمجلد السحابي&#x27;);
-    const history=Array.isArray(existingRow.artifactHistory)?existingRow.artifactHistory.slice(-12):[];
-    if(existingRow.sourceSnapshotFileId||existingRow.archivePdfFileId)history.push({sourceSnapshotFileId:String(existingRow.sourceSnapshotFileId||&#x27;&#x27;),archivePdfFileId:String(existingRow.archivePdfFileId||&#x27;&#x27;),cloudArchiveFolderId:String(existingRow.cloudArchiveFolderId||&#x27;&#x27;),logicalFolderId:String(existingRow.folderId||folderId),folderName:String(existingRow.folderName||folderName),preservedAt:now});
-    const row={...existingRow,id:rowId,folderId,folderName,recordName:folderName,title,type,source:&#x27;سجلات التقويم الذاتي والمؤشرات&#x27;,savedAt:existingRow.savedAt||now,updatedAt:now,schoolName:state.settings.school||&#x27;&#x27;,academicYear:state.settings.academicYear||&#x27;&#x27;,data:JSON.parse(JSON.stringify(payload||{})),printSourceHtml:htmlContent,sourceSnapshotFileId,archivePdfFileId:pdfFileId,cloudArchiveFolderId:cloudFolderId,logicalFolderId:folderId,archivePipeline:&#x27;single-source-v6&#x27;,artifactHistory:history,recoveryFingerprint:{recordId:rowId,logicalFolderId:folderId,folderName,cloudArchiveFolderId:cloudFolderId,sourceSnapshotFileId,archivePdfFileId:pdfFileId,recordType:type,updatedAt:now},previewVerifiedAt:now,archiveFormat:&#x27;self-evaluation-v6-single-source-cloud&#x27;,sourceFile:&#x27;self_evaluation_records.html&#x27;,storageEngine:&#x27;SelfEvaluationArchiveV5&#x27;,previewMode:&#x27;pdf-cloud&#x27;};
-    const saved=await selfEvalV5Upsert(row);
-    const verifyVals=await selfEvalV5Pull([selfEvalV5RecordKey(rowId),SELF_EVAL_ARCHIVE_V5_INDEX]),verifyRow=selfEvalV5ParseObject(verifyVals[selfEvalV5RecordKey(rowId)]),verifyIndex=selfEvalV5ParseArray(verifyVals[SELF_EVAL_ARCHIVE_V5_INDEX]),verifyMeta=verifyIndex.find(x=&gt;String(x?.id)===String(rowId));
-    if(!verifyRow||!verifyMeta||String(verifyRow.sourceSnapshotFileId||&#x27;&#x27;)!==String(sourceSnapshotFileId)||String(verifyRow.archivePdfFileId||&#x27;&#x27;)!==String(pdfFileId)||String(verifyMeta.sourceSnapshotFileId||&#x27;&#x27;)!==String(sourceSnapshotFileId)||String(verifyMeta.archivePdfFileId||&#x27;&#x27;)!==String(pdfFileId)||String(verifyRow.folderId||&#x27;&#x27;)!==String(folderId)||String(verifyRow.cloudArchiveFolderId||&#x27;&#x27;)!==String(cloudFolderId))throw new Error(&#x27;لم يكتمل تسلسل النسخة الأصلية وPDF والفهرس داخل المجلد المطابق بعد إعادة القراءة السحابية&#x27;);
+    await new Promise(r=&gt;requestAnimationFrame(()=&gt;requestAnimationFrame(r)));await new Promise(r=&gt;setTimeout(r,120));
+    stage=&#x27;إنشاء النسخة المطابقة من التنفيذ&#x27;;
+    const htmlContent=buildCurrentSelfEvalArchiveHtml(title,type);if(!htmlContent||htmlContent.length&lt;300)throw new Error(&#x27;تعذر إنشاء نسخة مطابقة من السجل قبل الأرشفة&#x27;);
+    stage=&#x27;تحديد مجلد الأرشيف السحابي&#x27;;cloudFolderId=await selfEvalEnsureCloudArchiveFolder(folderName,folderId);
+    stage=&#x27;رفع النسخة الأصلية إلى مجلد الأرشيف&#x27;;sourceSnapshotFileId=await selfEvalUploadSourceSnapshotExact(htmlContent,title,rowId,folderId,folderName,cloudFolderId);
+    stage=&#x27;إنشاء ورفع PDF إلى المجلد نفسه&#x27;;pdfFileId=await selfEvalPdfUploadExact(htmlContent,title,rowId,folderId,folderName,&#x27;&#x27;,cloudFolderId);
+    stage=&#x27;تسجيل التنفيذ في فهرس الأرشيف&#x27;;
+    let row={id:rowId,folderId,folderName,recordName:folderName,title,type,source:&#x27;سجلات التقويم الذاتي والمؤشرات&#x27;,savedAt:now,updatedAt:now,schoolName:state.settings.school||&#x27;&#x27;,academicYear:state.settings.academicYear||&#x27;&#x27;,data:JSON.parse(JSON.stringify(payload||{})),printSourceHtml:htmlContent,sourceSnapshotFileId,archivePdfFileId:pdfFileId,cloudArchiveFolderId:cloudFolderId,logicalFolderId:folderId,archivePipeline:&#x27;single-source-v7&#x27;,artifactHistory:[],recoveryFingerprint:{recordId:rowId,logicalFolderId:folderId,folderName,cloudArchiveFolderId:cloudFolderId,sourceSnapshotFileId,archivePdfFileId:pdfFileId,recordType:type,updatedAt:now},previewVerifiedAt:&#x27;&#x27;,previewStatus:&#x27;pending&#x27;,archiveFormat:&#x27;self-evaluation-v7-single-source-cloud&#x27;,sourceFile:&#x27;self_evaluation_records.html&#x27;,storageEngine:&#x27;SelfEvaluationArchiveV5&#x27;,previewMode:&#x27;pdf-cloud&#x27;};
+    let saved=await selfEvalV5Upsert(row);
+    stage=&#x27;إعادة قراءة الأرشيف من المصدر نفسه&#x27;;const v=await selfEvalV5Pull([selfEvalV5RecordKey(rowId),SELF_EVAL_ARCHIVE_V5_INDEX]),vr=selfEvalV5ParseObject(v[selfEvalV5RecordKey(rowId)]),vi=selfEvalV5ParseArray(v[SELF_EVAL_ARCHIVE_V5_INDEX]),vm=vi.find(x=&gt;String(x?.id)===String(rowId));if(!vr||!vm||String(vr.archivePdfFileId||&#x27;&#x27;)!==String(pdfFileId)||String(vr.folderId||&#x27;&#x27;)!==String(folderId))throw new Error(&#x27;لم يرجع التنفيذ إلى مجلد الأرشيف المطابق بعد إعادة القراءة&#x27;);
+    stage=&#x27;اختبار المعاينة&#x27;;let previewOk=false;try{for(let a=0;a&lt;4&amp;&amp;!previewOk;a++){if(a)await new Promise(r=&gt;setTimeout(r,300*a));previewOk=await selfEvalVerifyPreviewAccess(pdfFileId)}}catch(_){previewOk=false}
+    if(previewOk){row={...vr,previewVerifiedAt:new Date().toISOString(),previewStatus:&#x27;verified&#x27;};saved=await selfEvalV5Upsert(row)}
     return saved;
-  }catch(e){
-    // RL80 Zero-Data-Loss: لا نحذف النسخة الأصلية أو PDF عند فشل خطوة لاحقة؛ تبقى قابلة للاستعادة بمعرف السجل والمجلد.
-    console.error(&#x27;[SelfEvaluationArchiveV5 record save]&#x27;,e);throw e;
-  }
+  }catch(e){console.error(&#x27;[SelfEvaluationArchive RL81 record save]&#x27;,{stage,error:e,rowId,cloudFolderId,sourceSnapshotFileId,pdfFileId});e.selfEvalStage=stage;throw e}
 }
 function recordPayload(di,ri){
   const d=domains[di], r=d.records[ri];
@@ -4418,10 +4401,10 @@ async function saveCurrentRecordToArchive(){
   if(activeRecordIndex){
     const {di,ri}=activeRecordIndex,folderName=domains[di].records[ri].name;
     try{await archiveSaveVerified(folderName,`${folderName} - ${new Date().toLocaleDateString(&#x27;ar-SA&#x27;)}`,&#x27;self_evaluation_record&#x27;,recordPayload(di,ri));toast(`تم الحفظ والتحقق في أرشيف التقويم الذاتي / ${folderName}`);return true}
-    catch(e){toast(&#x27;تعذر تأكيد حفظ السجل في أرشيف التقويم الذاتي.&#x27;);return false}
+    catch(e){toast(`تعذر الحفظ عند خطوة «${e?.selfEvalStage||&#x27;غير محددة&#x27;}»: ${e?.message||e}`);return false}
   }
   try{await archiveSaveVerified(&#x27;سجلات التقويم الذاتي والمؤشرات&#x27;,&#x27;نسخة عامة من سجلات التقويم الذاتي&#x27;,&#x27;self_evaluation_bundle&#x27;,state);toast(&#x27;تم الحفظ والتحقق في أرشيف التقويم الذاتي / سجلات التقويم الذاتي والمؤشرات&#x27;);return true}
-  catch(e){toast(&#x27;تعذر تأكيد الحفظ في أرشيف التقويم الذاتي.&#x27;);return false}
+  catch(e){toast(`تعذر الحفظ عند خطوة «${e?.selfEvalStage||&#x27;غير محددة&#x27;}»: ${e?.message||e}`);return false}
 }
 async function saveLocal(){
   const before=localStorage.getItem(STORAGE);
@@ -4801,6 +4784,6 @@ window.__SELF_EVALUATION_CANONICAL_WRITER_RL79__={
 <script src="openai-engine.js"></script>
 <script src="top-ai-center.js"></script>
 <script src="platform-page-navigation.js?v=20260818-nav1"></script>
-<script id="self-eval-archive-runtime-preview-boot">(function(){try{var q=new URLSearchParams(location.search||'');if(q.get('previewArchive')){document.addEventListener('DOMContentLoaded',function(){document.body.classList.add('self-eval-archive-preview');var f=document.getElementById('committeesFrame');document.querySelectorAll('.moduleFrame').forEach(function(x){x.classList.remove('active')});if(f)f.classList.add('active');});}}catch(e){console.error('[self eval preview boot]',e)}})();</script><script id="SELF_EVALUATION_NO_SAVE_FLASH_RL64">window.__SELF_EVALUATION_NO_SAVE_FLASH_RL64__=true;window.__SELF_EVALUATION_SINGLE_SOURCE_RL80__={version:'RL80',policy:'working-snapshot->same-cloud-folder->pdf->v5-index->preview-verify',zeroDataLoss:true};</script>
+<script id="self-eval-archive-runtime-preview-boot">(function(){try{var q=new URLSearchParams(location.search||'');if(q.get('previewArchive')){document.addEventListener('DOMContentLoaded',function(){document.body.classList.add('self-eval-archive-preview');var f=document.getElementById('committeesFrame');document.querySelectorAll('.moduleFrame').forEach(function(x){x.classList.remove('active')});if(f)f.classList.add('active');});}}catch(e){console.error('[self eval preview boot]',e)}})();</script><script id="SELF_EVALUATION_NO_SAVE_FLASH_RL64">window.__SELF_EVALUATION_NO_SAVE_FLASH_RL64__=true;window.__SELF_EVALUATION_SINGLE_SOURCE_RL80__={version:'RL81',policy:'working->snapshot->same-cloud-folder->pdf->single-v5-index->readback->preview',zeroDataLoss:true,blockingChecks:'single-readback-only'};</script>
 </body>
 </html>

@@ -3262,7 +3262,23 @@ async function legacyPerformanceSave_DISABLED() {
         let managerCurrentPDFUrl = "";
 
         function openManagerRecordsView() {
-            window.open('manager_records.html', '_blank');
+            // RL112: سجلات المدير صفحة مستقلة، لكن يجب أن تحمل هوية المدرسة الحالية صراحةً.
+            // هذا يمنع فتح الصفحة خارج نطاق المدرسة المستقلة أو ظهور واجهة جزئية/بيضاء.
+            let sid = '';
+            try {
+                const q = new URLSearchParams(window.location.search || '');
+                sid = q.get('schoolId') || q.get('school_id') || '';
+                if (!sid && typeof currentSchoolId === 'function') sid = currentSchoolId() || '';
+                if (!sid && window.PlatformCloudSession && typeof PlatformCloudSession.schoolId === 'function') sid = PlatformCloudSession.schoolId() || '';
+                if (!sid) sid = sessionStorage.getItem('smart_school_tab_school_v1') || sessionStorage.getItem('platform_tab_session_school_id_v1') || localStorage.getItem('active_school_id') || localStorage.getItem('current_school_id') || localStorage.getItem('school_id') || '';
+            } catch (_) {}
+            const u = new URL('manager_records.html', window.location.href);
+            if (sid) u.searchParams.set('schoolId', sid);
+            const back = new URL('manager.html', window.location.href);
+            back.searchParams.set('sectionReturn', '1');
+            if (sid) back.searchParams.set('schoolId', sid);
+            u.searchParams.set('return_to', back.pathname.split('/').pop() + back.search);
+            window.open(u.href, '_blank');
         }
 
         function openManagerLibraryView() {

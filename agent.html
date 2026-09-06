@@ -3178,7 +3178,35 @@ async function loadWakilRecordsInline() {
 }
 
 
-function openAgentRecordsView(){ window.location.href='wakil-records.html?return_to=agent.html';
+function openAgentRecordsView(){
+    // RL112: لا نفقد سياق المدرسة أو وضع متابعة المدير عند فتح سجلات الوكيل.
+    const currentQ = new URLSearchParams(window.location.search || '');
+    const target = new URL('wakil-records.html', window.location.href);
+    let sid = currentQ.get('schoolId') || currentQ.get('school_id') || '';
+    try {
+      if (!sid && window.PlatformCloudSession && typeof PlatformCloudSession.schoolId === 'function') sid = PlatformCloudSession.schoolId() || '';
+      if (!sid) sid = sessionStorage.getItem('smart_school_tab_school_v1') || sessionStorage.getItem('platform_tab_session_school_id_v1') || localStorage.getItem('active_school_id') || localStorage.getItem('current_school_id') || localStorage.getItem('school_id') || '';
+    } catch(_) {}
+    if (sid) target.searchParams.set('schoolId', sid);
+
+    const followActive = !!(window.ManagerFollowAccessBridge && ManagerFollowAccessBridge.request && ManagerFollowAccessBridge.request().active);
+    const pass = ['follow','readonly','managerFollow','mode','viewer','viewerRole','returnRole','targetRole','followEmail','targetEmail','targetUser','followUserId','userId','uid','blockNewReport','archiveReadOnly','agency_type'];
+    if (followActive) {
+      pass.forEach(function(k){ const v=currentQ.get(k); if(v!==null && v!=='') target.searchParams.set(k,v); });
+      target.searchParams.set('follow','1');
+      target.searchParams.set('readonly','1');
+      target.searchParams.set('managerFollow','1');
+      target.searchParams.set('viewer','manager');
+      target.searchParams.set('viewerRole','manager');
+      target.searchParams.set('returnRole','manager');
+    }
+
+    const back = new URL('agent.html', window.location.href);
+    currentQ.forEach(function(v,k){ back.searchParams.set(k,v); });
+    if (sid) back.searchParams.set('schoolId', sid);
+    if (!followActive) back.searchParams.set('sectionReturn','1');
+    target.searchParams.set('return_to', back.pathname.split('/').pop() + back.search);
+    window.location.href = target.href;
 }
 
 function closeAgentRecordsView() {

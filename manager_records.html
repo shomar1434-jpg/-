@@ -1,6 +1,28 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
+<script id="rl112-records-school-context-bridge">
+(function(){
+  'use strict';
+  try{
+    const q=new URLSearchParams(location.search||'');
+    if(q.get('schoolId')||q.get('school_id')) return;
+    function parseStore(store,key){try{const v=store.getItem(key);if(!v)return null;return JSON.parse(v)}catch(_){return null}}
+    const session=parseStore(sessionStorage,'smart_school_current_session')||parseStore(localStorage,'smart_school_current_session')||{};
+    const user=parseStore(localStorage,'currentSchoolUser')||parseStore(localStorage,'currentUser')||{};
+    const sid=String(
+      sessionStorage.getItem('smart_school_tab_school_v1')||
+      sessionStorage.getItem('platform_tab_session_school_id_v1')||
+      session.schoolId||session.school_id||user.schoolId||user.school_id||user.activeSchoolId||
+      localStorage.getItem('active_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||''
+    ).trim();
+    if(!sid)return;
+    q.set('schoolId',sid);
+    history.replaceState(null,'',location.pathname+'?'+q.toString()+location.hash);
+  }catch(_){ }
+})();
+</script>
+
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>سجلات مدير/مديرة المدرسة</title>
@@ -1443,6 +1465,25 @@ document.addEventListener("blur", function(e){
   };
 
   window.addEventListener('load',()=>{if(window.current&&current.id)hydrateCurrent().then(()=>{if(typeof renderArchive==='function')renderArchive()}).catch(()=>{})});
+})();
+</script>
+
+
+<script id="rl112-manager-records-return">
+(function(){
+  'use strict';
+  function boot(){
+    const q=new URLSearchParams(location.search||'');
+    const group=document.querySelector('.toolbar .actions');
+    if(!group||document.getElementById('rl112ManagerRecordsBack'))return;
+    const b=document.createElement('button'); b.type='button'; b.id='rl112ManagerRecordsBack'; b.className='btn light'; b.textContent='العودة إلى قسم المدير';
+    b.onclick=function(){
+      const r=q.get('return_to'); if(r){location.href=r;return;}
+      const u=new URL('manager.html',location.href); const sid=q.get('schoolId')||q.get('school_id')||''; if(sid)u.searchParams.set('schoolId',sid); u.searchParams.set('sectionReturn','1'); location.href=u.href;
+    };
+    group.prepend(b);
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })();
 </script>
 

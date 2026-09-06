@@ -1,6 +1,28 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
+<script id="rl112-records-school-context-bridge">
+(function(){
+  'use strict';
+  try{
+    const q=new URLSearchParams(location.search||'');
+    if(q.get('schoolId')||q.get('school_id')) return;
+    function parseStore(store,key){try{const v=store.getItem(key);if(!v)return null;return JSON.parse(v)}catch(_){return null}}
+    const session=parseStore(sessionStorage,'smart_school_current_session')||parseStore(localStorage,'smart_school_current_session')||{};
+    const user=parseStore(localStorage,'currentSchoolUser')||parseStore(localStorage,'currentUser')||{};
+    const sid=String(
+      sessionStorage.getItem('smart_school_tab_school_v1')||
+      sessionStorage.getItem('platform_tab_session_school_id_v1')||
+      session.schoolId||session.school_id||user.schoolId||user.school_id||user.activeSchoolId||
+      localStorage.getItem('active_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||''
+    ).trim();
+    if(!sid)return;
+    q.set('schoolId',sid);
+    history.replaceState(null,'',location.pathname+'?'+q.toString()+location.hash);
+  }catch(_){ }
+})();
+</script>
+
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>سجلات الوكيل التفاعلية</title>
@@ -2299,4 +2321,40 @@ renderNav();renderForm();loadCurrent();bindAutoGrow(qs('#formPage'));autoGrowAll
 })();
 </script>
 
+
+<script id="rl112-wakil-records-follow-shell">
+(function(){
+  'use strict';
+  const q=new URLSearchParams(location.search||'');
+  const isFollow=q.get('follow')==='1' && (q.get('managerFollow')==='1' || q.get('viewerRole')==='manager' || q.get('viewer')==='manager');
+  const returnTo=q.get('return_to')||'';
+  function addBack(){
+    const group=document.querySelector('.toolbar .group');
+    if(!group||document.getElementById('rl112RecordsBack'))return;
+    const b=document.createElement('button');
+    b.type='button';b.id='rl112RecordsBack';b.className='btn gray';
+    b.textContent=isFollow?'العودة إلى متابعة الوكيل':'العودة إلى قسم الوكيل';
+    b.onclick=function(){
+      if(returnTo){ location.href=returnTo; return; }
+      const u=new URL('agent.html',location.href); const sid=q.get('schoolId')||q.get('school_id')||''; if(sid)u.searchParams.set('schoolId',sid); if(!isFollow)u.searchParams.set('sectionReturn','1'); location.href=u.href;
+    };
+    group.prepend(b);
+  }
+  function applyReadonly(){
+    if(!isFollow)return;
+    document.documentElement.setAttribute('data-manager-follow-records','1');
+    const root=document.getElementById('formPage'); if(!root)return;
+    root.querySelectorAll('input,textarea,select').forEach(function(el){el.disabled=true;el.readOnly=true;});
+    document.querySelectorAll('.toolbar button,.sidebar .toolbtn').forEach(function(b){
+      if(b.id==='rl112RecordsBack')return;
+      const t=(b.textContent||'').replace(/\s+/g,' ').trim();
+      if(/حفظ|تفريغ|إعدادات|تعبئة|تضمين|حذف|رفع|تغيير/.test(t) && !/طباعة/.test(t)) b.style.display='none';
+    });
+  }
+  function boot(){addBack();applyReadonly();}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
+  setTimeout(boot,250);
+  if(isFollow){const root=document.getElementById('formPage');if(root)new MutationObserver(function(){applyReadonly()}).observe(root,{childList:true,subtree:true});}
+})();
+</script>
 </body></html>

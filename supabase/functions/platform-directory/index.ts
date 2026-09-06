@@ -42,11 +42,10 @@ Deno.serve(async(req)=>{
    } else {
     const managerUserId=t(body.managerUserId||body.manager_user_id,100),generalRegistrationToken=t(body.generalRegistrationToken||body.generalToken,500);
     if(source==='system_admin_school_registration'){
-     // RL82: توافق خلفي آمن لروابط التسجيل التي يصدرها مالك النظام من إدارة المدارس.
-     // findSchool أعلاه تحقق بالفعل من schoolId/schoolCode/registrationCode، ونشترط هنا مديرًا فعّالًا داخل نفس المدرسة.
-     const mq0=await sb.from('school_members').select('user_id,role,status').eq('school_id',schoolId).eq('status','active');if(mq0.error)throw mq0.error;
-     const activeManager=(mq0.data||[]).some((x:any)=>managers.has(low(x.role)));
-     if(!activeManager)return json({error:'SYSTEM_ADMIN_REGISTRATION_REQUIRES_ACTIVE_MANAGER'},403);
+     // RL83: رابط التسجيل الثابت الصادر من مالك النظام لا يعتمد على سجل عضوية المدير.
+     // findSchool تحقق قبل الوصول إلى هنا من تطابق schoolId / schoolCode / registrationCode
+     // ومن أن المدرسة ليست معطلة. هذا يحافظ على الروابط القديمة للمدارس التي سبقت توحيد school_members.
+     // لا نغيّر أي معرف أو رمز تسجيل ولا ننشئ رابطًا بديلًا.
     }else{
      if(source!=='manager_school_registration'||!managerUserId||!(await verifyGeneralLinkToken(generalRegistrationToken,schoolId,managerUserId)))return json({error:'MANAGER_REGISTRATION_LINK_INVALID_OR_EXPIRED'},403);
      const mq0=await sb.from('school_members').select('user_id,role,status').eq('school_id',schoolId).eq('user_id',managerUserId).eq('status','active');if(mq0.error)throw mq0.error;

@@ -77,33 +77,24 @@ table{width:100%;border-collapse:collapse;margin-top:8px}th,td{border:1px solid 
 <div class="btns">
 <button class="btn primary" onclick="savePlan('draft')">حفظ مسودة</button>
 <button class="btn gold" onclick="savePlan('pending')">إرسال لاعتماد المسؤول</button>
-<button class="btn muted" onclick="window.print()">طباعة / حفظ PDF</button><button id="executionBtn" class="btn muted" onclick="openApprovedExecution()" disabled title="يبدأ التنفيذ بعد اعتماد المسؤول المباشر">تنفيذ الخطة بعد الاعتماد</button>
+<button class="btn muted" onclick="window.print()">طباعة / حفظ PDF</button><button class="btn muted" onclick="location.href='administrative_employee_execution.html?emp='+encodeURIComponent((empContact.value||currentEmail))+'&supervisor='+encodeURIComponent(supervisor.value)+(schoolScope?'&school='+encodeURIComponent(schoolScope):'')">تنفيذ الخطة</button>
 <button class="btn danger" onclick="history.back()">رجوع</button>
 </div>
 </div>
 <script>
 const params=new URLSearchParams(location.search);
-const ADMIN_CTX_KEY='administrative_employee_tab_session_v1';
-function readAdminCtx(){try{const c=JSON.parse(sessionStorage.getItem(ADMIN_CTX_KEY)||'null');if(!c||typeof c!=='object')return null;const role=String(c.role||'').toLowerCase();if(!['administrative_employee','admin_employee'].includes(role)||String(c.status||'active')!=='active')return null;return c}catch(e){return null}}
-function currentSchoolScope(){try{const c=readAdminCtx();if(c&&c.schoolId)return String(c.schoolId);return String(sessionStorage.getItem('smart_school_tab_school_v1')||sessionStorage.getItem('current_school_id')||'')}catch(e){return ''}}
-const adminCtx=readAdminCtx();
-if(!adminCtx){location.replace('administrative_employee_login.html'+(params.get('school')?'?schoolId='+encodeURIComponent(params.get('school')):''));throw new Error('ADMIN_EMPLOYEE_SESSION_REQUIRED');}
-const schoolScope=String(adminCtx.schoolId||currentSchoolScope());
-const currentUserId=String(adminCtx.userId||sessionStorage.getItem('currentUserId')||'');
-const currentEmail=String(adminCtx.email||sessionStorage.getItem('currentUserEmail')||'').toLowerCase();
-const currentName=String(adminCtx.name||sessionStorage.getItem('currentUserName')||'');
-const fixedSupervisor=String(adminCtx.adminSupervisor||'manager').toLowerCase()==='agent'?'agent':'manager';
+function currentSchoolScope(){try{const keys=['active_school_id','activeSchoolId','selected_school_id','school_id'];for(const k of keys){const v=localStorage.getItem(k);if(v)return v;}const s=JSON.parse(localStorage.getItem('active_school')||localStorage.getItem('activeSchool')||'null');return s&&(s.id||s.schoolId||s.code||s.name)||''}catch(e){return ''}}
+const schoolScope=params.get('school')||currentSchoolScope();
+const currentEmail=localStorage.getItem('currentUserEmail')||params.get('emp')||params.get('email')||'';
+const currentName=localStorage.getItem('currentUserName')||'';
 function fillYears(){const y=document.getElementById('year');for(let i=1448;i<=1477;i++){let o=document.createElement('option');o.value=i+'هـ';o.textContent=i+'هـ';y.appendChild(o)}}
 function addGoal(g={}){const b=document.getElementById('goalsBody');const n=b.children.length+1;const tr=document.createElement('tr');tr.innerHTML=`<td>${n}</td><td><input value="${g.goal||''}"></td><td><input value="${g.kpi||''}"></td><td><input value="${g.target||''}"></td><td><input type="number" min="0" max="100" value="${g.weight||''}"></td>`;b.appendChild(tr)}
-function collect(){let existing=(JSON.parse(localStorage.getItem('administrative_employee_plans')||'[]')).find(x=>String(x.id)===String(currentEmail));return {id: currentEmail||currentUserId||('emp_'+Date.now()), ownerUserId:currentUserId, name:empName.value, contact:empContact.value, jobTitle:jobTitle.value, supervisor:fixedSupervisor, schoolId: schoolScope, activeSchoolId: schoolScope, year:year.value, status:statusText.dataset.status||'draft', active:true, archive: existing&&existing.archive?existing.archive:[], history: existing&&existing.history?existing.history:[], evidence:evidence.value, needs:needs.value, notes:notes.value, reviewNotes:reviewNotes.value, updatedAt:new Date().toISOString(), goals:[...goalsBody.querySelectorAll('tr')].map(tr=>{let i=tr.querySelectorAll('input');return {goal:i[0].value,kpi:i[1].value,target:i[2].value,weight:i[3].value}})}}
+function collect(){let existing=(JSON.parse(localStorage.getItem('administrative_employee_plans')||'[]')).find(x=>String(x.id)===String(currentEmail));return {id: currentEmail||('emp_'+Date.now()), name:empName.value, contact:empContact.value, jobTitle:jobTitle.value, supervisor:supervisor.value, schoolId: schoolScope, activeSchoolId: schoolScope, year:year.value, status:statusText.dataset.status||'draft', active: existing&&typeof existing.active!=='undefined'?existing.active:true, archive: existing&&existing.archive?existing.archive:[], history: existing&&existing.history?existing.history:[], evidence:evidence.value, needs:needs.value, notes:notes.value, reviewNotes:reviewNotes.value, updatedAt:new Date().toISOString(), goals:[...goalsBody.querySelectorAll('tr')].map(tr=>{let i=tr.querySelectorAll('input');return {goal:i[0].value,kpi:i[1].value,target:i[2].value,weight:i[3].value}})}}
 async function savePlan(status){
  const p=collect();p.status=status;const key='administrative_employee_plans',before=localStorage.getItem(key);let arr=[];try{arr=JSON.parse(before||'[]');if(!Array.isArray(arr))arr=[]}catch(_){arr=[]}arr=arr.filter(x=>String(x.id)!==String(p.id));p.history=p.history||[];p.history.unshift({action:status==='pending'?'إرسال للاعتماد':'حفظ مسودة',at:new Date().toISOString(),by:'الموظف الإداري'});arr.push(p);
- try{if(!window.PlatformStateEngine)throw new Error('محرك حالة الأداء السحابي غير متاح');await PlatformStateEngine.bulkUpsert('admin_performance','user',[{key:'administrative_employee_plans',value:JSON.stringify([p]),deleted:false}],{timeout:15000});const vr=await PlatformStateEngine.pull('admin_performance','user',['administrative_employee_plans']);const vi=(vr.items||[]).find(x=>x.state_key==='administrative_employee_plans'&&!x.deleted_at);let vv=[];try{vv=JSON.parse(vi&&vi.payload&&vi.payload.value||'[]')}catch(_){vv=[]}if(!Array.isArray(vv)||!vv.some(x=>String(x.id)===String(p.id)&&String(x.status)===String(status)&&String(x.supervisor)===String(fixedSupervisor)))throw new Error('لم يكتمل التحقق السحابي من الخطة');if(!window.PlatformRecordSaveEngine||PlatformRecordSaveEngine.isSystemAdminContext())throw new Error('محرك الحفظ السحابي غير متاح');await PlatformRecordSaveEngine.save({moduleKey:'admin_employee_records',recordType:'admin_plan',recordId:String(p.id),academicYear:p.year||localStorage.getItem('school_info_academic_year')||'1448',semester:p.semester||'سنوي',scope:'user',folderId:'admin_plan',title:'خطة أداء الموظف الإداري',data:p});localStorage.setItem(key,JSON.stringify(arr));try{localStorage.setItem('administrative_employee_metrics_touch',new Date().toISOString())}catch(_){ }statusText.dataset.status=status;statusText.textContent=status==='pending'?'بانتظار الاعتماد':status==='approved'?'معتمدة':'مسودة';statusText.className='chip status '+(status==='approved'?'approved':status==='pending'?'pending':'');try{window.SchoolActivity?.emit(status==='pending'?'record_submitted':'record_updated',status==='pending'?'إرسال خطة الأداء للاعتماد':'حفظ خطة الأداء',{progress:status==='pending'?80:40,status,employee_id:p.id});}catch(_){ }alert(status==='pending'?'تم إرسال الخطة للمسؤول المباشر وحفظها والتحقق منها سحابيًا':'تم الحفظ والتحقق السحابي');return true;}catch(e){if(before===null)localStorage.removeItem(key);else localStorage.setItem(key,before);console.error('[admin_plan cloud save]',e);alert('تعذر تأكيد الحفظ السحابي؛ لم يتم اعتماد التغيير.');return false;}
+ try{if(!window.PlatformRecordSaveEngine||PlatformRecordSaveEngine.isSystemAdminContext())throw new Error('محرك الحفظ السحابي غير متاح');await PlatformRecordSaveEngine.save({moduleKey:'admin_employee_records',recordType:'admin_plan',recordId:String(p.id),academicYear:p.year||localStorage.getItem('school_info_academic_year')||'1448',semester:p.semester||'سنوي',scope:'user',folderId:'admin_plan',title:'خطة أداء الموظف الإداري',data:p});localStorage.setItem(key,JSON.stringify(arr));try{localStorage.setItem('administrative_employee_metrics_touch',new Date().toISOString())}catch(_){ }statusText.dataset.status=status;statusText.textContent=status==='pending'?'بانتظار الاعتماد':status==='approved'?'معتمدة':'مسودة';statusText.className='chip status '+(status==='approved'?'approved':status==='pending'?'pending':'');try{window.SchoolActivity?.emit(status==='pending'?'record_submitted':'record_updated',status==='pending'?'إرسال خطة الأداء للاعتماد':'حفظ خطة الأداء',{progress:status==='pending'?80:40,status,employee_id:p.id});}catch(_){ }alert(status==='pending'?'تم إرسال الخطة للمسؤول المباشر وحفظها والتحقق منها سحابيًا':'تم الحفظ والتحقق السحابي');return true;}catch(e){if(before===null)localStorage.removeItem(key);else localStorage.setItem(key,before);console.error('[admin_plan cloud save]',e);alert('تعذر تأكيد الحفظ السحابي؛ لم يتم اعتماد التغيير.');return false;}
 }
-function setLifecycleUI(p){const approved=p&&p.status==='approved';executionBtn.disabled=!approved;executionBtn.textContent=approved?'بدء / متابعة تنفيذ الخطة':'تنفيذ الخطة بعد الاعتماد';executionBtn.title=approved?'':'يبدأ التنفيذ بعد اعتماد المسؤول المباشر';const locked=p&&p.status==='pending';[...goalsBody.querySelectorAll('input'),jobTitle,evidence,needs,notes].forEach(el=>{if(el)el.disabled=!!locked});}
-function openApprovedExecution(){const p=(JSON.parse(localStorage.getItem('administrative_employee_plans')||'[]')).find(x=>String(x.id)===String(currentEmail));if(!p||p.status!=='approved')return alert(p&&p.status==='pending'?'الخطة بانتظار اعتماد المسؤول المباشر.':p&&p.status==='returned'?'عدّل الخطة وأعد إرسالها للاعتماد أولًا.':'لا يمكن بدء التنفيذ قبل اعتماد الخطة.');location.href='administrative_employee_execution.html?emp='+encodeURIComponent(currentEmail)+'&uid='+encodeURIComponent(currentUserId)+'&supervisor='+encodeURIComponent(fixedSupervisor)+(schoolScope?'&school='+encodeURIComponent(schoolScope):'')}
-async function load(){fillYears();empName.value=currentName;empContact.value=currentEmail;supervisor.value=fixedSupervisor;supervisor.disabled=true;let p=null;try{if(window.PlatformStateEngine){const r=await PlatformStateEngine.pull('admin_performance','user',['administrative_employee_plans']);const it=(r.items||[]).find(x=>x.state_key==='administrative_employee_plans'&&!x.deleted_at);if(it&&it.payload&&it.payload.value){const a=JSON.parse(it.payload.value||'[]');if(Array.isArray(a))p=a.find(x=>String(x.id)===String(currentEmail))||a[0]||null;if(p)localStorage.setItem('administrative_employee_plans',JSON.stringify([p]));}}}catch(e){console.warn('تعذر تحميل الخطة السحابية',e)}if(!p){try{const arr=JSON.parse(localStorage.getItem('administrative_employee_plans')||'[]');p=arr.find(x=>String(x.id)===String(currentEmail))||null}catch(e){}}
-if(p){empName.value=p.name||currentName;empContact.value=p.contact||currentEmail;jobTitle.value=p.jobTitle||jobTitle.value;supervisor.value=fixedSupervisor;year.value=p.year||year.value;evidence.value=p.evidence||'';needs.value=p.needs||'';notes.value=p.notes||'';reviewNotes.value=p.reviewNotes||'';goalsBody.innerHTML='';(p.goals||[]).forEach(addGoal);statusText.dataset.status=p.status||'draft';statusText.textContent=p.status==='pending'?'بانتظار الاعتماد':p.status==='approved'?'معتمدة':p.status==='returned'?'معادة للتعديل':'مسودة';statusText.className='chip status '+(p.status==='approved'?'approved':p.status==='pending'?'pending':p.status==='returned'?'returned':'');}if(!goalsBody.children.length){addGoal();addGoal();addGoal();}setLifecycleUI(p)}
+function load(){fillYears();empName.value=currentName;empContact.value=currentEmail;if(params.get('supervisor'))supervisor.value=params.get('supervisor');const arr=JSON.parse(localStorage.getItem('administrative_employee_plans')||'[]');const p=arr.find(x=>String(x.id)===String(currentEmail));if(p){empName.value=p.name||'';empContact.value=p.contact||'';jobTitle.value=p.jobTitle||jobTitle.value;supervisor.value=p.supervisor||'manager';year.value=p.year||year.value;evidence.value=p.evidence||'';needs.value=p.needs||'';notes.value=p.notes||'';reviewNotes.value=p.reviewNotes||'';goalsBody.innerHTML='';(p.goals||[]).forEach(addGoal);statusText.dataset.status=p.status||'draft';statusText.textContent=p.status==='pending'?'بانتظار الاعتماد':p.status==='approved'?'معتمدة':p.status==='returned'?'معادة للتعديل':'مسودة';} if(!goalsBody.children.length){addGoal();addGoal();addGoal();}}
 load();
 </script>
 
@@ -125,6 +116,35 @@ load();
 <script src="top-ai-center.js"></script>
 <script src="platform-page-navigation.js?v=20260818-nav1"></script>
 
-<script src="platform-cloud-session.js?v=20260905-RL33-complete-tab-role-isolation"></script>
+<script src="platform-cloud-session.js?v=20260906-RL77-admin-baseline"></script>
 <script src="platform-record-save-engine.js?v=20260830-records-final-v3"></script>
+
+<script id="ADMIN_EMPLOYEE_SUPERVISOR_CONTEXT_RL77">
+(function(){
+  const q=new URLSearchParams(location.search||'');
+  if(String(q.get('mode')||'').toLowerCase()!=='supervisor')return;
+  const supervisor=String(q.get('supervisor')||q.get('viewerRole')||q.get('returnRole')||'manager');
+  const school=String(q.get('schoolId')||q.get('school')||'');
+  function decorate(url){
+    try{
+      const u=new URL(url,location.href);
+      if(!/administrative_employee_|admin_employee_management/.test((u.pathname.split('/').pop()||'').toLowerCase()))return url;
+      u.searchParams.set('mode','supervisor');
+      u.searchParams.set('supervisor',supervisor);
+      u.searchParams.set('viewerRole',supervisor);
+      u.searchParams.set('returnRole',supervisor);
+      if(school){u.searchParams.set('school',school);u.searchParams.set('schoolId',school)}
+      return u.pathname.split('/').pop()+'?'+u.searchParams.toString();
+    }catch(_){return url}
+  }
+  document.addEventListener('click',function(e){
+    const a=e.target&&e.target.closest&&e.target.closest('a[href]');
+    if(!a)return;
+    const next=decorate(a.getAttribute('href')||'');
+    if(next!==a.getAttribute('href'))a.setAttribute('href',next);
+  },true);
+  document.documentElement.dataset.adminEmployeeSupervisorContext='1';
+})();
+</script>
+
 </body></html>

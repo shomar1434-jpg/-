@@ -1309,7 +1309,36 @@ window.addEventListener('load',function(){setTimeout(renderAdminEvalPanel,400)})
 <script src="top-ai-center.js"></script>
 <script src="platform-page-navigation.js?v=20260818-nav1"></script>
 
-<script src="platform-cloud-session.js?v=20260905-RL33-complete-tab-role-isolation"></script>
+<script src="platform-cloud-session.js?v=20260906-RL77-admin-baseline"></script>
 <script src="platform-record-save-engine.js?v=20260830-records-final-v3"></script>
+
+<script id="ADMIN_EMPLOYEE_SUPERVISOR_CONTEXT_RL77">
+(function(){
+  const q=new URLSearchParams(location.search||'');
+  if(String(q.get('mode')||'').toLowerCase()!=='supervisor')return;
+  const supervisor=String(q.get('supervisor')||q.get('viewerRole')||q.get('returnRole')||'manager');
+  const school=String(q.get('schoolId')||q.get('school')||'');
+  function decorate(url){
+    try{
+      const u=new URL(url,location.href);
+      if(!/administrative_employee_|admin_employee_management/.test((u.pathname.split('/').pop()||'').toLowerCase()))return url;
+      u.searchParams.set('mode','supervisor');
+      u.searchParams.set('supervisor',supervisor);
+      u.searchParams.set('viewerRole',supervisor);
+      u.searchParams.set('returnRole',supervisor);
+      if(school){u.searchParams.set('school',school);u.searchParams.set('schoolId',school)}
+      return u.pathname.split('/').pop()+'?'+u.searchParams.toString();
+    }catch(_){return url}
+  }
+  document.addEventListener('click',function(e){
+    const a=e.target&&e.target.closest&&e.target.closest('a[href]');
+    if(!a)return;
+    const next=decorate(a.getAttribute('href')||'');
+    if(next!==a.getAttribute('href'))a.setAttribute('href',next);
+  },true);
+  document.documentElement.dataset.adminEmployeeSupervisorContext='1';
+})();
+</script>
+
 </body>
 </html>

@@ -436,7 +436,9 @@
       'administrative_employee_portal.html',
       'administrative_employee_evaluation.html',
       'administrative_employee_execution.html',
-      'administrative_employee_improvement.html'
+      'administrative_employee_improvement.html',
+      'administrative_employee_plan.html',
+      'administrative_employee_library.html'
     ].includes(file)){
       try{
         const q=new URLSearchParams(location.search||'');

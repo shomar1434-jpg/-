@@ -67,7 +67,7 @@
   }catch(e){}
 })();
 </script>
-<script id="independent-school-login-engine" data-version="RL34-school-link-identity-direct-safe">
+<script id="independent-school-login-engine" data-version="RL95-legacy-school-login-link-compatible">
 (function(){
   'use strict';
 
@@ -81,8 +81,21 @@
     return '';
   };
 
+  function pathSchoolRef(){
+    const parts=location.pathname.split('/').filter(Boolean);
+    const last=parts[parts.length-1]||'';
+    if(/\.html?$/i.test(last)) return '';
+    return (/^(SCH-|REG-)/i.test(last) || /^[A-Za-z0-9_-]{6,}$/i.test(last)) ? last : '';
+  }
+  const legacyPathRef = pathSchoolRef();
   let targetSchoolId = first(['schoolId','school_id','sid','id']);
-  let targetSchoolCode = first(['school','schoolCode','school_code','code']);
+  let targetSchoolCode = first(['school','schoolCode','school_code','scode','code']);
+  let targetRegistrationCode = first(['registrationCode','registration_code','reg','token','ref']);
+  if(!targetSchoolId && !targetSchoolCode && !targetRegistrationCode && legacyPathRef){
+    if(/^REG-/i.test(legacyPathRef)) targetRegistrationCode=legacyPathRef;
+    else if(/^SCH-/i.test(legacyPathRef)) targetSchoolCode=legacyPathRef;
+    else targetSchoolId=legacyPathRef;
+  }
   let resolvedSchool = null;
   let loginBusy = false;
 
@@ -112,7 +125,8 @@
     if(['health_advisor','health-advisor','موجه صحي','الموجه الصحي'].includes(r)) return 'health_advisor';
     if(['kindergarten_teacher','kindergarten-teacher','معلمة رياض الأطفال','معلمة رياض اطفال'].includes(r)) return 'kindergarten_teacher';
     if(['administrative_employee','admin_employee','employee_admin','موظف إداري','موظفة إدارية'].includes(r)) return 'administrative_employee';
-    if(['teacher','performance','معلم','معلمة'].includes(r)) return 'performance';
+    if(['teacher','school_teacher','معلم','معلمة'].includes(r)) return 'teacher';
+    if(r==='performance') return 'performance';
     return r || 'performance';
   }
 
@@ -131,20 +145,23 @@
   const RL34_SUPABASE_URL='https://cijhgvbtrvmmlcssgxht.supabase.co';
   const RL34_SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
   async function inspectSchoolDirect(){
-    const r=await fetch(RL34_SUPABASE_URL+'/functions/v1/platform-directory',{method:'POST',cache:'no-store',headers:{'content-type':'application/json','apikey':RL34_SUPABASE_ANON_KEY},body:JSON.stringify({action:'inspect-school',schoolId:targetSchoolId||'',schoolCode:targetSchoolCode||''})});
+    const r=await fetch(RL34_SUPABASE_URL+'/functions/v1/platform-directory',{method:'POST',cache:'no-store',headers:{'content-type':'application/json','apikey':RL34_SUPABASE_ANON_KEY},body:JSON.stringify({action:'inspect-school',schoolId:targetSchoolId||'',schoolCode:targetSchoolCode||'',registrationCode:targetRegistrationCode||''})});
     const d=await r.json().catch(()=>({}));
     if(!r.ok)throw new Error(d.error||d.details||'تعذر التحقق من هوية المدرسة');
     return d;
   }
   async function resolveSchool(){
-    if(resolvedSchool)return resolvedSchool;if(!targetSchoolId&&!targetSchoolCode)return null;
+    if(resolvedSchool)return resolvedSchool;if(!targetSchoolId&&!targetSchoolCode&&!targetRegistrationCode)return null;
     let d=null, bridgeError=null;
     const bridge=window.SmartSchoolSupabase;
-    if(bridge?.platformDirectoryCall){try{d=await bridge.platformDirectoryCall('inspect-school',{schoolId:targetSchoolId||'',schoolCode:targetSchoolCode||''},false)}catch(e){bridgeError=e}}
+    if(bridge?.platformDirectoryCall){try{d=await bridge.platformDirectoryCall('inspect-school',{schoolId:targetSchoolId||'',schoolCode:targetSchoolCode||'',registrationCode:targetRegistrationCode||''},false)}catch(e){bridgeError=e}}
     if(!d?.school){try{d=await inspectSchoolDirect()}catch(e){throw bridgeError||e}}
     const row=d?.school||null;if(!row)return null;
-    const sid=text(row.id),scode=text(row.school_code);if(targetSchoolId&&sid!==targetSchoolId)return null;if(targetSchoolCode&&scode&&scode!==targetSchoolCode)return null;
-    targetSchoolId=sid;targetSchoolCode=scode||targetSchoolCode;resolvedSchool=row;
+    const sid=text(row.id),scode=text(row.school_code),sreg=text(row.registration_code);
+    if(targetSchoolId&&sid!==targetSchoolId)return null;
+    if(targetSchoolCode&&scode&&scode!==targetSchoolCode)return null;
+    if(targetRegistrationCode&&sreg&&sreg!==targetRegistrationCode)return null;
+    targetSchoolId=sid;targetSchoolCode=scode||targetSchoolCode;targetRegistrationCode=sreg||targetRegistrationCode;resolvedSchool=row;
     try{sessionStorage.setItem('smart_school_tab_school_v1',sid);sessionStorage.setItem('current_school_id',sid);if(scode)sessionStorage.setItem('active_school_code',scode)}catch(_){}
     return row;
   }
@@ -203,7 +220,12 @@
       if(text(current.schoolId) !== targetSchoolId || text(current.userId) !== text(cloud.userId))
         throw new Error('رفض أمني: تعذر تأكيد عضوية الحساب في المدرسة الحالية.');
 
-      const role = normalizeRole(current.role || cloud.role);
+      const serverRole = lower(current.role || cloud.role);
+      const role = normalizeRole(serverRole);
+      // RL59: لا يجوز تحويل جلسة المعلم الصادرة من الخادم إلى performance؛
+      // teacher.html يتحقق من teacher/school_teacher ومع تغيير الدور كان يعيد المستخدم إلى بوابة المدرسة.
+      if(['teacher','school_teacher','معلم','معلمة'].includes(serverRole) && role !== 'teacher')
+        throw new Error('رفض أمني: تعذر تثبيت دور المعلم الصادر من جلسة المدرسة.');
       const profile = await loadUserProfile(cloud.userId, targetSchoolId, login);
       const schoolName = text(school.school_name || school.schoolName || 'المدرسة');
       const userName = text(profile?.full_name || profile?.name || school.manager_name || login);
@@ -290,5 +312,6 @@
 })();
 </script>
 <script src="platform-page-navigation.js?v=20260818-nav1"></script>
+<script id="SCHOOL_LOGIN_TEACHER_ROLE_RL59">window.__SCHOOL_LOGIN_TEACHER_ROLE_RL59__="2026.09.05";</script>
 </body>
 </html>

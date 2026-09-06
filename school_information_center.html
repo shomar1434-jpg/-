@@ -222,7 +222,7 @@
             <div><label>طريقة التحديث</label><select id="scopeSaveMode"><option value="replace_scope" selected>استبدال بيانات هذا الفصل فقط</option><option value="append_scope">إضافة الطلاب الجدد لهذا الفصل</option></select></div>
             <div style="align-self:end"><button type="button" class="btn secondary" onclick="reopenActiveClassFilePicker()">اختيار ملف آخر</button></div>
           </div>
-          <div class="pdfHint">اختر من زر الفصل ملف Excel (.xlsx / .xls / .csv) أو PDF نصيًا. لا توجد عملية استيراد عامة منفصلة؛ كل ملف يرتبط بالفصل الذي اخترته فقط.</div>
+          <div class="pdfHint">اختر من زر الفصل ملف Excel (.xlsx / .xls / .csv) أو PDF صادرًا من نظام نور. يتعرف النظام على ملفات نور النصية، ويحوّل تلقائيًا إلى القراءة الضوئية إذا كان ترميز العربية داخل PDF غير صالح. كل ملف يرتبط بالفصل الذي اخترته فقط.</div>
           <div id="scopePreviewBox" class="preview hidden"></div>
           <div class="footerbar"><span class="pill" id="scopePreviewCount">لم تتم قراءة ملف للفصل</span><button id="scopeSaveBtn" class="btn hidden" onclick="saveScopedPreview()">اعتماد طلاب هذا الفصل وحفظهم</button></div>
         </div>
@@ -1006,17 +1006,52 @@ window.prepareStageGradesEditor=function(){
     });
     return extractStudentsFromMatrix(matrix,'PDF');
   }
+  function noorPdfTextQuality(items){
+    const text=(items||[]).map(x=>safe(x?.text)).join(' '),letters=(text.match(/[A-Za-z\u0600-\u06FF]/g)||[]).length,arabic=(text.match(/[\u0600-\u06FF]/g)||[]).length;
+    const mojibake=(text.match(/[\u0370-\u03FF\u0400-\u04FF]/g)||[]).length;
+    return {text,letters,arabic,mojibake,arabicRatio:letters?arabic/letters:0};
+  }
+  function extractStudentsFromOcrLines(lines,sheetName='PDF-OCR'){
+    const out=[];
+    for(let i=0;i<(lines||[]).length;i++){
+      let line=normalizeImportCell(lines[i]);
+      if(!line||isImportNoise(line))continue;
+      // تقارير نور تأتي غالبًا: رقم تسلسلي | رقم هوية/طالب | الاسم | الفصل، أو رقم تسلسلي | الاسم.
+      const ids=(line.match(/[0-9٠-٩]{8,12}/g)||[]).map(digitsOnly).filter(Boolean);
+      const nationalId=ids.find(x=>/^[12]\d{9}$/.test(x))||'';
+      const studentNo=ids.find(x=>x!==nationalId)||nationalId||'';
+      let name=line
+        .replace(/[0-9٠-٩]{8,12}/g,' ')
+        .replace(/^\s*[0-9٠-٩]{1,3}\s+/,' ')
+        .replace(/\s+[0-9٠-٩]{1,2}\s*$/,' ')
+        .replace(/[|:؛،]+/g,' ')
+        .replace(/\s+/g,' ').trim();
+      // إزالة بقايا رؤوس الجداول الشائعة في تقارير نور.
+      name=name.replace(/^(م|عدد)\s+/,'').replace(/\s+(الفصل|التوقيع)$/,'').trim();
+      if(!isLikelyStudentName(name)){
+        // أحيانًا يقرأ OCR الرقم في خلية منفصلة والاسم في السطر التالي؛ نبحث عن أفضل مقطع عربي داخل السطر.
+        const parts=line.split(/\s{2,}|[|]/).map(normalizeImportCell).filter(Boolean).filter(isLikelyStudentName);
+        name=parts.sort((a,b)=>arabicCount(b)-arabicCount(a)||b.length-a.length)[0]||'';
+      }
+      if(!name)continue;
+      out.push({student_name:name,student_number:studentNo||null,national_id:nationalId||null,stage:'',grade:'',track_name:'',section_name:'',noor_section_code:'',__sheetName:sheetName,__row:i+1});
+    }
+    return out;
+  }
   async function ocrPdfStudentFile(doc){
-    if(!window.Tesseract?.recognize)return[];
+    if(!window.Tesseract?.recognize)throw new Error('مكتبة التعرف الضوئي على PDF غير متاحة.');
     const rows=[];
     for(let p=1;p<=doc.numPages;p++){
-      setStatus('لم يظهر نص قابل للقراءة في PDF — جارٍ التعرف الضوئي على الصفحة '+p+' من '+doc.numPages+'...','note');
-      const page=await doc.getPage(p),viewport=page.getViewport({scale:1.6}),canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');
+      setStatus('ملف نور يحتوي ترميزًا عربيًا غير قابل للقراءة مباشرة — جارٍ التعرف على أسماء الطلاب في الصفحة '+p+' من '+doc.numPages+'...','note');
+      const page=await doc.getPage(p),viewport=page.getViewport({scale:2.1}),canvas=document.createElement('canvas'),ctx=canvas.getContext('2d',{willReadFrequently:true});
       canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
       await page.render({canvasContext:ctx,viewport}).promise;
       const res=await Tesseract.recognize(canvas,'ara+eng',{logger:()=>{}});
-      const lines=safe(res?.data?.text).split(/\r?\n/).map(normalizeImportCell).filter(Boolean);
-      rows.push(...extractStudentsFromMatrix(lines.map(x=>[x]),'PDF-OCR-'+p));
+      const text=safe(res?.data?.text),lines=text.split(/\r?\n/).map(normalizeImportCell).filter(Boolean);
+      let pageRows=extractStudentsFromOcrLines(lines,'PDF-OCR-'+p);
+      // مسار احتياطي للقوالب التي يتعرف فيها OCR على أعمدة الجدول بشكل أفضل من السطور الحرة.
+      if(!pageRows.length)pageRows=extractStudentsFromMatrix(lines.map(x=>[x]),'PDF-OCR-'+p);
+      rows.push(...pageRows);
     }
     return dedupeImportedStudents(rows);
   }
@@ -1024,16 +1059,25 @@ window.prepareStageGradesEditor=function(){
     if(!window.pdfjsLib)throw new Error('مكتبة قراءة PDF غير متاحة.');
     pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     const doc=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
-    let rows=[],textChars=0;
+    let rows=[],textChars=0,totalArabic=0,totalLetters=0,totalMojibake=0;
     for(let p=1;p<=doc.numPages;p++){
       const page=await doc.getPage(p),tc=await page.getTextContent();
       const items=(tc.items||[]).map(x=>({text:safe(x.str),x:Number(x.transform?.[4]||0),y:Number(x.transform?.[5]||0)})).filter(x=>x.text);
-      textChars+=items.reduce((n,x)=>n+x.text.length,0);
+      const q=noorPdfTextQuality(items);textChars+=q.text.length;totalArabic+=q.arabic;totalLetters+=q.letters;totalMojibake+=q.mojibake;
       rows=rows.concat(extractPdfRowsFromItems(items));
     }
     rows=dedupeImportedStudents(rows);
-    if(!rows.length && textChars<30)rows=await ocrPdfStudentFile(doc);
-    if(!rows.length)throw new Error(textChars<30?'تعذر استخراج الطلاب من PDF حتى بعد محاولة التعرف الضوئي.':'تمت قراءة نص PDF لكن لم يتم التعرف على صفوف طلاب واضحة.');
+    const arabicRatio=totalLetters?totalArabic/totalLetters:0;
+    // بعض PDF الصادرة من نور تحتوي نصًا كثيرًا لكن بخريطة خطوط مكسورة؛ في هذه الحالة pdf.js يرى النص، لكنه ليس عربيًا صالحًا.
+    const looksLikeBrokenNoorArabic=(textChars>=30 && (arabicRatio<0.20 || totalMojibake>Math.max(8,totalArabic)));
+    if(!rows.length || looksLikeBrokenNoorArabic){
+      const directRows=rows;
+      const ocrRows=await ocrPdfStudentFile(doc);
+      // عند فساد الترميز نثق بنتيجة OCR، أما عند جودة النص الجيدة فنستخدم OCR كمسار إضافي فقط.
+      rows=looksLikeBrokenNoorArabic?ocrRows:dedupeImportedStudents(directRows.concat(ocrRows));
+    }
+    rows=dedupeImportedStudents(rows);
+    if(!rows.length)throw new Error('تعذر التعرف على أسماء الطلاب في ملف PDF. تأكد أن الملف صادر من نور ويحتوي كشف أسماء/توزيع الطلاب، ثم أعد المحاولة.');
     return rows;
   }
   

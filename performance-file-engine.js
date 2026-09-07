@@ -15,6 +15,9 @@
   var ROLE=inferRole();
   var ROLE_LABEL={manager:'مدير/ة المدرسة',agent:'وكيل/ة المدرسة',teacher:'المعلم/ة',health_advisor:'الموجه الصحي',kindergarten_teacher:'معلمة رياض الأطفال',student_advisor:'الموجه/الموجهة الطلابية',activity_leader:'رائد/ة النشاط',administrative_employee:'الموظف/ة الإداري/ة'}[ROLE]||'الموظف/ة';
   var PROFILE_KEY='ss_performance_profile_v3_'+ROLE;
+  var CLOUD_REPORTS=[];
+  var CLOUD_READY=false;
+  var CLOUD_LOADING=null;
 
   function inferRole(){
     var p=(location.pathname||'').toLowerCase();
@@ -73,7 +76,51 @@
     var status=r.status||r.approvalStatus||(r.isComplete?'معتمد':'محفوظ');
     return {id:r.id||r.uuid||title+'_'+date,title:String(title),folderId:String(folderId||''),folderName:String(folderName||''),date:String(date||hijri()),url:String(url||''),summary:cleanText(html).slice(0,240),status:String(status||'محفوظ'),archive:archiveType(key,r),sourceKey:key,raw:r};
   }
-  function reports(){var out=[],seen={};allArchiveKeys().forEach(function(key){flattenStored(parse(localStorage.getItem(key),null)).forEach(function(r){var n=normalize(r,key);if(!n)return;var sig=[n.id,n.title,n.folderId,n.folderName,n.date].join('|');if(seen[sig])return;seen[sig]=1;out.push(n);});});return out;}
+  function unwrapCloudPayload(payload){
+    var v=payload;
+    if(v&&typeof v==='object'&&Object.prototype.hasOwnProperty.call(v,'value'))v=v.value;
+    if(typeof v==='string')v=parse(v,v);
+    return v;
+  }
+  function cloudRowReport(row){
+    if(!row||!/perf_report_v1_/i.test(String(row.state_key||'')))return null;
+    var raw=unwrapCloudPayload(row.payload);
+    if(!raw||typeof raw!=='object'||Array.isArray(raw))return null;
+    var n=normalize(raw,'cloud:'+String(row.module_key||ROLE));
+    if(!n)return null;
+    n.id=String(raw.id||String(row.state_key||'').replace(/^.*?perf_report_v1_/,''));
+    n.folderId=String(raw.archiveFolderId||raw.category||n.folderId||'');
+    n.folderName=String(raw.archiveFolderName||raw.categoryName||n.folderName||'');
+    n.archive='أرشيف مجالات الأداء';
+    n.sourceKey=String(row.state_key||'');
+    n.cloud=true;
+    return n;
+  }
+  async function hydrateCloudPerformanceArchive(force){
+    if(CLOUD_LOADING&&!force)return CLOUD_LOADING;
+    CLOUD_LOADING=(async function(){
+      if(!window.PlatformStateEngine||typeof window.PlatformStateEngine.request!=='function')return [];
+      var res=await window.PlatformStateEngine.request('pull-performance-archive',{});
+      var rows=Array.isArray(res&&res.items)?res.items:[];
+      var list=[],seen={};
+      rows.forEach(function(row){
+        var n=cloudRowReport(row);if(!n)return;
+        var sig=String(n.id||'');if(!sig||seen[sig])return;seen[sig]=1;list.push(n);
+      });
+      CLOUD_REPORTS=list;CLOUD_READY=true;
+      try{window.dispatchEvent(new CustomEvent('performancefile:archive-hydrated',{detail:{role:ROLE,count:list.length}}));}catch(_){ }
+      return list;
+    })().catch(function(e){console.warn('[performance-file] cloud archive hydrate',e);return CLOUD_REPORTS;}).finally(function(){CLOUD_LOADING=null;});
+    return CLOUD_LOADING;
+  }
+  function reports(){
+    var out=[],seen={};
+    function add(n){if(!n)return;var sig=String(n.id||'')||[n.title,n.folderId,n.folderName,n.date].join('|');if(seen[sig])return;seen[sig]=1;out.push(n);}
+    /* Cloud archive is authoritative once hydrated. Local archive remains a startup/offline fallback only. */
+    if(CLOUD_READY){CLOUD_REPORTS.forEach(add);return out;}
+    allArchiveKeys().forEach(function(key){flattenStored(parse(localStorage.getItem(key),null)).forEach(function(r){add(normalize(r,key));});});
+    return out;
+  }
   function matchFolder(r,c){var a=[r.folderId,r.folderName].map(function(x){return String(x||'').trim();});return a.indexOf(String(c.id))>-1||a.indexOf(String(c.name))>-1;}
   function dataModel(){
     var cats=categories(),reps=reports();
@@ -148,7 +195,7 @@
     return true;
   }
 
-  window.openPerformanceFile=function(){createModal();render();document.getElementById(MODAL_ID).style.display='flex';};
+  window.openPerformanceFile=function(){createModal();render();document.getElementById(MODAL_ID).style.display='flex';hydrateCloudPerformanceArchive(false).then(function(){render();});};
   window.ssPerfClose=function(){var m=document.getElementById(MODAL_ID);if(m)m.style.display='none';};
   window.ssPerfRefresh=render;
   window.ssPerfSetTemplate=function(t){var p=profile();p.template=t;save(p);render();};
@@ -179,7 +226,7 @@
     });
     perfObserver.observe(root,{childList:true,subtree:true});
   }
-  function boot(){installStyle();createModal();ensureCard();watchDashboard();}
+  function boot(){installStyle();createModal();ensureCard();watchDashboard();setTimeout(function(){hydrateCloudPerformanceArchive(false).then(function(){var m=document.getElementById(MODAL_ID);if(m&&m.style.display==='flex')render();});},250);}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
   setTimeout(boot,350);setTimeout(ensureCard,900);setTimeout(ensureCard,2200);setTimeout(ensureCard,4500);
 })();

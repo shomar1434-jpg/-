@@ -3846,21 +3846,20 @@ async function legacyPerformanceSave_DISABLED() {
   }
   async function updateAuthoritativeAccountStatus(userId,status){
     var sid=String(currentSchoolId()||'').trim();
+    var target=String(userId||'').trim();
+    var nextStatus=String(status||'').trim().toLowerCase();
     if(!sid)throw new Error('تعذر تحديد المدرسة الحالية');
-    if(window.PlatformCloudSession&&PlatformCloudSession.ensure)await PlatformCloudSession.ensure();
-    var token=String((window.PlatformCloudSession&&PlatformCloudSession.token&&PlatformCloudSession.token())||
-      sessionStorage.getItem('platform_tab_session_token_v1')||sessionStorage.getItem('platform_session_token')||
-      localStorage.getItem('platform_file_session_token')||'').trim();
-    if(!token)throw new Error('جلسة المدرسة السحابية غير متاحة');
-    var baseUrl=(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'');
-    var key=localStorage.getItem('smartSchoolSupabaseAnonKey')||'sb_publishable_3TC1p4w7U3hp2PbzhSauow_2xYLve5l';
-    var r=await fetch(baseUrl+'/functions/v1/school-accounts',{method:'POST',cache:'no-store',
-      headers:{'content-type':'application/json','apikey':key,'x-platform-session':token},
-      body:JSON.stringify({action:'status-update',userId:String(userId||''),status:String(status||'')})});
-    var j=await r.json().catch(function(){return {}});
-    if(!r.ok)throw new Error(j.error||'تعذر تحديث حالة الحساب في السحابة');
-    if(String(j.schoolId||'')!==sid)throw new Error('ACCOUNT_SCHOOL_CONTEXT_MISMATCH');
-    return j.user||null;
+    if(!target)throw new Error('تعذر تحديد المستخدم');
+    if(['pending','active','disabled'].indexOf(nextStatus)===-1)throw new Error('حالة الحساب غير صحيحة');
+    if(!window.SmartSchoolSupabase||typeof window.SmartSchoolSupabase.updateUserStatus!=='function'){
+      throw new Error('محرك إدارة حسابات المدرسة غير متاح');
+    }
+    // RL131: use the already-deployed platform-directory contract. It validates the
+    // manager session + school_id and updates BOTH users and school_members together.
+    // Do not call the obsolete/non-deployed school-accounts endpoint.
+    var result=await window.SmartSchoolSupabase.updateUserStatus(target,nextStatus);
+    if(result&&result.schoolId&&String(result.schoolId)!==sid)throw new Error('ACCOUNT_SCHOOL_CONTEXT_MISMATCH');
+    return result||{ok:true};
   }
 
   async function hydrateUsersFromSupabase(){

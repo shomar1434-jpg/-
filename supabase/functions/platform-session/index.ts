@@ -391,9 +391,13 @@ Deno.serve(async (request) => {
     const requestedLoginRole=lower(payload?.role||'');
     const preferredRole=lower(resolvedMembership?.role||user.role||'');
     let selectedMembership:any=null;
+    // RL122 — automatic role resolution from the account/email within the bound school.
+    // Normal school login does not ask the user to choose a role. If exactly one active
+    // school_members row exists, it is authoritative even when users.role is stale.
+    // An explicit requested role remains supported only for specialized callers.
     if(requestedLoginRole) selectedMembership=activeMemberships.find((m:any)=>lower(m.role)===requestedLoginRole)||null;
-    if(!selectedMembership&&preferredRole) selectedMembership=activeMemberships.find((m:any)=>lower(m.role)===preferredRole)||null;
     if(!selectedMembership&&activeMemberships.length===1) selectedMembership=activeMemberships[0];
+    if(!selectedMembership&&activeMemberships.length>1&&preferredRole) selectedMembership=activeMemberships.find((m:any)=>lower(m.role)===preferredRole)||null;
     if(requestedLoginRole&&!selectedMembership) return json({error:'الحساب لا يملك الدور المطلوب في هذه المدرسة',code:'LOGIN_ROLE_NOT_ALLOWED',requestId},403);
     if(!selectedMembership&&activeMemberships.length>1) return json({error:'للحساب أكثر من دور في المدرسة. اختر الدور المطلوب قبل الدخول.',code:'ROLE_SELECTION_REQUIRED',roles:activeMemberships.map((m:any)=>text(m.role)),requestId},409);
     if(!selectedMembership&&activeMemberships.length===0){

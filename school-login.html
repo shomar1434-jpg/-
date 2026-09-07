@@ -15,7 +15,8 @@
     body:after{content:"";position:fixed;inset:0;background:rgba(0,0,0,.05);z-index:-1;pointer-events:none}
     #activation-overlay{display:none!important;visibility:hidden!important;pointer-events:none!important;}
     .login-card{width:min(92vw,520px);background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(18px);border-radius:2rem;padding:2rem;box-shadow:0 24px 80px rgba(0,0,0,.28);text-align:center;position:relative;z-index:10;}
-    .login-card input{width:100%;padding:14px 18px;border-radius:18px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.22);color:#fff;outline:0;font-size:16px;text-align:center;}
+    .login-card input,.login-card select{width:100%;padding:14px 18px;border-radius:18px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.22);color:#fff;outline:0;font-size:16px;text-align:center;}
+    .login-card select option{color:#0f172a;background:#fff}
     .login-card input:focus{border-color:#5eead4;box-shadow:0 0 0 3px rgba(94,234,212,.13)}
     .login-card input::placeholder{color:rgba(255,255,255,.74)}
     #login-email{direction:ltr;text-align:left;unicode-bidi:plaintext}
@@ -499,6 +500,7 @@
       <div style="display:grid;gap:16px;text-align:right">
         <input id="login-email" name="email" type="text" placeholder="البريد أو اسم المستخدم" autocomplete="username" data-email-field="true" required>
         <input id="login-password" name="password" type="password" placeholder="الرقم السري" autocomplete="current-password" required>
+        <div id="login-role-hint" style="padding:11px 14px;border-radius:16px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);color:#d5f5ef;font-size:13px;font-weight:800;text-align:center">سيتم التعرف على دورك تلقائيًا من البريد المرتبط بحسابك في هذه المدرسة</div>
         <button id="school-login-btn" type="submit">دخول</button>
         <p id="login-msg" role="alert" aria-live="polite"></p>
       </div>
@@ -507,6 +509,7 @@
 
 <script src="platform-cloud-session.js"></script>
 <!-- RL115: strict independent-school link binding; fail closed on school mismatch. -->
+<!-- RL122: email/account-bound automatic role resolution + server-membership authoritative routing. -->
 <script id="independent-school-login-engine">
 (function(){
   'use strict';
@@ -849,20 +852,55 @@
       const passEl = document.getElementById('login-password');
       const loginId = String(loginEl && loginEl.value || '').trim().toLowerCase();
       const password = String(passEl && passEl.value || '').trim();
+      // RL122: لا يختار المستخدم دوره يدويًا. الخادم يحل الدور من عضويته الفعالة في المدرسة.
+      const requestedDbRole = '';
       if(!loginId || !password){ setMsg('يرجى إدخال البريد/اسم المستخدم والرقم السري'); return; }
       const school = await resolveActiveSchool();
       if((targetSchoolId || targetSchoolCode) && !school){ setMsg('رابط المدرسة غير مرتبط بسجل مدرسة صحيح. تم إيقاف الدخول حمايةً لعزل المدارس.'); return; }
       if((targetSchoolId || targetSchoolCode) && !schoolMatchesLinkContract(school)){ setMsg('تم رفض الدخول لأن هوية المدرسة لا تطابق رابطها المستقل.'); return; }
       let user = await loginFromSupabase(loginId,password);
       if(!user) user = loginFromLocal(loginId,password,school);
+      // RL116 — Independent-school teacher entry/session handoff.
+      // Do not navigate to teacher (or any role page) unless the server-issued
+      // platform session has been established for the exact school being opened.
+      // Previously a failed PlatformCloudSession.open() was only logged and the
+      // browser continued to teacher.html. teacher.html then remained under
+      // teacher-auth-pending (body hidden), so the "دخول للنظام" window never appeared.
+      let platformSessionPayload = null;
       if(user && window.PlatformCloudSession){
-        try{ await window.PlatformCloudSession.open(loginId,password,(user.schoolId||user.school_id||targetSchoolId||'')); }
-        catch(sessionError){ console.warn('تعذر إنشاء جلسة الملفات السحابية:',sessionError); }
+        const expectedSessionSchoolId=String(user.schoolId||user.school_id||targetSchoolId||(school&&(school.schoolId||school.id||school.school_id))||'').trim();
+        try{
+          platformSessionPayload = await window.PlatformCloudSession.open(loginId,password,expectedSessionSchoolId);
+          const issuedSchoolId=String(platformSessionPayload&&platformSessionPayload.schoolId||window.PlatformCloudSession.schoolId?.()||'').trim();
+          const issuedUserId=String(platformSessionPayload&&platformSessionPayload.userId||window.PlatformCloudSession.userId?.()||'').trim();
+          const issuedDbRole=String(platformSessionPayload&&platformSessionPayload.role||window.PlatformCloudSession.role?.()||'').trim();
+          if(expectedSessionSchoolId && issuedSchoolId!==expectedSessionSchoolId) throw new Error('LOGIN_SESSION_SCHOOL_MISMATCH');
+          if(!issuedSchoolId || !issuedUserId || !issuedDbRole) throw new Error('LOGIN_SESSION_IDENTITY_MISSING');
+        }catch(sessionError){
+          console.error('تعذر إنشاء جلسة المدرسة الآمنة:',sessionError);
+          if(sessionError && sessionError.code==='ROLE_SELECTION_REQUIRED'){
+            setMsg('يوجد أكثر من دور فعال مرتبط بنفس الحساب في هذه المدرسة. يلزم تصحيح ارتباط الحساب من إدارة المدرسة قبل الدخول.');
+          }else if(sessionError && sessionError.code==='LOGIN_ROLE_NOT_ALLOWED'){
+            setMsg('تعذر مطابقة الدور الوظيفي لهذا الحساب مع عضوية المدرسة.');
+          }else{
+            setMsg('تعذر إنشاء جلسة دخول آمنة لهذه المدرسة. لم يتم فتح القسم لحماية عزل المدارس. أعد المحاولة.');
+          }
+          return;
+        }
+      }else if(user){
+        setMsg('محرك جلسة المدرسة غير متاح حالياً. لم يتم فتح القسم لحماية عزل المدارس.');
+        return;
       }
       if(!user){ setMsg('بيانات الدخول غير صحيحة أو الحساب غير موجود في هذه المدرسة'); return; }
       if(!isActiveAccount(user)){ setMsg('الحساب غير مفعل بعد'); return; }
       user = normalizeLocalUser(user, school);
-      const role = normalizeRole(user.role);
+      // RL122: الدور الصادر من جلسة الخادم هو المرجع الوحيد للتوجيه.
+      // هذا يطابق طريقة النسخة القديمة في تعريف المستخدم من حسابه، لكن مع إبقاء school_members كمرجع صلاحية آمن.
+      const authoritativeDbRole = String(platformSessionPayload&&platformSessionPayload.role||'').trim();
+      if(!authoritativeDbRole){ setMsg('تعذر تحديد الدور الوظيفي المرتبط بهذا الحساب في المدرسة.'); return; }
+      const role = normalizeRole(authoritativeDbRole);
+      user.role = role;
+      user.dbRole = authoritativeDbRole;
       const resolvedSchoolId = (school && (school.schoolId || school.id || school.school_id)) || '';
       const schoolId = user.schoolId || resolvedSchoolId || targetSchoolId || '';
       const schoolName = user.schoolName || (school && (school.schoolName || school.school_name || school.name)) || '';
@@ -890,6 +928,22 @@
       if(schoolId){ localStorage.setItem('current_school_id', schoolId); localStorage.setItem('school_id', schoolId); localStorage.setItem('smart_school_id', schoolId); }
       if(schoolName){ localStorage.setItem('current_school_name', schoolName); localStorage.setItem('school_name', schoolName); localStorage.setItem('persist_school', schoolName); }
       localStorage.setItem('smart_school_current_session', JSON.stringify({ id:user.id||'', name:user.name||'', email:user.email||loginId, role, agent_categories:agencyCats, agency_categories:agencyCats, agency_types:agencyCats, agency_type:agencyCats.join(','), agencyType:agencyCats.join(','), teacher_extra_roles:teacherExtraRoles, additional_assignments:teacherExtraRoles, extra_roles:teacherExtraRoles, schoolId, schoolName, loginAt:new Date().toISOString(), independentSchool:true, loginMode:'direct' }));
+      // RL116: write the verified identity into this browser tab explicitly.
+      // This prevents an older tab identity from another school from hiding the
+      // teacher entry gate before the verified page can reveal it.
+      try{
+        const verifiedUserId=String((platformSessionPayload&&platformSessionPayload.userId)||user.id||'').trim();
+        const verifiedRole=String((platformSessionPayload&&platformSessionPayload.role)||role||'').trim();
+        sessionStorage.setItem('platform_tab_session_school_v1',String(schoolId||'').trim());
+        sessionStorage.setItem('smart_school_tab_school_v1',String(schoolId||'').trim());
+        sessionStorage.setItem('platform_tab_session_user_v1',verifiedUserId);
+        sessionStorage.setItem('currentUserId',verifiedUserId);
+        sessionStorage.setItem('smart_school_tab_role_v1',verifiedRole);
+        sessionStorage.setItem('currentRole',verifiedRole);
+        sessionStorage.setItem('current_school_id',String(schoolId||'').trim());
+        sessionStorage.setItem('current_school_name',String(schoolName||'').trim());
+        sessionStorage.setItem('smart_school_current_session', JSON.stringify({ id:verifiedUserId, userId:verifiedUserId, name:user.name||'', email:user.email||loginId, role:verifiedRole, schoolId:String(schoolId||'').trim(), schoolName, cloudToken:String(platformSessionPayload&&platformSessionPayload.token||''), cloudExpiresAt:String(platformSessionPayload&&platformSessionPayload.expiresAt||''), cloudUserId:verifiedUserId, cloudSchoolId:String(schoolId||'').trim(), cloudRole:verifiedRole, loginAt:new Date().toISOString(), independentSchool:true, loginMode:'direct' }));
+      }catch(tabSessionError){ console.error('تعذر تثبيت جلسة التبويب:',tabSessionError); }
       setMsg('تم التحقق من الحساب، جارٍ فتح القسم...', 'ok');
       const target = fileForRole(role);
       const q = new URLSearchParams({ role, uid:user.id || '', email:user.email || loginId, schoolId:schoolId || '', school_name:schoolName || '', schoolMode:'independent', independent:'true', loginMode:'direct', direct:'1', agency_type:agencyCats.join(','), teacher_extra_roles:teacherExtraRoles.join(',') });

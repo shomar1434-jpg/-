@@ -494,7 +494,20 @@
       document.documentElement.dataset.platformRoleDenied='1';
       const current=String(role()||'').toLowerCase();
       const normalized=current==='performance'?'teacher':current;
-      const target=ROLE_ROOTS[normalized]||'school-login.html';
+      let target=ROLE_ROOTS[normalized]||'';
+      if(!target){
+        try{
+          const q=new URLSearchParams();
+          q.set('reason','school_access_denied');
+          const sid=String(schoolId()||sessionStorage.getItem('smart_school_tab_school_v1')||sessionStorage.getItem('platform_tab_session_school_id_v1')||sessionStorage.getItem('current_school_id')||new URLSearchParams(location.search||'').get('schoolId')||new URLSearchParams(location.search||'').get('school_id')||'').trim();
+          const schoolName=String(sessionStorage.getItem('current_school_name')||new URLSearchParams(location.search||'').get('school_name')||'').trim();
+          if(sid)q.set('schoolId',sid);
+          if(schoolName)q.set('school_name',schoolName);
+          q.set('schoolMode','independent');
+          q.set('scope','school');
+          target='school-login.html?'+q.toString();
+        }catch(_){target='school-login.html?reason=school_access_denied';}
+      }
       if(!/school-login\.html$/i.test(location.pathname))location.replace(target);
       throw err;
     }

@@ -1472,6 +1472,11 @@ body{overflow-x:hidden}
 <h3 class="font-black text-xl text-slate-800">تحليل نتائج نافس</h3>
 <p class="text-[11px] text-slate-400 font-bold mt-2">تحليل بطاقة نافس، قراءة فجوات الأداء، وبناء خطة التحسين وقياس الأثر</p>
 </div>
+</div><div id="qat-analysis-card" class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-violet-400 cursor-pointer transition-all flex flex-col items-center gap-4 group manager-section-card" onclick="window.location.href='qat_results_analysis.html'" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window.location.href='qat_results_analysis.html';}" aria-label="فتح قسم تحليل نتائج القدرات والتحصيلي">
+<div class="w-20 h-20 bg-gradient-to-br from-violet-500 to-indigo-700 text-white rounded-[26px] flex items-center justify-center shadow-xl text-3xl">🎯</div><div class="text-center">
+<h3 class="font-black text-xl text-slate-800">تحليل نتائج القدرات والتحصيلي</h3>
+<p class="text-[11px] text-slate-400 font-bold mt-2">للمرحلة الثانوية: استيراد بطاقة PDF، تحليل المؤشرات، وبناء خطة التحسين وقياس الأثر</p>
+</div>
 </div><div class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-teal-400 cursor-pointer transition-all flex flex-col items-center gap-4 group manager-section-card" onclick="window.location.href=(window.__VERIFIED_SYSTEM_ADMIN_CONTEXT__&&window.__VERIFIED_SYSTEM_ADMIN_CONTEXT__.verified)?'school_information_center.html?systemAdmin=1':'school_information_center.html'">
 <div class="w-20 h-20 bg-gradient-to-br from-teal-600 to-emerald-700 text-white rounded-[26px] flex items-center justify-center shadow-xl text-3xl">🗄️</div>
 <div class="text-center">
@@ -6004,6 +6009,43 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
 })();
 </script>
 
+
+<script id="qat-secondary-stage-visibility-v1">
+(function(){
+  function isSystemAdmin(){try{return !!(window.__VERIFIED_SYSTEM_ADMIN_CONTEXT__&&window.__VERIFIED_SYSTEM_ADMIN_CONTEXT__.verified)||new URLSearchParams(location.search).get('systemAdmin')==='1';}catch(_){return false;}}
+  function localSecondaryEvidence(){
+    try{
+      var sid=String(window.PlatformCloudSession?.schoolId?.()||localStorage.getItem('active_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||'').trim();
+      for(var i=0;i<localStorage.length;i++){
+        var k=localStorage.key(i)||'';if(sid&&k.indexOf(sid)<0)continue;
+        if(!/schoolInformationCenter|school_information_center|sic_students/i.test(k))continue;
+        var v=localStorage.getItem(k)||'';if(/ثانوي|الثانوية|secondary/i.test(v))return true;
+      }
+    }catch(_){ }
+    return false;
+  }
+  async function cloudSecondaryEvidence(){
+    try{
+      if(!window.PlatformCloudSession)return false;
+      if(typeof PlatformCloudSession.ensure==='function')await PlatformCloudSession.ensure();
+      var sid=String(PlatformCloudSession.schoolId?.()||'').trim(),tok=String(PlatformCloudSession.token?.()||'').trim();if(!sid||!tok)return false;
+      var url=(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'');
+      var key=localStorage.getItem('smartSchoolSupabaseAnonKey')||'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
+      var year=localStorage.getItem('school_info_academic_year')||'1448';
+      var r=await fetch(url+'/functions/v1/school-information-structure',{method:'POST',headers:{'content-type':'application/json','apikey':key,'x-platform-session':tok},body:JSON.stringify({action:'structure-get',academicYear:year})});
+      if(!r.ok)return false;var j=await r.json();var stages=j?.structure?.stages||[];return stages.some(function(x){return /ثانوي|الثانوية|secondary/i.test(String(x?.name||x?.stage||''));});
+    }catch(_){return false;}
+  }
+  async function apply(){
+    var c=document.getElementById('qat-analysis-card');if(!c)return;
+    if(isSystemAdmin()){c.style.display='';return;}
+    c.style.display='none';
+    if(localSecondaryEvidence()||await cloudSecondaryEvidence())c.style.display='';
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',apply);else apply();
+  window.addEventListener('storage',apply);
+})();
+</script>
 
 <!-- Unified Comprehensive Cloud Storage -->
 <script src="platform-cloud-session.js?v=20260829-security-isolation-v5-clean"></script>

@@ -37,7 +37,7 @@
        metadata:{source:'automatic_input_sync',page,inputId:input.id||null,inputName:input.name||null,label:labelFor(input)},
        continueOnError:true
      });
-     if(result.errors.length){toast(`تم حفظ ${result.results.length} ملف، وتعذر حفظ ${result.errors.length}.`,true)}else toast(`تم حفظ ${result.results.length} ملف في التخزين السحابي.`);
+     if(result.errors.length){const first=result.errors[0]&&result.errors[0].error&&result.errors[0].error.message?result.errors[0].error.message:'';toast(`تم حفظ ${result.results.length} ملف، وتعذر حفظ ${result.errors.length}${first?(' — '+first):''}.`,true)}else toast(`تم حفظ ${result.results.length} ملف في التخزين السحابي.`);
      input.dataset.cloudSyncedFileIds=result.results.map(x=>x.file&&x.file.id).filter(Boolean).join(',');
      input.dispatchEvent(new CustomEvent('cloudfiles:input-synced',{bubbles:true,detail:result}));
    }catch(error){toast(error.message||'تعذر الحفظ السحابي',true)}finally{input.dataset.cloudSyncing='0'}

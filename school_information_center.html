@@ -54,7 +54,7 @@
       const ctx=await PlatformCloudSession.verifyAccess(['manager']);window.__VERIFIED_SCHOOL_CONTEXT__=ctx;release();return ctx;
     }catch(e){
       if(adminRequested){location.replace('index.html?systemAdminReturn=1&reason=system_admin_access_denied');}
-      else{location.replace((function(){try{var q=new URLSearchParams();q.set('reason','school_access_denied');var sid=String((window.PlatformCloudSession&&window.PlatformCloudSession.schoolId&&window.PlatformCloudSession.schoolId())||sessionStorage.getItem('smart_school_tab_school_v1')||sessionStorage.getItem('platform_tab_session_school_id_v1')||sessionStorage.getItem('current_school_id')||new URLSearchParams(location.search||'').get('schoolId')||new URLSearchParams(location.search||'').get('school_id')||'').trim();var sname=String(sessionStorage.getItem('current_school_name')||new URLSearchParams(location.search||'').get('school_name')||'').trim();if(sid)q.set('schoolId',sid);if(sname)q.set('school_name',sname);q.set('schoolMode','independent');q.set('scope','school');return 'school-login.html?'+q.toString()}catch(_){return 'school-login.html?reason=school_access_denied'}})());}
+      else{location.replace('school-login.html?reason=school_access_denied');}
       throw e;
     }
   })();
@@ -1238,7 +1238,21 @@ window.prepareStageGradesEditor=function(){
     for(let i=0;i<rowCount;i++){
       const cell=rl110CropCanvas(canvas,table.nameCol.x0,rows[i],table.nameCol.x1,rows[i+1],2);
       try{
-        const name=cleanOcrStudentName(await rl111OcrNameCell(cell,worker));
+        let name=cleanOcrStudentName(await rl111OcrNameCell(cell,worker));
+        // RL134: لا نتخطى صفًا في كشف نور لمجرد أن القراءة الأولى للخلية كانت ضعيفة.
+        // نعيد قراءة الخلية بتكبير أكبر وبأكثر من نمط OCR قبل اعتبار الصف غير مقروء.
+        if(!isLikelyStudentName(name)){
+          const retry=rl110CropCanvas(canvas,table.nameCol.x0,rows[i],table.nameCol.x1,rows[i+1],0);
+          const variants=['7','6','11'];
+          for(const psm of variants){
+            try{
+              await worker.setParameters({tessedit_pageseg_mode:psm,preserve_interword_spaces:'1'});
+              const rr=await worker.recognize(retry);
+              const candidate=cleanOcrStudentName(rl111BuildRtlNameFromWords(rr?.data)||rr?.data?.text||'');
+              if(isLikelyStudentName(candidate)){name=candidate;break;}
+            }catch(_){ }
+          }
+        }
         if(isLikelyStudentName(name))out[i]=name;
       }catch(_){ }
     }
@@ -1269,12 +1283,36 @@ window.prepareStageGradesEditor=function(){
       const names=await rl110OcrNameColumn(canvas,table,p);
       const tc=await page.getTextContent(),items=(tc.items||[]).map(x=>({text:safe(x.str),x:Number(x.transform?.[4]||0),y:Number(x.transform?.[5]||0)})).filter(x=>x.text);
       const ids=rl110ExtractIdsForRows(items,table,viewport);
-      const count=Math.max(names.length,ids.length,table.rowLines.length-1);
+      const count=table.rowLines.length-1;
+      let pageRows=0,missingRows=[];
       for(let i=0;i<count;i++){
         const name=cleanOcrStudentName(names[i]||'');
-        if(!isLikelyStudentName(name))continue;
         const nid=ids[i]||'';
+        if(!isLikelyStudentName(name)){missingRows.push(i+1);continue;}
         rows.push({student_name:name,student_number:nid||null,national_id:nid||null,stage:'',grade:'',track_name:'',section_name:'',noor_section_code:'',__sheetName:'PDF-NOOR-GRID-'+p,__row:i+1});
+        pageRows++;
+      }
+      // RL134: عدد صفوف شبكة نور هو مرجع الاكتمال. لا نعلن نجاحًا صامتًا إذا سقطت صفوف OCR.
+      if(missingRows.length){
+        setStatus('تم التعرف على '+pageRows+' من '+count+' صفًا في الصفحة '+p+'. جارٍ استكمال الصفوف غير المقروءة: '+missingRows.join('، ')+'...','note');
+        const worker=await rl110OcrWorker();
+        for(const rowNo of missingRows){
+          const i=rowNo-1;
+          const wider=rl110CropCanvas(canvas,table.nameCol.x0,table.rowLines[i],table.nameCol.x1,table.rowLines[i+1],0);
+          let recovered='';
+          for(const psm of ['7','6','11','13']){
+            try{
+              await worker.setParameters({tessedit_pageseg_mode:psm,preserve_interword_spaces:'1'});
+              const rr=await worker.recognize(wider);
+              const c=cleanOcrStudentName(rl111BuildRtlNameFromWords(rr?.data)||rr?.data?.text||'');
+              if(isLikelyStudentName(c)){recovered=c;break;}
+            }catch(_){ }
+          }
+          if(recovered){
+            const nid=ids[i]||'';
+            rows.push({student_name:recovered,student_number:nid||null,national_id:nid||null,stage:'',grade:'',track_name:'',section_name:'',noor_section_code:'',__sheetName:'PDF-NOOR-GRID-'+p,__row:rowNo});
+          }
+        }
       }
     }
     return dedupeImportedStudents(rows);
@@ -1316,6 +1354,8 @@ window.prepareStageGradesEditor=function(){
     }
     rows=dedupeImportedStudents(rows);
     if(!rows.length)throw new Error('تعذر استخراج أسماء الطلاب من PDF نور حتى بعد تحليل شبكة الجدول بصريًا. تأكد أن الملف هو كشف أسماء/توزيع فصول واضح، أو استخدم Excel لهذا الفصل.');
+    // RL134: لا نشترط رقم الهوية؛ بعض كشوف نور (مثل كشف الأسماء) تحتوي الاسم والتسلسل فقط.
+    // الاكتمال يُبنى على صفوف الجدول، بينما الهوية تُحفظ متى كانت موجودة.
     return rows;
   }
   

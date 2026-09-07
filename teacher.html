@@ -5683,10 +5683,42 @@ async function fetchReport(id){const meta=view.find(x=>idOf(x)===String(id));if(
 async function remove(id){await ensureIndex(false);const meta=indexRows.find(x=>idOf(x)===String(id));if(!meta)throw new Error('التقرير غير موجود في المسار الجديد');const key=meta.stateKey||reportKey(id);const next=indexRows.filter(x=>idOf(x)!==String(id));const E=await ensureEngine();await E.bulkUpsert(MODULE,'school',[{key,value:'',deleted:true},{key:INDEX_KEY,value:JSON.stringify(next),deleted:false}],{timeout:15000});indexRows=next;publish();const verify=(async()=>{const v=await pullSchool([key,INDEX_KEY]);if(Object.prototype.hasOwnProperty.call(v,key))throw new Error('لم يكتمل حذف التقرير السحابي');const idx=parseArray(v[INDEX_KEY]);if(idx.some(x=>idOf(x)===String(id)))throw new Error('لم يكتمل تحديث فهرس الأرشيف');indexRows=idx;publish();return true})();return {verification:verify};}
 async function hydrateLegacy(force=false){await ensureIndex(false);if(legacyLoaded&&!force)return publish();const G=window.PlatformPersistenceGuard;let school={},user={};try{if(G&&typeof G.readExactValues==='function'){const sr=await G.readExactValues({moduleKey:MODULE,scope:'school',keys:LEGACY_SCHOOL_KEYS});if(sr?.ok)school=sr.values||{};const ur=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:LEGACY_USER_KEYS});if(ur?.ok)user=ur.values||{}}}catch(e){console.warn('[Performance V5 legacy]',e)}legacyRows=[];for(const k of LEGACY_SCHOOL_KEYS)for(const x of parseArray(school[k]))legacyRows.push({...x,__meta:{__legacyKey:k,__legacyScope:'school'}});for(const k of LEGACY_USER_KEYS)for(const x of parseArray(user[k]))legacyRows.push({...x,__meta:{__legacyKey:k,__legacyScope:'user'}});legacyLoaded=true;return publish();}
 
+async function recoverCurrentTeacherCloudReports(){
+  const E=await ensureEngine();
+  if(typeof E.request!=='function')return 0;
+  let r;
+  try{r=await E.request('pull-performance-archive',{moduleKey:MODULE});}
+  catch(e){console.warn('[Performance V5 orphan recovery]',e);return 0;}
+  const rows=Array.isArray(r)?r:(r?.items||r?.rows||[]);
+  const byId=new Map(indexRows.map(x=>[idOf(x),x]));
+  let added=0;
+  for(const row of rows){
+    const k=String(row?.state_key||row?.key||'');
+    if(!k.startsWith(REPORT_PREFIX))continue;
+    const raw=row?.payload&&Object.prototype.hasOwnProperty.call(row.payload,'value')?row.payload.value:row?.value;
+    const full=parseObject(raw); if(!full)continue;
+    const cat=catOf(full),id=idOf(full)||k.slice(REPORT_PREFIX.length); if(!id||!cat)continue;
+    const normalized={...full,id,category:cat,archiveFolderId:cat,
+      categoryName:folderNameOf(full,cat),archiveFolderName:folderNameOf(full,cat),
+      archiveRole:'teacher',archiveType:'performanceReport',stateKey:k,
+      storageEngine:'PerformanceArchiveCleanV5',__archiveSource:'clean',readOnly:false};
+    const meta=cleanMeta(normalized); if(!meta)continue;
+    const old=byId.get(id);
+    if(!old){byId.set(id,meta);added++;}
+    else byId.set(id,{...old,...meta});
+  }
+  const next=[...byId.values()];
+  if(added||next.length!==indexRows.length){
+    await E.bulkUpsert(MODULE,'user',[{key:INDEX_KEY,value:JSON.stringify(next),deleted:false}],{timeout:15000});
+  }
+  indexRows=next;indexLoaded=true;publish();
+  return added;
+}
 async function hydrateUnified(force=false){
   if(unifiedPromise&&!force)return unifiedPromise;
   unifiedPromise=(async()=>{
     await ensureIndex(force);
+    await recoverCurrentTeacherCloudReports();
     await hydrateLegacy(force);
     const existing=new Set(indexRows.map(idOf));
     const missing=[];

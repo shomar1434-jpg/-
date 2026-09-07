@@ -325,13 +325,23 @@ Deno.serve(async (request) => {
     if (!user) {
       const allUsersResult = await admin.from('users').select('*').limit(5000);
       if (!allUsersResult.error) {
+        // RL118: credential identity and school authorization are separate concerns.
+        // A legacy users row may still be pending/hold an old role while school_members
+        // already contains the authoritative ACTIVE membership for this school.
+        // We may use that row only to prove the credential identity; the active
+        // school_members row below remains mandatory before granting school access.
         const identityCandidates = (allUsersResult.data || []).filter(
-          (row: Record<string, unknown>) => activeStatus(row.status) && loginMatches(row, login),
+          (row: Record<string, unknown>) => loginMatches(row, login),
         );
-        const identityUser = identityCandidates.find((candidate: Record<string, unknown>) => {
+        let identityUser = identityCandidates.find((candidate: Record<string, unknown>) => {
           if (authUser) return text(candidate.id) === text(authUser.id) || lower(candidate.email) === normalizedLogin;
           return passwordMatches(candidate, password);
         }) || null;
+        // Supabase Auth can prove the identity even when the legacy users row is stale
+        // or absent. Create a minimal identity only for the subsequent membership check.
+        if (!identityUser && authUser && isUuid(authUser.id)) {
+          identityUser = { id: authUser.id, email: normalizedLogin, status: 'identity_verified' };
+        }
         if (identityUser) {
           try {
             let mq = await admin.from('school_members').select('*').eq('school_id', school.id).eq('user_id', identityUser.id).limit(1).maybeSingle();

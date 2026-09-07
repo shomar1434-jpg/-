@@ -436,6 +436,11 @@ body{font-family:'Tajawal',sans-serif;background:linear-gradient(150deg,#f0f7f4,
       💡 <strong>كيفية التقدير:</strong> التقدير (5) = تجاوز الهدف بامتياز | (4) = حقّق الهدف ويتجاوز التوقعات | (3) = حقّق الهدف بالمستوى المتوقع | (2) = حقّق جزءاً من الهدف | (1) = لم يتحقق الهدف
     </div>
   </div>
+  <div class="card" id="adminExecutionEvidenceCard" style="margin-top:14px">
+    <div class="ctitle"><div class="cicon">📎</div>شواهد تنفيذ أهداف الموظف/ـة</div>
+    <div class="inote">تُعرض هنا الشواهد التي رفعها الموظف/ـة تحت كل هدف في الخطة المعتمدة، من نفس المدرسة ونفس حساب الموظف.</div>
+    <div id="adminExecutionEvidenceList"><div class="hnote">جارٍ تحميل الشواهد...</div></div>
+  </div>
   <div class="btn-row">
     <button class="btn btn-o" onclick="go('p2',document.querySelectorAll('.tab')[1])">← السابق</button>
     <button class="btn btn-p" onclick="calcAll();go('p4',document.querySelectorAll('.tab')[3])">التالي: تقييم الجدارات ←</button>
@@ -1310,8 +1315,39 @@ window.addEventListener('load',function(){setTimeout(renderAdminEvalPanel,400)})
 <script src="platform-page-navigation.js?v=20260818-nav1"></script>
 
 <script src="platform-cloud-session.js?v=20260906-RL77-admin-baseline"></script>
+<script src="cloud-file-engine.js"></script>
+<script src="cloud-file-bootstrap.js"></script>
 <script src="platform-record-save-engine.js?v=20260830-records-final-v3"></script>
 
+<script id="ADMIN_EMPLOYEE_EVIDENCE_VIEW_RL114">
+(function(){
+  function qs(){return new URLSearchParams(location.search||'')}
+  function emp(){return qs().get('emp')||qs().get('id')||''}
+  function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]})}
+  function recordId(i){return 'admin_execution:'+String(emp()||'guest')+':goal:'+String(i)}
+  function icon(f){const n=String(f&&((f.display_name||f.original_name))||'').toLowerCase(),m=String(f&&f.mime_type||'');if(m.startsWith('image/'))return '🖼️';if(m==='application/pdf'||/\.pdf$/.test(n))return '📕';if(/\.(doc|docx)$/.test(n))return '📘';if(/\.(xls|xlsx)$/.test(n))return '📗';return '📄'}
+  async function openFile(id){try{await CloudFileEngine.open(String(id))}catch(e){alert('تعذر فتح الشاهد: '+String(e&&e.message||e))}}
+  window.openAdministrativeEmployeeEvidence=openFile;
+  function plan(){try{const a=JSON.parse(localStorage.getItem('administrative_employee_plans')||'[]');return a.find(x=>String(x.id)===String(emp()))||a.find(x=>String(x.contact)===String(emp()))||null}catch(_){return null}}
+  async function load(){
+    const box=document.getElementById('adminExecutionEvidenceList');if(!box||!emp())return;
+    try{
+      if(!window.CloudFileEngine){box.innerHTML='<div class="hnote">محرك الملفات غير جاهز.</div>';return;}
+      const p=plan(),goals=(p&&Array.isArray(p.goals))?p.goals:[];if(!goals.length){box.innerHTML='<div class="hnote">لا توجد أهداف معتمدة مرتبطة بهذا الموظف.</div>';return;}
+      let html='',total=0;
+      for(let i=0;i<goals.length;i++){
+        const r=await CloudFileEngine.listByLink({moduleKey:'employee_plan_evidence',recordType:'admin_execution_goal',recordId:recordId(i)}),links=(r&&r.links)||[];total+=links.length;
+        html+='<div style="border:1px solid #e2e8f0;border-radius:14px;padding:12px;margin:10px 0"><div style="font-weight:900;color:#0f6b4a;margin-bottom:8px">'+(i+1)+'. '+esc(goals[i].goal||('هدف '+(i+1)))+'</div>';
+        html+=links.length?links.map(function(l){const f=l.platform_files||{},name=f.display_name||f.original_name||'شاهد';return '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;border-top:1px solid #eef2f7;padding:8px 0"><span>'+icon(f)+' '+esc(name)+'</span><button type="button" class="btn btn-o" onclick="openAdministrativeEmployeeEvidence(\''+esc(f.id)+'\')">فتح الشاهد</button></div>'}).join(''):'<div class="hnote">لا توجد شواهد مرفوعة لهذا الهدف.</div>';
+        html+='</div>';
+      }
+      box.innerHTML=html+(total?'':'<div class="hnote">لم يتم العثور على شواهد مرفوعة بعد.</div>');
+    }catch(e){console.error('[admin employee eval evidence]',e);box.innerHTML='<div class="hnote">تعذر تحميل الشواهد: '+esc(e&&e.message||e)+'</div>';}
+  }
+  window.addEventListener('load',function(){setTimeout(load,900)});
+  window.addEventListener('platform-persistence-ready',function(){setTimeout(load,250)});
+})();
+</script>
 <script id="ADMIN_EMPLOYEE_SUPERVISOR_CONTEXT_RL77">
 (function(){
   const q=new URLSearchParams(location.search||'');
@@ -1340,5 +1376,6 @@ window.addEventListener('load',function(){setTimeout(renderAdminEvalPanel,400)})
 })();
 </script>
 
+<!-- RL114: manager evaluation reads administrative employee goal evidence from platform-files links. -->
 </body>
 </html>

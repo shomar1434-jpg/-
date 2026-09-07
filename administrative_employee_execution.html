@@ -67,11 +67,40 @@ async function saveExecution(show){
  try{if(!window.PlatformRecordSaveEngine||PlatformRecordSaveEngine.isSystemAdminContext())throw new Error('محرك الحفظ السحابي غير متاح');const saved=await PlatformRecordSaveEngine.save({moduleKey:'admin_employee_records',recordType:'admin_execution',recordId:String(ex.employeeId||empId),academicYear:ex.year||localStorage.getItem('school_info_academic_year')||'1448',semester:ex.semester||'سنوي',scope:'user',folderId:'admin_execution',title:'تنفيذ خطة الأداء',data:ex});if(saved&&saved.verification)await saved.verification;localStorage.setItem(ek,JSON.stringify(ex));if(idx>-1)savePlans(arr);try{localStorage.setItem('administrative_employee_execution_touch',new Date().toISOString())}catch(_){ }updateSummary();try{if(show)window.SchoolActivity?.emit(ex.progress>=100?'record_completed':'record_updated','حفظ تنفيذ خطة الأداء',{progress:ex.progress,evidence_count:ex.evidenceCount,employee_id:ex.employeeId});}catch(_){ }if(show)alert('تم حفظ تنفيذ خطة الأداء وشواهد الأهداف والتحقق سحابيًا.');return true;}catch(e){if(beforeEx===null)localStorage.removeItem(ek);else localStorage.setItem(ek,beforeEx);if(beforePlans===null)localStorage.removeItem('administrative_employee_plans');else localStorage.setItem('administrative_employee_plans',beforePlans);console.error('[admin_execution cloud save]',e);if(show)alert('تعذر تأكيد الحفظ السحابي؛ لم يتم اعتماد التغيير.');return false;}
 }
 function updateSummary(){let ex=currentExecution();mProgress.textContent=ex.progress+'%';}
-function addFileEvidence(i,input){let files=Array.from((input&&input.files)||[]);if(!files.length)return;let ex=currentExecution();ex.goals[i].evidence=ex.goals[i].evidence||[];let pending=files.length;files.forEach(function(f){let r=new FileReader();r.onload=function(){let kind=(f.type&&f.type.startsWith('image/'))?'image':(f.type==='application/pdf'||/\.pdf$/i.test(f.name))?'pdf':(/\.(doc|docx)$/i.test(f.name))?'word':(/\.(xls|xlsx)$/i.test(f.name))?'excel':'file';ex.goals[i].evidence.push({type:kind,name:f.name,data:r.result,mime:f.type||'',at:new Date().toISOString()});pending--;if(pending===0){localStorage.setItem(execKey(),JSON.stringify(ex));renderEvidence(i,ex.goals[i].evidence);saveExecution(false);input.value='';}};r.readAsDataURL(f);});}
+function adminEvidenceKind(file){const n=String(file&&file.name||''),m=String(file&&file.type||'');return m.startsWith('image/')?'image':(m==='application/pdf'||/\.pdf$/i.test(n))?'pdf':(/\.(doc|docx)$/i.test(n))?'word':(/\.(xls|xlsx)$/i.test(n))?'excel':'file'}
+function adminEvidenceRecordId(i){return 'admin_execution:'+String(empId||'guest')+':goal:'+String(i)}
+async function addFileEvidence(i,input){
+  const files=Array.from((input&&input.files)||[]);if(!files.length)return;
+  if(!window.CloudFileEngine){alert('محرك رفع الملفات السحابي غير جاهز. أعد المحاولة بعد لحظات.');input.value='';return;}
+  const ex=currentExecution();if(!ex.goals[i])return;ex.goals[i].evidence=ex.goals[i].evidence||[];
+  let ok=0,failed=[];
+  for(const f of files){
+    try{
+      const up=await CloudFileEngine.upload({file:f,ownershipScope:'user',moduleKey:'employee_plan_evidence',recordType:'admin_execution_goal',recordId:adminEvidenceRecordId(i),relationType:'evidence',displayName:f.name,metadata:{employeeId:String(empId||''),goalIndex:i,goal:String(ex.goals[i].goal||''),schoolId:String(ex.schoolId||schoolScope||''),source:'administrative_employee_execution'}});
+      const row=up&&up.file;
+      if(!row||!row.id)throw new Error('لم يرجع مرجع الملف السحابي');
+      ex.goals[i].evidence.push({type:adminEvidenceKind(f),name:f.name,fileId:String(row.id),mime:f.type||'',size:Number(f.size||0),at:new Date().toISOString(),storage:'platform-files'});ok++;
+    }catch(err){console.error('[admin employee evidence upload]',err);failed.push(f.name);}
+  }
+  localStorage.setItem(execKey(),JSON.stringify(ex));renderEvidence(i,ex.goals[i].evidence);await saveExecution(false);input.value='';
+  if(failed.length)alert('تم رفع '+ok+' ملف، وتعذر رفع: '+failed.join('، '));
+}
 function addLinkEvidence(i){let u=document.getElementById('url-'+i),t=document.getElementById('urlTitle-'+i);let url=(u.value||'').trim();if(!url)return;let ex=currentExecution();ex.goals[i].evidence=ex.goals[i].evidence||[];ex.goals[i].evidence.push({type:'link',name:(t.value||'رابط شاهد'),url:url,at:new Date().toISOString()});localStorage.setItem(execKey(),JSON.stringify(ex));renderEvidence(i,ex.goals[i].evidence);saveExecution(false);u.value='';t.value='';}
 function removeEvidence(i,j){let ex=currentExecution();if(ex.goals[i]&&ex.goals[i].evidence){ex.goals[i].evidence.splice(j,1);localStorage.setItem(execKey(),JSON.stringify(ex));renderEvidence(i,ex.goals[i].evidence);saveExecution(false);}}
-function evidenceIcon(e){if(e.type==='image')return '<img class="thumb" src="'+e.data+'">';if(e.type==='link')return '🔗';if(e.type==='pdf')return '📕';if(e.type==='word')return '📘';if(e.type==='excel')return '📗';return '📄'}
-function renderEvidence(i,ev){let box=document.getElementById('ev-'+i);if(!box)return;box.innerHTML=(ev||[]).map((e,j)=>`<div class="evItem"><div>${evidenceIcon(e)} ${e.type==='link'?'<a target="_blank" href="'+esc(e.url)+'">'+esc(e.name)+'</a>':'<a target="_blank" href="'+esc(e.data||'#')+'">'+esc(e.name)+'</a>'}</div><button class="btn danger" onclick="removeEvidence(${i},${j})">حذف</button></div>`).join('')||'<div class="meta">لا توجد شواهد مرفوعة لهذا الهدف بعد.</div>';let ex=loadExec();let g=ex.goals&&ex.goals[i];if(g){let p=document.getElementById('prog-'+i);if(p)p.value=String(g.progress||0);}}
+function evidenceIcon(e){if(e.type==='image'&&e.data)return '<img class="thumb" src="'+e.data+'">';if(e.type==='image')return '🖼️';if(e.type==='link')return '🔗';if(e.type==='pdf')return '📕';if(e.type==='word')return '📘';if(e.type==='excel')return '📗';return '📄'}
+async function openStoredEvidence(fileId){try{if(!fileId||!window.CloudFileEngine)throw new Error('مرجع الملف غير متاح');await CloudFileEngine.open(String(fileId));}catch(e){console.error('[admin employee evidence open]',e);alert('تعذر فتح الشاهد: '+String(e&&e.message||e));}}
+function renderEvidence(i,ev){let box=document.getElementById('ev-'+i);if(!box)return;box.innerHTML=(ev||[]).map((e,j)=>{let opener='';if(e.type==='link')opener='<a target="_blank" href="'+esc(e.url)+'">'+esc(e.name)+'</a>';else if(e.fileId)opener='<button class="btn light" type="button" onclick="openStoredEvidence(\''+esc(e.fileId)+'\')">فتح '+esc(e.name)+'</button>';else opener='<a target="_blank" href="'+esc(e.data||'#')+'">'+esc(e.name)+'</a>';return `<div class="evItem"><div>${evidenceIcon(e)} ${opener}</div><button class="btn danger" onclick="removeEvidence(${i},${j})">حذف</button></div>`}).join('')||'<div class="meta">لا توجد شواهد مرفوعة لهذا الهدف بعد.</div>';let ex=loadExec();let g=ex.goals&&ex.goals[i];if(g){let p=document.getElementById('prog-'+i);if(p)p.value=String(g.progress||0);}}
+async function hydrateEvidenceFilesFromCloud(){
+  try{
+    if(!window.CloudFileEngine)return false;const plan=findPlan();if(!plan)return false;const ex=syncExecution(plan,loadExec());let changed=false;
+    for(let i=0;i<ex.goals.length;i++){
+      const r=await CloudFileEngine.listByLink({moduleKey:'employee_plan_evidence',recordType:'admin_execution_goal',recordId:adminEvidenceRecordId(i)});const links=(r&&r.links)||[];ex.goals[i].evidence=ex.goals[i].evidence||[];
+      links.forEach(function(link){const f=link&&link.platform_files;if(!f||!f.id)return;if(ex.goals[i].evidence.some(e=>String(e.fileId||'')===String(f.id)))return;ex.goals[i].evidence.push({type:adminEvidenceKind({name:f.original_name||f.display_name||'',type:f.mime_type||''}),name:f.display_name||f.original_name||'شاهد',fileId:String(f.id),mime:f.mime_type||'',size:Number(f.file_size||0),at:f.created_at||link.created_at||'',storage:'platform-files'});changed=true;});
+    }
+    if(changed){ex.evidenceCount=ex.goals.reduce((n,g)=>n+((g.evidence||[]).length),0);localStorage.setItem(execKey(),JSON.stringify(ex));await saveExecution(false);render();}return changed;
+  }catch(e){console.warn('تعذر استعادة شواهد الموظف الإداري من الملفات السحابية',e);return false;}
+}
+window.addEventListener('load',function(){setTimeout(hydrateEvidenceFilesFromCloud,500)});
 function adminExecutionClean(v){return String(v==null?'':v).trim().replace(/[^\p{L}\p{N}._:@/\-]+/gu,'_').slice(0,160)}
 function adminExecutionYear(v){const m=String(v==null?'':v).trim().match(/\d{4}/);return m?m[0]:(String(v==null?'':v).trim()||'unspecified')}
 function adminExecutionSemester(v){const n=String(v==null?'':v).trim().replace(/\s+/g,' ');if(/الأول|الاول|semester_1/.test(n))return 'semester_1';if(/الثاني|semester_2/.test(n))return 'semester_2';if(/الثالث|semester_3/.test(n))return 'semester_3';return adminExecutionClean(n||'annual')}
@@ -167,5 +196,6 @@ window.addEventListener('platform-persistence-ready',function(){render()});
 })();
 </script>
 
+<!-- RL114: administrative employee evidence stored as platform file refs; shared with supervisor within same school. -->
 </body>
 </html>

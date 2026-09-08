@@ -305,9 +305,23 @@ Deno.serve(async (request) => {
       );
     }
 
-    const candidates = (usersResult.data || []).filter(
-      (row: Record<string, unknown>) => activeStatus(row.status) && loginMatches(row, login),
+    // RL139 — failure-stage diagnostics. Keep user-facing login errors generic;
+    // details carries only an opaque diagnostic code (no password, no PII).
+    const sameSchoolLoginRows = (usersResult.data || []).filter(
+      (row: Record<string, unknown>) => loginMatches(row, login),
     );
+    const candidates = sameSchoolLoginRows.filter(
+      (row: Record<string, unknown>) => activeStatus(row.status),
+    );
+    const sameSchoolCredentialMatch = candidates.some((row: Record<string, unknown>) =>
+      authUser
+        ? text(row.id) === text(authUser.id) || lower(row.email) === normalizedLogin
+        : passwordMatches(row, password),
+    );
+    let diagnosticIdentityFound = sameSchoolLoginRows.length > 0;
+    let diagnosticCredentialValidated = sameSchoolCredentialMatch || Boolean(authUser);
+    let diagnosticMembershipFound = false;
+    let diagnosticMembershipActive = false;
 
     let user =
       candidates.find((candidate: Record<string, unknown>) => {
@@ -333,6 +347,7 @@ Deno.serve(async (request) => {
         const identityCandidates = (allUsersResult.data || []).filter(
           (row: Record<string, unknown>) => loginMatches(row, login),
         );
+        diagnosticIdentityFound = diagnosticIdentityFound || identityCandidates.length > 0;
         let identityUser = identityCandidates.find((candidate: Record<string, unknown>) => {
           if (authUser) return text(candidate.id) === text(authUser.id) || lower(candidate.email) === normalizedLogin;
           return passwordMatches(candidate, password);
@@ -343,12 +358,15 @@ Deno.serve(async (request) => {
           identityUser = { id: authUser.id, email: normalizedLogin, status: 'identity_verified' };
         }
         if (identityUser) {
+          diagnosticCredentialValidated = true;
           try {
             let mq = await admin.from('school_members').select('*').eq('school_id', school.id).eq('user_id', identityUser.id).limit(1).maybeSingle();
             if ((!mq.data || mq.error) && lower(identityUser.email)) {
               mq = await admin.from('school_members').select('*').eq('school_id', school.id).eq('email', lower(identityUser.email)).limit(1).maybeSingle();
             }
-            if (!mq.error && mq.data && activeStatus(mq.data.status)) {
+            diagnosticMembershipFound = Boolean(!mq.error && mq.data);
+            diagnosticMembershipActive = Boolean(!mq.error && mq.data && activeStatus(mq.data.status));
+            if (diagnosticMembershipActive) {
               resolvedMembership = mq.data;
               user = { ...identityUser, id: mq.data.user_id || identityUser.id, school_id: school.id, role: mq.data.role || identityUser.role };
             }
@@ -358,13 +376,29 @@ Deno.serve(async (request) => {
     }
 
     if (!user) {
+      let diagnosticCode = 'LD299';
+      if (!diagnosticIdentityFound) diagnosticCode = 'LD201';
+      else if (sameSchoolLoginRows.length > 0 && candidates.length === 0) diagnosticCode = 'LD202';
+      else if (candidates.length > 0 && !sameSchoolCredentialMatch && !authUser) diagnosticCode = 'LD203';
+      else if (diagnosticCredentialValidated && !diagnosticMembershipFound) diagnosticCode = 'LD204';
+      else if (diagnosticCredentialValidated && diagnosticMembershipFound && !diagnosticMembershipActive) diagnosticCode = 'LD205';
       console.warn('[platform-session]', requestId, 'user_not_resolved', {
-        login: normalizedLogin,
+        diagnosticCode,
         schoolId: school.id,
         authValidated: Boolean(authUser),
-        candidateCount: candidates.length,
+        sameSchoolLoginCount: sameSchoolLoginRows.length,
+        activeCandidateCount: candidates.length,
+        identityFound: diagnosticIdentityFound,
+        credentialValidated: diagnosticCredentialValidated,
+        membershipFound: diagnosticMembershipFound,
+        membershipActive: diagnosticMembershipActive,
       });
-      return json({error:'بيانات الدخول غير صحيحة أو الحساب غير مرتبط بهذه المدرسة',code:'USER_NOT_RESOLVED',requestId},401);
+      return json({
+        error:'بيانات الدخول غير صحيحة أو الحساب غير مرتبط بهذه المدرسة',
+        code:'USER_NOT_RESOLVED',
+        details:diagnosticCode,
+        requestId
+      },401);
     }
 
     if (!isUuid(user.id)) {
@@ -372,6 +406,7 @@ Deno.serve(async (request) => {
         {
           error: 'معرّف المستخدم غير صالح لإنشاء جلسة الملفات',
           code: 'INVALID_PUBLIC_USER_ID',
+          details: 'LD301',
           requestId,
         },
         409,
@@ -398,13 +433,13 @@ Deno.serve(async (request) => {
     if(requestedLoginRole) selectedMembership=activeMemberships.find((m:any)=>lower(m.role)===requestedLoginRole)||null;
     if(!selectedMembership&&activeMemberships.length===1) selectedMembership=activeMemberships[0];
     if(!selectedMembership&&activeMemberships.length>1&&preferredRole) selectedMembership=activeMemberships.find((m:any)=>lower(m.role)===preferredRole)||null;
-    if(requestedLoginRole&&!selectedMembership) return json({error:'الحساب لا يملك الدور المطلوب في هذه المدرسة',code:'LOGIN_ROLE_NOT_ALLOWED',requestId},403);
-    if(!selectedMembership&&activeMemberships.length>1) return json({error:'للحساب أكثر من دور في المدرسة. اختر الدور المطلوب قبل الدخول.',code:'ROLE_SELECTION_REQUIRED',roles:activeMemberships.map((m:any)=>text(m.role)),requestId},409);
+    if(requestedLoginRole&&!selectedMembership) return json({error:'الحساب لا يملك الدور المطلوب في هذه المدرسة',code:'LOGIN_ROLE_NOT_ALLOWED',details:'LD401',requestId},403);
+    if(!selectedMembership&&activeMemberships.length>1) return json({error:'للحساب أكثر من دور في المدرسة. اختر الدور المطلوب قبل الدخول.',code:'ROLE_SELECTION_REQUIRED',details:'LD402',roles:activeMemberships.map((m:any)=>text(m.role)),requestId},409);
     if(!selectedMembership&&activeMemberships.length===0){
       const legacyRole=text(user.role||'member');
       const sameSchool=String(user.school_id||school.id)===String(school.id);
       const managerLegacy=lower(legacyRole)==='manager'&&lower(school.manager_email||'')===normalizedLogin;
-      if(!sameSchool&&!managerLegacy)return json({error:'عضوية المستخدم في المدرسة غير فعالة',code:'MEMBERSHIP_INACTIVE',requestId},403);
+      if(!sameSchool&&!managerLegacy)return json({error:'عضوية المستخدم في المدرسة غير فعالة',code:'MEMBERSHIP_INACTIVE',details:'LD403',requestId},403);
       selectedMembership={role:legacyRole,status:'active',user_id:user.id,school_id:school.id};
     }
     const role = text(selectedMembership?.role || user.role || 'member');
@@ -438,6 +473,7 @@ Deno.serve(async (request) => {
           error: 'تعذر إنشاء جلسة الملفات السحابية',
           details: sessionInsert.error.message,
           code: 'SESSION_INSERT_FAILED',
+          details: 'LD501',
           requestId,
         },
         500,

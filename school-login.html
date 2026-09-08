@@ -901,8 +901,11 @@
       // التوافق القديم يبقى فقط عندما ثبت محليًا أن الحساب نفسه Active داخل المدرسة.
       if(!platformSessionPayload){
         if(!user){
-          console.warn('RL138: server and legacy login both failed', platformSessionError);
-          setMsg('بيانات الدخول غير صحيحة أو الحساب غير موجود في هذه المدرسة');
+          console.warn('RL139: server and legacy login both failed', platformSessionError);
+          const diagCode = String(platformSessionError && platformSessionError.details || '').trim();
+          const reqId = String(platformSessionError && platformSessionError.requestId || '').trim();
+          const suffix = diagCode ? ` — رمز التشخيص: ${diagCode}${reqId ? ` / ${reqId}` : ''}` : '';
+          setMsg('بيانات الدخول غير صحيحة أو الحساب غير موجود في هذه المدرسة' + suffix);
           return;
         }
         if(!isActiveAccount(user)){ setMsg('الحساب غير مفعل بعد'); return; }

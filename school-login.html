@@ -509,7 +509,7 @@
 
 <script src="platform-cloud-session.js"></script>
 <!-- RL115: strict independent-school link binding; fail closed on school mismatch. -->
-<!-- RL135: server-first school-bound login compatibility + RL122 automatic role routing. -->
+<!-- RL136: legacy active-account school-bound login + cloud-session compatibility merge. -->
 <script id="independent-school-login-engine">
 (function(){
   'use strict';
@@ -858,66 +858,47 @@
       const school = await resolveActiveSchool();
       if((targetSchoolId || targetSchoolCode) && !school){ setMsg('رابط المدرسة غير مرتبط بسجل مدرسة صحيح. تم إيقاف الدخول حمايةً لعزل المدارس.'); return; }
       if((targetSchoolId || targetSchoolCode) && !schoolMatchesLinkContract(school)){ setMsg('تم رفض الدخول لأن هوية المدرسة لا تطابق رابطها المستقل.'); return; }
-      // RL135 — دمج مسار الدخول القديم مع عقد الجلسة الآمن الحالي.
-      // لا نجعل نجاح استعلام users المباشر من المتصفح شرطًا مسبقًا، لأن RLS/anon قد
-      // يحجب الصف رغم أن الحساب صحيح ومفعل. الخادم هو المرجع الأول للتحقق من
-      // بيانات الدخول وربطها بالمدرسة، ثم نستخدم القراءة المحلية فقط لإثراء بيانات الواجهة.
+      // RL136 — توافق الدخول القديم المربوط بالمدرسة مع عقد الجلسة السحابي الحالي.
+      // القاعدة الأساسية التي كانت تعمل: حساب موجود داخل نفس المدرسة + كلمة مرور صحيحة + Active.
+      // نحاول إنشاء platform-session للاستفادة من العزل والخدمات السحابية، لكن فشل طبقة
+      // الجلسة لا يلغي حسابًا سبق أن تحقق محليًا/من users داخل نفس المدرسة.
       let user = await loginFromSupabase(loginId,password);
       if(!user) user = loginFromLocal(loginId,password,school);
-      let platformSessionPayload = null;
-      const expectedSessionSchoolId=String((user&&(user.schoolId||user.school_id))||targetSchoolId||(school&&(school.schoolId||school.id||school.school_id))||'').trim();
-      if(!window.PlatformCloudSession){
-        setMsg('محرك جلسة المدرسة غير متاح حالياً. لم يتم فتح القسم حمايةً لعزل المدارس.');
-        return;
-      }
-      try{
-        platformSessionPayload = await window.PlatformCloudSession.open(loginId,password,expectedSessionSchoolId);
-        const issuedSchoolId=String(platformSessionPayload&&platformSessionPayload.schoolId||window.PlatformCloudSession.schoolId?.()||'').trim();
-        const issuedUserId=String(platformSessionPayload&&platformSessionPayload.userId||window.PlatformCloudSession.userId?.()||'').trim();
-        const issuedDbRole=String(platformSessionPayload&&platformSessionPayload.role||window.PlatformCloudSession.role?.()||'').trim();
-        if(expectedSessionSchoolId && issuedSchoolId!==expectedSessionSchoolId) throw Object.assign(new Error('LOGIN_SESSION_SCHOOL_MISMATCH'),{code:'LOGIN_SESSION_SCHOOL_MISMATCH'});
-        if(!issuedSchoolId || !issuedUserId || !issuedDbRole) throw Object.assign(new Error('LOGIN_SESSION_IDENTITY_MISSING'),{code:'LOGIN_SESSION_IDENTITY_MISSING'});
-        // إذا تعذر على المتصفح قراءة سجل users لكن الخادم أثبت الهوية والعضوية،
-        // نبني هوية واجهة دنيا من الجلسة الصادرة بدل رفض الحساب الصحيح.
-        if(!user){
-          user = {
-            id: issuedUserId,
-            email: loginId,
-            full_name: loginId,
-            name: loginId,
-            role: issuedDbRole,
-            dbRole: issuedDbRole,
-            status: 'active',
-            active: true,
-            isActive: true,
-            schoolId: issuedSchoolId,
-            school_id: issuedSchoolId,
-            schoolName: (school&&(school.schoolName||school.school_name||school.name))||''
-          };
-        }
-      }catch(sessionError){
-        console.error('تعذر إنشاء جلسة المدرسة الآمنة:',sessionError);
-        if(sessionError && sessionError.code==='ROLE_SELECTION_REQUIRED'){
-          setMsg('يوجد أكثر من دور فعال مرتبط بنفس الحساب في هذه المدرسة. يلزم تصحيح ارتباط الحساب من إدارة المدرسة قبل الدخول.');
-        }else if(sessionError && sessionError.code==='LOGIN_ROLE_NOT_ALLOWED'){
-          setMsg('تعذر مطابقة الدور الوظيفي لهذا الحساب مع عضوية المدرسة.');
-        }else if(!user){
-          setMsg('بيانات الدخول غير صحيحة أو الحساب غير موجود في هذه المدرسة');
-        }else{
-          setMsg('تعذر إنشاء جلسة دخول آمنة لهذه المدرسة. لم يتم فتح القسم لحماية عزل المدارس. أعد المحاولة.');
-        }
-        return;
-      }
       if(!user){ setMsg('بيانات الدخول غير صحيحة أو الحساب غير موجود في هذه المدرسة'); return; }
       if(!isActiveAccount(user)){ setMsg('الحساب غير مفعل بعد'); return; }
       user = normalizeLocalUser(user, school);
-      // RL122: الدور الصادر من جلسة الخادم هو المرجع الوحيد للتوجيه.
-      // هذا يطابق طريقة النسخة القديمة في تعريف المستخدم من حسابه، لكن مع إبقاء school_members كمرجع صلاحية آمن.
-      const authoritativeDbRole = String(platformSessionPayload&&platformSessionPayload.role||'').trim();
+
+      const boundResolvedSchoolId=String((school&&(school.schoolId||school.id||school.school_id))||'').trim();
+      const userSchoolId=String(user.schoolId||user.school_id||boundResolvedSchoolId||'').trim();
+      if(boundResolvedSchoolId && userSchoolId && userSchoolId!==boundResolvedSchoolId){
+        setMsg('تم رفض الدخول لأن الحساب غير مرتبط بهذه المدرسة.');
+        return;
+      }
+
+      let platformSessionPayload = null;
+      let sessionCompatFallback = false;
+      if(window.PlatformCloudSession){
+        const expectedSessionSchoolId=String(userSchoolId||targetSchoolId||boundResolvedSchoolId||'').trim();
+        try{
+          platformSessionPayload = await window.PlatformCloudSession.open(loginId,password,expectedSessionSchoolId);
+          const issuedSchoolId=String(platformSessionPayload&&platformSessionPayload.schoolId||window.PlatformCloudSession.schoolId?.()||'').trim();
+          if(expectedSessionSchoolId && issuedSchoolId && issuedSchoolId!==expectedSessionSchoolId) throw new Error('LOGIN_SESSION_SCHOOL_MISMATCH');
+        }catch(sessionError){
+          console.warn('RL136: تعذر إنشاء الجلسة السحابية، تم استخدام دخول الحساب النشط المربوط بالمدرسة.',sessionError);
+          sessionCompatFallback = true;
+        }
+      }else{
+        sessionCompatFallback = true;
+      }
+
+      // عند نجاح الجلسة نأخذ الدور منها؛ وعند تعذرها نعود للدور المثبت في حساب المدرسة
+      // كما كان قبل تشديد عقد الدخول. لا يوجد اختيار يدوي للدور ولا نقل بين المدارس.
+      const authoritativeDbRole = String(platformSessionPayload&&platformSessionPayload.role||user.dbRole||user.role||'').trim();
       if(!authoritativeDbRole){ setMsg('تعذر تحديد الدور الوظيفي المرتبط بهذا الحساب في المدرسة.'); return; }
       const role = normalizeRole(authoritativeDbRole);
       user.role = role;
       user.dbRole = authoritativeDbRole;
+      user.sessionCompatFallback = sessionCompatFallback;
       const resolvedSchoolId = (school && (school.schoolId || school.id || school.school_id)) || '';
       const schoolId = user.schoolId || resolvedSchoolId || targetSchoolId || '';
       const schoolName = user.schoolName || (school && (school.schoolName || school.school_name || school.name)) || '';

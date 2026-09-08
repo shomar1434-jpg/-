@@ -509,7 +509,7 @@
 
 <script src="platform-cloud-session.js"></script>
 <!-- RL115: strict independent-school link binding; fail closed on school mismatch. -->
-<!-- RL122: email/account-bound automatic role resolution + server-membership authoritative routing. -->
+<!-- RL135: server-first school-bound login compatibility + RL122 automatic role routing. -->
 <script id="independent-school-login-engine">
 (function(){
   'use strict';
@@ -858,37 +858,54 @@
       const school = await resolveActiveSchool();
       if((targetSchoolId || targetSchoolCode) && !school){ setMsg('رابط المدرسة غير مرتبط بسجل مدرسة صحيح. تم إيقاف الدخول حمايةً لعزل المدارس.'); return; }
       if((targetSchoolId || targetSchoolCode) && !schoolMatchesLinkContract(school)){ setMsg('تم رفض الدخول لأن هوية المدرسة لا تطابق رابطها المستقل.'); return; }
+      // RL135 — دمج مسار الدخول القديم مع عقد الجلسة الآمن الحالي.
+      // لا نجعل نجاح استعلام users المباشر من المتصفح شرطًا مسبقًا، لأن RLS/anon قد
+      // يحجب الصف رغم أن الحساب صحيح ومفعل. الخادم هو المرجع الأول للتحقق من
+      // بيانات الدخول وربطها بالمدرسة، ثم نستخدم القراءة المحلية فقط لإثراء بيانات الواجهة.
       let user = await loginFromSupabase(loginId,password);
       if(!user) user = loginFromLocal(loginId,password,school);
-      // RL116 — Independent-school teacher entry/session handoff.
-      // Do not navigate to teacher (or any role page) unless the server-issued
-      // platform session has been established for the exact school being opened.
-      // Previously a failed PlatformCloudSession.open() was only logged and the
-      // browser continued to teacher.html. teacher.html then remained under
-      // teacher-auth-pending (body hidden), so the "دخول للنظام" window never appeared.
       let platformSessionPayload = null;
-      if(user && window.PlatformCloudSession){
-        const expectedSessionSchoolId=String(user.schoolId||user.school_id||targetSchoolId||(school&&(school.schoolId||school.id||school.school_id))||'').trim();
-        try{
-          platformSessionPayload = await window.PlatformCloudSession.open(loginId,password,expectedSessionSchoolId);
-          const issuedSchoolId=String(platformSessionPayload&&platformSessionPayload.schoolId||window.PlatformCloudSession.schoolId?.()||'').trim();
-          const issuedUserId=String(platformSessionPayload&&platformSessionPayload.userId||window.PlatformCloudSession.userId?.()||'').trim();
-          const issuedDbRole=String(platformSessionPayload&&platformSessionPayload.role||window.PlatformCloudSession.role?.()||'').trim();
-          if(expectedSessionSchoolId && issuedSchoolId!==expectedSessionSchoolId) throw new Error('LOGIN_SESSION_SCHOOL_MISMATCH');
-          if(!issuedSchoolId || !issuedUserId || !issuedDbRole) throw new Error('LOGIN_SESSION_IDENTITY_MISSING');
-        }catch(sessionError){
-          console.error('تعذر إنشاء جلسة المدرسة الآمنة:',sessionError);
-          if(sessionError && sessionError.code==='ROLE_SELECTION_REQUIRED'){
-            setMsg('يوجد أكثر من دور فعال مرتبط بنفس الحساب في هذه المدرسة. يلزم تصحيح ارتباط الحساب من إدارة المدرسة قبل الدخول.');
-          }else if(sessionError && sessionError.code==='LOGIN_ROLE_NOT_ALLOWED'){
-            setMsg('تعذر مطابقة الدور الوظيفي لهذا الحساب مع عضوية المدرسة.');
-          }else{
-            setMsg('تعذر إنشاء جلسة دخول آمنة لهذه المدرسة. لم يتم فتح القسم لحماية عزل المدارس. أعد المحاولة.');
-          }
-          return;
+      const expectedSessionSchoolId=String((user&&(user.schoolId||user.school_id))||targetSchoolId||(school&&(school.schoolId||school.id||school.school_id))||'').trim();
+      if(!window.PlatformCloudSession){
+        setMsg('محرك جلسة المدرسة غير متاح حالياً. لم يتم فتح القسم حمايةً لعزل المدارس.');
+        return;
+      }
+      try{
+        platformSessionPayload = await window.PlatformCloudSession.open(loginId,password,expectedSessionSchoolId);
+        const issuedSchoolId=String(platformSessionPayload&&platformSessionPayload.schoolId||window.PlatformCloudSession.schoolId?.()||'').trim();
+        const issuedUserId=String(platformSessionPayload&&platformSessionPayload.userId||window.PlatformCloudSession.userId?.()||'').trim();
+        const issuedDbRole=String(platformSessionPayload&&platformSessionPayload.role||window.PlatformCloudSession.role?.()||'').trim();
+        if(expectedSessionSchoolId && issuedSchoolId!==expectedSessionSchoolId) throw Object.assign(new Error('LOGIN_SESSION_SCHOOL_MISMATCH'),{code:'LOGIN_SESSION_SCHOOL_MISMATCH'});
+        if(!issuedSchoolId || !issuedUserId || !issuedDbRole) throw Object.assign(new Error('LOGIN_SESSION_IDENTITY_MISSING'),{code:'LOGIN_SESSION_IDENTITY_MISSING'});
+        // إذا تعذر على المتصفح قراءة سجل users لكن الخادم أثبت الهوية والعضوية،
+        // نبني هوية واجهة دنيا من الجلسة الصادرة بدل رفض الحساب الصحيح.
+        if(!user){
+          user = {
+            id: issuedUserId,
+            email: loginId,
+            full_name: loginId,
+            name: loginId,
+            role: issuedDbRole,
+            dbRole: issuedDbRole,
+            status: 'active',
+            active: true,
+            isActive: true,
+            schoolId: issuedSchoolId,
+            school_id: issuedSchoolId,
+            schoolName: (school&&(school.schoolName||school.school_name||school.name))||''
+          };
         }
-      }else if(user){
-        setMsg('محرك جلسة المدرسة غير متاح حالياً. لم يتم فتح القسم لحماية عزل المدارس.');
+      }catch(sessionError){
+        console.error('تعذر إنشاء جلسة المدرسة الآمنة:',sessionError);
+        if(sessionError && sessionError.code==='ROLE_SELECTION_REQUIRED'){
+          setMsg('يوجد أكثر من دور فعال مرتبط بنفس الحساب في هذه المدرسة. يلزم تصحيح ارتباط الحساب من إدارة المدرسة قبل الدخول.');
+        }else if(sessionError && sessionError.code==='LOGIN_ROLE_NOT_ALLOWED'){
+          setMsg('تعذر مطابقة الدور الوظيفي لهذا الحساب مع عضوية المدرسة.');
+        }else if(!user){
+          setMsg('بيانات الدخول غير صحيحة أو الحساب غير موجود في هذه المدرسة');
+        }else{
+          setMsg('تعذر إنشاء جلسة دخول آمنة لهذه المدرسة. لم يتم فتح القسم لحماية عزل المدارس. أعد المحاولة.');
+        }
         return;
       }
       if(!user){ setMsg('بيانات الدخول غير صحيحة أو الحساب غير موجود في هذه المدرسة'); return; }

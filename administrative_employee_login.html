@@ -16,6 +16,7 @@ const ADMIN_CTX_KEY='administrative_employee_tab_session_v1';
 let schoolId=String(qs.get('schoolId')||qs.get('school_id')||'').trim();
 let schoolCode=String(qs.get('schoolCode')||qs.get('school')||'').trim();
 let schoolName=String(qs.get('schoolName')||qs.get('school_name')||'').trim();
+let registrationCode=String(qs.get('reg')||qs.get('token')||qs.get('registrationCode')||'').trim();
 const $=id=>document.getElementById(id);
 let loginBusy=false;
 function msg(t,k='err'){$('msg').textContent=t;$('msg').className='msg '+k}
@@ -23,8 +24,22 @@ function normRole(r){r=String(r||'').trim().toLowerCase();return r==='admin_empl
 function supervisorFromLabel(label){const m=String(label||'').match(/^ADMIN_EMPLOYEE_SUPERVISOR:(manager|agent)$/i);return m?m[1].toLowerCase():'manager'}
 async function verifySchoolLink(){
   if(!schoolId)throw new Error('رابط دخول الموظف الإداري غير مرتبط بمدرسة. استخدم الرابط الصادر من المدير أو الوكيل.');
-  if(!window.SmartSchoolSupabase?.platformDirectoryCall)throw new Error('مصدر المدرسة الآمن غير متاح.');
-  const d=await window.SmartSchoolSupabase.platformDirectoryCall('inspect-school',{schoolId,schoolCode},false),row=d.school||null;if(!row||String(row.id)!==schoolId)throw new Error('رابط الدخول لا يطابق مدرسة فعالة.');if(schoolCode&&String(row.school_code||'')!==schoolCode)throw new Error('رمز المدرسة في رابط الدخول غير مطابق.');schoolCode=String(row.school_code||schoolCode||'');schoolName=String(row.school_name||schoolName||'');$('schoolTitle').textContent='الدخول إلى بوابة الموظف الإداري — '+schoolName;const sb=$('schoolSelect');if(sb)sb.textContent=schoolName;return row;
+  // RL137: الروابط الجديدة تحمل registrationCode فتتحقق مسبقًا من المدرسة عبر platform-directory.
+  // الروابط القديمة الصادرة قبل RL137 لا تحمل الرمز؛ لا نكسرها هنا، بل نؤجل التحقق
+  // النهائي إلى platform-session الذي يثبت المدرسة والحساب والدور قبل فتح البوابة.
+  let row=null;
+  if(registrationCode){
+    if(!window.SmartSchoolSupabase?.platformDirectoryCall)throw new Error('مصدر المدرسة الآمن غير متاح.');
+    const d=await window.SmartSchoolSupabase.platformDirectoryCall('inspect-school',{schoolId,schoolCode,registrationCode},false);
+    row=d.school||null;
+    if(!row||String(row.id)!==schoolId)throw new Error('رابط الدخول لا يطابق مدرسة فعالة.');
+    if(schoolCode&&String(row.school_code||'')!==schoolCode)throw new Error('رمز المدرسة في رابط الدخول غير مطابق.');
+    schoolCode=String(row.school_code||schoolCode||'');
+    schoolName=String(row.school_name||schoolName||'');
+  }
+  $('schoolTitle').textContent='الدخول إلى بوابة الموظف الإداري'+(schoolName?' — '+schoolName:'');
+  const sb=$('schoolSelect');if(sb)sb.textContent=schoolName||schoolCode||'المدرسة المرتبطة بالرابط';
+  return row||{id:schoolId,school_code:schoolCode,school_name:schoolName,legacyLoginLink:true};
 }
 async function activeAdministrativeMembership(){const d=await window.SmartSchoolSupabase.platformDirectoryCall('me',{});const m=d.membership||{};if(normRole(m.role)!=='administrative_employee'||String(m.status||'').toLowerCase()!=='active')throw new Error('عضوية الموظف الإداري غير مفعلة.');return m}
 

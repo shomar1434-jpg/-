@@ -864,31 +864,59 @@
       // الجلسة لا يلغي حسابًا سبق أن تحقق محليًا/من users داخل نفس المدرسة.
       let user = await loginFromSupabase(loginId,password);
       if(!user) user = loginFromLocal(loginId,password,school);
+
+      const boundResolvedSchoolId=String((school&&(school.schoolId||school.id||school.school_id))||targetSchoolId||'').trim();
+      let platformSessionPayload = null;
+      let sessionCompatFallback = false;
+      let platformSessionError = null;
+
+      // RL138 — الخادم هو بوابة التحقق الفعلية، ولا يجوز أن تمنع قراءة المتصفح
+      // المباشرة من users حسابًا صحيحًا قبل وصوله إلى platform-session.
+      if(window.PlatformCloudSession){
+        try{
+          platformSessionPayload = await window.PlatformCloudSession.open(loginId,password,boundResolvedSchoolId);
+          const issuedSchoolId=String(platformSessionPayload&&platformSessionPayload.schoolId||window.PlatformCloudSession.schoolId?.()||'').trim();
+          if(boundResolvedSchoolId && issuedSchoolId && issuedSchoolId!==boundResolvedSchoolId) throw new Error('LOGIN_SESSION_SCHOOL_MISMATCH');
+        }catch(sessionError){
+          platformSessionError = sessionError;
+        }
+      }
+
+      // إذا نجح الخادم ولم تستطع صفحة المتصفح قراءة users بسبب RLS/صلاحيات anon،
+      // نبني هوية واجهة دنيا من الجلسة الموقعة نفسها.
+      if(!user && platformSessionPayload){
+        user = normalizeLocalUser({
+          id: platformSessionPayload.userId || '',
+          email: loginId,
+          role: platformSessionPayload.role || '',
+          dbRole: platformSessionPayload.role || '',
+          status: 'active',
+          active: true,
+          schoolId: platformSessionPayload.schoolId || boundResolvedSchoolId,
+          school_id: platformSessionPayload.schoolId || boundResolvedSchoolId,
+          schoolName: (school&&(school.schoolName||school.school_name||school.name)) || ''
+        }, school);
+      }
+
+      // التوافق القديم يبقى فقط عندما ثبت محليًا أن الحساب نفسه Active داخل المدرسة.
+      if(!platformSessionPayload){
+        if(!user){
+          console.warn('RL138: server and legacy login both failed', platformSessionError);
+          setMsg('بيانات الدخول غير صحيحة أو الحساب غير موجود في هذه المدرسة');
+          return;
+        }
+        if(!isActiveAccount(user)){ setMsg('الحساب غير مفعل بعد'); return; }
+        sessionCompatFallback = true;
+      }
+
       if(!user){ setMsg('بيانات الدخول غير صحيحة أو الحساب غير موجود في هذه المدرسة'); return; }
       if(!isActiveAccount(user)){ setMsg('الحساب غير مفعل بعد'); return; }
       user = normalizeLocalUser(user, school);
 
-      const boundResolvedSchoolId=String((school&&(school.schoolId||school.id||school.school_id))||'').trim();
-      const userSchoolId=String(user.schoolId||user.school_id||boundResolvedSchoolId||'').trim();
+      const userSchoolId=String(user.schoolId||user.school_id||platformSessionPayload?.schoolId||boundResolvedSchoolId||'').trim();
       if(boundResolvedSchoolId && userSchoolId && userSchoolId!==boundResolvedSchoolId){
         setMsg('تم رفض الدخول لأن الحساب غير مرتبط بهذه المدرسة.');
         return;
-      }
-
-      let platformSessionPayload = null;
-      let sessionCompatFallback = false;
-      if(window.PlatformCloudSession){
-        const expectedSessionSchoolId=String(userSchoolId||targetSchoolId||boundResolvedSchoolId||'').trim();
-        try{
-          platformSessionPayload = await window.PlatformCloudSession.open(loginId,password,expectedSessionSchoolId);
-          const issuedSchoolId=String(platformSessionPayload&&platformSessionPayload.schoolId||window.PlatformCloudSession.schoolId?.()||'').trim();
-          if(expectedSessionSchoolId && issuedSchoolId && issuedSchoolId!==expectedSessionSchoolId) throw new Error('LOGIN_SESSION_SCHOOL_MISMATCH');
-        }catch(sessionError){
-          console.warn('RL136: تعذر إنشاء الجلسة السحابية، تم استخدام دخول الحساب النشط المربوط بالمدرسة.',sessionError);
-          sessionCompatFallback = true;
-        }
-      }else{
-        sessionCompatFallback = true;
       }
 
       // عند نجاح الجلسة نأخذ الدور منها؛ وعند تعذرها نعود للدور المثبت في حساب المدرسة

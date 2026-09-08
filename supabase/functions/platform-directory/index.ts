@@ -95,7 +95,7 @@ Deno.serve(async(req)=>{
     const q=await sb.from('school_members').select('user_id').eq('school_id',schoolId).eq('role',kind).eq('status','active');if(q.error)throw q.error;const ids=[...new Set((q.data||[]).map((x:any)=>String(x.user_id||'')).filter(Boolean))];if(ids.length!==1||ids[0]!==userId)return false;
     const up=await sb.from('school_members').update({supervisor_user_id:userId,updated_at:now}).eq('id',target.id).is('supervisor_user_id',null);if(up.error)throw up.error;return true;
   };
-  if(action==='health')return json({ok:true,version:'1.5.0-RL132-manager-account-contract',schoolId,userId,role,requestId});
+  if(action==='health')return json({ok:true,version:'1.6.0-RL141-school-password-recovery',schoolId,userId,role,requestId});
   if(action==='school-registration-context'){
    if(!isManager&&!isAgent)return json({error:'SUPERVISOR_REQUIRED'},403);
    const full=await sb.from('schools').select('id,school_name,school_code,registration_code,status').eq('id',schoolId).maybeSingle();if(full.error)throw full.error;if(!full.data)return json({error:'SCHOOL_NOT_FOUND'},404);
@@ -121,9 +121,49 @@ Deno.serve(async(req)=>{
    const ids=[...new Set(memberships.map((x:any)=>x.user_id).filter(Boolean))];let users:any[]=[];if(ids.length){const all=await sb.from('users').select('id,full_name,email,role,status,active,school_id').in('id',ids);if(all.error)throw all.error;users=all.data||[]}
    return json({ok:true,memberships,users,school:schoolQ.data,requestId});
   }
-  if(action==='set-user-status'||action==='delete-user'||action==='upsert-user'){
+  if(action==='set-user-status'||action==='delete-user'||action==='upsert-user'||action==='reset-user-password'){
    if(!isManager)return json({error:'MANAGER_REQUIRED'},403);
    const belongs=async(target:string)=>{if(!target)return null;const uq=await sb.from('users').select('*').eq('id',target).maybeSingle();if(uq.error)throw uq.error;if(!uq.data)return null;if(String(uq.data.school_id||'')===schoolId)return uq.data;const mq=await sb.from('school_members').select('id').eq('school_id',schoolId).eq('user_id',target).neq('status','deleted').limit(1);if(mq.error)throw mq.error;return (mq.data||[]).length?uq.data:null};
+   if(action==='reset-user-password'){
+    const target=t(body.userId,100),newPassword=t(body.newPassword,300);
+    if(!target||newPassword.length<8||newPassword.length>128)return json({error:'PASSWORD_REQUIREMENTS_NOT_MET'},400);
+    const targetUser=await belongs(target);if(!targetUser)return json({error:'TARGET_USER_OUTSIDE_SCHOOL'},403);
+    if(['owner','manager','system_admin','platform_owner'].includes(low(targetUser.role)))return json({error:'PROTECTED_ACCOUNT'},403);
+
+    // هوية users عالمية؛ لا يسمح لمدير مدرسة بتغيير سر هوية مرتبطة بمدرسة أخرى.
+    const memberQ=await sb.from('school_members').select('school_id,status').eq('user_id',target).neq('status','deleted');if(memberQ.error)throw memberQ.error;
+    const linkedSchools=[...new Set([String(targetUser.school_id||''),...(memberQ.data||[]).map((m:any)=>String(m.school_id||''))].filter(Boolean))];
+    if(linkedSchools.some((id:string)=>id!==schoolId))return json({error:'SHARED_IDENTITY_REQUIRES_SELF_RECOVERY'},409);
+
+    // لا نستخدم Admin Auth في المتصفح، ولا نفترض أن كل حساب legacy موجود في Auth.
+    let authUser:any=null;
+    if(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(target)){
+     const authLookup=await sb.auth.admin.getUserById(target);
+     if(authLookup.data?.user)authUser=authLookup.data.user;
+     else if(authLookup.error&&Number((authLookup.error as any).status||0)!==404)return json({error:'AUTH_LOOKUP_FAILED'},502);
+    }
+    // بعض الحسابات القديمة لا يساوي users.id فيها معرّف Auth؛ نطابق البريد كي لا تبقى كلمة Auth القديمة صالحة.
+    if(!authUser&&low(targetUser.email)){
+     let scanComplete=false;
+     for(let page=1;page<=10&&!authUser;page++){
+      const listed=await sb.auth.admin.listUsers({page,perPage:1000});if(listed.error)return json({error:'AUTH_LOOKUP_FAILED'},502);
+      authUser=(listed.data?.users||[]).find((x:any)=>low(x.email)===low(targetUser.email))||null;
+      if((listed.data?.users||[]).length<1000){scanComplete=true;break}
+     }
+     if(!authUser&&!scanComplete)return json({error:'AUTH_DIRECTORY_SCAN_LIMIT'},503);
+    }
+    const before=await sb.from('users').select('id,password,must_change_password').eq('id',target).maybeSingle();if(before.error)throw before.error;if(!before.data)return json({error:'TARGET_USER_NOT_FOUND'},404);
+    const changed=await sb.from('users').update({password:newPassword,must_change_password:false,updated_at:now}).eq('id',target).select('id').maybeSingle();if(changed.error)throw changed.error;if(!changed.data)return json({error:'PASSWORD_UPDATE_NOT_CONFIRMED'},500);
+    if(authUser){
+     const authUpdate=await sb.auth.admin.updateUserById(String(authUser.id),{password:newPassword});
+     if(authUpdate.error){await sb.from('users').update({password:before.data.password,must_change_password:before.data.must_change_password,updated_at:now}).eq('id',target);return json({error:'AUTH_PASSWORD_SYNC_FAILED'},502)}
+    }
+    const verify=await sb.from('users').select('password').eq('id',target).maybeSingle();if(verify.error)throw verify.error;if(!verify.data||String(verify.data.password||'')!==newPassword)return json({error:'PASSWORD_UPDATE_NOT_CONFIRMED'},500);
+    const revoke=await sb.from('platform_sessions').update({status:'revoked',revoked_at:now}).eq('school_id',schoolId).eq('user_id',target).eq('status','active');
+    if(revoke.error)console.error('[platform-directory-password-session-revoke]',requestId,revoke.error);
+    console.info('[platform-directory-password-reset]',{requestId,schoolId,actorUserId:userId,targetUserId:target,authSynced:Boolean(authUser)});
+    return json({ok:true,userId:target,schoolId,authSynced:Boolean(authUser),sessionsRevoked:!revoke.error,requestId});
+   }
    if(action==='set-user-status'){
     const target=t(body.userId,100),status=low(body.status);if(!target||!['pending','active','disabled'].includes(status))return json({error:'INVALID_INPUT'},400);const targetUser=await belongs(target);if(!targetUser)return json({error:'TARGET_USER_OUTSIDE_SCHOOL'},403);if(['owner','manager'].includes(low(targetUser.role))&&target!==userId)return json({error:'PROTECTED_ACCOUNT'},403);
     const beforeM=await sb.from('school_members').select('id,status,role,email').eq('school_id',schoolId).eq('user_id',target).neq('status','deleted');if(beforeM.error)throw beforeM.error;

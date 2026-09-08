@@ -24,6 +24,14 @@
     #school-login-btn:active{transform:translateY(1px)}
     #school-login-btn[disabled]{opacity:.65;cursor:wait}
     #login-msg{min-height:1.5rem;margin-top:.75rem;font-size:13px;font-weight:800;color:#fecdd3}
+    #forgot-password-btn{border:0;background:transparent;color:#99f6e4;font-family:inherit;font-size:14px;font-weight:900;text-decoration:underline;cursor:pointer;padding:4px}
+    #forgot-password-btn[disabled]{opacity:.6;cursor:wait}
+    .recovery-overlay{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(2,6,23,.82);backdrop-filter:blur(8px)}
+    .recovery-overlay[hidden]{display:none!important}
+    .recovery-card{width:min(92vw,480px);background:#fff;color:#0f172a;border-radius:24px;padding:24px;box-shadow:0 24px 80px rgba(0,0,0,.4);text-align:right}
+    .recovery-card input{width:100%;margin-top:8px;padding:13px 15px;border:1px solid #cbd5e1;border-radius:14px;font-family:inherit;font-size:16px;direction:ltr}
+    .recovery-card button{border:0;border-radius:14px;padding:12px 16px;font-family:inherit;font-weight:900;cursor:pointer}
+    .recovery-primary{background:#0f766e;color:#fff}.recovery-secondary{background:#e2e8f0;color:#0f172a}
     .safe-hidden-deactivate{display:none!important}
     @media(max-width:520px){body{padding:18px}.login-card{padding:1.8rem 1.5rem;border-radius:1.8rem}}
   </style>
@@ -502,10 +510,64 @@
         <input id="login-password" name="password" type="password" placeholder="الرقم السري" autocomplete="current-password" required>
         <div id="login-role-hint" style="padding:11px 14px;border-radius:16px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);color:#d5f5ef;font-size:13px;font-weight:800;text-align:center">سيتم التعرف على دورك تلقائيًا من البريد المرتبط بحسابك في هذه المدرسة</div>
         <button id="school-login-btn" type="submit">دخول</button>
+        <button id="forgot-password-btn" type="button">نسيت الرقم السري؟</button>
         <p id="login-msg" role="alert" aria-live="polite"></p>
       </div>
     </form>
   </main>
+
+  <div id="password-recovery-overlay" class="recovery-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="password-recovery-title">
+    <div class="recovery-card">
+      <h2 id="password-recovery-title" style="margin:0 0 8px;font-weight:900">تعيين رقم سري جديد</h2>
+      <p style="margin:0 0 18px;color:#475569;font-size:14px">أدخل رقمًا سريًا جديدًا من 8 أحرف على الأقل.</p>
+      <label style="display:block;margin-bottom:14px;font-weight:800">الرقم السري الجديد<input id="recovery-new-password" type="password" minlength="8" maxlength="128" autocomplete="new-password"></label>
+      <label style="display:block;margin-bottom:14px;font-weight:800">تأكيد الرقم السري<input id="recovery-confirm-password" type="password" minlength="8" maxlength="128" autocomplete="new-password"></label>
+      <p id="password-recovery-msg" role="alert" aria-live="polite" style="min-height:24px;color:#b91c1c;font-weight:800;font-size:13px"></p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap"><button id="save-recovery-password" class="recovery-primary" type="button">حفظ الرقم السري</button><button id="cancel-recovery-password" class="recovery-secondary" type="button">إلغاء</button></div>
+    </div>
+  </div>
+
+<script id="school-password-recovery">
+(function(){
+  'use strict';
+  var forgot=document.getElementById('forgot-password-btn'),login=document.getElementById('login-email'),loginMsg=document.getElementById('login-msg');
+  var overlay=document.getElementById('password-recovery-overlay'),recoveryMsg=document.getElementById('password-recovery-msg');
+  function client(){return window.SmartSchoolSupabase&&window.SmartSchoolSupabase.getClient?window.SmartSchoolSupabase.getClient():null}
+  function showRecovery(){overlay.hidden=false;setTimeout(function(){document.getElementById('recovery-new-password').focus()},0)}
+  function hideRecovery(){overlay.hidden=true;document.getElementById('recovery-new-password').value='';document.getElementById('recovery-confirm-password').value='';recoveryMsg.textContent=''}
+  forgot.onclick=async function(){
+    var email=String(login.value||'').trim().toLowerCase();
+    if(!email||email.indexOf('@')<1){loginMsg.textContent='أدخل البريد الإلكتروني المسجل أولًا. إذا كان الحساب باسم مستخدم فقط فتواصل مع مدير المدرسة لتغيير الرقم السري.';return;}
+    var sb=client();if(!sb){loginMsg.textContent='خدمة استعادة الرقم السري غير متاحة الآن.';return;}
+    forgot.disabled=true;loginMsg.style.color='#ccfbf1';loginMsg.textContent='جاري إرسال رابط الاستعادة...';
+    try{
+      var redirectTo=location.origin+location.pathname+location.search;
+      var result=await sb.auth.resetPasswordForEmail(email,{redirectTo:redirectTo});
+      if(result.error)throw result.error;
+      loginMsg.textContent='إذا كان البريد مسجلًا للاستعادة فسيصلك رابط لتعيين رقم سري جديد. افحص البريد غير الهام أيضًا.';
+    }catch(e){loginMsg.style.color='#fecdd3';loginMsg.textContent='تعذر إرسال رابط الاستعادة الآن. حاول لاحقًا أو تواصل مع مدير المدرسة.'}
+    finally{forgot.disabled=false;}
+  };
+  document.getElementById('cancel-recovery-password').onclick=hideRecovery;
+  document.getElementById('save-recovery-password').onclick=async function(){
+    var password=document.getElementById('recovery-new-password').value,confirmPassword=document.getElementById('recovery-confirm-password').value,btn=this;
+    if(password.length<8||password.length>128){recoveryMsg.textContent='يجب أن يكون الرقم السري بين 8 و128 حرفًا.';return;}
+    if(password!==confirmPassword){recoveryMsg.textContent='الرقمان السريان غير متطابقين.';return;}
+    var sb=client();if(!sb){recoveryMsg.textContent='خدمة الاستعادة غير متاحة الآن.';return;}
+    try{
+      btn.disabled=true;recoveryMsg.style.color='#0f766e';recoveryMsg.textContent='جاري حفظ الرقم السري الجديد...';
+      var result=await sb.auth.updateUser({password:password});if(result.error)throw result.error;
+      await sb.auth.signOut();
+      hideRecovery();loginMsg.style.color='#ccfbf1';loginMsg.textContent='تم تغيير الرقم السري. يمكنك الآن تسجيل الدخول بالرقم الجديد.';
+      history.replaceState(null,'',location.pathname+location.search);
+    }catch(e){recoveryMsg.style.color='#b91c1c';recoveryMsg.textContent='انتهت صلاحية رابط الاستعادة أو تعذر الحفظ. اطلب رابطًا جديدًا.'}
+    finally{btn.disabled=false;}
+  };
+  var sb=client();
+  if(sb){sb.auth.onAuthStateChange(function(event){if(event==='PASSWORD_RECOVERY')showRecovery()});}
+  if(/(?:^|[&#])type=recovery(?:&|$)/i.test(location.hash||''))showRecovery();
+})();
+</script>
 
 <script src="platform-cloud-session.js"></script>
 <!-- RL115: strict independent-school link binding; fail closed on school mismatch. -->

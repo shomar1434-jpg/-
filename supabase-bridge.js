@@ -673,6 +673,7 @@
   async function safeRemoveAdministrativeEmployee(payload){const userId=typeof payload==='string'?payload:(payload.userId||payload.id||'');return platformDirectoryCall('remove-admin-employee',{userId});}
   async function safeUpdateAdministrativeEmployeeStatus(payload,statusArg){const userId=typeof payload==='string'?payload:(payload.userId||payload.id||'');const status=statusArg||(typeof payload==='object'?payload.status:'');return platformDirectoryCall('set-admin-status',{userId,status});}
   async function safeUpdateUserStatus(userId,status){return platformDirectoryCall('set-user-status',{userId,status});}
+  async function safeResetUserPassword(userId,newPassword){return platformDirectoryCall('reset-user-password',{userId,newPassword});}
   async function safeUpsertSchoolUser(payload){const d=await platformDirectoryCall('upsert-user',{user:payload||{}});return normalizeUser(d.user,d.school||null);}
   async function safeDeleteUser(userId){return platformDirectoryCall('delete-user',{userId});}
   async function safeLoginSchoolUser(login,password,schoolId,role){
@@ -700,6 +701,7 @@
     removeAdministrativeEmployee: safeRemoveAdministrativeEmployee,
     updateAdministrativeEmployeeStatus: safeUpdateAdministrativeEmployeeStatus,
     updateUserStatus: safeUpdateUserStatus,
+    resetUserPassword: safeResetUserPassword,
     upsertSchoolUser: safeUpsertSchoolUser,
     loginSchoolUser: safeLoginSchoolUser,
     deleteSchool: safeDeleteSchool,

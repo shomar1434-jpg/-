@@ -164,9 +164,13 @@ function executionSeedForApprovedPlan(plan){
   return {key:key,value:ex};
 }
 async function persistEmployeePlanCloud(plan,ownerUserId){
-  if(!ownerUserId||!window.PlatformStateEngine?.managerUpsertUser)return;
-  const clean=Object.assign({},plan,{_userId:undefined,_ownerUserId:undefined,_accountStatus:undefined,_hasPlan:undefined});
-  const items=[{key:'administrative_employee_plans',value:JSON.stringify([clean]),deleted:false}];
+  if(!ownerUserId)throw new Error('تعذر تحديد المعرّف السحابي للموظف الإداري. حدّث القائمة ثم أعد المحاولة.');
+  if(!window.PlatformStateEngine?.managerUpsertUser)throw new Error('محرك اعتماد خطط الموظفين غير متاح.');
+  const canonicalPlanId=String(plan&&((plan.contact||plan.email))||ownerUserId);
+  const clean=Object.assign({},plan,{id:canonicalPlanId,userId:String(ownerUserId),user_id:String(ownerUserId),ownerUserId:String(ownerUserId),_userId:undefined,_ownerUserId:undefined,_accountStatus:undefined,_hasPlan:undefined,_legacyPlanId:undefined,_identityCorrected:undefined});
+  const replaceIds=new Set([String(ownerUserId),String(plan&&plan.id||''),String(plan&&plan._legacyPlanId||'')].filter(Boolean));
+  const preserved=(cloudPlansByOwner.get(String(ownerUserId))||[]).filter(x=>!replaceIds.has(String(x&&x.id||'')));
+  const items=[{key:'administrative_employee_plans',value:JSON.stringify(preserved.concat([clean])),deleted:false}];
   if(String(clean.status||'')==='approved'){const seed=executionSeedForApprovedPlan(clean);localStorage.setItem(seed.key,JSON.stringify(seed.value));items.push({key:seed.key,value:JSON.stringify(seed.value),deleted:false});}
   await window.PlatformStateEngine.managerUpsertUser('admin_performance',ownerUserId,items);
 }
@@ -175,9 +179,9 @@ function combinedEmployees(){
   return administrativeEmployeeAccounts.map(u=>{
     const email=String(u.email||'').toLowerCase();
     const ownerId=String(u.id||''); const cloudArr=cloudPlansByOwner.get(ownerId)||[];
-    const cloudPlan=cloudArr.find(x=>String(x.contact||x.email||x.id||'').toLowerCase()===email)||cloudArr[0]||null;
-    const plan=cloudPlan||byEmail.get(email)||null;
-    return Object.assign({id:email||ownerId,name:u.name||u.fullName||'',contact:u.email||'',jobTitle:'موظف/ة إداري/ة',year:'-',status:'draft',active:u.status==='active',supervisor:u.adminSupervisor||supervisor,_userId:u.id,_ownerUserId:ownerId,_accountStatus:u.status||'pending',_hasPlan:!!plan},plan||{});
+    const cloudPlan=cloudArr.find(x=>String(x.userId||x.user_id||x.ownerUserId||x.id||'')===ownerId)||cloudArr.find(x=>String(x.contact||x.email||x.id||'').toLowerCase()===email)||cloudArr[0]||null;
+    const plan=cloudPlan||byEmail.get(email)||null,legacyPlanId=plan&&String(plan.id||'').toLowerCase()!==email?String(plan.id||''):'';
+    return Object.assign({jobTitle:'موظف/ة إداري/ة',year:'-',status:'draft',active:u.status==='active'},plan||{},{id:email||ownerId,userId:ownerId,user_id:ownerId,ownerUserId:ownerId,name:u.name||u.fullName||'',contact:u.email||'',email:u.email||'',schoolId:currentSchoolScope(),school_id:currentSchoolScope(),supervisor:u.adminSupervisor||supervisor,_userId:ownerId,_ownerUserId:ownerId,_accountStatus:u.status||'pending',_hasPlan:!!plan,_legacyPlanId:legacyPlanId,_identityCorrected:!!legacyPlanId||!!(plan&&String(plan.contact||plan.email||'').toLowerCase()!==email)});
   });
 }
 function statusText(s){return s==='pending'?'بانتظار الاعتماد':s==='approved'?'معتمدة':s==='returned'?'معادة للتعديل':'مسودة'}

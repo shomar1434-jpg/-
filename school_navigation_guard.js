@@ -23,6 +23,19 @@ function ownerHome(){
  return 'index.html?systemAdminReturn=1';
 }
 
+function administrativeEmployeeContext(){
+ try{
+  const c=JSON.parse(sessionStorage.getItem('administrative_employee_tab_session_v1')||'null');
+  const role=String(c&&c.role||'').trim().toLowerCase(),status=String(c&&c.status||'active').trim().toLowerCase(),tabRole=String(sessionStorage.getItem('smart_school_tab_role_v1')||sessionStorage.getItem('currentRole')||'').trim().toLowerCase();
+  if(!c||!['administrative_employee','admin_employee'].includes(role)||status!=='active'||!c.userId||!c.schoolId)return null;
+  if(tabRole&&!['administrative_employee','admin_employee'].includes(tabRole))return null;
+  return {userId:String(c.userId),email:String(c.email||'').trim().toLowerCase(),schoolId:String(c.schoolId)};
+ }catch(_){return null}
+}
+function administrativeEmployeeHome(c){
+ const q=new URLSearchParams();if(c&&c.email)q.set('emp',c.email);if(c&&c.userId)q.set('uid',c.userId);if(c&&c.schoolId){q.set('school',c.schoolId);q.set('schoolId',c.schoolId)}q.set('admin_session','1');return'administrative_employee_portal.html?'+q.toString();
+}
+
 function roleRoot(){
  if(isSystemAdminContext())return ownerHome();
  const f=(location.pathname.split('/').pop()||'').toLowerCase();
@@ -33,6 +46,8 @@ function roleRoot(){
      if(/manager|principal|leadership|مدير/.test(s))return'manager.html';
    }catch(_){}
  }
+ const administrativeContext=administrativeEmployeeContext();
+ if(administrativeContext)return administrativeEmployeeHome(administrativeContext);
  if(/manager/.test(f))return'manager.html';if(/agent|wakil|deputy/.test(f))return'agent.html';
  if(/student_advisor/.test(f))return'student_advisor.html';if(/health_advisor/.test(f))return'health_advisor.html';
  if(/kindergarten_teacher/.test(f))return'kindergarten_teacher.html';if(/activity_leader/.test(f))return'activity_leader.html';
@@ -82,12 +97,12 @@ function clearSchoolContext(){
  try{tabKeys.forEach(k=>sessionStorage.removeItem(k))}catch(_){}
 }
 function schoolLogout(){
- const sid=currentSchoolRef();
+ const administrativeContext=administrativeEmployeeContext(),sid=(administrativeContext&&administrativeContext.schoolId)||currentSchoolRef();
  clearSchoolContext();
  const q=new URLSearchParams();
  if(sid)q.set('schoolId',sid);
  q.set('logout','1');
- location.replace('school-login.html?'+q.toString());
+ location.replace((administrativeContext?'administrative_employee_login.html':'school-login.html')+'?'+q.toString());
 }
 
 function logout(){return isSystemAdminContext()?ownerLogout():schoolLogout()}

@@ -120,6 +120,8 @@
 
                 // Core Configurations
                 stagesMeta: {
+                    kindergarten: { label: 'رياض الأطفال', icon: '🧸', color: 'bg-pink-600' },
+                    early: { label: 'الطفولة المبكرة', icon: '🌱', color: 'bg-cyan-600' },
                     primary: { label: 'المرحلة الابتدائية', icon: '🎒', color: 'bg-indigo-600' },
                     middle: { label: 'المرحلة المتوسطة', icon: '🏫', color: 'bg-emerald-600' },
                     high: { label: 'المرحلة الثانوية', icon: '🎓', color: 'bg-amber-600' }
@@ -128,7 +130,7 @@
 
                 // المراحل المعروضة في الواجهة تُستخرج من الصفوف المستوردة فعلياً من مركز المعلومات
                 get availableStageEntries() {
-                    const ordered = ['primary', 'middle', 'high'];
+                    const ordered = ['kindergarten', 'early', 'primary', 'middle', 'high'];
                     const used = new Set((this.classes || []).map(cls => cls.stage).filter(Boolean));
                     return ordered
                         .filter(key => used.has(key))
@@ -172,6 +174,15 @@
                     period1: { label: 'الفترة الأولى', short: 'ف1', max: 20, color: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
                     period2: { label: 'الفترة الثانية', short: 'ف2', max: 20, color: 'bg-amber-50 text-amber-800 border-amber-200' },
                     final: { label: 'نهاية الفصل', short: 'نهائي', max: 40, color: 'bg-violet-50 text-violet-800 border-violet-200' }
+                },
+
+                // سجل الرصد المرجعي المتوافق مع توزيع الدرجات الظاهر في نظام نور
+                noorGradeConfig: {
+                    participation: { label: 'المشاركة', max: 5 },
+                    performanceTasks: { label: 'المهمات الأدائية', max: 10 },
+                    homework: { label: 'الواجبات', max: 5 },
+                    period1: { label: 'الفترة الأولى', max: 20 },
+                    period2: { label: 'الفترة الثانية', max: 20 }
                 },
 
                 assessmentStatusMeta: {
@@ -417,7 +428,20 @@
                                     }
                                 });
                             });
-                            return { ...student, records };
+                            const noorGrades = {
+                                ...this.defaultNoorGrades(),
+                                ...(student.noorGrades || {})
+                            };
+                            // توافق رجعي: إذا كانت درجات الفترتين موجودة في النسخة السابقة ننقلها إلى سجل نور دون فقدها.
+                            if (noorGrades.period1 === '' && student.assessments?.period1 !== undefined) noorGrades.period1 = student.assessments.period1;
+                            if (noorGrades.period2 === '' && student.assessments?.period2 !== undefined) noorGrades.period2 = student.assessments.period2;
+                            const assessments = {
+                                ...this.defaultAssessments(),
+                                ...(student.assessments || {}),
+                                period1: noorGrades.period1,
+                                period2: noorGrades.period2
+                            };
+                            return { ...student, records, noorGrades, assessments };
                         })
                     }));
                 },
@@ -429,6 +453,8 @@
 
                 stageLabelToKey(label) {
                     const text = (label || '').toString();
+                    if (text.includes('رياض') || text.includes('روضة')) return 'kindergarten';
+                    if (text.includes('طفولة') || text.includes('مبكرة')) return 'early';
                     if (text.includes('ابتد')) return 'primary';
                     if (text.includes('متوسط')) return 'middle';
                     if (text.includes('ثانو')) return 'high';
@@ -450,6 +476,7 @@
                         track_name: raw.track_name || raw.track || raw.path || raw['المسار'] || '',
                         section_name: raw.section_name || raw.section || raw.division || raw.classroom || raw['الشعبة'] || raw['الفصل'] || raw['الصف/الشعبة'] || '',
                         records: raw.records || {},
+                        noorGrades: { ...this.defaultNoorGrades(), ...(raw.noorGrades || {}) },
                         assessments: raw.assessments || this.defaultAssessments()
                     };
                 },
@@ -650,11 +677,52 @@
                     return { diagnostic: '', period1: '', period2: '', final: '' };
                 },
 
+                defaultNoorGrades() {
+                    return { participation: '', performanceTasks: '', homework: '', period1: '', period2: '' };
+                },
+
+                getNoorGrade(student, type) {
+                    return (student && student.noorGrades && student.noorGrades[type] !== undefined) ? student.noorGrades[type] : '';
+                },
+
+                setNoorGrade(studentId, type, value) {
+                    const max = this.noorGradeConfig[type]?.max || 100;
+                    let clean = value === '' || value === null ? '' : Number(value);
+                    if (clean !== '') {
+                        if (isNaN(clean)) clean = '';
+                        else clean = Math.max(0, Math.min(max, clean));
+                    }
+                    this.classes = this.classes.map(cls => {
+                        if (cls.id !== this.currentClassId) return cls;
+                        return {
+                            ...cls,
+                            students: (cls.students || []).map(student => {
+                                if (student.id !== studentId) return student;
+                                const noorGrades = { ...this.defaultNoorGrades(), ...(student.noorGrades || {}), [type]: clean };
+                                const assessments = { ...this.defaultAssessments(), ...(student.assessments || {}) };
+                                // سجل الرصد هو المصدر المعتمد لدرجات الفترتين في جدول الاختبارات.
+                                if (type === 'period1' || type === 'period2') assessments[type] = clean;
+                                return { ...student, noorGrades, assessments };
+                            })
+                        };
+                    });
+                },
+
+                noorGradeTotal(student) {
+                    const grades = { ...this.defaultNoorGrades(), ...(student?.noorGrades || {}) };
+                    return Object.keys(this.noorGradeConfig).reduce((sum, type) => {
+                        const v = grades[type];
+                        return sum + ((v !== '' && v !== null && !isNaN(Number(v))) ? Number(v) : 0);
+                    }, 0);
+                },
+
                 getAssessmentScore(student, type) {
                     return (student && student.assessments && student.assessments[type] !== undefined) ? student.assessments[type] : '';
                 },
 
                 setAssessmentScore(studentId, type, value) {
+                    // الفترة الأولى والثانية تأتيان حصراً من سجل الرصد المطابق لنظام نور.
+                    if (type === 'period1' || type === 'period2') return;
                     const max = this.assessmentConfig[type]?.max || 100;
                     let clean = value === '' || value === null ? '' : Number(value);
                     if (clean !== '') {
@@ -1505,6 +1573,11 @@
                     :class="activeTab === 'speed-entry' ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50' : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50'">
                 ⚡ وضع الرصد السريع الصفي
             </button>
+            <button @click="activeTab = 'noor-gradebook'"
+                    class="py-3 px-4 font-semibold text-sm border-b-2 transition duration-150 flex items-center gap-2 whitespace-nowrap cursor-pointer"
+                    :class="activeTab === 'noor-gradebook' ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50' : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50'">
+                🧾 سجل الرصد - نظام نور
+            </button>
             <button @click="activeTab = 'assessments'"
                     class="py-3 px-4 font-semibold text-sm border-b-2 transition duration-150 flex items-center gap-2 whitespace-nowrap cursor-pointer"
                     :class="activeTab === 'assessments' ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50' : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50'">
@@ -2077,6 +2150,76 @@
         <!-- =========================================================================
              4. TAB: ASSESSMENTS & ACADEMIC ANALYSIS
            ========================================================================= -->
+        <!-- سجل الرصد المرجعي المطابق لتوزيع نظام نور -->
+        <div x-show="activeTab === 'noor-gradebook'" class="space-y-6 animate-fadeIn" style="display: none;">
+            <div class="bg-white p-5 rounded-2xl border border-emerald-100 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-lg font-black text-slate-800">🧾 سجل الرصد المطابق لنظام نور</h2>
+                    <p class="text-xs text-slate-500 mt-1">مرجع إدخال درجات المعلم: المشاركة 5، المهمات الأدائية 10، الواجبات 5، الفترة الأولى 20، الفترة الثانية 20. درجات الفترتين تنعكس تلقائياً على جدول رصد درجات الاختبارات.</p>
+                </div>
+                <div class="flex flex-wrap gap-2 text-[11px] font-black">
+                    <span class="bg-emerald-50 text-emerald-700 border border-emerald-100 px-3 py-2 rounded-xl">الصف: <span x-text="activeClass?.name || 'غير محدد'"></span></span>
+                    <span class="bg-blue-50 text-blue-700 border border-blue-100 px-3 py-2 rounded-xl">المادة: <span x-text="activeClass?.subject || '—'"></span></span>
+                    <span class="bg-slate-50 text-slate-700 border border-slate-100 px-3 py-2 rounded-xl">إجمالي التوزيع: 60 درجة</span>
+                </div>
+            </div>
+
+            <template x-if="students.length === 0">
+                <div class="bg-amber-50 border-r-4 border-amber-500 p-4 rounded-md shadow-sm">
+                    <h3 class="font-bold text-amber-800 mb-1 text-sm">⚠️ لا توجد قائمة طلاب مرتبطة بالسجل</h3>
+                    <p class="text-xs text-amber-700">استورد الصف أولاً من مركز المعلومات المدرسية؛ ستظهر أسماء الطلاب هنا تلقائياً.</p>
+                </div>
+            </template>
+
+            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="p-4 bg-slate-50 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-2">
+                    <div>
+                        <h3 class="font-bold text-slate-800">كشف رصد الدرجات</h3>
+                        <p class="text-[11px] text-slate-500 mt-1">يحفظ داخل سجل الصف نفسه، ولا ينشئ قائمة طلاب مستقلة أو بيانات مكررة.</p>
+                    </div>
+                    <span class="text-[11px] bg-blue-50 text-blue-700 border border-blue-100 px-3 py-1 rounded-full font-bold self-start">المصدر المعتمد لدرجات الفترة الأولى والثانية</span>
+                </div>
+                <div class="overflow-auto max-h-[680px]">
+                    <table class="w-full text-right border-collapse text-xs min-w-[900px]">
+                        <thead class="bg-emerald-600 text-white font-black sticky top-0 z-10">
+                            <tr>
+                                <th class="py-3 px-3 border-l border-emerald-500 w-12 text-center">م</th>
+                                <th class="py-3 px-4 border-l border-emerald-500 min-w-[240px]">اسم الطالب/ة</th>
+                                <template x-for="(item, type) in noorGradeConfig" :key="type">
+                                    <th class="py-3 px-3 border-l border-emerald-500 text-center min-w-[125px]">
+                                        <div x-text="item.label"></div>
+                                        <div class="text-[10px] text-emerald-50 font-sans" x-text="'(' + item.max + ')' "></div>
+                                    </th>
+                                </template>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            <template x-if="students.length === 0">
+                                <tr><td colspan="7" class="py-8 text-center text-slate-400 font-bold">لا توجد بيانات طلاب للصف النشط.</td></tr>
+                            </template>
+                            <template x-for="(student, idx) in students" :key="student.id">
+                                <tr class="hover:bg-emerald-50/30">
+                                    <td class="py-2 px-3 border-l border-slate-100 text-center font-bold text-slate-500" x-text="idx + 1"></td>
+                                    <td class="py-2 px-4 border-l border-slate-100 font-black text-slate-800">
+                                        <div x-text="student.name"></div>
+                                        <div class="text-[10px] text-slate-400 font-sans" x-show="student.student_number" x-text="'رقم الطالب: ' + student.student_number"></div>
+                                    </td>
+                                    <template x-for="(item, type) in noorGradeConfig" :key="type">
+                                        <td class="py-2 px-2 border-l border-slate-100 text-center">
+                                            <input type="number" min="0" :max="item.max" step="0.5"
+                                                   :value="getNoorGrade(student, type)"
+                                                   @input="setNoorGrade(student.id, type, $event.target.value)"
+                                                   class="w-20 mx-auto text-center border border-slate-300 rounded-lg py-1.5 text-xs font-bold focus:ring-emerald-500 focus:border-emerald-500" />
+                                        </td>
+                                    </template>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
         <div x-show="activeTab === 'assessments'" class="space-y-6 animate-fadeIn" style="display: none;">
             <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <div>
@@ -2160,7 +2303,10 @@
                                             <input type="number" min="0" :max="exam.max"
                                                    :value="getAssessmentScore(student, type)"
                                                    @input="setAssessmentScore(student.id, type, $event.target.value)"
-                                                   class="w-20 mx-auto text-center border border-slate-300 rounded-lg py-1.5 text-xs font-bold focus:ring-emerald-500 focus:border-emerald-500" />
+                                                   :readonly="type === 'period1' || type === 'period2'"
+                                                   :title="(type === 'period1' || type === 'period2') ? 'هذه الدرجة تأتي من سجل الرصد - نظام نور' : ''"
+                                                   :class="(type === 'period1' || type === 'period2') ? 'bg-emerald-50 border-emerald-200 text-emerald-800 cursor-not-allowed' : 'bg-white border-slate-300'"
+                                                   class="w-20 mx-auto text-center border rounded-lg py-1.5 text-xs font-bold focus:ring-emerald-500 focus:border-emerald-500" />
                                         </td>
                                     </template>
                                     <td class="py-2 px-3 border-l border-slate-100 text-center font-black font-sans" x-text="assessmentSummary(student).percentage + '%'"></td>
@@ -2346,6 +2492,8 @@
                     <div class="space-y-1">
                         <label class="text-[10px] font-bold text-slate-500">المرحلة</label>
                         <select x-model="centerImportForm.stage" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs font-bold">
+                            <option value="kindergarten">رياض الأطفال</option>
+                            <option value="early">الطفولة المبكرة</option>
                             <option value="primary">المرحلة الابتدائية</option>
                             <option value="middle">المرحلة المتوسطة</option>
                             <option value="high">المرحلة الثانوية</option>

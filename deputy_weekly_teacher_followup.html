@@ -83,7 +83,7 @@
       <div class="stat"><div class="icon">📊</div><b id="stScore">0%</b><span>مؤشر الإنجاز التنفيذي</span></div>
     </div>
     <section class="panel">
-      <div class="panelHead"><div><h2>🧭 إدارة المتابعة</h2><div class="muted" id="sourceInfo">مصدر البيانات: لم يتم التحميل بعد.</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" onclick="switchTab('calendar')">🗓️ إعداد الأسابيع</button><button class="btn blue" onclick="saveActiveWeek()">💾 حفظ الأسبوع</button><button class="btn gold c4CloseBtn" onclick="closeAndArchiveWeek()" disabled>✅ اعتماد وإغلاق الأسبوع</button></div></div>
+      <div class="panelHead"><div><h2>🧭 إدارة المتابعة</h2><div class="muted" id="sourceInfo">مصدر البيانات: لم يتم التحميل بعد.</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" onclick="switchTab('calendar')">🗓️ إعداد الأسابيع</button><button class="btn blue" onclick="saveActiveWeek()">💾 حفظ الأسبوع</button><button class="btn green" id="confirmWeekBtn" onclick="confirmAndPublishActiveWeek()">🚀 تأكيد وبدء تنفيذ الأسبوع</button><button class="btn gold c4CloseBtn" onclick="closeAndArchiveWeek()" disabled>✅ اعتماد وإغلاق الأسبوع</button></div></div><div id="weekExecutionBanner" class="notice" style="margin:10px 0 0">اختر الأسبوع ثم أكّد بدء التنفيذ ليظهر لجميع المعلمين.</div>
       <div class="row">
         <div class="field"><label>الأسبوع النشط</label><select id="activeWeekSelect" onchange="setActiveWeek(this.value)"></select></div>
         <div class="field"><label>بحث عن معلم</label><input id="teacherSearch" oninput="renderSearchDependent()" placeholder="اسم المعلم أو المادة"></div>
@@ -96,7 +96,7 @@
     <section id="teachersPane" class="panel hidden"><div class="panelHead"><h2>👨‍🏫 المعلمون المستوردون من مركز المعلومات</h2><button class="btn small secondary" onclick="refreshTeachers()">تحديث القائمة</button></div><div class="tablewrap"><table><thead><tr><th>م</th><th>المعلم</th><th>المادة</th><th>الحصص</th><th>التكليفات التدريسية</th><th>التكليفات الإضافية</th><th>الحالة</th><th>الإنجاز التنفيذي</th><th>إرسال المعلم</th><th class="noPrint">إجراء</th></tr></thead><tbody id="teachersBody"></tbody></table></div></section>
     <section id="dailyPane" class="panel hidden"><div class="panelHead"><div><h2>☀️ المتابعة اليومية من الوكيل</h2><div class="muted">قائمة مستقلة لتسجيل الحضور والاصطفاف الصباحي فقط. هذه البيانات تظهر للمعلم للقراءة فقط ولا تدخل في نسبة الإنجاز التنفيذي.</div></div><button class="btn small blue" onclick="saveActiveWeek()">💾 حفظ المتابعة اليومية</button></div><div class="tablewrap"><table><thead><tr><th>م</th><th>المعلم</th><th>اليوم</th><th>الحضور</th><th>الاصطفاف الصباحي</th><th>مؤشر الانضباط</th></tr></thead><tbody id="dailyFollowupBody"></tbody></table></div></section>
     <section id="weeklyAnalysisPane" class="panel hidden"><div class="panelHead"><div><h2>📊 لوحة الأداء الذكية للمعلمين</h2><div class="muted">لوحة تحليل وتصنيف ذكي مرتبطة ببيانات المتابعة اليومية والأعمال التنفيذية للأسبوع النشط، مع فصل الانضباط عن الإنجاز التنفيذي.</div></div><button class="btn small secondary" onclick="syncC1LiveData();renderC1WeeklyAnalysis()">مزامنة وتحديث اللوحة</button></div><div class="grid c1Filters noPrint"><div class="field"><label>فلتر التصنيف الذكي</label><select id="c1StatusFilter" onchange="renderC1WeeklyAnalysis()"><option value="">الكل</option><option>ممتاز</option><option>جيد</option><option>يحتاج متابعة</option><option>متعثر</option></select></div><div class="field"><label>فلتر المادة</label><select id="c1SubjectFilter" onchange="renderC1WeeklyAnalysis()"><option value="">كل المواد</option></select></div><div class="field"><label>بحث داخل اللوحة</label><input id="c1Search" oninput="renderC1WeeklyAnalysis()" placeholder="اسم المعلم أو المادة"></div><div class="field"><label>الأسبوع المعروض</label><input id="c1WeekLabel" readonly value="—"></div></div><div id="c1WeeklyCards"></div><div class="tablewrap" style="margin-top:14px"><table><thead><tr><th>م</th><th>المعلم</th><th>المادة</th><th>الانضباط</th><th>الإنجاز التنفيذي</th><th>الغياب</th><th>تأخر الاصطفاف</th><th>الأعمال غير المنفذة</th><th>التصنيف الذكي</th></tr></thead><tbody id="c1WeeklyBody"></tbody></table></div></section>
-    <section id="reviewPane" class="panel hidden"><div class="panelHead"><div><h2>📥 مراجعة أعمال المعلمين المرسلة</h2><div class="muted">يعرض هذا الصندوق تسليمات الأسبوع المحدد للمسؤول الذي طلبها فقط. افتح الشاهد للمعاينة ثم اعتمد التنفيذ أو أعده للاستكمال أو لا تعتمده.</div></div><button class="btn small secondary" onclick="refreshWeeklyReviewInbox(true)">🔄 تحديث التسليمات</button></div><div id="weeklyReviewInbox"></div></section>
+    <section id="reviewPane" class="panel hidden"><div class="panelHead"><div><h2>📥 مراجعة أعمال المعلمين المرسلة</h2><div class="muted">اختر الأسبوع ثم ابحث عن اسم المعلم من خانة البحث أعلى الصفحة. تظهر هنا شواهد وتنفيذ المعلم فقط، مع تنبيه بعدد المرفقات الجديدة. افتح الشاهد ثم قيّمه: اعتماد، إعادة للاستكمال، أو عدم اعتماد.</div></div><button class="btn small secondary" onclick="refreshWeeklyReviewInbox(true)">🔄 تحديث التسليمات</button></div><div id="weeklyReviewInbox"></div></section>
     <section id="assignmentsPane" class="panel hidden">
       <div class="panelHead">
         <div><h2>📌 تكليفات الأسبوع</h2><div class="muted">تجمع هذه الصفحة بين التكليفات الإلزامية الثابتة لكل أسبوع، واختبار الفترة عند تفعيله، والتكليفات المتغيرة التي يحددها الوكيل.</div></div>
@@ -822,6 +822,53 @@
     }
     return count;
   }
+
+  function weekExecutionState(w){
+    if(!w)return {confirmed:false,label:'لا يوجد أسبوع محدد'};
+    const confirmed=!!(w.execution_confirmed_at||w.execution_state==='in_progress'||w.execution_state==='confirmed');
+    return {confirmed,label:confirmed?`خطة الأسبوع ${w.number||'—'} في طور التنفيذ`:`خطة الأسبوع ${w.number||'—'} لم تُؤكد للتنفيذ بعد`};
+  }
+  function renderWeekExecutionBanner(){
+    const w=currentWeek(),box=$('weekExecutionBanner'),btn=$('confirmWeekBtn'); if(!box)return;
+    const st=weekExecutionState(w);
+    box.className='notice '+(st.confirmed?'ok':'');
+    box.innerHTML=st.confirmed?`✅ <b>${esc(st.label)}</b> — تم التأكيد في ${w.execution_confirmed_at?new Date(w.execution_confirmed_at).toLocaleString('ar-SA'):'—'} بواسطة ${esc(w.reviewer_name||'المسؤول')}. الأعمال منشورة للمعلمين.`:`⚠️ <b>${esc(st.label)}</b> — حفظ الأسبوع وحده لا يرسله للمعلمين. استخدم «تأكيد وبدء تنفيذ الأسبوع».`;
+    if(btn){btn.disabled=!w||st.confirmed||['مغلق','مؤرشف','إجازة'].includes(w?.status||'');btn.textContent=st.confirmed?'✅ الأسبوع في طور التنفيذ':'🚀 تأكيد وبدء تنفيذ الأسبوع';}
+  }
+  function weeklyPlanPayloadForTeacher(w,t){
+    const cur=currentReviewerIdentity();
+    return {
+      kind:'weekly_plan',version:1,school_id:schoolId(),week_id:w.id,week_number:w.number,year:w.year,term:w.term,start:w.start,end:w.end,
+      status:'قيد التنفيذ',execution_state:'in_progress',execution_confirmed_at:w.execution_confirmed_at,confirmed_at:w.execution_confirmed_at,
+      reviewer_id:w.reviewer_id||cur.id,reviewer_email:w.reviewer_email||cur.email,reviewer_role:w.reviewer_role||cur.role,reviewer_name:w.reviewer_name||cur.name,
+      teacher_id:t.user_id,teacher_email:t.email||'',teacher_name:t.name||'',
+      teacherStatus:(w.teacherStatuses||{})[t.user_id]||blankTeacherStatus(),
+      variableAssignments:(w.variableAssignments||[]).filter(a=>String(a.teacher_id)===String(t.user_id)),
+      extraTasks:(w.extraTasks||[]).filter(a=>String(a.teacher_id)===String(t.user_id)),
+      periodTest:w.periodTest&&periodTestApplies(w,t.user_id)?w.periodTest:null,
+      published_at:new Date().toISOString()
+    };
+  }
+  async function confirmAndPublishActiveWeek(){
+    const w=currentWeek(); if(!w)return toast('اختر الأسبوع المراد تنفيذه أولًا');
+    if(['مغلق','مؤرشف','إجازة'].includes(w.status||''))return toast('لا يمكن بدء تنفيذ أسبوع مغلق أو مؤرشف أو إجازة');
+    if(!teachers.length)return toast('لا توجد قائمة معلمين مفعلة لإرسال خطة الأسبوع إليها');
+    if(w.execution_confirmed_at&&!confirm('تم تأكيد هذا الأسبوع مسبقًا. هل تريد إعادة نشر الخطة الحالية للمعلمين؟'))return;
+    const cur=currentReviewerIdentity();
+    w.execution_confirmed_at=w.execution_confirmed_at||new Date().toISOString();
+    w.execution_state='in_progress';w.status='نشط';w.reviewer_id=cur.id;w.reviewer_email=cur.email;w.reviewer_role=cur.role||'agent';w.reviewer_name=cur.name||'المسؤول';
+    w.execution_notice=`خطة الأسبوع ${w.number||'—'} في طور التنفيذ`;
+    try{
+      if(!window.PlatformStateEngine?.publishWeeklyPlan)throw new Error('محرك نشر خطة الأسبوع غير متاح');
+      let ok=0,failed=[];
+      for(const t of teachers){
+        try{await window.PlatformStateEngine.publishWeeklyPlan(t.user_id,weeklyPlanPayloadForTeacher(w,t));ok++;}catch(e){failed.push(t.name||t.user_id);}
+      }
+      w.published_teacher_count=ok;w.publish_failed_teachers=failed;w.last_published_at=new Date().toISOString();
+      await saveWeeks();renderAll();
+      if(failed.length)toast(`تم بدء تنفيذ الأسبوع ونشره إلى ${ok} معلم/ـة، وتعذر النشر لـ ${failed.length}`);else toast(`تم تأكيد الأسبوع ${w.number||''} وبدء التنفيذ لدى جميع المعلمين (${ok})`);
+    }catch(e){toast('تعذر نشر الأسبوع للمعلمين: '+String(e&&e.message||e));}
+  }
   async function refreshWeeklyReviewInbox(showToast){
     try{const n=await loadWeeklyReviewSubmissions();renderAll();if(showToast)toast('تم تحديث صندوق المراجعة — '+n+' تسليم/تسليمات مرتبطة بك');return n}catch(e){console.warn('[weekly review inbox]',e);if(showToast)toast('تعذر تحديث التسليمات: '+String(e&&e.message||e));return 0}
   }
@@ -836,11 +883,11 @@
     const rows=reviewInboxRows();let pending=0;
     rows.forEach(t=>{const sub=w.teacherSubmissions?.[t.user_id]||{};for(const it of Object.values(sub.items||{}))if((it.cloud_file_ids?.length||String(it.evidence_value||'').trim())&&!it.review_status)pending++});
     if(badge)badge.textContent=String(pending);
-    box.innerHTML=rows.map(t=>{const sub=w.teacherSubmissions[t.user_id]||{};return '<div class="taskCard"><div class="panelHead" style="margin-bottom:8px"><div><h3>'+esc(t.name)+'</h3><div class="muted">'+esc(t.subject||'—')+' — أرسل: '+esc(sub.submitted_at?new Date(sub.submitted_at).toLocaleString('ar-SA'):'—')+'</div></div><button class="btn small secondary" onclick="openTeacherWeekDrawer(\''+esc(t.user_id)+'\')">فتح المتابعة الكاملة</button></div>'+renderTeacherSubmission(w,t)+'</div>'}).join('')||'<div class="empty">لا توجد تسليمات مرسلة إليك في هذا الأسبوع وفق البحث الحالي.</div>';
+    box.innerHTML=rows.map(t=>{const sub=w.teacherSubmissions[t.user_id]||{};const evidCount=Object.values(sub.items||{}).filter(it=>(it.cloud_file_ids||[]).length||String(it.evidence_value||'').trim()).length;const pendingCount=Object.values(sub.items||{}).filter(it=>((it.cloud_file_ids||[]).length||String(it.evidence_value||'').trim())&&!it.review_status).length;return '<div class="taskCard"><div class="panelHead" style="margin-bottom:8px"><div><h3>'+esc(t.name)+' '+(pendingCount?'<span class="badge red">🔔 '+pendingCount+' شاهد جديد</span>':'')+'</h3><div class="muted">'+esc(t.subject||'—')+' — أرسل: '+esc(sub.submitted_at?new Date(sub.submitted_at).toLocaleString('ar-SA'):'—')+' — إجمالي الشواهد: '+evidCount+'</div></div><button class="btn small secondary" onclick="openTeacherWeekDrawer(\''+esc(t.user_id)+'\')">فتح المتابعة الكاملة</button></div>'+renderTeacherSubmission(w,t)+'</div>'}).join('')||'<div class="empty">لا توجد تسليمات مرسلة إليك في هذا الأسبوع وفق البحث الحالي.</div>';
   }
   function renderSearchDependent(){renderTeachers();renderDailyFollowupList();renderWeeklyReviewInbox();renderC1WeeklyAnalysis();renderAnalytics()}
   function renderStats(){const w=currentWeek(), m=w?weekMetrics(w):{avg:0}; $('stTeachers').textContent=teachers.length; $('stComplete').textContent=teachers.filter(t=>t.profile_status==='complete').length; $('stWeeks').textContent=weeks.length; $('stTasks').textContent=w?((w.variableAssignments||[]).length+(w.extraTasks||[]).length):0; $('stScore').textContent=m.avg+'%'}
-  function renderAll(){ensureWeekTeacherStatuses();renderWeekSelect();renderCalendar();renderTeachers();renderDailyFollowupList();renderWeeklyReviewInbox();renderC1WeeklyAnalysis();renderAssignments();renderExtra();renderReport();renderAnalytics();renderC3WednesdayAlerts();renderStats()}
+  function renderAll(){ensureWeekTeacherStatuses();renderWeekSelect();renderCalendar();renderTeachers();renderDailyFollowupList();renderWeeklyReviewInbox();renderC1WeeklyAnalysis();renderAssignments();renderExtra();renderReport();renderAnalytics();renderC3WednesdayAlerts();renderStats();renderWeekExecutionBanner()}
   function switchTab(tab){['calendar','teachers','daily','weeklyAnalysis','review','assignments','extra','reports','analytics'].forEach(x=>{$(x+'Pane').classList.toggle('hidden',x!==tab);$('tab'+x[0].toUpperCase()+x.slice(1)).classList.toggle('active',x===tab)})}
   async function setActiveWeek(id){if(!weeks.some(w=>String(w.id)===String(id)))return;activeWeekId=id;try{localStorage.setItem(activeKey(),activeWeekId)}catch(_){}renderAll();try{await saveWeeks()}catch(e){console.warn('[active week save]',e);toast('تم تغيير الأسبوع للعرض، وتعذر فقط حفظ الاختيار سحابيًا')}await refreshWeeklyReviewInbox(false);renderAll()}
   function openDrawer(html){$('drawerHost').className='drawerBackdrop noPrint';$('drawerHost').innerHTML='<aside class="drawer">'+html+'</aside>'} function closeDrawer(){$('drawerHost').className='hidden';$('drawerHost').innerHTML=''}

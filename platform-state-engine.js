@@ -61,9 +61,10 @@
   const pullSchoolUsers=(moduleKey,keys)=>request('pull-school-users',{moduleKey,keys});
   const bulkUpsert=(moduleKey,scope='user',items,opts)=>request('bulk-upsert',{moduleKey,scope,items},opts);
   const managerUpsertUser=(moduleKey,ownerUserId,items,opts)=>request('manager-upsert-user',{moduleKey,ownerUserId,items},opts);
+  const publishWeeklyPlan=(ownerUserId,payload)=>request('publish-weekly-plan',{moduleKey:'weekly_teacher_work',ownerUserId,payload});
   const reviewWeeklySubmission=(ownerUserId,stateKey,itemKey,decision,reason)=>request('review-weekly-submission',{moduleKey:'weekly_teacher_work',ownerUserId,stateKey,itemKey,decision,reason});
   const updateAdministrativeEmployeeStatus=(ownerUserId,status)=>request('admin-employee-status',{moduleKey:'admin_performance',ownerUserId,status});
   const removeAdministrativeEmployee=(ownerUserId)=>request('admin-employee-delete',{moduleKey:'admin_performance',ownerUserId});
   const health=()=>request('health',{});
-  window.PlatformStateEngine={VERSION:'1.5.0-weekly-review-routing',request,pull,pullUser,pullSchoolUsers,bulkUpsert,managerUpsertUser,reviewWeeklySubmission,updateAdministrativeEmployeeStatus,removeAdministrativeEmployee,health};
+  window.PlatformStateEngine={VERSION:'1.6.0-weekly-publish-review-flow',request,pull,pullUser,pullSchoolUsers,bulkUpsert,managerUpsertUser,publishWeeklyPlan,reviewWeeklySubmission,updateAdministrativeEmployeeStatus,removeAdministrativeEmployee,health};
 })();

@@ -1,6 +1,6 @@
 (function(){
   'use strict';
-  const VERSION='3.0.0';
+  const VERSION='3.1.0';
   const DEFAULT_TIMEOUT=45000;
   const cfg={
     base:()=> (localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'')+'/functions/v1/platform-files',
@@ -8,6 +8,34 @@
     token:()=>window.PlatformCloudSession?.token?.()||sessionStorage.getItem('platform_tab_session_token_v1')||localStorage.getItem('platform_file_session_token')||''
   };
   function emit(name,detail){try{window.dispatchEvent(new CustomEvent('cloudfiles:'+name,{detail}))}catch(_){} }
+
+  function readJsonStorage(key){try{return JSON.parse(localStorage.getItem(key)||'null')}catch(_){return null}}
+  function firstValue(){for(const v of arguments){if(v!==undefined&&v!==null&&String(v).trim()!=='')return v}return ''}
+  function currentSchoolId(){return firstValue(localStorage.getItem('activeSchoolId'),localStorage.getItem('school_id'),localStorage.getItem('currentSchoolId'))}
+  function evidenceContext(){try{const c=window.EvidenceReviewContext;return typeof c==='function'?(c()||{}):(c||{})}catch(_){return {}}}
+  function directSupervisor(){
+    const keys=['platform_direct_supervisor','direct_supervisor','current_user_supervisor','registration_supervisor','account_supervisor'];
+    for(const k of keys){const v=readJsonStorage(k);if(v&&typeof v==='object')return v}
+    return {};
+  }
+  function enrichReviewMetadata(o){
+    const meta=Object.assign({},o&&o.metadata||{}), ctx=evidenceContext(), sup=directSupervisor();
+    const reviewerId=firstValue(meta.reviewer_id,meta.requester_id,meta.supervisor_id,o&&o.reviewerId,ctx.reviewer_id,ctx.requester_id,ctx.supervisor_id,sup.id,sup.user_id);
+    const reviewerEmail=firstValue(meta.reviewer_email,meta.requester_email,meta.supervisor_email,o&&o.reviewerEmail,ctx.reviewer_email,ctx.requester_email,ctx.supervisor_email,sup.email);
+    const reviewerRole=firstValue(meta.reviewer_role,meta.requester_role,meta.supervisor_role,o&&o.reviewerRole,ctx.reviewer_role,ctx.requester_role,ctx.supervisor_role,sup.role);
+    const reviewerName=firstValue(meta.reviewer_name,meta.requester_name,meta.supervisor_name,o&&o.reviewerName,ctx.reviewer_name,ctx.requester_name,ctx.supervisor_name,sup.name,sup.full_name);
+    meta.school_id=firstValue(meta.school_id,ctx.school_id,currentSchoolId());
+    if(reviewerId)meta.reviewer_id=String(reviewerId);
+    if(reviewerEmail)meta.reviewer_email=String(reviewerEmail).toLowerCase();
+    if(reviewerRole)meta.reviewer_role=String(reviewerRole);
+    if(reviewerName)meta.reviewer_name=String(reviewerName);
+    if(meta.reviewer_id||meta.reviewer_email){meta.review_status=meta.review_status||'pending_review';meta.review_contract='requester_is_reviewer_v1'}
+    return meta;
+  }
+  function viewedKey(fileId){return 'evidence_viewed:'+currentSchoolId()+':'+String(fileId||'')}
+  function markEvidenceViewed(fileId){if(!fileId)return;try{sessionStorage.setItem(viewedKey(fileId),new Date().toISOString())}catch(_){}}
+  function wasEvidenceViewed(fileId){try{return !!sessionStorage.getItem(viewedKey(fileId))}catch(_){return false}}
+
   async function ensureSession(){
     if(window.PlatformCloudSession&&typeof window.PlatformCloudSession.ensure==='function'){
       await window.PlatformCloudSession.ensure();
@@ -50,7 +78,7 @@
     if(!o||!o.file)throw new Error('لم يتم اختيار ملف');
     const f=new FormData();f.append('file',o.file);
     ['ownershipScope','moduleKey','folderId','recordType','recordId','relationType','displayName','replaceFileId'].forEach(k=>o[k]!=null&&f.append(k,String(o[k])));
-    if(o.metadata)f.append('metadata',JSON.stringify(o.metadata));
+    const enrichedMetadata=enrichReviewMetadata(o); if(Object.keys(enrichedMetadata).length)f.append('metadata',JSON.stringify(enrichedMetadata));
     return request('upload',{form:f,timeout:o.timeout||120000,signal:o.signal});
   }
   async function uploadMany(options){
@@ -81,7 +109,7 @@
   const stats=o=>request('stats',{body:o||{}});
   const health=()=>request('health',{method:'GET'});
   async function getBlob(fileId){const x=await signedUrl(fileId);const r=await fetch(x.signedUrl);if(!r.ok)throw new Error('تعذر قراءة الملف');return r.blob()}
-  async function open(fileId){const x=await signedUrl(fileId);window.open(x.signedUrl,'_blank','noopener,noreferrer');return x}
+  async function open(fileId){const x=await signedUrl(fileId);markEvidenceViewed(fileId);window.open(x.signedUrl,'_blank','noopener,noreferrer');return x}
   async function download(fileId,fileName){const blob=await getBlob(fileId);const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download=fileName||'file';a.click();setTimeout(()=>URL.revokeObjectURL(u),2000)}
-  window.CloudFileEngine={VERSION,request,upload,uploadMany,list,listByLink,listFolders,createFolder,renameFolder,trashFolder,restoreFolder,renameFile,moveFile,signedUrl,trash,restore,purge,link,unlink,usage,audit,stats,health,getBlob,open,download};
+  window.CloudFileEngine={VERSION,request,upload,uploadMany,list,listByLink,listFolders,createFolder,renameFolder,trashFolder,restoreFolder,renameFile,moveFile,signedUrl,trash,restore,purge,link,unlink,usage,audit,stats,health,getBlob,open,download,enrichReviewMetadata,markEvidenceViewed,wasEvidenceViewed};
 })();

@@ -10,7 +10,7 @@ const sha256=async(v:string)=>Array.from(new Uint8Array(await crypto.subtle.dige
 const safeKey=(v:unknown,max=120)=>String(v||'').trim().replace(/[^\p{L}\p{N}._:@/\-]+/gu,'_').slice(0,max);
 const managers=new Set(['manager','owner','school_manager','principal','مدير','مديرة']);
 const agents=new Set(['agent','agency','wakil','vice','deputy','وكيل','وكيلة']);
-const schoolAggregateModules=new Set(['teacher_comprehensive','admin_performance']);
+const schoolAggregateModules=new Set(['teacher_comprehensive','admin_performance','weekly_teacher_work']);
 const MAX_ITEMS=250;
 const MAX_TOTAL_CHARS=6_500_000;
 const PRIVATE_PERFORMANCE_MODULES=new Set(['manager','teacher','agent','student_advisor','student_advisor_analysis_tool','health_advisor','activity_leader','kindergarten_teacher','administrative_employee_portal','administrative_employee_library','admin_employee_management','admin_performance']);
@@ -122,7 +122,7 @@ Deno.serve(async(req)=>{
     }
 
     if(action==='pull-school-users'){
-      if(!isManager && !(moduleKey==='admin_performance'&&isAgent)) return json({error:'هذه القراءة تتطلب صلاحية المسؤول المباشر',code:'STATE_SUPERVISOR_REQUIRED',requestId},403);
+      if(!isManager && !(moduleKey==='admin_performance'&&isAgent) && !(moduleKey==='weekly_teacher_work'&&isAgent)) return json({error:'هذه القراءة تتطلب صلاحية المسؤول المباشر',code:'STATE_SUPERVISOR_REQUIRED',requestId},403);
       if(!schoolAggregateModules.has(moduleKey)) return json({error:'هذا المصدر غير متاح للتجميع المدرسي',code:'STATE_AGGREGATE_MODULE_FORBIDDEN',requestId},403);
       const keys=Array.isArray(body.keys)?body.keys.slice(0,50).map((x:unknown)=>safeKey(x,220)).filter(Boolean):[];
       let allowedOwners:string[]|null=null;
@@ -135,7 +135,41 @@ Deno.serve(async(req)=>{
       let q=sb.from('platform_module_state').select('module_key,state_key,payload,deleted_at,updated_at,owner_key').eq('school_id',s.school_id).eq('module_key',moduleKey).neq('owner_key','school').order('updated_at',{ascending:true}).limit(5000);
       if(allowedOwners)q=q.in('owner_key',allowedOwners);if(keys.length)q=q.in('state_key',keys);
       const {data,error}=await q;if(error)throw error;
-      return json({items:data||[],scope:'school-users',schoolId:s.school_id,supervisor:moduleKey==='admin_performance'?supervisorKey:undefined});
+      let result:any[]=data||[];
+      if(moduleKey==='weekly_teacher_work'){
+        result=result.filter((row:any)=>{
+          try{
+            const payload=JSON.parse(String(row?.payload?.value||'{}'));
+            const rid=String(payload?.reviewer_id||'').trim();
+            if(rid)return rid===String(s.user_id||'');
+            return false;
+          }catch(_){return false;}
+        });
+      }
+      return json({items:result,scope:'school-users',schoolId:s.school_id,supervisor:moduleKey==='admin_performance'?supervisorKey:undefined});
+    }
+
+    if(action==='review-weekly-submission'){
+      if(!isManager&&!isAgent)return json({error:'هذه العملية تتطلب صلاحية المسؤول المباشر',code:'STATE_SUPERVISOR_REQUIRED',requestId},403);
+      if(moduleKey!=='weekly_teacher_work')return json({error:'مصدر التسليم غير صحيح',code:'STATE_TARGET_MODULE_FORBIDDEN',requestId},403);
+      const targetUserId=String(body.ownerUserId||'').trim(),stateKey=safeKey(body.stateKey,220),itemKey=String(body.itemKey||'').trim(),decision=String(body.decision||'').trim(),reason=String(body.reason||'').trim();
+      if(!targetUserId||!stateKey||!itemKey)return json({error:'بيانات قرار المراجعة غير مكتملة',code:'STATE_REVIEW_INPUT_REQUIRED',requestId},400);
+      if(!['approved','returned','rejected'].includes(decision))return json({error:'قرار المراجعة غير مدعوم',code:'STATE_REVIEW_DECISION_INVALID',requestId},400);
+      if((decision==='returned'||decision==='rejected')&&!reason)return json({error:'سبب الإعادة أو عدم الاعتماد إلزامي',code:'STATE_REVIEW_REASON_REQUIRED',requestId},400);
+      const existing=await sb.from('platform_module_state').select('payload,deleted_at,owner_key').eq('school_id',s.school_id).eq('owner_key',targetUserId).eq('module_key','weekly_teacher_work').eq('state_key',stateKey).maybeSingle();
+      if(existing.error)throw existing.error;
+      if(!existing.data||existing.data.deleted_at)return json({error:'تعذر العثور على تسليم المعلم',code:'STATE_WEEKLY_SUBMISSION_NOT_FOUND',requestId},404);
+      let payload:any={};try{payload=JSON.parse(String(existing.data.payload?.value||'{}'))}catch(_){return json({error:'بيانات التسليم تالفة',code:'STATE_WEEKLY_SUBMISSION_INVALID',requestId},409)}
+      const rid=String(payload.reviewer_id||'').trim();
+      if(!rid||rid!==String(s.user_id||''))return json({error:'هذا التسليم مرتبط بمسؤول آخر',code:'STATE_WEEKLY_REVIEWER_MISMATCH',requestId},403);
+      const items=payload.items&&typeof payload.items==='object'?payload.items:{};const item=items[itemKey];
+      if(!item)return json({error:'المهمة غير موجودة داخل التسليم',code:'STATE_WEEKLY_ITEM_NOT_FOUND',requestId},404);
+      item.review_status=decision;item.reviewed_at=now;item.reviewed_by=String(s.user_id||'');item.review_reason=reason;
+      if(decision==='approved')item.status='مكتمل';else if(decision==='returned')item.status='ناقص';else item.status='غير منفذ';
+      payload.items=items;payload.updated_at=now;payload.last_review_at=now;payload.last_review_by=String(s.user_id||'');
+      const up=await sb.from('platform_module_state').upsert({school_id:s.school_id,owner_key:targetUserId,module_key:'weekly_teacher_work',state_key:stateKey,payload:{value:JSON.stringify(payload)},updated_by:s.user_id,updated_at:now,deleted_at:null},{onConflict:'school_id,owner_key,module_key,state_key'});
+      if(up.error)throw up.error;
+      return json({ok:true,payload,ownerKey:targetUserId,stateKey});
     }
 
     if(action==='pull-user'){

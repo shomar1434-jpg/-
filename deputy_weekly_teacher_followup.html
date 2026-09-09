@@ -435,11 +435,27 @@
       teacherRefreshPromise=null;
     }
   }
+  function safeLocalSet(key,value){try{localStorage.setItem(key,value);return true}catch(e){console.warn('[weekly light cache skipped]',key,e&&e.name||e);return false}}
+  function lightWeekCache(w){if(!w)return null;return {id:w.id,number:w.number,year:w.year,term:w.term,start:w.start,end:w.end,status:w.status,execution_state:w.execution_state||'',execution_confirmed_at:w.execution_confirmed_at||'',closed_at:w.closed_at||'',reviewer_id:w.reviewer_id||'',reviewer_email:w.reviewer_email||'',reviewer_role:w.reviewer_role||'',reviewer_name:w.reviewer_name||'',execution_notice:w.execution_notice||''}}
+  function lightArchiveCache(a){if(!a)return null;return {id:a.id,week_id:a.week_id,week_number:a.week_number,year:a.year,term:a.term,start:a.start,end:a.end,closed_at:a.closed_at,metrics:a.metrics?{disciplineAvg:a.metrics.disciplineAvg||0,executiveAvg:a.metrics.executiveAvg||a.metrics.avg||0,avg:a.metrics.avg||0,counts:a.metrics.counts||{}}:{}}}
+  function cloudWeekRecord(w){const x={...(w||{})};delete x.teacherSubmissions;delete x.evidenceViews;return x}
+  function writeLightWeeklyCache(){
+    // localStorage مجرد فهرس خفيف بعد نجاح السحابة، وليس مصدر البيانات التشغيلية.
+    try{localStorage.removeItem(weeksKey());localStorage.removeItem(archiveKey())}catch(_){}
+    safeLocalSet(weeksKey(),JSON.stringify((weeks||[]).map(lightWeekCache).filter(Boolean)));
+    safeLocalSet(archiveKey(),JSON.stringify((archives||[]).slice(0,12).map(lightArchiveCache).filter(Boolean)));
+    safeLocalSet(activeKey(),activeWeekId||'');
+  }
   function loadWeeks(){try{weeks=JSON.parse(localStorage.getItem(weeksKey())||'[]')}catch(e){weeks=[]} try{archives=JSON.parse(localStorage.getItem(archiveKey())||'[]')}catch(e){archives=[]} activeWeekId=localStorage.getItem(activeKey())||(weeks.find(w=>w.status==='نشط')||weeks[0]||{}).id||''}
   async function saveWeeks(){
- const beforeW=localStorage.getItem(weeksKey()),beforeA=localStorage.getItem(archiveKey()),beforeActive=localStorage.getItem(activeKey());const w=currentWeek()||weeks[0]||{},ay=w.year||localStorage.getItem('school_info_academic_year')||'1448',sem=w.term||'الفصل الدراسي الأول',same=x=>String(x.year||ay)===String(ay)&&String(x.term||sem)===String(sem),pw=weeks.filter(same),pa=archives.filter(a=>String(a.year||ay)===String(ay)&&String(a.term||sem)===String(sem));
- try{if(window.PlatformRecordSaveEngine&&!PlatformRecordSaveEngine.isSystemAdminContext())await PlatformRecordSaveEngine.save({moduleKey:'deputy_weekly_followup',recordType:'weekly_followup_period',recordId:'main',academicYear:ay,semester:sem,scope:'school',folderId:'weekly-teacher-followup',title:'متابعة المعلمين الأسبوعية',data:{weeks:pw,archives:pa,activeWeekId:pw.some(x=>String(x.id)===String(activeWeekId))?activeWeekId:(pw[0]?.id||'')}});localStorage.setItem(weeksKey(),JSON.stringify(weeks));localStorage.setItem(archiveKey(),JSON.stringify(archives));localStorage.setItem(activeKey(),activeWeekId||'');return true;}catch(e){if(beforeW===null)localStorage.removeItem(weeksKey());else localStorage.setItem(weeksKey(),beforeW);if(beforeA===null)localStorage.removeItem(archiveKey());else localStorage.setItem(archiveKey(),beforeA);if(beforeActive===null)localStorage.removeItem(activeKey());else localStorage.setItem(activeKey(),beforeActive);console.error('[deputy weekly cloud save]',e);throw e;}
-}
+    const w=currentWeek()||weeks[0]||{},ay=w.year||localStorage.getItem('school_info_academic_year')||'1448',sem=w.term||'الفصل الدراسي الأول',same=x=>String(x.year||ay)===String(ay)&&String(x.term||sem)===String(sem),pw=weeks.filter(same).map(cloudWeekRecord),pa=archives.filter(a=>String(a.year||ay)===String(ay)&&String(a.term||sem)===String(sem));
+    try{
+      if(!window.PlatformRecordSaveEngine||PlatformRecordSaveEngine.isSystemAdminContext())throw new Error('محرك الحفظ السحابي لمتابعة الأسابيع غير متاح في هذا السياق');
+      await PlatformRecordSaveEngine.save({moduleKey:'deputy_weekly_followup',recordType:'weekly_followup_period',recordId:'main',academicYear:ay,semester:sem,scope:'school',folderId:'weekly-teacher-followup',title:'متابعة المعلمين الأسبوعية',data:{weeks:pw,archives:pa,activeWeekId:pw.some(x=>String(x.id)===String(activeWeekId))?activeWeekId:(pw[0]?.id||'')}});
+      writeLightWeeklyCache();
+      return true;
+    }catch(e){console.error('[deputy weekly cloud save]',e);throw e;}
+  }
   async function restoreDeputyPeriodFromCloud(){
     try{
       if(!window.PlatformRecordSaveEngine||PlatformRecordSaveEngine.isSystemAdminContext())return false;
@@ -452,7 +468,8 @@
       weeks=weeks.filter(x=>!ids.has(String(x.id))).concat(cw);
       archives=archives.filter(x=>!aids.has(String(x.id||x.week_id))).concat(ca);
       if(cloud.data.activeWeekId&&cw.some(x=>String(x.id)===String(cloud.data.activeWeekId)))activeWeekId=cloud.data.activeWeekId;
-      localStorage.setItem(weeksKey(),JSON.stringify(weeks));localStorage.setItem(archiveKey(),JSON.stringify(archives));localStorage.setItem(activeKey(),activeWeekId||'');return true;
+      // لا نستبدل البيانات المحلية القديمة إلا بعد نجاح الاسترجاع السحابي.
+      writeLightWeeklyCache();return true;
     }catch(e){console.warn('[deputy weekly period restore]',e);return false;}
   }
   function currentWeek(){return weeks.find(w=>w.id===activeWeekId)||null}
@@ -890,7 +907,7 @@
   function renderStats(){const w=currentWeek(), m=w?weekMetrics(w):{avg:0}; $('stTeachers').textContent=teachers.length; $('stComplete').textContent=teachers.filter(t=>t.profile_status==='complete').length; $('stWeeks').textContent=weeks.length; $('stTasks').textContent=w?((w.variableAssignments||[]).length+(w.extraTasks||[]).length):0; $('stScore').textContent=m.avg+'%'}
   function renderAll(){ensureWeekTeacherStatuses();renderWeekSelect();renderCalendar();renderTeachers();renderDailyFollowupList();renderWeeklyReviewInbox();renderC1WeeklyAnalysis();renderAssignments();renderExtra();renderReport();renderAnalytics();renderC3WednesdayAlerts();renderStats();renderWeekExecutionBanner()}
   function switchTab(tab){['calendar','teachers','daily','weeklyAnalysis','review','assignments','extra','reports','analytics'].forEach(x=>{$(x+'Pane').classList.toggle('hidden',x!==tab);$('tab'+x[0].toUpperCase()+x.slice(1)).classList.toggle('active',x===tab)})}
-  async function setActiveWeek(id){if(!weeks.some(w=>String(w.id)===String(id)))return;activeWeekId=id;try{localStorage.setItem(activeKey(),activeWeekId)}catch(_){}renderAll();try{await saveWeeks()}catch(e){console.warn('[active week save]',e);toast('تم تغيير الأسبوع للعرض، وتعذر فقط حفظ الاختيار سحابيًا')}await refreshWeeklyReviewInbox(false);renderAll()}
+  async function setActiveWeek(id){if(!weeks.some(w=>String(w.id)===String(id)))return;activeWeekId=id;safeLocalSet(activeKey(),activeWeekId);renderAll();try{await saveWeeks()}catch(e){console.warn('[active week save]',e);toast('تم تغيير الأسبوع للعرض، وتعذر فقط حفظ الاختيار سحابيًا')}await refreshWeeklyReviewInbox(false);renderAll()}
   function openDrawer(html){$('drawerHost').className='drawerBackdrop noPrint';$('drawerHost').innerHTML='<aside class="drawer">'+html+'</aside>'} function closeDrawer(){$('drawerHost').className='hidden';$('drawerHost').innerHTML=''}
   function openCalendarDrawer(){openDrawer(`<div class="drawerHead"><h2>توليد الأسابيع الدراسية</h2><button class="btn secondary" onclick="closeDrawer()">إغلاق</button></div><div class="row"><div class="field"><label>العام الدراسي</label><input id="calYear" placeholder="مثال: 1447هـ"></div><div class="field"><label>الفصل الدراسي</label><select id="calTerm"><option>الفصل الأول</option><option>الفصل الثاني</option><option>الفصل الثالث</option></select></div><div class="field"><label>أول يوم دراسة في الفصل</label><input id="calStart" type="date"></div><div class="field"><label>عدد الأسابيع</label><input id="calCount" type="number" value="20" min="1" max="25"></div></div><div class="empty">سيتم توليد كل أسبوع من الأحد إلى الخميس. إذا كان أول يوم دراسة ليس الأحد، سيكون الأسبوع الأول من تاريخ البداية حتى الخميس.</div><button class="btn" onclick="generateAcademicWeeks(document.getElementById('calYear').value,document.getElementById('calTerm').value,document.getElementById('calStart').value,document.getElementById('calCount').value);closeDrawer()">توليد الأسابيع</button>`)}
   function editWeekDrawer(id){const w=weeks.find(x=>x.id===id); if(!w)return; openDrawer(`<div class="drawerHead"><h2>تعديل الأسبوع ${esc(w.number)}</h2><button class="btn secondary" onclick="closeDrawer()">إغلاق</button></div><div class="row"><div class="field"><label>البداية</label><input id="edStart" type="date" value="${esc(w.start||'')}"></div><div class="field"><label>النهاية</label><input id="edEnd" type="date" value="${esc(w.end||'')}"></div><div class="field"><label>الحالة</label><select id="edStatus"><option>لم يبدأ</option><option>نشط</option><option>مغلق</option><option>إجازة</option><option>اختبارات</option><option>مؤرشف</option></select></div></div><button class="btn" onclick="saveWeekEdit('${esc(id)}')">حفظ التعديل</button>`); $('edStatus').value=w.status||'لم يبدأ'}

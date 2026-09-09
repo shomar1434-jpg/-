@@ -1,7 +1,7 @@
 (function(){
 'use strict';
-if(window.SchoolInformationSource&&String(window.SchoolInformationSource.VERSION||'')==='12.0.0-RL23-cloud-students-single-source')return;
-const VERSION='12.0.0-RL23-cloud-students-single-source';
+if(window.SchoolInformationSource&&String(window.SchoolInformationSource.VERSION||'')==='12.1.0-RL24-auto-information-dropdowns')return;
+const VERSION='12.1.0-RL24-auto-information-dropdowns';
 const SUPABASE_URL=(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'');
 const DEFAULT_SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
 const API_KEY=localStorage.getItem('smartSchoolSupabaseAnonKey')||DEFAULT_SUPABASE_KEY;
@@ -264,6 +264,166 @@ function notifyUpdated(){
  publishCrossPageUpdate(detail);
 }
 
-window.SchoolInformationSource={VERSION,refresh,load:getSnapshot,getSnapshot,getStudents,getStudentsByScope,getStaff,getTeachers,getAdministrativeEmployees,request:call,notifyUpdated,notifyStudentsUpdated,hydratePersistentCache,revalidateInBackground,
+
+
+/* RL24 — الربط التلقائي لحقول الأسماء بمركز المعلومات المدرسي
+   القاعدة: لا قوائم ثابتة ولا أسماء مكتوبة يدويًا عندما يكون الحقل حقل اختيار اسم.
+   يحتفظ الربط بعنصر input الأصلي حتى لا يكسر الحفظ/التحقق/EventListeners القديمة. */
+const INFO_LINK={
+  listIds:{student:'sic-auto-students',teacher:'sic-auto-teachers',admin:'sic-auto-admin-employees',staff:'sic-auto-staff'},
+  datasets:{student:[],teacher:[],admin:[],staff:[]},
+  loading:null,observer:null,scanTimer:null
+};
+function fieldText(el){
+  if(!el)return '';
+  const bits=[el.id,el.name,el.getAttribute?.('placeholder'),el.getAttribute?.('aria-label'),el.getAttribute?.('data-label'),el.getAttribute?.('data-info-field')];
+  try{
+    const id=safe(el.id);if(id){const lab=document.querySelector('label[for="'+CSS.escape(id)+'"]');if(lab)bits.push(lab.textContent)}
+    const wrap=el.closest('label');if(wrap)bits.push(wrap.textContent);
+    const parent=el.parentElement;if(parent){
+      const direct=[...parent.children].filter(x=>x!==el&&['LABEL','SPAN','DIV','TH','TD'].includes(x.tagName)).slice(0,3);
+      direct.forEach(x=>bits.push(x.textContent));
+    }
+  }catch(_e){}
+  return bits.map(safe).join(' ').replace(/\s+/g,' ').trim();
+}
+function explicitInfoSource(el){
+  const v=lower(el?.getAttribute?.('data-info-source')||el?.getAttribute?.('data-school-info-source')||'');
+  if(['student','students','طالب','طلاب'].includes(v))return 'student';
+  if(['teacher','teachers','معلم','معلمين','معلمات'].includes(v))return 'teacher';
+  if(['employee','employees','admin','administrative_employee','موظف','موظفين','إداري','إداريين'].includes(v))return 'admin';
+  if(['staff','منسوب','منسوبين'].includes(v))return 'staff';
+  return '';
+}
+function semanticSource(el){
+  const explicit=explicitInfoSource(el);if(explicit)return explicit;
+  if(!el||!['INPUT','SELECT'].includes(el.tagName))return '';
+  const type=lower(el.type||'text');
+  if(el.tagName==='INPUT'&&!['text','search',''].includes(type))return '';
+  const t=fieldText(el);
+  // استبعاد حقول البحث العامة والحقول التي لا تمثل "اسمًا مختارًا".
+  const isSearch=type==='search'||/بحث|ابحث|search/i.test(t);
+  if(isSearch&&!/اسم\s*(الطالب|الطالبة|المعلم|المعلمة|الموظف|الإداري|الاداري|المنسوب)/.test(t))return '';
+  if(/ولي\s*الأمر|اسم\s*المدرسة|مدير\s*المدرسة|اسم\s*البرنامج|اسم\s*النشاط|اسم\s*اللجنة|اسم\s*الفريق/.test(t))return '';
+  if(/اسم\s*(الطالب|الطالبة|الطالب\/ة)|student[_\s-]*(name)?\b|care_student_name|studentname/i.test(t))return 'student';
+  if(/اسم\s*(المعلم|المعلمة|المعلم\/ة)|teacher[_\s-]*(name)?\b|teachername/i.test(t))return 'teacher';
+  if(/اسم\s*(الموظف|الموظفة|الإداري|الإدارية|الاداري|الادارية)|employee[_\s-]*(name)?\b|empname/i.test(t))return 'admin';
+  if(/اسم\s*(المنسوب|المنسوبة)|staff[_\s-]*(name)?\b/i.test(t))return 'staff';
+  return '';
+}
+function displayStudentName(r){return safe(r?.student_name||r?.name||r?.full_name||r?.studentName)}
+function displayPersonName(r){return safe(r?.name||r?.full_name||r?.display_name||r?.teacher_name||r?.username||r?.email)}
+function studentMeta(r){return [r?.stage,r?.grade,r?.section_name||r?.classroom||r?.section,r?.track_name||r?.track].map(safe).filter(Boolean).join(' • ')}
+function ensureList(kind){
+  const id=INFO_LINK.listIds[kind];let dl=document.getElementById(id);
+  if(!dl){dl=document.createElement('datalist');dl.id=id;dl.setAttribute('data-school-information-auto','1');document.body.appendChild(dl)}
+  return dl;
+}
+function rebuildLists(){
+  const students=INFO_LINK.datasets.student||[],teachers=INFO_LINK.datasets.teacher||[],adminRows=INFO_LINK.datasets.admin||[],staffRows=INFO_LINK.datasets.staff||[];
+  const build=(kind,rows,nameFn,metaFn)=>{
+    const dl=ensureList(kind),seen=new Set(),frag=document.createDocumentFragment();dl.textContent='';
+    rows.forEach(r=>{const n=nameFn(r);if(!n)return;const key=lower(n);if(seen.has(key))return;seen.add(key);const o=document.createElement('option');o.value=n;const meta=metaFn?metaFn(r):safe(r?.email||'');if(meta)o.label=meta;frag.appendChild(o)});dl.appendChild(frag);
+  };
+  build('student',students,displayStudentName,studentMeta);build('teacher',teachers,displayPersonName,r=>safe(r?.email||r?.subject||''));build('admin',adminRows,displayPersonName,r=>safe(r?.role||r?.email||''));build('staff',staffRows,displayPersonName,r=>safe(r?.role||r?.email||''));
+}
+async function loadLinkData(force=false){
+  if(INFO_LINK.loading)return INFO_LINK.loading;
+  INFO_LINK.loading=(async()=>{
+    const [students,teachers,adminRows,staffRows]=await Promise.all([getStudents(!!force),getTeachers(!!force),getAdministrativeEmployees(!!force),getStaff(!!force)]);
+    INFO_LINK.datasets.student=Array.isArray(students)?students:[];
+    INFO_LINK.datasets.teacher=Array.isArray(teachers)?teachers:[];
+    INFO_LINK.datasets.admin=Array.isArray(adminRows)?adminRows:[];
+    INFO_LINK.datasets.staff=Array.isArray(staffRows)?staffRows:[];
+    rebuildLists();return INFO_LINK.datasets;
+  })().catch(e=>{console.warn('[school-information auto dropdowns]',e);return INFO_LINK.datasets}).finally(()=>{INFO_LINK.loading=null});
+  return INFO_LINK.loading;
+}
+function setControlValue(el,value){
+  if(!el||value==null)return false;const v=safe(value);if(!v)return false;
+  if(el.tagName==='SELECT'){
+    const opts=[...el.options];let opt=opts.find(o=>safe(o.value)===v||safe(o.textContent)===v);
+    if(!opt)return false;el.value=opt.value;
+  }else el.value=v;
+  try{el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}))}catch(_e){}
+  return true;
+}
+function semanticOfRelated(el){
+  const t=fieldText(el).toLowerCase();
+  if(/المرحلة|stage\b/.test(t))return 'stage';
+  if(/الصف(?!حة)|grade\b/.test(t))return 'grade';
+  if(/الفصل|الشعبة|section\b|classroom\b|class[_-]?name/.test(t))return 'section';
+  if(/المسار|track\b/.test(t))return 'track';
+  if(/السجل\s*المدني|الهوية|national[_-]?id|civil[_-]?id/.test(t))return 'national_id';
+  if(/رقم\s*الطالب|student[_-]?(number|no|id)\b/.test(t))return 'student_number';
+  return '';
+}
+function relatedContainers(el){
+  const a=[];let n=el?.parentElement;let hops=0;
+  while(n&&n!==document.body&&hops++<5){if(n.matches('tr,.form-row,.form-grid,.grid,.row,.field-row,.panel,.card,form,fieldset'))a.push(n);n=n.parentElement}
+  return a.length?a:[el?.parentElement].filter(Boolean);
+}
+function fillStudentContext(el,row){
+  if(!row)return;
+  const values={stage:safe(row.stage),grade:safe(row.grade),section:safe(row.section_name||row.classroom||row.section),track:safe(row.track_name||row.track),national_id:safe(row.national_id||row.civil_id),student_number:safe(row.student_number||row.student_no||row.noor_number)};
+  const done=new Set();
+  for(const container of relatedContainers(el)){
+    const fields=[...container.querySelectorAll('input,select')].filter(x=>x!==el&&!x.disabled);
+    for(const f of fields){const key=semanticOfRelated(f);if(!key||done.has(key)||!values[key])continue;if(setControlValue(f,values[key]))done.add(key)}
+    if(done.has('grade')&&done.has('section'))break;
+  }
+  try{el.dispatchEvent(new CustomEvent('school-information-student-selected',{bubbles:true,detail:{student:row,schoolId:state.schoolId,academicYear:state.academicYear}}))}catch(_e){}
+}
+function bindInput(el,kind){
+  if(el.dataset.sicAutoLinked==='1')return false;
+  el.dataset.sicAutoLinked='1';el.dataset.sicSource=kind;
+  el.setAttribute('autocomplete','off');el.setAttribute('list',INFO_LINK.listIds[kind]);
+  const onPick=()=>{
+    if(kind!=='student')return;
+    const v=lower(el.value),row=(INFO_LINK.datasets.student||[]).find(r=>lower(displayStudentName(r))===v);
+    if(row)fillStudentContext(el,row);
+  };
+  el.addEventListener('change',onPick);el.addEventListener('blur',onPick);
+  return true;
+}
+function bindSelect(el,kind){
+  if(el.dataset.sicAutoLinked==='1')return false;
+  // نحترم القوائم التي تديرها الصفحة بنفسها. التلقائي يعمل على select الفارغ أو المعلّم صراحةً data-info-source.
+  const explicit=!!explicitInfoSource(el);const meaningful=[...el.options].filter(o=>safe(o.value)||safe(o.textContent)).length;
+  if(!explicit&&meaningful>1)return false;
+  el.dataset.sicAutoLinked='1';el.dataset.sicSource=kind;
+  const refill=()=>{
+    const current=safe(el.value);[...el.options].filter(o=>o.dataset?.sicOption==='1').forEach(o=>o.remove());
+    const rows=kind==='student'?INFO_LINK.datasets.student:(kind==='teacher'?INFO_LINK.datasets.teacher:(kind==='admin'?INFO_LINK.datasets.admin:INFO_LINK.datasets.staff));
+    rows.forEach(r=>{const name=kind==='student'?displayStudentName(r):displayPersonName(r);if(!name)return;const o=document.createElement('option');o.dataset.sicOption='1';o.value=name;o.dataset.sicId=safe(r.id||r.student_id||r.user_id||'');o.textContent=kind==='student'?(name+(studentMeta(r)?' — '+studentMeta(r):'')):name;o.dataset.sicName=name;el.appendChild(o)});
+    if(current&&[...el.options].some(o=>o.value===current))el.value=current;
+  };
+  el._sicRefill=refill;refill();
+  if(kind==='student')el.addEventListener('change',()=>{const o=el.selectedOptions?.[0];if(!o)return;const name=lower(o.dataset.sicName||o.textContent.split(' — ')[0]);const row=(INFO_LINK.datasets.student||[]).find(r=>lower(displayStudentName(r))===name);if(row)fillStudentContext(el,row)});
+  return true;
+}
+async function bindInformationFields(root=document){
+  const nodes=[];
+  if(root?.matches?.('input,select'))nodes.push(root);
+  try{nodes.push(...root.querySelectorAll?.('input,select')||[])}catch(_e){}
+  const candidates=nodes.map(el=>[el,semanticSource(el)]).filter(x=>x[1]&&x[0].dataset.sicAutoLinked!=='1');
+  if(!candidates.length)return {bound:0};
+  await loadLinkData(false);
+  let bound=0;
+  candidates.forEach(([el,kind])=>{if(el.tagName==='INPUT')bound+=bindInput(el,kind)?1:0;else if(el.tagName==='SELECT')bound+=bindSelect(el,kind)?1:0});
+  return {bound};
+}
+function refreshBoundSelects(){document.querySelectorAll('select[data-sic-auto-linked="1"]').forEach(el=>{try{el._sicRefill?.()}catch(_e){}})}
+function scheduleInfoScan(root=document){clearTimeout(INFO_LINK.scanTimer);INFO_LINK.scanTimer=setTimeout(()=>bindInformationFields(root).catch(()=>{}),60)}
+function bootInfoAutoLink(){
+  scheduleInfoScan(document);
+  if(!INFO_LINK.observer&&document.documentElement){INFO_LINK.observer=new MutationObserver(ms=>{for(const m of ms){for(const n of m.addedNodes||[]){if(n.nodeType===1){scheduleInfoScan(n);return}}}});INFO_LINK.observer.observe(document.documentElement,{childList:true,subtree:true})}
+  window.addEventListener('school-information-updated',()=>loadLinkData(true).then(()=>{refreshBoundSelects();scheduleInfoScan(document)}).catch(()=>{}));
+  window.addEventListener('school-information:students-updated',()=>loadLinkData(true).then(()=>{refreshBoundSelects();scheduleInfoScan(document)}).catch(()=>{}));
+  window.addEventListener('school-information-source-invalidated',()=>loadLinkData(true).then(()=>{refreshBoundSelects();scheduleInfoScan(document)}).catch(()=>{}));
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bootInfoAutoLink,{once:true});else bootInfoAutoLink();
+
+window.SchoolInformationSource={VERSION,refresh,load:getSnapshot,getSnapshot,getStudents,getStudentsByScope,getStaff,getTeachers,getAdministrativeEmployees,request:call,notifyUpdated,notifyStudentsUpdated,hydratePersistentCache,revalidateInBackground,bindInformationFields,refreshInformationDropdowns:()=>loadLinkData(true).then(()=>{refreshBoundSelects();return bindInformationFields(document)}),
  context:()=>({systemAdmin:systemAdminRequested(),schoolId:targetSchoolId(),accessMode:systemAdminRequested()?'system_admin':'school_manager'})};
 })();

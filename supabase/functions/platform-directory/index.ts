@@ -115,10 +115,10 @@ Deno.serve(async(req)=>{
   }
   if(action==='list-users'){
    if(!isManager)return json({error:'MANAGER_REQUIRED'},403);
-   const [mq,uq]=await Promise.all([sb.from('school_members').select('*').eq('school_id',schoolId).neq('status','deleted').order('created_at'),sb.from('users').select('id,full_name,email,role,status,active,school_id').eq('school_id',schoolId).neq('status','deleted').order('created_at')]);if(mq.error)throw mq.error;if(uq.error)throw uq.error;
+   const [mq,uq]=await Promise.all([sb.from('school_members').select('*').eq('school_id',schoolId).neq('status','deleted').order('created_at'),sb.from('users').select('id,full_name,email,role,status,active,school_id,mobile_number,mobile_verified').eq('school_id',schoolId).neq('status','deleted').order('created_at')]);if(mq.error)throw mq.error;if(uq.error)throw uq.error;
    const memberships:any[]=[...(mq.data||[])],byKey=new Set(memberships.map((m:any)=>`${String(m.user_id||'')}|${low(m.role)}`));
    for(const u of uq.data||[]){const k=`${String(u.id||'')}|${low(u.role)}`;if(!byKey.has(k)){memberships.push({id:`legacy:${u.id}`,school_id:schoolId,user_id:u.id,email:u.email,role:u.role,status:u.status||'active',role_label:null,supervisor_user_id:null,legacy_user_row:true});byKey.add(k)}}
-   const ids=[...new Set(memberships.map((x:any)=>x.user_id).filter(Boolean))];let users:any[]=[];if(ids.length){const all=await sb.from('users').select('id,full_name,email,role,status,active,school_id').in('id',ids);if(all.error)throw all.error;users=all.data||[]}
+   const ids=[...new Set(memberships.map((x:any)=>x.user_id).filter(Boolean))];let users:any[]=[];if(ids.length){const all=await sb.from('users').select('id,full_name,email,role,status,active,school_id,mobile_number,mobile_verified').in('id',ids);if(all.error)throw all.error;users=all.data||[]}
    return json({ok:true,memberships,users,school:schoolQ.data,requestId});
   }
   if(action==='set-user-status'||action==='delete-user'||action==='upsert-user'||action==='reset-user-password'){

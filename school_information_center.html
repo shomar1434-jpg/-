@@ -307,7 +307,7 @@
       <div class="card span12" style="padding:0;overflow:hidden">
         <div class="teacherHero">
           <h2>بيانات المعلمين</h2>
-          <p class="muted">مصدر موحد لبيانات المعلمين التعليمية، يعتمد على حسابات المستخدمين المفعلة في المدرسة، ثم تُستكمل منه المادة والصفوف والتكليفات الإضافية لتنعكس لاحقًا على متابعة الوكيل والأعمال الأسبوعية للمعلم.</p>
+          <p class="muted">مصدر موحد لبيانات المعلمين التعليمية، يعتمد على حسابات المستخدمين المفعلة في المدرسة، ثم تُستكمل منه المواد وأنصبة كل مادة والفصول والتكليفات التدريسية لتنعكس لاحقًا على متابعة الوكيل والأعمال الأسبوعية للمعلم.</p>
         </div>
       </div>
 
@@ -315,8 +315,8 @@
         <div class="stats">
           <div class="stat"><b id="tcTotal">0</b><span>إجمالي المعلمين</span></div>
           <div class="stat"><b id="tcComplete">0</b><span>بيانات مكتملة</span></div>
-          <div class="stat"><b id="tcSubjects">0</b><span>المواد</span></div>
-          <div class="stat"><b id="tcExtra">0</b><span>تكليفات إضافية</span></div>
+          <div class="stat"><b id="tcSubjects">0</b><span>المواد المسندة</span></div>
+          <div class="stat"><b id="tcLessons">0</b><span>إجمالي الأنصبة</span></div>
         </div>
       </div>
 
@@ -329,18 +329,16 @@
             <button class="btn secondary" onclick="exportTeachersForDeputy()">تصدير للوكيل</button>
           </div>
         </div>
-        <div class="note" style="margin-top:14px">التكليفات الإضافية مثل: موجه/موجهة طلابية، رائد نشاط، موجه صحي، محضر مختبر؛ لا تغيّر الدور الأساسي للمعلم، لكنها تُظهر له مهام إضافية في المتابعة الأسبوعية عند تفعيلها من الوكيل.</div>
       </div>
 
       <div class="card span8">
         <h2>قائمة المعلمين</h2>
-        <div class="row" style="grid-template-columns:2fr 1fr 1fr 1fr">
+        <div class="row" style="grid-template-columns:2fr 1fr 1fr">
           <div><label>بحث باسم المعلم أو البريد</label><input id="teacherSearch" placeholder="اكتب اسم المعلم أو البريد" oninput="renderTeachers()"></div>
           <div><label>الحالة</label><select id="teacherStatusFilter" onchange="renderTeachers()"><option value="">الكل</option><option value="complete">مكتملة</option><option value="missing">ناقصة</option></select></div>
-          <div><label>التكليف الإضافي</label><select id="teacherExtraFilter" onchange="renderTeachers()"><option value="">الكل</option><option>موجه/موجهة طلابية</option><option>موجه صحي</option><option>محضر مختبر</option><option>رائد نشاط</option><option>مسؤول اختبارات</option><option>منسق موهوبين</option><option>أخرى</option></select></div>
           <div style="align-self:end"><span id="teacherShownCount" class="pill">0 معلم</span></div>
         </div>
-        <div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>م</th><th>المعلم</th><th>المادة</th><th>الحصص</th><th>التكليفات التدريسية</th><th>التكليفات الإضافية</th><th>الحالة</th><th class="noPrint">إجراءات</th></tr></thead><tbody id="teachersBody"></tbody></table></div>
+        <div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>م</th><th>المعلم</th><th>المواد والأنصبة</th><th>إجمالي النصاب</th><th>التكليفات التدريسية / الفصول</th><th>الحالة</th><th class="noPrint">إجراءات</th></tr></thead><tbody id="teachersBody"></tbody></table></div>
       </div>
     </section>
 
@@ -1920,16 +1918,16 @@ window.readExcel = async function(){
   }
   function loadTeacherProfiles(){try{return JSON.parse(localStorage.getItem(teacherStoreKey())||'[]')}catch(e){return []}}
   async function readCloudTeacherProfiles(){
-    try{const q=await secureSchoolInfo('teacher-profiles-list');return (q.profiles||[]).map(r=>({id:safe(r.user_id||r.id),user_id:safe(r.user_id||r.id),name:safe(r.teacher_name||r.name||''),email:safe(r.email||''),subject:safe(r.subject||''),weekly_lessons:r.weekly_lessons||'',assignments:Array.isArray(r.assignments)?r.assignments:[],extra_roles:Array.isArray(r.extra_roles)?r.extra_roles:[],updated_at:r.updated_at||''}));}catch(e){return []}
+    try{const q=await secureSchoolInfo('teacher-profiles-list');return (q.profiles||[]).map(r=>({id:safe(r.user_id||r.id),user_id:safe(r.user_id||r.id),name:safe(r.teacher_name||r.name||''),email:safe(r.email||''),subject:safe(r.subject||''),weekly_lessons:r.weekly_lessons||'',teaching_subjects:Array.isArray(r.teaching_subjects)?r.teaching_subjects:[],assignments:Array.isArray(r.assignments)?r.assignments:[],extra_roles:Array.isArray(r.extra_roles)?r.extra_roles:[],updated_at:r.updated_at||''}));}catch(e){return []}
   }
   async function saveTeacherProfileCloud(t){
-    try{await secureSchoolInfo('teacher-profile-upsert',{profile:{user_id:t.user_id,teacher_name:t.name,email:t.email||'',subject:t.subject||'',weekly_lessons:Number(t.weekly_lessons||0),assignments:t.assignments||[],extra_roles:t.extra_roles||[]}});return true;}catch(e){return false}
+    try{await secureSchoolInfo('teacher-profile-upsert',{profile:{user_id:t.user_id,teacher_name:t.name,email:t.email||'',subject:t.subject||'',weekly_lessons:Number(t.weekly_lessons||0),teaching_subjects:t.teaching_subjects||[],assignments:t.assignments||[],extra_roles:t.extra_roles||[]}});return true;}catch(e){return false}
   }
   function saveTeacherProfiles(rows){localStorage.setItem(teacherStoreKey(),JSON.stringify(rows||[]));}
-  function teacherComplete(t){return !!(safe(t.subject)&&Number(t.weekly_lessons||0)>0&&Array.isArray(t.assignments)&&t.assignments.length)}
+  function teacherComplete(t){const subs=teacherSubjects(t);return !!(subs.length&&subs.every(x=>safe(x.subject)&&Number(x.weekly_lessons||0)>0)&&Array.isArray(t.assignments)&&t.assignments.some(x=>safe(x.stage)&&safe(x.grade)&&safe(x.section)))}
   function mergeTeacherUsers(users,profiles){
     const prof=new Map((profiles||[]).map(x=>[safe(x.user_id||x.id),x]));
-    return (users||[]).map(u=>Object.assign({subject:'',weekly_lessons:'',assignments:[],extra_roles:[],profile_status:'missing'}, prof.get(safe(u.user_id||u.id))||{}, u, {user_id:safe(u.user_id||u.id),school_id:currentSchool.id})).map(t=>{t.profile_status=teacherComplete(t)?'complete':'missing'; return t;});
+    return (users||[]).map(u=>Object.assign({subject:'',weekly_lessons:'',teaching_subjects:[],assignments:[],extra_roles:[],profile_status:'missing'}, prof.get(safe(u.user_id||u.id))||{}, u, {user_id:safe(u.user_id||u.id),school_id:currentSchool.id})).map(t=>{t.profile_status=teacherComplete(t)?'complete':'missing'; return t;});
   }
   async function loadTeachers(){
     if(!currentSchool.id) await detectSchool(); if(!currentSchool.id) return;
@@ -1991,28 +1989,32 @@ window.readExcel = async function(){
     setStatus('تم تصدير '+payload.total_teachers+' معلمًا لقسم الوكيل، منها '+payload.complete_teachers+' بياناتها مكتملة.'+(cloudSaved?' تم الحفظ السحابي أيضًا.':' تم الحفظ محليًا وسيُقرأها قسم الوكيل عند بنائه.'),'ok');
     return true;
   }
+  function teacherSubjects(t){
+    const a=Array.isArray(t.teaching_subjects)?t.teaching_subjects.filter(x=>safe(x&&x.subject)):[];
+    if(a.length) return a.map(x=>({subject:safe(x.subject),weekly_lessons:Number(x.weekly_lessons||0)}));
+    return safe(t.subject)?[{subject:safe(t.subject),weekly_lessons:Number(t.weekly_lessons||0)}]:[];
+  }
+  function teacherSubjectText(t){const a=teacherSubjects(t);return a.length?a.map(x=>'<span class="teacherBadge">'+html(x.subject)+'</span> <span class="teacherBadge gray">'+Number(x.weekly_lessons||0)+' حصة</span>').join('<br>'):'—'}
+  function teacherTotalLessons(t){return teacherSubjects(t).reduce((n,x)=>n+Number(x.weekly_lessons||0),0)}
   function renderTeacherStats(){
-    const subjects=unique(allTeachers.map(t=>t.subject));
-    const extra=[...new Set(allTeachers.flatMap(t=>t.extra_roles||[]).filter(Boolean))];
+    const subjects=unique(allTeachers.flatMap(t=>teacherSubjects(t).map(x=>x.subject)).filter(Boolean));
     $('tcTotal').textContent=allTeachers.length;
     $('tcComplete').textContent=allTeachers.filter(teacherComplete).length;
     $('tcSubjects').textContent=subjects.length;
-    $('tcExtra').textContent=extra.length;
+    $('tcLessons').textContent=allTeachers.reduce((n,t)=>n+teacherTotalLessons(t),0);
   }
   function assText(t){
     const a=Array.isArray(t.assignments)?t.assignments:[];
     if(!a.length) return '<span class="teacherBadge gray">لم تستكمل</span>';
     return a.map(x=>'<span class="teacherBadge">'+html([x.stage,x.grade,x.track,x.section].filter(Boolean).join(' / '))+'</span>').join(' ');
   }
-  function extraText(t){const e=t.extra_roles||[]; return e.length?e.map(x=>'<span class="teacherBadge gold">'+html(x)+'</span>').join(' '):'<span class="teacherBadge gray">لا يوجد</span>'}
   window.renderTeachers=function(){
     const q=normText($('teacherSearch')?$('teacherSearch').value:'');
     const st=$('teacherStatusFilter')?$('teacherStatusFilter').value:'';
-    const ex=$('teacherExtraFilter')?$('teacherExtraFilter').value:'';
-    const rows=allTeachers.filter(t=>(!q||normText((t.name||'')+' '+(t.email||'')).includes(q))&&(!st||t.profile_status===st)&&(!ex||(t.extra_roles||[]).includes(ex)));
+    const rows=allTeachers.filter(t=>(!q||normText((t.name||'')+' '+(t.email||'')).includes(q))&&(!st||t.profile_status===st));
     if($('teacherShownCount')) $('teacherShownCount').textContent=rows.length+' معلم';
     if(!$('teachersBody')) return;
-    $('teachersBody').innerHTML=rows.map((t,i)=>'<tr><td>'+(i+1)+'</td><td><b>'+html(t.name)+'</b><div class="muted">'+html(t.email||'')+'</div></td><td>'+html(t.subject||'—')+'</td><td>'+html(t.weekly_lessons||'—')+'</td><td>'+assText(t)+'</td><td>'+extraText(t)+'</td><td class="'+(teacherComplete(t)?'teacherStatusComplete':'teacherStatusMissing')+'">'+(teacherComplete(t)?'مكتملة':'تحتاج استكمال')+'</td><td class="noPrint"><button class="btn small" onclick="openTeacherDrawer(\''+html(t.user_id)+'\')">استكمال/تعديل</button></td></tr>').join('') || '<tr><td colspan="8" class="muted">لا توجد حسابات معلمين مفعلة لهذه المدرسة. استخدم زر الاستيراد بعد تفعيل المستخدمين من قسم المدير.</td></tr>';
+    $('teachersBody').innerHTML=rows.map((t,i)=>'<tr><td>'+(i+1)+'</td><td><b>'+html(t.name)+'</b><div class="muted">'+html(t.email||'')+'</div></td><td>'+teacherSubjectText(t)+'</td><td><b>'+teacherTotalLessons(t)+'</b></td><td>'+assText(t)+'</td><td class="'+(teacherComplete(t)?'teacherStatusComplete':'teacherStatusMissing')+'">'+(teacherComplete(t)?'مكتملة':'تحتاج استكمال')+'</td><td class="noPrint"><button class="btn small" onclick="openTeacherDrawer(\''+html(t.user_id)+'\')">استكمال/تعديل</button></td></tr>').join('') || '<tr><td colspan="7" class="muted">لا توجد حسابات معلمين مفعلة لهذه المدرسة. استخدم زر الاستيراد بعد تفعيل المستخدمين من قسم المدير.</td></tr>';
     renderTeacherStats();
   }
   function canonicalTeacherStage(v){
@@ -2043,25 +2045,33 @@ window.readExcel = async function(){
   function gradeOptions(stage,selected){stage=canonicalTeacherStage(stage);selected=canonicalTeacherGrade(stage,selected);const arr=stageGrades[stage]||[]; const values=arr.slice(); if(selected&&!values.includes(selected))values.unshift(selected); return [''].concat(values).map(v=>'<option value="'+html(v)+'" '+(v===selected?'selected':'')+'>'+(v||'اختر الصف')+'</option>').join('')}
   function trackOptions(stage,selected){stage=canonicalTeacherStage(stage);const arr=stage==='ثانوي'?secondaryTracks:['']; return arr.map(v=>'<option value="'+html(v)+'" '+(v===selected?'selected':'')+'>'+(v||'لا يوجد')+'</option>').join('')}
   function sectionOptions(selected){const fromStudents=unique(allStudents.map(x=>x.section_name)); const arr=(fromStudents.length?fromStudents:['أ','ب','ج','د','هـ','و']); return [''].concat(arr).map(v=>'<option value="'+html(v)+'" '+(v===selected?'selected':'')+'>'+(v||'اختر الشعبة')+'</option>').join('')}
-  function subjectSelect(v){return '<select id="tdSubject">'+[''].concat(subjectOptions).map(x=>'<option value="'+html(x)+'" '+(x===v?'selected':'')+'>'+(x||'اختر المادة')+'</option>').join('')+'</select>'}
+  function subjectSelectClass(v){return '<select class="teachSubject">'+[''].concat(subjectOptions).map(x=>'<option value="'+html(x)+'" '+(x===v?'selected':'')+'>'+(x||'اختر المادة')+'</option>').join('')+'</select>'}
+  function renderSubjectsEditor(subjects){
+    const a=subjects&&subjects.length?subjects:[{subject:'',weekly_lessons:''}];
+    return a.map((x,i)=>'<div class="assignmentBox teachingSubjectBox" data-subject-index="'+i+'"><div class="row"><div><label>المادة</label>'+subjectSelectClass(x.subject||'')+'</div><div><label>نصاب المادة الأسبوعي</label><input class="teachLessons" type="number" min="1" max="40" value="'+html(x.weekly_lessons||'')+'" placeholder="عدد الحصص"></div></div><div class="actions" style="margin-top:10px"><button class="btn small danger" onclick="removeTeachingSubject(this)">حذف المادة</button></div></div>').join('');
+  }
+  window.addTeachingSubject=function(){const host=$('subjectsEditor');host.insertAdjacentHTML('beforeend',renderSubjectsEditor([{subject:'',weekly_lessons:''}]));}
+  window.removeTeachingSubject=function(btn){const box=btn.closest('.teachingSubjectBox');if(document.querySelectorAll('.teachingSubjectBox').length>1)box.remove();}
   function renderAssignmentEditor(assignments){
     const a=assignments&&assignments.length?assignments:[{stage:'',grade:'',track:'',section:''}];
-    return a.map((x,i)=>'<div class="assignmentBox" data-assignment-index="'+i+'"><div class="row"><div><label>المرحلة</label><select class="assStage" onchange="refreshAssignmentRow(this)">'+stageOptions(x.stage)+'</select></div><div><label>الصف</label><select class="assGrade">'+gradeOptions(x.stage,x.grade)+'</select></div><div><label>المسار</label><select class="assTrack">'+trackOptions(x.stage,x.track)+'</select></div><div><label>الشعبة</label><select class="assSection">'+sectionOptions(x.section)+'</select></div></div><div class="actions" style="margin-top:10px"><button class="btn small danger" onclick="removeAssignmentRow(this)">حذف التكليف</button></div></div>').join('')
+    return a.map((x,i)=>'<div class="assignmentBox teachingAssignmentBox" data-assignment-index="'+i+'"><div class="row"><div><label>المرحلة</label><select class="assStage" onchange="refreshAssignmentRow(this)">'+stageOptions(x.stage)+'</select></div><div><label>الصف</label><select class="assGrade">'+gradeOptions(x.stage,x.grade)+'</select></div><div><label>المسار</label><select class="assTrack">'+trackOptions(x.stage,x.track)+'</select></div><div><label>الفصل / الشعبة</label><select class="assSection">'+sectionOptions(x.section)+'</select></div></div><div class="actions" style="margin-top:10px"><button class="btn small danger" onclick="removeAssignmentRow(this)">حذف التكليف التدريسي</button></div></div>').join('');
   }
-  window.refreshAssignmentRow=function(sel){const box=sel.closest('.assignmentBox'); const stage=sel.value; box.querySelector('.assGrade').innerHTML=gradeOptions(stage,''); box.querySelector('.assTrack').innerHTML=trackOptions(stage,'');}
-  window.removeAssignmentRow=function(btn){const box=btn.closest('.assignmentBox'); if(document.querySelectorAll('.assignmentBox').length>1) box.remove();}
+  window.refreshAssignmentRow=function(sel){const box=sel.closest('.teachingAssignmentBox'); const stage=sel.value; box.querySelector('.assGrade').innerHTML=gradeOptions(stage,''); box.querySelector('.assTrack').innerHTML=trackOptions(stage,'');}
+  window.removeAssignmentRow=function(btn){const box=btn.closest('.teachingAssignmentBox'); if(document.querySelectorAll('.teachingAssignmentBox').length>1) box.remove();}
   window.addAssignmentRow=function(){const host=$('assignmentsEditor'); host.insertAdjacentHTML('beforeend',renderAssignmentEditor([{stage:'',grade:'',track:'',section:''}]));}
-  function extraChecks(selected){selected=selected||[]; return '<div class="multiChecks">'+teacherExtraOptions.map(x=>'<label><input type="checkbox" class="extraRoleCheck" value="'+html(x)+'" '+(selected.includes(x)?'checked':'')+'> '+html(x)+'</label>').join('')+'</div>'}
   window.openTeacherDrawer=function(userId){
     const t=allTeachers.find(x=>String(x.user_id)===String(userId)); if(!t) return;
     $('teacherDrawerHost').className='drawerBackdrop noPrint';
-    $('teacherDrawerHost').innerHTML='<aside class="teacherDrawer"><div class="drawerHead"><div><h2>استكمال بيانات المعلم</h2><div class="muted">الاسم والبريد مرتبطان بحساب المستخدم ولا يعدلان من مركز المعلومات.</div></div><button class="btn secondary" onclick="closeTeacherDrawer()">إغلاق</button></div><div class="linkHint"><b>'+html(t.name)+'</b><br>'+html(t.email||'')+'<br>المدرسة: '+html(currentSchool.name||currentSchool.id)+'</div><div class="row" style="margin-top:14px"><div><label>المادة</label>'+subjectSelect(t.subject||'')+'</div><div><label>عدد الحصص الأسبوعية</label><input id="tdLessons" type="number" min="0" value="'+html(t.weekly_lessons||'')+'"></div></div><div class="miniTitle">التكليفات التدريسية</div><div id="assignmentsEditor">'+renderAssignmentEditor(t.assignments||[])+'</div><div class="actions" style="margin-top:10px"><button class="btn secondary" onclick="addAssignmentRow()">+ إضافة تكليف تدريسي</button></div><div class="miniTitle">التكليفات الإضافية</div>'+extraChecks(t.extra_roles||[])+'<div class="actions" style="margin-top:18px"><button class="btn" onclick="saveTeacherProfile(\''+html(t.user_id)+'\')">حفظ البيانات</button><button class="btn secondary" onclick="closeTeacherDrawer()">إلغاء</button></div></aside>';
+    $('teacherDrawerHost').innerHTML='<aside class="teacherDrawer"><div class="drawerHead"><div><h2>استكمال بيانات المعلم</h2><div class="muted">الاسم والبريد مرتبطان بحساب المستخدم ولا يعدلان من مركز المعلومات.</div></div><button class="btn secondary" onclick="closeTeacherDrawer()">إغلاق</button></div><div class="linkHint"><b>'+html(t.name)+'</b><br>'+html(t.email||'')+'<br>المدرسة: '+html(currentSchool.name||currentSchool.id)+'</div><div class="miniTitle">المواد والأنصبة</div><div class="note">يمكن إسناد أكثر من مادة للمعلم، ولكل مادة نصاب أسبوعي مستقل.</div><div id="subjectsEditor">'+renderSubjectsEditor(teacherSubjects(t))+'</div><div class="actions" style="margin-top:10px"><button class="btn secondary" onclick="addTeachingSubject()">+ إضافة مادة</button></div><div class="miniTitle">التكليفات التدريسية / الفصول</div><div class="note">يمكن إضافة أكثر من فصل أو شعبة للمعلم. هذه التكليفات تدريسية فقط؛ أما الأدوار والمهام الإضافية فتدار من مركز التكليفات.</div><div id="assignmentsEditor">'+renderAssignmentEditor(t.assignments||[])+'</div><div class="actions" style="margin-top:10px"><button class="btn secondary" onclick="addAssignmentRow()">+ إضافة تكليف تدريسي / فصل</button></div><div class="actions" style="margin-top:18px"><button class="btn" onclick="saveTeacherProfile(\''+html(t.user_id)+'\')">حفظ البيانات</button><button class="btn secondary" onclick="closeTeacherDrawer()">إلغاء</button></div></aside>';
   }
   window.closeTeacherDrawer=function(){$('teacherDrawerHost').className='hidden noPrint'; $('teacherDrawerHost').innerHTML='';}
   window.saveTeacherProfile=async function(userId){
     const t=allTeachers.find(x=>String(x.user_id)===String(userId)); if(!t) return;
-    const assignments=[...document.querySelectorAll('.assignmentBox')].map(box=>{const stage=canonicalTeacherStage(box.querySelector('.assStage').value);return {stage,grade:canonicalTeacherGrade(stage,box.querySelector('.assGrade').value),track:safe(box.querySelector('.assTrack').value),section:safe(box.querySelector('.assSection').value)}}).filter(x=>x.stage&&x.grade&&x.section);
-    t.subject=safe($('tdSubject').value); t.weekly_lessons=safe($('tdLessons').value); t.assignments=assignments; t.extra_roles=[...document.querySelectorAll('.extraRoleCheck:checked')].map(x=>x.value); t.profile_status=teacherComplete(t)?'complete':'missing'; t.updated_at=new Date().toISOString();
+    const teaching_subjects=[...document.querySelectorAll('.teachingSubjectBox')].map(box=>({subject:safe(box.querySelector('.teachSubject').value),weekly_lessons:Number(box.querySelector('.teachLessons').value||0)})).filter(x=>x.subject&&x.weekly_lessons>0);
+    const assignments=[...document.querySelectorAll('.teachingAssignmentBox')].map(box=>{const stage=canonicalTeacherStage(box.querySelector('.assStage').value);return {stage,grade:canonicalTeacherGrade(stage,box.querySelector('.assGrade').value),track:safe(box.querySelector('.assTrack').value),section:safe(box.querySelector('.assSection').value)}}).filter(x=>x.stage&&x.grade&&x.section);
+    if(!teaching_subjects.length)return alert('أضف مادة واحدة على الأقل وحدد نصابها الأسبوعي.');
+    if(!assignments.length)return alert('أضف تكليفًا تدريسيًا واحدًا على الأقل وحدد المرحلة والصف والفصل/الشعبة.');
+    t.teaching_subjects=teaching_subjects; t.subject=teaching_subjects.map(x=>x.subject).join('، '); t.weekly_lessons=teaching_subjects.reduce((n,x)=>n+Number(x.weekly_lessons||0),0); t.assignments=assignments; /* لا نعدل extra_roles هنا؛ إدارة الأدوار الإضافية أصبحت حصرًا من مركز التكليفات */ t.profile_status=teacherComplete(t)?'complete':'missing'; t.updated_at=new Date().toISOString();
     allTeachers=allTeachers.map(x=>String(x.user_id)===String(userId)?t:x);
     saveTeacherProfiles(allTeachers);
     const cloudSaved=await saveTeacherProfileCloud(t);

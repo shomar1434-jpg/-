@@ -1,7 +1,7 @@
 (function(){
 'use strict';
-if(window.SchoolInformationSource&&String(window.SchoolInformationSource.VERSION||'')==='12.1.0-RL24-auto-information-dropdowns')return;
-const VERSION='12.1.0-RL24-auto-information-dropdowns';
+if(window.SchoolInformationSource&&String(window.SchoolInformationSource.VERSION||'')==='12.2.0-RL25-full-record-name-linking')return;
+const VERSION='12.2.0-RL25-full-record-name-linking';
 const SUPABASE_URL=(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'');
 const DEFAULT_SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
 const API_KEY=localStorage.getItem('smartSchoolSupabaseAnonKey')||DEFAULT_SUPABASE_KEY;
@@ -281,9 +281,29 @@ function fieldText(el){
     const id=safe(el.id);if(id){const lab=document.querySelector('label[for="'+CSS.escape(id)+'"]');if(lab)bits.push(lab.textContent)}
     const wrap=el.closest('label');if(wrap)bits.push(wrap.textContent);
     const parent=el.parentElement;if(parent){
-      const direct=[...parent.children].filter(x=>x!==el&&['LABEL','SPAN','DIV','TH','TD'].includes(x.tagName)).slice(0,3);
+      const direct=[...parent.children].filter(x=>x!==el&&['LABEL','SPAN','DIV','TH','TD'].includes(x.tagName)).slice(0,4);
       direct.forEach(x=>bits.push(x.textContent));
     }
+    // RL25: سجلات المدير/الوكيل تُبنى ديناميكياً داخل جداول؛ نضيف سياق الصف والرأس
+    // حتى يمكن تمييز حقل «الاسم» العام إذا كان تابعاً لمعلم/وكيل/عضو لجنة/مكلف.
+    const cell=el.closest('td,th');
+    if(cell){
+      bits.push(cell.textContent);
+      const row=cell.closest('tr');
+      if(row){
+        bits.push(row.textContent);
+        const table=row.closest('table');
+        const head=table?.querySelector('thead')||table?.querySelector('tr');
+        if(head&&head!==row)bits.push(head.textContent);
+        const idx=[...row.children].indexOf(cell);
+        if(idx>=0&&table){
+          const hr=table.querySelector('thead tr')||table.querySelector('tr');
+          const hc=hr?.children?.[idx];if(hc)bits.push(hc.textContent);
+        }
+      }
+    }
+    const block=el.closest('.ref-paragraph,.nameLine,.form-row,.field-row,.grid,.row,.card,fieldset');
+    if(block)bits.push(block.textContent);
   }catch(_e){}
   return bits.map(safe).join(' ').replace(/\s+/g,' ').trim();
 }
@@ -309,6 +329,14 @@ function semanticSource(el){
   if(/اسم\s*(المعلم|المعلمة|المعلم\/ة)|teacher[_\s-]*(name)?\b|teachername/i.test(t))return 'teacher';
   if(/اسم\s*(الموظف|الموظفة|الإداري|الإدارية|الاداري|الادارية)|employee[_\s-]*(name)?\b|empname/i.test(t))return 'admin';
   if(/اسم\s*(المنسوب|المنسوبة)|staff[_\s-]*(name)?\b/i.test(t))return 'staff';
+  // RL25: الحقول العامة «الاسم» داخل سجلات اللجان والزيارات والتكليفات والهياكل
+  // تُربط بمنسوبي المدرسة عندما يثبت السياق أنها تخص شخصاً من المدرسة.
+  const genericName=/(^|\s)(الاسم|اسم)\s*[:：\/]?/i.test(t);
+  const schoolPerson=/(وكيل|وكيلة|مدير\/?مديرة|مدير المدرسة|مديرة المدرسة|معلم|معلمة|مرشد|مرشدة|موجه|موجهة|رائد|رائدة|منسق|منسقة|المكلف|المكلفة|مكلف|مكلفة|رئيس اللجنة|رئيسة اللجنة|عضو اللجنة|أعضاء اللجنة|عضو الفريق|أعضاء الفريق|منفذ|منفذة|مسؤول|مسؤولة|الموظف المختص|الموظفة المختصة|مقدم الطلب|مقدمة الطلب)/i.test(t);
+  const externalPerson=/(ولي\s*الأمر|الزائر|المورد|المتعهد|اسم\s*الجهة|اسم\s*المدرسة|اسم\s*البرنامج|اسم\s*النشاط|اسم\s*الوثيقة)/i.test(t);
+  if(genericName&&schoolPerson&&!externalPerson)return 'staff';
+  // رؤوس الجداول التي تستخدم «المكلف/الرئيس/الأعضاء» دون كلمة «اسم» هي أيضاً حقول أشخاص.
+  if(!externalPerson&&/(^|\s)(المكلف|المكلفة|الرئيس|الرئيسة|الأعضاء|العضو|المنسق|المنسقة)($|\s|[:：\/])/i.test(t))return 'staff';
   return '';
 }
 function displayStudentName(r){return safe(r?.student_name||r?.name||r?.full_name||r?.studentName)}

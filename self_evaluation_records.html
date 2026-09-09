@@ -2800,6 +2800,7 @@ const { createApp } = Vue;
         async mounted() {
             await this.hydrateWorkingDataFromCloud();
             this.loadData();
+            await this.syncMasterDataSources();
             this.normalizeHijriDateParts();
             this.$nextTick(async () =&gt; {
                 await this.restoreArchiveEditContext();
@@ -2810,6 +2811,18 @@ const { createApp } = Vue;
             lucide.createIcons();
         },
         methods: {
+            async syncMasterDataSources() {
+                try {
+                    const b = window.SchoolBaseSettings?.read?.() || {};
+                    if (b.school) this.schoolInfo.name = b.school;
+                    if (b.manager) this.schoolInfo.director = b.manager;
+                    if (b.education) this.schoolInfo.directorate = b.education;
+                    if (b.stage) this.schoolInfo.level = b.stage;
+                    if (b.year) this.schoolInfo.hijriYear = String(b.year).replace(/\D/g,'');
+                    if (window.SchoolInformationSource?.refresh) await window.SchoolInformationSource.refresh().catch(()=>null);
+                    this.$nextTick(() => window.SchoolInformationSource?.bindInformationFields?.(document));
+                } catch (e) { console.warn('[self-evaluation master sources]', e); }
+            },
             addPriorityRow() {
                 if (!Array.isArray(this.actualReality.priorities)) this.actualReality.priorities = [];
                 this.actualReality.priorities.push({

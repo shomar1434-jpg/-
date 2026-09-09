@@ -29,6 +29,7 @@
       school:String(scoped.school||localStorage.getItem('setting_school')||'').trim(),
       manager:String(scoped.manager||localStorage.getItem('def_m')||'').trim(),
       education:String(scoped.education||scoped.region||localStorage.getItem('setting_region')||'').trim(),
+      stage:String(scoped.stage||localStorage.getItem('setting_stage')||'').trim(),
       year:String(scoped.year||localStorage.getItem('setting_academic_year')||START_YEAR).replace(/\s*هـ?\s*$/,'').trim(),
       signature:scoped.signature||localStorage.getItem('setting_sig')||'',
       stamp:scoped.stamp||localStorage.getItem('setting_stamp')||''
@@ -40,6 +41,7 @@
     if(d.school!=null)localStorage.setItem('setting_school',d.school||'');
     if(d.manager!=null)localStorage.setItem('def_m',d.manager||'');
     if(d.education!=null)localStorage.setItem('setting_region',d.education||'');
+    if(d.stage!=null)localStorage.setItem('setting_stage',d.stage||'');
     if(d.year!=null)localStorage.setItem('setting_academic_year',String(d.year||''));
     if(d.signature)localStorage.setItem('setting_sig',d.signature);
     if(d.stamp)localStorage.setItem('setting_stamp',d.stamp);
@@ -105,6 +107,7 @@
     if(/اسم\s*المدرسة|school.?name/i.test(t))return 'school';
     if(/مدير\/?ة?\s*المدرسة|اسم\s*المدير|مدير\s*المدرسة|المدير\s*\/\s*المقي|المدير\s*المعتمد|principal|manager.?name/i.test(t))return 'manager';
     if(/الإدارة\s*التعليمية|إدارة\s*التعليم|المنطقة\s*التعليمية|education.?office|education.?department|region/i.test(t))return 'education';
+    if(/المرحلة\s*(الدراسية|التعليمية)|مرحلة\s*التعليم|school.?stage|education.?stage/i.test(t))return 'stage';
     if(/العام\s*الدراسي|academic.?year|school.?year/i.test(t))return 'year';
     return '';
   }

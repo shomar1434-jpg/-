@@ -164,7 +164,7 @@ Deno.serve(async(req)=>{
     delegatedRecords=(groupRows||[]).map((r:any)=>({moduleKey:r.module_key,recordType:r.record_type,label:r.display_name,routeUrl:r.route_url}));
     if(delegatedRecords.length){const repairedMetadata={...(t.metadata||{}),delegatedRecords,delegation_repaired_at:now};const {error:metaErr}=await sb.from('central_tasks').update({metadata:repairedMetadata,updated_at:now}).eq('id',t.id);if(metaErr)throw metaErr;t.metadata=repairedMetadata;}
    }
-   const ownerModuleAllowed=(m:string)=>sourceOwner==='manager'?m==='manager_records':sourceOwner==='agent'?m.startsWith('deputy_'):sourceOwner==='shared'?!m.startsWith('deputy_')&&m!=='manager_records':true;
+   const ownerModuleAllowed=(m:string)=>sourceOwner==='manager'?m==='manager_records':sourceOwner==='agent'?(m.startsWith('deputy_')||['academic_affairs','school_operations','student_affairs'].includes(m)):sourceOwner==='shared'?!m.startsWith('deputy_')&&m!=='manager_records':true;
    const requestedPairs=delegatedRecords.length?delegatedRecords.filter((r:any)=>r?.moduleKey&&r?.recordType).map((r:any)=>({moduleKey:safeKey(r.moduleKey),recordType:String(r.recordType)})):(body.recordType?[{moduleKey:row.module_key,recordType:String(body.recordType)}]:[]);
    for(const pair of requestedPairs){
     if(!ownerModuleAllowed(pair.moduleKey))return json({error:'نطاق السجل لا يطابق الجهة المالكة المحددة'},409);
@@ -172,7 +172,7 @@ Deno.serve(async(req)=>{
     if(regError)throw regError;if(!registered)return json({error:`السجل غير مسجل في القاموس الموحد: ${pair.moduleKey}/${pair.recordType}`},409);
    }
    if(delegatedRecords.length){
-    const links=delegatedRecords.filter((r:any)=>r&&r.moduleKey&&r.recordType).map((r:any)=>({school_id:s.school_id,task_id:t.id,module_key:safeKey(r.moduleKey),record_type:String(r.recordType),record_id:null,relation_type:'delegated_record',created_by:s.user_id}));
+    const links=delegatedRecords.filter((r:any)=>r&&r.moduleKey&&r.recordType).map((r:any)=>({school_id:s.school_id,task_id:t.id,module_key:safeKey(r.moduleKey),record_type:String(r.recordType),record_id:r.recordId||null,relation_type:'delegated_record',created_by:s.user_id}));
     if(links.length){const {error:linksError}=await sb.from('task_record_links').insert(links);if(linksError)throw linksError}
    }else if(body.recordKey||body.recordType){
     const {error:linkError}=await sb.from('task_record_links').insert({school_id:s.school_id,task_id:t.id,module_key:row.module_key,record_type:String(body.recordType||body.assignmentType||'record'),record_id:body.recordId||null,relation_type:'execution_source',created_by:s.user_id});if(linkError)throw linkError;

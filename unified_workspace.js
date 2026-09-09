@@ -367,7 +367,17 @@
     document.querySelectorAll('.ss-cloud-toolbar').forEach(function(n){n.style.display='none'});
   }
 
+  function loadDelegatedRolePortal(){
+    if(document.querySelector('script[data-delegated-role-portal]'))return;
+    var s=document.createElement('script');
+    s.src='platform-delegated-role-portal.js?v=20260910-role-v1';
+    s.defer=true;
+    s.dataset.delegatedRolePortal='1';
+    document.head.appendChild(s);
+  }
+
   function boot(){
+    loadDelegatedRolePortal();
     css();clearLegacy();addHeaderActions();addBackToStandalone();
     /* تنظيف فوري ثم محاولات محدودة فقط لاستيعاب أي شريط يُبنى عند DOMContentLoaded */
     syncOperations(true);fullscreenFrames();removeStrayFloating();

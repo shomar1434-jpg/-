@@ -831,9 +831,10 @@
   function renderWeekExecutionBanner(){
     const w=currentWeek(),box=$('weekExecutionBanner'),btn=$('confirmWeekBtn'); if(!box)return;
     const st=weekExecutionState(w);
-    box.className='notice '+(st.confirmed?'ok':'');
-    box.innerHTML=st.confirmed?`✅ <b>${esc(st.label)}</b> — تم التأكيد في ${w.execution_confirmed_at?new Date(w.execution_confirmed_at).toLocaleString('ar-SA'):'—'} بواسطة ${esc(w.reviewer_name||'المسؤول')}. الأعمال منشورة للمعلمين.`:`⚠️ <b>${esc(st.label)}</b> — حفظ الأسبوع وحده لا يرسله للمعلمين. استخدم «تأكيد وبدء تنفيذ الأسبوع».`;
-    if(btn){btn.disabled=!w||st.confirmed||['مغلق','مؤرشف','إجازة'].includes(w?.status||'');btn.textContent=st.confirmed?'✅ الأسبوع في طور التنفيذ':'🚀 تأكيد وبدء تنفيذ الأسبوع';}
+    const closed=!!w&&(w.execution_state==='closed'||['مغلق','مؤرشف'].includes(w.status||''));
+    box.className='notice '+(st.confirmed&&!closed?'ok':'');
+    box.innerHTML=closed?`🔒 <b>تم إغلاق أعمال الأسبوع ${esc(w.number||'—')}</b> — لا يستطيع المعلمون رفع أو إرسال شواهد جديدة لهذا الأسبوع. يبقى الأسبوع متاحًا لك للعرض والمراجعة وطباعة تقرير التنفيذ.`:(st.confirmed?`✅ <b>${esc(st.label)}</b> — تم التأكيد في ${w.execution_confirmed_at?new Date(w.execution_confirmed_at).toLocaleString('ar-SA'):'—'} بواسطة ${esc(w.reviewer_name||'المسؤول')}. الأعمال منشورة للمعلمين.`:`⚠️ <b>${esc(st.label)}</b> — حفظ الأسبوع وحده لا يرسله للمعلمين. استخدم «تأكيد وبدء تنفيذ الأسبوع».`);
+    if(btn){btn.disabled=!w||st.confirmed||closed||['إجازة'].includes(w?.status||'');btn.textContent=closed?'🔒 الأسبوع مغلق':st.confirmed?'✅ الأسبوع في طور التنفيذ':'🚀 تأكيد وبدء تنفيذ الأسبوع';}
   }
   function weeklyPlanPayloadForTeacher(w,t){
     const cur=currentReviewerIdentity();
@@ -994,15 +995,22 @@
   async function saveActiveWeek(){try{await saveWeeks();toast('تم حفظ بيانات المتابعة الأسبوعية والتحقق سحابيًا')}catch(e){toast('تعذر تأكيد الحفظ السحابي')}}
   async function closeAndArchiveWeek(){
     const w=currentWeek(); if(!w)return toast('اختر أسبوعًا نشطًا قبل الاعتماد');
-    if(w.status==='مؤرشف' && !confirm('هذا الأسبوع مؤرشف مسبقًا. هل تريد تحديث نسخة الأرشيف؟')) return;
+    if(!w.execution_confirmed_at)return toast('لا يمكن إغلاق أسبوع لم يتم تأكيد بدء تنفيذه');
+    if(w.execution_state==='closed'||['مغلق','مؤرشف'].includes(w.status||'')){switchTab('reports');renderReport();return toast('هذا الأسبوع مغلق بالفعل ويمكنك عرض أو طباعة تقريره');}
+    if(!confirm(`سيتم إغلاق أعمال الأسبوع ${w.number||'—'} ومنع المعلمين من رفع أو إرسال أي شاهد جديد له. هل تريد المتابعة؟`))return;
     c3GenerateAlerts(true);
     const snapshot=c4WeekSnapshot(w);
     const prev=c4FindPreviousArchive(snapshot);
     snapshot.comparison=c4BuildComparison(snapshot,prev);
-    archives=archives.filter(a=>a.week_id!==w.id);
-    archives.unshift(snapshot);
-    w.status='مؤرشف'; w.closed_at=snapshot.closed_at; w.archive_id=snapshot.id;
-    await saveWeeks(); renderAll(); switchTab('reports'); toast('تم اعتماد وإغلاق الأسبوع وحفظه في الأرشيف');
+    try{
+      if(!window.PlatformStateEngine?.closeWeeklyPlan)throw new Error('محرك إغلاق الأسبوع السحابي غير متاح');
+      let ok=0,failed=[];
+      for(const t of teachers){try{await window.PlatformStateEngine.closeWeeklyPlan(t.user_id,w.id);ok++;}catch(e){failed.push(t.name||t.user_id)}}
+      if(failed.length)throw new Error(`تعذر تثبيت الإغلاق لدى ${failed.length} معلم/ـة؛ لم يتم اعتماد الإغلاق لحماية اتساق الأسبوع`);
+      archives=archives.filter(a=>a.week_id!==w.id);archives.unshift(snapshot);
+      w.status='مغلق';w.execution_state='closed';w.closed_at=snapshot.closed_at;w.archive_id=snapshot.id;w.closed_teacher_count=ok;
+      await saveWeeks();renderAll();switchTab('reports');toast(`تم إغلاق الأسبوع ومنع الرفع لدى جميع المعلمين (${ok}) وحفظ تقرير التنفيذ`);
+    }catch(e){toast('تعذر إغلاق الأسبوع: '+String(e&&e.message||e));}
   }
   function openArchive(i){
     const a=archives[i]; if(!a)return;

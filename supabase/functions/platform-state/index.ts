@@ -169,6 +169,45 @@ Deno.serve(async(req)=>{
       return json({ok:true,ownerKey:targetUserId,stateKey:'weekly_active_plan_v1',weekId:payload.week_id,reviewerId:String(s.user_id||'')});
     }
 
+
+    if(action==='close-weekly-plan'){
+      if(!isManager&&!isAgent)return json({error:'هذه العملية تتطلب صلاحية المدير أو الوكيل',code:'STATE_SUPERVISOR_REQUIRED',requestId},403);
+      if(moduleKey!=='weekly_teacher_work')return json({error:'مصدر خطة الأسبوع غير صحيح',code:'STATE_TARGET_MODULE_FORBIDDEN',requestId},403);
+      const targetUserId=String(body.ownerUserId||'').trim(),weekId=String(body.weekId||'').trim();
+      if(!targetUserId||!weekId)return json({error:'معرف المعلم والأسبوع مطلوبان',code:'STATE_WEEK_CLOSE_INPUT_REQUIRED',requestId},400);
+      const existing=await sb.from('platform_module_state').select('payload,deleted_at').eq('school_id',s.school_id).eq('owner_key',targetUserId).eq('module_key','weekly_teacher_work').eq('state_key','weekly_active_plan_v1').maybeSingle();
+      if(existing.error)throw existing.error;
+      if(!existing.data||existing.data.deleted_at)return json({error:'لا توجد خطة أسبوع منشورة لهذا المعلم',code:'STATE_WEEK_PLAN_NOT_FOUND',requestId},404);
+      let payload:any={};try{payload=JSON.parse(String(existing.data.payload?.value||'{}'))}catch(_){return json({error:'بيانات خطة الأسبوع تالفة',code:'STATE_WEEK_PLAN_INVALID',requestId},409)}
+      if(String(payload.week_id||'')!==weekId)return json({error:'الخطة المنشورة الحالية تخص أسبوعًا آخر',code:'STATE_WEEK_PLAN_MISMATCH',requestId},409);
+      if(String(payload.reviewer_id||'')!==String(s.user_id||''))return json({error:'لا يمكن إغلاق أسبوع يتبع مسؤولاً آخر',code:'STATE_WEEK_REVIEWER_MISMATCH',requestId},403);
+      payload.status='مغلق';payload.execution_state='closed';payload.closed_at=payload.closed_at||now;payload.updated_at=now;
+      const up=await sb.from('platform_module_state').upsert({school_id:s.school_id,owner_key:targetUserId,module_key:'weekly_teacher_work',state_key:'weekly_active_plan_v1',payload:{value:JSON.stringify(payload)},updated_by:s.user_id,updated_at:now,deleted_at:null},{onConflict:'school_id,owner_key,module_key,state_key'});
+      if(up.error)throw up.error;
+      return json({ok:true,ownerKey:targetUserId,weekId,closedAt:payload.closed_at});
+    }
+
+    if(action==='submit-weekly-submission'){
+      if(moduleKey!=='weekly_teacher_work')return json({error:'مصدر التسليم غير صحيح',code:'STATE_TARGET_MODULE_FORBIDDEN',requestId},403);
+      const payload=body.payload&&typeof body.payload==='object'?body.payload:{};
+      const teacherId=String(s.user_id||'').trim(),weekId=String(payload.week_id||'').trim();
+      if(!teacherId||!weekId)return json({error:'تعذر تحديد المعلم أو الأسبوع',code:'STATE_WEEKLY_SUBMISSION_INPUT_REQUIRED',requestId},400);
+      const planRow=await sb.from('platform_module_state').select('payload,deleted_at').eq('school_id',s.school_id).eq('owner_key',teacherId).eq('module_key','weekly_teacher_work').eq('state_key','weekly_active_plan_v1').maybeSingle();
+      if(planRow.error)throw planRow.error;
+      if(!planRow.data||planRow.data.deleted_at)return json({error:'لا توجد خطة أسبوع مؤكدة ومنشورة لك',code:'STATE_WEEK_PLAN_NOT_FOUND',requestId},409);
+      let plan:any={};try{plan=JSON.parse(String(planRow.data.payload?.value||'{}'))}catch(_){return json({error:'بيانات خطة الأسبوع تالفة',code:'STATE_WEEK_PLAN_INVALID',requestId},409)}
+      if(String(plan.week_id||'')!==weekId)return json({error:'التنفيذ المرسل لا يطابق الأسبوع المؤكد حاليًا',code:'STATE_WEEK_SUBMISSION_WEEK_MISMATCH',requestId},409);
+      if(String(plan.execution_state||'')!=='in_progress'||['مغلق','مؤرشف','إجازة'].includes(String(plan.status||'')))return json({error:'تم إغلاق هذا الأسبوع ولا يمكن رفع أو إرسال شواهد جديدة له',code:'STATE_WEEK_CLOSED',requestId},409);
+      const reviewerId=String(plan.reviewer_id||'').trim();
+      if(!reviewerId)return json({error:'لم يتم تحديد مسؤول مراجعة الأسبوع',code:'STATE_WEEK_REVIEWER_REQUIRED',requestId},409);
+      payload.school_id=s.school_id;payload.teacher_id=teacherId;payload.reviewer_id=reviewerId;payload.reviewer_email=String(plan.reviewer_email||payload.reviewer_email||'');payload.reviewer_role=String(plan.reviewer_role||payload.reviewer_role||'agent');payload.reviewer_name=String(plan.reviewer_name||payload.reviewer_name||'');payload.updated_at=now;
+      const stateKey='weekly_submission_v1:'+weekId+':'+teacherId;
+      const value=JSON.stringify(payload);if(value.length>MAX_TOTAL_CHARS)return json({error:'حجم التسليم كبير جدًا',code:'STATE_PAYLOAD_TOO_LARGE',requestId},413);
+      const up=await sb.from('platform_module_state').upsert({school_id:s.school_id,owner_key:teacherId,module_key:'weekly_teacher_work',state_key:stateKey,payload:{value},updated_by:teacherId,updated_at:now,deleted_at:null},{onConflict:'school_id,owner_key,module_key,state_key'});
+      if(up.error)throw up.error;
+      return json({ok:true,teacher_id:teacherId,stateKey,weekId,reviewerId});
+    }
+
     if(action==='review-weekly-submission'){
       if(!isManager&&!isAgent)return json({error:'هذه العملية تتطلب صلاحية المسؤول المباشر',code:'STATE_SUPERVISOR_REQUIRED',requestId},403);
       if(moduleKey!=='weekly_teacher_work')return json({error:'مصدر التسليم غير صحيح',code:'STATE_TARGET_MODULE_FORBIDDEN',requestId},403);

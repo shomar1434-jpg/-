@@ -1,6 +1,6 @@
 (function(){
   'use strict';
-  const VERSION='3.1.0';
+  const VERSION='3.2.0-reviewer-preview-merged';
   const DEFAULT_TIMEOUT=45000;
   const cfg={
     base:()=> (localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'')+'/functions/v1/platform-files',
@@ -35,6 +35,9 @@
   function viewedKey(fileId){return 'evidence_viewed:'+currentSchoolId()+':'+String(fileId||'')}
   function markEvidenceViewed(fileId){if(!fileId)return;try{sessionStorage.setItem(viewedKey(fileId),new Date().toISOString())}catch(_){}}
   function wasEvidenceViewed(fileId){try{return !!sessionStorage.getItem(viewedKey(fileId))}catch(_){return false}}
+  function markPreviewed(fileId){markEvidenceViewed(fileId);try{emit('previewed',{fileId:String(fileId||''),at:new Date().toISOString()})}catch(_){}}
+  function wasPreviewed(fileId){return wasEvidenceViewed(fileId)}
+  function allPreviewed(fileIds){const ids=[...(fileIds||[])].filter(Boolean);return !ids.length||ids.every(wasPreviewed)}
 
   async function ensureSession(){
     if(window.PlatformCloudSession&&typeof window.PlatformCloudSession.ensure==='function'){
@@ -109,7 +112,42 @@
   const stats=o=>request('stats',{body:o||{}});
   const health=()=>request('health',{method:'GET'});
   async function getBlob(fileId){const x=await signedUrl(fileId);const r=await fetch(x.signedUrl);if(!r.ok)throw new Error('تعذر قراءة الملف');return r.blob()}
-  async function open(fileId){const x=await signedUrl(fileId);markEvidenceViewed(fileId);window.open(x.signedUrl,'_blank','noopener,noreferrer');return x}
+  async function open(fileId){const x=await signedUrl(fileId);markPreviewed(fileId);window.open(x.signedUrl,'_blank','noopener,noreferrer');return x}
   async function download(fileId,fileName){const blob=await getBlob(fileId);const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download=fileName||'file';a.click();setTimeout(()=>URL.revokeObjectURL(u),2000)}
-  window.CloudFileEngine={VERSION,request,upload,uploadMany,list,listByLink,listFolders,createFolder,renameFolder,trashFolder,restoreFolder,renameFile,moveFile,signedUrl,trash,restore,purge,link,unlink,usage,audit,stats,health,getBlob,open,download,enrichReviewMetadata,markEvidenceViewed,wasEvidenceViewed};
+  window.CloudFileEngine={VERSION,request,upload,uploadMany,list,listByLink,listFolders,createFolder,renameFolder,trashFolder,restoreFolder,renameFile,moveFile,signedUrl,trash,restore,purge,link,unlink,usage,audit,stats,health,getBlob,open,download,enrichReviewMetadata,markEvidenceViewed,wasEvidenceViewed,markPreviewed,wasPreviewed,allPreviewed};
+  window.EvidenceReviewEngine=window.EvidenceReviewEngine||{
+    VERSION:'1.1.0-reviewer-preview-merged',
+    open:fileId=>open(fileId),
+    wasPreviewed,
+    allPreviewed,
+    requirePreview(fileIds){
+      const ids=[...(fileIds||[])].filter(Boolean);
+      if(ids.length&&!allPreviewed(ids))throw new Error('يجب فتح الشاهد/الشواهد للمعاينة قبل اتخاذ قرار المراجعة.');
+      return true;
+    },
+    requireDecisionNote(decision,note){
+      if(['returned','rejected'].includes(String(decision||''))&&!String(note||'').trim())throw new Error(decision==='returned'?'اكتب سبب إعادة الشاهد للاستكمال.':'اكتب سبب عدم اعتماد التنفيذ.');
+      return String(note||'').trim();
+    }
+  };
+  function evidenceIdsInContext(node){
+    const box=node?.closest?.('[data-evidence-review],.evidence-card,.weeklyEvidenceCard,.taskCard,.card,.modal,[role="dialog"],form,article,section,tr')||node?.parentElement;
+    if(!box||!/شاهد|شواهد|evidence|إثبات|اثبات/i.test(box.textContent||''))return [];
+    const ids=new Set();
+    box.querySelectorAll?.('[data-platform-file-id],[data-evidence-file-id],[data-els-open]').forEach(el=>{const id=el.dataset.platformFileId||el.dataset.evidenceFileId||el.dataset.elsOpen;if(id)ids.add(String(id));});
+    box.querySelectorAll?.('[onclick]').forEach(el=>{const x=el.getAttribute('onclick')||'';const m=x.match(/(?:CloudFileEngine|EvidenceReviewEngine)\.open\(\s*['"]([^'"]+)['"]/);if(m)ids.add(m[1]);});
+    return [...ids];
+  }
+  if(!window.__EVIDENCE_REVIEW_CAPTURE_GATE_V1__){
+    window.__EVIDENCE_REVIEW_CAPTURE_GATE_V1__=true;
+    document.addEventListener('click',function(ev){
+      const b=ev.target?.closest?.('button,[role="button"],input[type="button"],input[type="submit"],a');if(!b)return;
+      const label=String(b.textContent||b.value||b.getAttribute('aria-label')||'').trim();
+      if(!/(اعتماد|عدم اعتماد|رفض|إعادة.*(?:استكمال|تعديل)|قبول التنفيذ)/.test(label))return;
+      const ids=evidenceIdsInContext(b);if(!ids.length||allPreviewed(ids))return;
+      ev.preventDefault();ev.stopImmediatePropagation();
+      alert('يجب فتح الشاهد/الشواهد للمعاينة قبل اتخاذ قرار الاعتماد أو الإعادة أو عدم الاعتماد.');
+    },true);
+  }
+
 })();

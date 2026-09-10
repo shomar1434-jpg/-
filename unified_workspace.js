@@ -367,6 +367,15 @@
     document.querySelectorAll('.ss-cloud-toolbar').forEach(function(n){n.style.display='none'});
   }
 
+  function loadNotificationCenter(){
+    if(window.__PLATFORM_NOTIFICATION_CENTER_V1__||document.querySelector('script[data-platform-notification-center]'))return;
+    var s=document.createElement('script');
+    s.src='platform-notification-center.js?v=20260910-regression-recovery';
+    s.defer=true;
+    s.dataset.platformNotificationCenter='1';
+    document.head.appendChild(s);
+  }
+
   function loadDelegatedRolePortal(){
     if(document.querySelector('script[data-delegated-role-portal]'))return;
     var s=document.createElement('script');
@@ -377,6 +386,7 @@
   }
 
   function boot(){
+    loadNotificationCenter();
     loadDelegatedRolePortal();
     css();clearLegacy();addHeaderActions();addBackToStandalone();
     /* تنظيف فوري ثم محاولات محدودة فقط لاستيعاب أي شريط يُبنى عند DOMContentLoaded */

@@ -1,24 +1,12 @@
-تصحيح التوافق الشامل المحافظ مع iOS / Safari — 2026-09-10
-المرجع: المرجعية.zip المرفوعة من المستخدم.
+تصحيح ملف الأداء الوظيفي - 2026-09-10
 
-الملفات المعدلة فقط:
-1) platform-cloud-session.js
-2) unified_workspace.js
-3) index.html
-4) register.html
+الملف المعدل فقط:
+- performance-file-engine.js
 
-النطاق:
-- طبقة عرض WebKit/iOS مشروطة بوجود WebKit + touch، ولا تغير auth/storage/school_id.
-- VisualViewport لتفادي انهيار الارتفاع مع شريط Safari ولوحة المفاتيح.
-- safe-area وviewport-fit لصفحات الدخول/التسجيل.
-- منع zoom التلقائي لحقول الإدخال على iPhone.
-- تحسين touch والجداول/النوافذ والوسائط.
-- استبدال ارتفاع full-screen في unified workspace بـ 100dvh مع fallback وVisualViewport.
+الإصلاحات:
+1) عداد التقارير في ملف الأداء يأخذ بياناته من نفس العرض authoritative المستخدم فعليًا في أرشيف مجالات الأداء لكل دور، بعد تهيئة الفهرس/السجلات التاريخية.
+2) فتح مجلد المجال يبدأ أولًا بفتح واجهة الأرشيف ثم يفتح المجلد المطلوب، بدل استدعاء openArchiveFolder بينما لوحة القسم ما زالت هي الواجهة النشطة.
+3) لا SQL ولا Edge Functions ولا تعديل على الحفظ أو school_id أو الملفات المخزنة.
 
-لم يتم تعديل:
-- Supabase Edge Functions أو SQL
-- CDW/ONLYOFFICE
-- محركات الشواهد/التكليفات/التنبيهات/مركز المعلومات
-- منطق الأدوار أو school_id
-
-ملاحظة: موثوقية رفع Safari موجودة في حزمة الرفع السابقة؛ هذه الحزمة خاصة بالتوافق البصري/التنقل المشترك.
+النشر:
+استبدل performance-file-engine.js فقط ثم انتظر GitHub Pages واعمل Ctrl+F5.

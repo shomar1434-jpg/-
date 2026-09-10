@@ -18,6 +18,7 @@
   var CLOUD_REPORTS=[];
   var CLOUD_READY=false;
   var CLOUD_LOADING=null;
+  var AUTHORITATIVE_READY=false;
 
   function inferRole(){
     var p=(location.pathname||'').toLowerCase();
@@ -113,13 +114,45 @@
     })().catch(function(e){console.warn('[performance-file] cloud archive hydrate',e);return CLOUD_REPORTS;}).finally(function(){CLOUD_LOADING=null;});
     return CLOUD_LOADING;
   }
+  function nativeArchiveView(){
+    var list=[];
+    try{
+      if(window.PerformanceArchiveCleanV5&&typeof window.PerformanceArchiveCleanV5.getView==='function')list=window.PerformanceArchiveCleanV5.getView()||[];
+      else if(typeof window.performanceArchiveV5View==='function')list=window.performanceArchiveV5View()||[];
+      else if(typeof window.performanceArchiveCleanView==='function')list=window.performanceArchiveCleanView()||[];
+      else if(Array.isArray(window.__performanceArchiveRoleView))list=window.__performanceArchiveRoleView;
+    }catch(e){console.warn('[performance-file] native archive view',e);}
+    return Array.isArray(list)?list:[];
+  }
+  function normalizeNative(r){
+    if(!r||typeof r!=='object')return null;
+    var n=normalize(r,'native:'+ROLE);if(!n)return null;
+    n.folderId=String(r.archiveFolderId||r.category||n.folderId||'');
+    n.folderName=String(r.archiveFolderName||r.categoryName||n.folderName||'');
+    n.id=String(r.id||n.id||'');n.archive='أرشيف مجالات الأداء';n.native=true;
+    return n;
+  }
   function reports(){
     var out=[],seen={};
     function add(n){if(!n)return;var sig=String(n.id||'')||[n.title,n.folderId,n.folderName,n.date].join('|');if(seen[sig])return;seen[sig]=1;out.push(n);}
-    /* Cloud archive is authoritative once hydrated. Local archive remains a startup/offline fallback only. */
+    /* The role archive view is the exact source rendered by the archive folders themselves. */
+    var native=nativeArchiveView();
+    if(AUTHORITATIVE_READY||native.length){native.forEach(function(r){add(normalizeNative(r));});return out;}
     if(CLOUD_READY){CLOUD_REPORTS.forEach(add);return out;}
     allArchiveKeys().forEach(function(key){flattenStored(parse(localStorage.getItem(key),null)).forEach(function(r){add(normalize(r,key));});});
     return out;
+  }
+  async function hydrateAuthoritativeArchive(force){
+    try{
+      if(typeof window.performanceArchiveUnifiedBootstrap==='function')await window.performanceArchiveUnifiedBootstrap(!!force);
+      else if(window.PerformanceArchiveCleanV5){
+        if(typeof window.PerformanceArchiveCleanV5.ensureIndex==='function')await window.PerformanceArchiveCleanV5.ensureIndex(!!force);
+        if(typeof window.PerformanceArchiveCleanV5.hydrateLegacy==='function')await window.PerformanceArchiveCleanV5.hydrateLegacy(!!force);
+      }
+      AUTHORITATIVE_READY=true;
+    }catch(e){console.warn('[performance-file] authoritative archive hydrate',e);}
+    await hydrateCloudPerformanceArchive(!!force);
+    return reports();
   }
   function matchFolder(r,c){var a=[r.folderId,r.folderName].map(function(x){return String(x||'').trim();});return a.indexOf(String(c.id))>-1||a.indexOf(String(c.name))>-1;}
   function dataModel(){
@@ -195,20 +228,34 @@
     return true;
   }
 
-  window.openPerformanceFile=function(){createModal();render();document.getElementById(MODAL_ID).style.display='flex';hydrateCloudPerformanceArchive(false).then(function(){render();});};
+  window.openPerformanceFile=function(){createModal();render();document.getElementById(MODAL_ID).style.display='flex';hydrateAuthoritativeArchive(false).then(function(){render();});};
   window.ssPerfClose=function(){var m=document.getElementById(MODAL_ID);if(m)m.style.display='none';};
   window.ssPerfRefresh=render;
   window.ssPerfSetTemplate=function(t){var p=profile();p.template=t;save(p);render();};
   window.ssPerfSaveProfile=function(){var p=profile();function val(id){return (document.getElementById(id)||{}).value||'';}p.intro=val('pfIntro');p.vision=val('pfVision');p.mission=val('pfMission');p.cv={fullName:val('pfFullName'),jobTitle:val('pfJobTitle'),civilId:val('pfCivilId'),qualification:val('pfQualification'),specialization:val('pfSpecialization'),serviceYears:val('pfServiceYears'),experience:val('pfExperience')};save(p);render();alert('تم حفظ بيانات ملف الأداء وتحديث المعاينة.');};
-  window.ssPerfOpenFolder=function(id,name){
+  window.ssPerfOpenFolder=async function(id,name){
+    var target=String(id||'');
+    try{sessionStorage.setItem('ss_open_archive_folder',JSON.stringify({id:target,name:name}));}catch(e){}
     window.ssPerfClose();
     try{
-      if(typeof window.openArchiveFolder==='function'){window.openArchiveFolder(id);return;}
-      if(typeof window.showArchive==='function')window.showArchive();
+      /* Open the archive view first. Calling openArchiveFolder while the dashboard is still active
+         caused some role pages to navigate/exit instead of displaying the requested folder. */
+      if(typeof window.openArchiveView==='function'){
+        var opened=window.openArchiveView();
+        if(opened&&typeof opened.then==='function')await opened;
+      }else{
+        var welcome=document.getElementById('welcome-dashboard');if(welcome)welcome.style.display='none';
+        var archive=document.getElementById('archive-view');if(archive)archive.style.display='block';
+        if(typeof window.showArchive==='function')window.showArchive();
+      }
+      await hydrateAuthoritativeArchive(false);
+      var archiveView=document.getElementById('archive-view');if(archiveView)archiveView.style.display='block';
+      if(typeof window.openArchiveFolder==='function'){window.openArchiveFolder(target);return;}
       if(typeof window.renderArchiveFolders==='function')window.renderArchiveFolders();
-      setTimeout(function(){if(typeof window.openArchiveFolder==='function')window.openArchiveFolder(id);},180);
-    }catch(e){}
-    try{sessionStorage.setItem('ss_open_archive_folder',JSON.stringify({id:id,name:name}));}catch(e){}
+    }catch(e){
+      console.error('[performance-file] open archive folder',e);
+      try{if(typeof window.showToast==='function')window.showToast('تعذر فتح مجلد المجال في الأرشيف');}catch(_){ }
+    }
   };
   window.ssPerfPrint=function(){var p=document.getElementById(PRINT_ID);p.innerHTML=documentHtml();setTimeout(function(){window.print();},120);};
   window.ssPerfDownloadHtml=function(){var css=(document.getElementById(STYLE_ID)||{}).textContent||'';var html='<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ملف الأداء الوظيفي</title><style>'+css.replace(/@media print[\s\S]*$/,'')+'</style></head><body style="background:#e9eef3;margin:0;padding:20px">'+documentHtml()+'</body></html>';var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([html],{type:'text/html;charset=utf-8'}));a.download='ملف_الأداء_الوظيفي.html';a.click();setTimeout(function(){URL.revokeObjectURL(a.href);},1200);};
@@ -226,7 +273,7 @@
     });
     perfObserver.observe(root,{childList:true,subtree:true});
   }
-  function boot(){installStyle();createModal();ensureCard();watchDashboard();setTimeout(function(){hydrateCloudPerformanceArchive(false).then(function(){var m=document.getElementById(MODAL_ID);if(m&&m.style.display==='flex')render();});},250);}
+  function boot(){installStyle();createModal();ensureCard();watchDashboard();setTimeout(function(){hydrateAuthoritativeArchive(false).then(function(){var m=document.getElementById(MODAL_ID);if(m&&m.style.display==='flex')render();});},250);}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
   setTimeout(boot,350);setTimeout(ensureCard,900);setTimeout(ensureCard,2200);setTimeout(ensureCard,4500);
 })();

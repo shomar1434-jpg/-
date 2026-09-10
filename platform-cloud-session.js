@@ -513,7 +513,7 @@
     }
   }
 
-  const SESSION_VERSION='2026.09.05-RL33-complete-tab-role-isolation';
+  const SESSION_VERSION='2026.09.10-RL33-cdw-connection-config';
 
   window.PlatformCloudSession = {
     VERSION:SESSION_VERSION,
@@ -532,6 +532,13 @@
     verifyAccess,
     enforceRouteRole,
     clear,
+    // Canonical read-only connection descriptor for child platform modules.
+    // It exposes only the public project URL + anon key already used by this
+    // session engine; school/user identity is NOT accepted from callers.
+    connectionConfig: () => Object.freeze({
+      supabaseUrl: url(),
+      anonKey: key(),
+    }),
   };
 
   // Same-tab navigation normally keeps sessionStorage, but restoring here also

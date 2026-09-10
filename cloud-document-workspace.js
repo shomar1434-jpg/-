@@ -1,6 +1,6 @@
 (function(){
   'use strict';
-  const VERSION='2.1.0-CDW-CONNECTIVITY';
+  const VERSION='2.2.0-CDW-CANONICAL-CONNECTION';
   const EXTENSIONS=new Set(['docx','xlsx','pptx']);
   const USE_MODES=new Set(['reference','work','continuous']);
   const DEFAULT_TIMEOUT_MS=15000;
@@ -10,16 +10,25 @@
   }
   function runtimeConfig(){
     let baseUrl='',anon='';
+    // Primary source: the exact connection descriptor used by the authenticated
+    // PlatformCloudSession. This avoids a second independent Supabase config.
     try{
-      const client=window.SmartSchoolSupabase?.getClient?.();
-      baseUrl=String(client?.supabaseUrl||client?.rest?.url?.replace(/\/rest\/v1\/?$/,'')||'').trim();
-      anon=String(client?.supabaseKey||'').trim();
+      const canonical=window.PlatformCloudSession?.connectionConfig?.()||{};
+      baseUrl=String(canonical.supabaseUrl||'').trim();
+      anon=String(canonical.anonKey||'').trim();
     }catch(_){ }
-    if(!baseUrl)baseUrl=String(localStorage.getItem('smartSchoolSupabaseUrl')||'').trim();
-    if(!anon)anon=String(window.SmartSchoolSupabase?.getAnonKey?.()||localStorage.getItem('smartSchoolSupabaseAnonKey')||'').trim();
-    if(!baseUrl)throw Object.assign(new Error('رابط مشروع Supabase غير موجود في إعدادات المنصة. افتح إعداد Supabase المركزي ثم أعد المحاولة.'),{code:'SUPABASE_URL_MISSING'});
-    if(!/^https:\/\//i.test(baseUrl))throw Object.assign(new Error('رابط Supabase المحفوظ غير صالح.'),{code:'SUPABASE_URL_INVALID'});
-    if(!anon)throw Object.assign(new Error('مفتاح anon لمشروع Supabase غير موجود في إعدادات المنصة.'),{code:'SUPABASE_ANON_MISSING'});
+    // Compatibility only for pages that already loaded the central bridge.
+    // No hardcoded project fallback is kept inside CDW itself.
+    if(!baseUrl||!anon){
+      try{
+        const client=window.SmartSchoolSupabase?.getClient?.();
+        if(!baseUrl)baseUrl=String(client?.supabaseUrl||client?.rest?.url?.replace(/\/rest\/v1\/?$/,'')||'').trim();
+        if(!anon)anon=String(client?.supabaseKey||'').trim();
+      }catch(_){ }
+    }
+    if(!baseUrl)throw Object.assign(new Error('تعذر قراءة رابط Supabase من جلسة المنصة المركزية. حدّث ملفات جلسة المنصة ثم أعد المحاولة.'),{code:'SUPABASE_URL_MISSING'});
+    if(!/^https:\/\//i.test(baseUrl))throw Object.assign(new Error('رابط Supabase في جلسة المنصة غير صالح.'),{code:'SUPABASE_URL_INVALID'});
+    if(!anon)throw Object.assign(new Error('تعذر قراءة مفتاح anon من جلسة المنصة المركزية.'),{code:'SUPABASE_ANON_MISSING'});
     baseUrl=baseUrl.replace(/\/$/,'');
     try{
       const host=new URL(baseUrl).hostname.toLowerCase();const ref=host.endsWith('.supabase.co')?host.split('.')[0]:'';const payload=parseJwtPayload(anon);const keyRef=String(payload.ref||'').toLowerCase();

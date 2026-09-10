@@ -40,7 +40,8 @@ Deno.serve(async(req)=>{
   function canRead(s:any,f:any){if(!s||!f||String(f.school_id)!==String(s.school_id))return false;if(f.ownership_scope==='user')return String(f.owner_user_id||'')===String(s.user_id||'')||isManager(s);return isManager(s)}
   function canManage(s:any,f:any){if(!canRead(s,f))return false;if(f.ownership_scope==='user')return String(f.owner_user_id||'')===String(s.user_id||'')||isManager(s);return isManager(s)}
   function canEdit(s:any,f:any){return !!s&&!!f&&String(f.school_id)===String(s.school_id)&&f.status==='active'&&editableExt.has(extOf(f))&&isLibraryFile(f)&&modeOf(f)!=='reference'&&canManage(s,f)}
-  async function verifyCallback(body:any){if(!jwtKey)return false;const raw=String(req.headers.get('authorization')||body?.token||'').replace(/^Bearer\s+/i,'').trim();if(!raw)return false;try{await jwtVerify(raw,jwtKey);return true}catch(_){return false}}
+  async function verifyCallback(body:any){if(!jwtKey)return false;const raw=String(req.headers.get('authorizationjwt')||req.headers.get('authorization')||body?.token||'').replace(/^Bearer\s+/i,'').trim();if(!raw)return false;try{await jwtVerify(raw,jwtKey);return true}catch(_){return false}}
+  const errInfo=(e:any)=>{const message=String(e?.message||e?.error_description||e?.details||e?.hint||e||'خطأ غير معروف');const dbCode=String(e?.code||'');return {message,dbCode:dbCode||undefined,details:e?.details?String(e.details):undefined,hint:e?.hint?String(e.hint):undefined}};
   async function event(schoolId:string,userId:string,type:string,file:any,extra:any={}){await sb.from('platform_file_events').insert({school_id:schoolId,file_id:file?.id||null,folder_id:file?.folder_id||null,user_id:userId,event_type:type,module_key:file?.module_key||null,old_values:extra.old_values||null,new_values:extra.new_values||null})}
   async function moveLibraryLinks(oldFile:any,newFile:any,userId:string){
     const {data:links}=await sb.from('platform_file_links').select('*').eq('school_id',oldFile.school_id).eq('file_id',oldFile.id).is('deleted_at',null);
@@ -88,10 +89,11 @@ Deno.serve(async(req)=>{
 
     const s=await verifyPlatformSession();if(!s)return json({error:'جلسة مساحة العمل مفقودة أو منتهية'},401);
     const body=req.method==='GET'?{}:await req.json().catch(()=>({}));
-    if(action==='health')return json({ok:true,service:'platform-document-workspace',version:'2.1.0-CDW-CONNECTIVITY',provider:'onlyoffice',configured:!!(documentServerUrl&&jwtSecret),documentServerConfigured:!!documentServerUrl,jwtConfigured:!!jwtSecret,sessionVerified:true,schoolIsolationVerified:!!s.school_id,userVerified:!!s.user_id,requestId});
+    if(action==='health'){const schema=await sb.from('document_workspace_sessions').select('id').limit(1);const workspaceSchemaReady=!schema.error;return json({ok:true,service:'platform-document-workspace',version:'2.2.0-CDW-DIAGNOSTICS',provider:'onlyoffice',configured:!!(documentServerUrl&&jwtSecret),documentServerConfigured:!!documentServerUrl,jwtConfigured:!!jwtSecret,workspaceSchemaReady,workspaceSchemaError:workspaceSchemaReady?undefined:errInfo(schema.error),sessionVerified:true,schoolIsolationVerified:!!s.school_id,userVerified:!!s.user_id,requestId});}
     if(action==='capabilities'){const f=await getFile(String(body.fileId||''),String(s.school_id));return json({editable:canEdit(s,f),configured:!!(documentServerUrl&&jwtSecret),extension:extOf(f),libraryFile:!!f&&isLibraryFile(f),mode:modeOf(f)});}
     if(action==='open-session'){
       if(!documentServerUrl||!jwtSecret)return json({error:'محرر ONLYOFFICE Docs غير مهيأ. أضف ONLYOFFICE_DOCUMENT_SERVER_URL و ONLYOFFICE_JWT_SECRET إلى أسرار Supabase.'},503);
+      const schema=await sb.from('document_workspace_sessions').select('id').limit(1);if(schema.error){const d=errInfo(schema.error);return json({error:'مخطط Cloud Document Workspace غير مهيأ في قاعدة البيانات. شغّل migration الخاص بـ document_workspace_sessions ثم أعد المحاولة.',code:'WORKSPACE_SCHEMA_MISSING',details:d.details||d.message,dbCode:d.dbCode,hint:d.hint,requestId},503);}
       const f=await getFile(String(body.fileId||''),String(s.school_id));if(!f)return json({error:'الملف غير موجود'},404);if(!canEdit(s,f))return json({error:modeOf(f)==='reference'?'تم تصنيف هذا الملف كمرجع للقراءة. غيّر نوع الاستخدام إلى ملف عمل أو سجل مستمر أولًا.':'لا توجد صلاحية لتحرير هذا الملف أو أن صيغته غير مدعومة.'},403);
       const staleIso=new Date(Date.now()-5*60*1000).toISOString();await sb.from('document_workspace_sessions').update({status:'expired',closed_at:nowIso,updated_at:nowIso}).eq('school_id',s.school_id).eq('file_id',f.id).in('status',['active','saving']).or(`expires_at.lt.${nowIso},updated_at.lt.${staleIso}`);
       const {data:active}=await sb.from('document_workspace_sessions').select('*').eq('school_id',s.school_id).eq('file_id',f.id).in('status',['active','saving']).gt('expires_at',nowIso).maybeSingle();
@@ -122,5 +124,5 @@ Deno.serve(async(req)=>{
       const id=String(body.sessionId||'');if(!isUuid(id))return json({error:'جلسة غير صالحة'},400);const {data:sess}=await sb.from('document_workspace_sessions').select('*').eq('id',id).eq('school_id',s.school_id).eq('user_id',s.user_id).maybeSingle();if(!sess)return json({error:'الجلسة غير موجودة'},404);if(sess.status==='active')await sb.from('document_workspace_sessions').update({status:'closed',closed_at:nowIso,updated_at:nowIso}).eq('id',id);return json({ok:true});
     }
     return json({error:'عملية غير مدعومة'},400);
-  }catch(e){console.error('[platform-document-workspace]',e);return json({error:e instanceof Error?e.message:String(e),code:'WORKSPACE_SERVER_ERROR',requestId},500)}
+  }catch(e){console.error('[platform-document-workspace]',e);const d=errInfo(e);return json({error:d.message,code:'WORKSPACE_SERVER_ERROR',details:d.details,dbCode:d.dbCode,hint:d.hint,requestId},500)}
 });

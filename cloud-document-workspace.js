@@ -78,10 +78,10 @@
       const text=await r.text();let j={};try{j=text?JSON.parse(text):{}}catch(_){j={raw:text.slice(0,500)}}return {r,j}
     };
     let res=await send();if(res.r.status===401&&window.PlatformCloudSession&&typeof window.PlatformCloudSession.recover==='function'){await window.PlatformCloudSession.recover();res=await send()}
-    if(!res.r.ok){let msg=res.j.error||`تعذر تنفيذ مساحة العمل (${res.r.status})`;let code=res.j.code||'';
+    if(!res.r.ok){const normalize=v=>{if(typeof v==='string')return v;if(v&&typeof v==='object')return String(v.message||v.error_description||v.details||v.hint||JSON.stringify(v));return String(v||'')};let msg=normalize(res.j.error)||`تعذر تنفيذ مساحة العمل (${res.r.status})`;let code=res.j.code||'';
       if(res.r.status===404){msg='دالة platform-document-workspace غير منشورة في مشروع Supabase الحالي.';code=code||'WORKSPACE_FUNCTION_NOT_DEPLOYED'}
       else if((res.r.status===401||res.r.status===403)&&!res.j.error){msg='تم رفض الطلب من بوابة Supabase قبل وصوله إلى محرك مساحة العمل. تحقق من نشر الدالة بخيار --no-verify-jwt.';code=code||'WORKSPACE_GATEWAY_JWT_BLOCKED'}
-      const e=new Error(msg);e.status=res.r.status;e.code=code;e.data=res.j;e.endpoint=rc.endpoint;throw e}
+      if(res.j.details&&normalize(res.j.details)!==msg)msg+=` — ${normalize(res.j.details)}`;const e=new Error(msg);e.status=res.r.status;e.code=code;e.data=res.j;e.endpoint=rc.endpoint;throw e}
     return res.j;
   }
   function edit(fileId,returnTo){const ret=returnTo||location.href;location.href=`cloud_document_workspace.html?file=${encodeURIComponent(fileId)}&return=${encodeURIComponent(ret)}`}

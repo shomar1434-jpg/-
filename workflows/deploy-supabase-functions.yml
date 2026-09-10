@@ -13,6 +13,7 @@ on:
       - "supabase/functions/platform-core/**"
       - "supabase/functions/platform-state/**"
       - "supabase/functions/platform-directory/**"
+      - "supabase/functions/platform-document-workspace/**"
       - "supabase/functions/impact-measurement/**"
       - "supabase/functions/system-admin/**"
       - ".github/workflows/deploy-supabase-functions.yml"
@@ -74,6 +75,45 @@ jobs:
           supabase functions deploy platform-directory \
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
             --no-verify-jwt
+
+      - name: Deploy platform-document-workspace
+        run: |
+          supabase functions deploy platform-document-workspace \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
+            --no-verify-jwt
+
+      - name: Verify platform-document-workspace is reachable
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co/functions/v1/platform-document-workspace?action=probe"
+          echo "Checking: ${URL}"
+          ok=0
+          for attempt in 1 2 3 4 5; do
+            http_code="$(curl --silent --show-error --location \
+              --output /tmp/cdw_probe.json \
+              --write-out '%{http_code}' \
+              --connect-timeout 15 \
+              --max-time 30 \
+              "$URL" || true)"
+            echo "Attempt ${attempt}: HTTP ${http_code}"
+            cat /tmp/cdw_probe.json 2>/dev/null || true
+            echo
+            if [ "$http_code" = "200" ] && grep -q '"service":"platform-document-workspace"' /tmp/cdw_probe.json; then
+              ok=1
+              break
+            fi
+            sleep 6
+          done
+          if [ "$ok" != "1" ]; then
+            echo "::error::platform-document-workspace was deployed but is not reachable from the Supabase project."
+            exit 1
+          fi
+          if grep -q '"configured":false' /tmp/cdw_probe.json; then
+            echo "::warning::platform-document-workspace is reachable, but ONLYOFFICE_DOCUMENT_SERVER_URL and/or ONLYOFFICE_JWT_SECRET are not configured in Supabase secrets."
+          else
+            echo "Cloud Document Workspace Edge Function is reachable and ONLYOFFICE configuration is present."
+          fi
 
       - name: Deploy impact-measurement
         run: |

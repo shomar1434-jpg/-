@@ -1,34 +1,45 @@
-تصحيح مصدر اتصال Cloud Document Workspace من جلسة المنصة المركزية
-2026-09-10
+تصحيح جذري لنشر Cloud Document Workspace — 2026-09-10
+========================================================
 
-السبب:
-صفحة مساحة العمل مستقلة، وكانت تبحث عن smartSchoolSupabaseUrl داخل localStorage/SmartSchoolSupabase، بينما محرك الجلسة المركزي نفسه يملك إعداد الاتصال الفعلي. لذلك ظهر SUPABASE_URL_MISSING رغم أن الدخول السحابي يعمل.
+سبب المشكلة المؤكد:
+الدالة platform-document-workspace كانت موجودة ضمن حزمة Cloud Document Workspace، لكن مسار النشر الأساسي الموجود فعلياً في المنصة
+.github/workflows/deploy-supabase-functions.yml
+لم يكن يتابع مجلد هذه الدالة ولم يكن ينشرها. الاعتماد على Workflow منفصل جعل النشر قابلاً للفقد عند رفع التصحيحات.
 
-التصحيح:
-1) platform-cloud-session.js
-   - إضافة connectionConfig() للقراءة فقط.
-   - يعيد رابط Supabase ومفتاح anon المستخدمين فعليًا بواسطة نفس محرك الجلسة.
-   - لا يقبل school_id أو user_id من صفحة Workspace ولا يغير أي جلسة.
+الحل الجذري:
+1) إدخال platform-document-workspace داخل Workflow Supabase الأساسي نفسه.
+2) إضافة مجلد الدالة إلى paths حتى أي تعديل عليها يشغل النشر الأساسي تلقائياً.
+3) إضافة خطوة تحقق بعد النشر تتصل فعلياً بالدالة action=probe. إذا لم تصبح الدالة قابلة للوصول يفشل GitHub Action ولا يعطي نجاحاً وهمياً.
+4) الإبقاء على Workflow مستقل كخيار يدوي احتياطي فقط، بلا push trigger، لمنع تشغيل عمليتي نشر متوازيتين لنفس الدالة.
+5) إرفاق أحدث نسخة من Edge Function نفسها لضمان أن الملف الذي يشغل الـWorkflow موجود في المستودع.
 
-2) cloud-document-workspace.js
-   - المصدر الأول والملزم للاتصال أصبح PlatformCloudSession.connectionConfig().
-   - لا يوجد fallback ثابت داخل CDW لمشروع Supabase.
-   - بقي فحص تطابق project ref مع anon JWT.
+الملفات في الحزمة:
+- .github/workflows/deploy-supabase-functions.yml  [تعديل موضعي على Workflow الموجود]
+- .github/workflows/deploy-platform-document-workspace.yml [احتياطي يدوي فقط]
+- supabase/functions/platform-document-workspace/index.ts [أحدث نسخة]
 
-3) cloud_document_workspace.html
-   - تحديث cache-busting لتحميل النسخ المصححة.
+لا يوجد:
+- تعديل manager.html أو agent.html
+- تعديل unified_workspace.js أو جرس التنبيهات
+- SQL Migration
+- حذف بيانات أو ملفات
 
-لا SQL ولا Edge Functions في هذا التصحيح.
-لا تعديلات على manager.html / agent.html / unified_workspace.js / مركز التنبيهات.
+طريقة الرفع:
+استبدل الملفات الثلاثة في نفس مساراتها داخل المستودع ثم Push إلى main.
+يجب أن يعمل Workflow: Deploy Supabase Edge Functions
+وتظهر داخله خطوتان متتاليتان:
+Deploy platform-document-workspace
+Verify platform-document-workspace is reachable
 
-ترتيب الرفع:
-1. platform-cloud-session.js
-2. cloud-document-workspace.js
-3. cloud_document_workspace.html
-ثم Hard Refresh.
+نتيجة القبول:
+- إذا نجحت خطوة Verify باللون الأخضر: الدالة منشورة فعلياً ويمكن للواجهة الوصول إليها.
+- إذا ظهر Warning ONLYOFFICE: النشر سليم، والمتبقي فقط أسرار ONLYOFFICE في Supabase.
+- إذا فشلت Verify: لا تعتبر النشر ناجحاً، وستظهر الاستجابة/HTTP داخل سجل GitHub Action لتحديد السبب.
 
-اختبار القبول:
-- الدخول إلى مكتبة قسم بنفس الجلسة الحالية.
-- اختيار DOCX/XLSX قابل للتحرير.
-- يجب ألا يظهر SUPABASE_URL_MISSING.
-- النتيجة التالية إما فتح ONLYOFFICE، أو رسالة ONLYOFFICE_NOT_CONFIGURED إذا لم تتم تهيئة خادم المحرر.
+أسرار Supabase المطلوبة للـWorkflow نفسه (مستخدمة أصلاً في المنصة):
+SUPABASE_ACCESS_TOKEN
+SUPABASE_PROJECT_REF
+
+أسرار Supabase المطلوبة لتشغيل المحرر بعد نجاح النشر:
+ONLYOFFICE_DOCUMENT_SERVER_URL
+ONLYOFFICE_JWT_SECRET

@@ -1,13 +1,7 @@
-name: Deploy Platform Document Workspace
+name: Deploy Platform Document Workspace (Manual Fallback)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - "supabase/functions/platform-document-workspace/**"
-      - ".github/workflows/deploy-platform-document-workspace.yml"
 
 permissions:
   contents: read
@@ -20,12 +14,32 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v2
         with:
           version: 2.116.0
+
       - name: Deploy platform-document-workspace
         run: |
           supabase functions deploy platform-document-workspace \
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
             --no-verify-jwt
+
+      - name: Verify platform-document-workspace is reachable
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co/functions/v1/platform-document-workspace?action=probe"
+          for attempt in 1 2 3 4 5; do
+            code="$(curl --silent --show-error --location --output /tmp/cdw_probe.json --write-out '%{http_code}' --connect-timeout 15 --max-time 30 "$URL" || true)"
+            echo "Attempt ${attempt}: HTTP ${code}"
+            cat /tmp/cdw_probe.json 2>/dev/null || true
+            echo
+            if [ "$code" = "200" ] && grep -q '"service":"platform-document-workspace"' /tmp/cdw_probe.json; then
+              exit 0
+            fi
+            sleep 6
+          done
+          echo "::error::platform-document-workspace is not reachable after deployment."
+          exit 1

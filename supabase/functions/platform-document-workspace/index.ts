@@ -89,7 +89,7 @@ Deno.serve(async(req)=>{
 
     const s=await verifyPlatformSession();if(!s)return json({error:'جلسة مساحة العمل مفقودة أو منتهية'},401);
     const body=req.method==='GET'?{}:await req.json().catch(()=>({}));
-    if(action==='health'){const schema=await sb.from('document_workspace_sessions').select('id').limit(1);const workspaceSchemaReady=!schema.error;return json({ok:true,service:'platform-document-workspace',version:'2.2.0-CDW-DIAGNOSTICS',provider:'onlyoffice',configured:!!(documentServerUrl&&jwtSecret),documentServerConfigured:!!documentServerUrl,jwtConfigured:!!jwtSecret,workspaceSchemaReady,workspaceSchemaError:workspaceSchemaReady?undefined:errInfo(schema.error),sessionVerified:true,schoolIsolationVerified:!!s.school_id,userVerified:!!s.user_id,requestId});}
+    if(action==='health'){const schema=await sb.from('document_workspace_sessions').select('id').limit(1);const workspaceSchemaReady=!schema.error;return json({ok:true,service:'platform-document-workspace',version:'2.3.0-CDW-SAVE-RETURN',provider:'onlyoffice',configured:!!(documentServerUrl&&jwtSecret),documentServerConfigured:!!documentServerUrl,jwtConfigured:!!jwtSecret,workspaceSchemaReady,workspaceSchemaError:workspaceSchemaReady?undefined:errInfo(schema.error),sessionVerified:true,schoolIsolationVerified:!!s.school_id,userVerified:!!s.user_id,requestId});}
     if(action==='capabilities'){const f=await getFile(String(body.fileId||''),String(s.school_id));return json({editable:canEdit(s,f),configured:!!(documentServerUrl&&jwtSecret),extension:extOf(f),libraryFile:!!f&&isLibraryFile(f),mode:modeOf(f)});}
     if(action==='open-session'){
       if(!documentServerUrl||!jwtSecret)return json({error:'محرر ONLYOFFICE Docs غير مهيأ. أضف ONLYOFFICE_DOCUMENT_SERVER_URL و ONLYOFFICE_JWT_SECRET إلى أسرار Supabase.'},503);
@@ -109,6 +109,12 @@ Deno.serve(async(req)=>{
     }
     if(action==='heartbeat'){
       const id=String(body.sessionId||'');if(!isUuid(id))return json({error:'جلسة غير صالحة'},400);const {data:sess}=await sb.from('document_workspace_sessions').select('*').eq('id',id).eq('school_id',s.school_id).eq('user_id',s.user_id).maybeSingle();if(!sess||!['active','saving'].includes(String(sess.status)))return json({error:'جلسة التحرير لم تعد نشطة'},409);await sb.from('document_workspace_sessions').update({updated_at:nowIso,expires_at:new Date(Date.now()+4*60*60*1000).toISOString()}).eq('id',id);return json({ok:true});
+    }
+    if(action==='session-status'){
+      const id=String(body.sessionId||'');if(!isUuid(id))return json({error:'جلسة غير صالحة'},400);
+      const {data:sess}=await sb.from('document_workspace_sessions').select('id,status,file_id,current_file_id,saved_file_id,error_message,updated_at,closed_at').eq('id',id).eq('school_id',s.school_id).eq('user_id',s.user_id).maybeSingle();
+      if(!sess)return json({error:'الجلسة غير موجودة'},404);
+      return json({ok:true,status:sess.status,fileId:sess.file_id,currentFileId:sess.current_file_id,savedFileId:sess.saved_file_id,errorMessage:sess.error_message||'',updatedAt:sess.updated_at,closedAt:sess.closed_at});
     }
     if(action==='versions'){
       const f=await getFile(String(body.fileId||''),String(s.school_id));if(!f)return json({error:'الملف غير موجود'},404);if(!canRead(s,f))return json({error:'لا توجد صلاحية'},403);const rows=await versionChain(f,String(s.school_id));return json({currentFile:f,versions:rows.map(x=>({...x,storage_path:undefined,bucket_name:undefined}))});

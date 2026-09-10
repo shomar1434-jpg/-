@@ -91,6 +91,7 @@
   const restoreVersion=(fileId,versionId,note)=>request('restore-version',{fileId,versionId,note:note||''});
   const setMode=(fileId,mode)=>request('set-mode',{fileId,mode});
   const heartbeat=sessionId=>request('heartbeat',{sessionId});
+  const sessionStatus=sessionId=>request('session-status',{sessionId});
   const closeSession=sessionId=>request('close-session',{sessionId});
   const health=async()=>{const p=await probe();const h=await request('health',{});return {...p,...h}};
   async function linkCurrentAsEvidence(fileId,target){

@@ -1,0 +1,37 @@
+تقرير فحص Cloud Document Workspace
+=================================
+
+النتيجة الآلية: 34/34 فحصًا ناجحًا، 0 فشل.
+
+تم فحص:
+- Syntax لجميع ملفات JavaScript المعدلة.
+- Syntax/Transpile لملفي Edge Functions باستخدام TypeScript 5.8.3.
+- JavaScript المضمن داخل cloud_document_workspace.html و cloud_files_center.html.
+- عدم قبول school_id من body في محرك مساحة العمل.
+- تقييد قراءة الملفات بـ school_id القادم من platform_sessions.
+- ملكية user-scoped files.
+- قفل active + saving ومنع محررين متزامنين.
+- heartbeat للجلسة.
+- JWT من ONLYOFFICE.
+- حصر callback download على Origin خادم ONLYOFFICE نفسه لمنع SSRF.
+- إنشاء platform_files جديد لكل حفظ.
+- أرشفة الإصدار السابق دون حذفه.
+- استعادة إصدار قديم كإصدار جديد.
+- نقل رابط المكتبة فقط إلى الإصدار الأحدث.
+- عدم نقل روابط evidence القديمة؛ وبالتالي يبقى الشاهد Snapshot ثابتًا.
+- السماح بمعاينة archived version مع استمرار منع trashed/deleted.
+- عدم وجود DROP TABLE أو حذف بيانات في Migration.
+- RLS + REVOKE لجلسات التحرير.
+- دمج مكتبة القسم مع المحرر المركزي وإيقاف تحرير DOCX/XLSX الحديث كمحتوى HTML مبسط.
+- إضافة مرجع/ملف عمل/سجل مستمر.
+- مركز الملفات ومركز الرفع يعرضان التحرير والإصدارات.
+
+فحص الرجوع البرمجي:
+- الحزمة لا تتضمن manager.html.
+- الحزمة لا تتضمن agent.html.
+- الحزمة لا تتضمن unified_workspace.js.
+- الحزمة لا تتضمن platform-notification-center.js.
+لذلك تصحيح موضع جرس التنبيهات الأخير لا يُستبدل بهذه الحزمة.
+
+حدّ الاختبار البيئي:
+لم يتم تنفيذ جلسة ONLYOFFICE حقيقية من هذه البيئة لأن عنوان ONLYOFFICE_DOCUMENT_SERVER_URL الخاص بنشر المنصة غير متوفر هنا. الكود يرفض فتح التحرير برسالة واضحة إذا لم تتم تهيئته، ولا يعدّل الملف الأصلي في هذه الحالة. بعد إضافة عنوان الخادم وJWT Secret يلزم تنفيذ اختبار القبول العملي المذكور في README قبل اعتماد النشر الإنتاجي.

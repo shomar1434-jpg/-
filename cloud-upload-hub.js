@@ -48,6 +48,7 @@
       #${HUB_ID} .cuh-files{margin-top:12px;display:grid;gap:8px}
       #${HUB_ID} .cuh-file{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid #e2ecee;border-radius:12px;padding:10px 12px;background:#fff}
       #${HUB_ID} .cuh-file-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#37535a;font-size:12px;font-weight:800}
+      #${HUB_ID} .cuh-work-list{display:grid;gap:8px;margin-top:8px}#${HUB_ID} .cuh-work-row{display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;border:1px solid #e2ecee;border-radius:12px;padding:10px;background:#f8fafc}#${HUB_ID} .cuh-work-actions{display:flex;gap:6px;flex-wrap:wrap}
       @media(max-width:680px){#${HUB_ID} .cuh-providers,#${HUB_ID} .cuh-grid{grid-template-columns:1fr}}
     `;
     document.head.appendChild(style);
@@ -89,6 +90,14 @@
               <label for="cuhNewFolder">إنشاء مجلد جديد عند الحاجة</label>
               <div style="display:flex;gap:8px"><input id="cuhNewFolder" type="text" placeholder="اسم المجلد"><button type="button" class="cuh-btn" data-create-folder>إنشاء</button></div>
             </div>
+            <div class="cuh-field">
+              <label for="cuhDocumentUseMode">طريقة استخدام ملفات Word / Excel / PowerPoint</label>
+              <select id="cuhDocumentUseMode">
+                <option value="work">ملف عمل قابل للتعديل</option>
+                <option value="continuous">سجل مستمر تراكمي</option>
+                <option value="reference">مرجع للقراءة فقط</option>
+              </select>
+            </div>
             <div class="cuh-field full">
               <label>الملفات المختارة</label>
               <input id="cuhFiles" type="file" multiple hidden data-cloud-skip="true">
@@ -98,6 +107,10 @@
                 <button type="button" class="cuh-btn" data-open-center>إدارة ملفاتي السحابية</button>
               </div>
               <div class="cuh-files" data-file-list></div>
+            </div>
+            <div class="cuh-field full">
+              <label>ملفات العمل في هذا القسم</label>
+              <div class="cuh-work-list" data-work-files><span style="color:#64748b;font-size:12px">جارٍ التحميل...</span></div>
             </div>
           </div>
           <div class="cuh-actions" data-onedrive-area style="display:none">
@@ -118,6 +131,16 @@
     el.className='cuh-status show '+(type||'info');
     clearTimeout(el._timer);
     if(type==='ok')el._timer=setTimeout(()=>el.classList.remove('show'),5000);
+  }
+
+  async function ensureWorkspace(){
+    if(window.CloudDocumentWorkspace)return window.CloudDocumentWorkspace;
+    await new Promise((resolve,reject)=>{const sc=document.createElement('script');sc.src=rootPrefix()+'cloud-document-workspace.js?v=20260910-cdw-complete';sc.onload=resolve;sc.onerror=()=>reject(new Error('تعذر تحميل مساحة عمل المستندات.'));document.head.appendChild(sc)});
+    return window.CloudDocumentWorkspace;
+  }
+  async function loadWorkFiles(hub){
+    const box=hub.querySelector('[data-work-files]');if(!box||!window.CloudFileEngine)return;const c=ctx();
+    try{const r=await CloudFileEngine.list({moduleKey:c.moduleKey,ownershipScope:c.ownershipScope||'user',limit:100});const rows=r.files||[];if(!rows.length){box.innerHTML='<span style="color:#64748b;font-size:12px">لا توجد ملفات محفوظة في هذا القسم.</span>';return}const cdw=await ensureWorkspace();box.innerHTML=rows.slice(0,30).map(f=>{const office=cdw.EXTENSIONS.has(cdw.extOf(f)),editable=cdw.isEditable(f);return '<div class="cuh-work-row"><div><b>'+esc(f.display_name)+'</b><div style="font-size:10px;color:#64748b">إصدار '+Number(f.version_number||1)+(office?' · '+(cdw.modeOf(f)==='continuous'?'سجل مستمر':cdw.modeOf(f)==='reference'?'مرجع':'ملف عمل'):'')+'</div></div><div class="cuh-work-actions"><button type="button" class="cuh-btn" data-work-open="'+f.id+'">معاينة</button>'+(editable?'<button type="button" class="cuh-btn primary" data-work-edit="'+f.id+'">تحرير</button>':'')+(office?'<button type="button" class="cuh-btn blue" data-work-versions="'+f.id+'">الإصدارات</button>':'')+'</div></div>'}).join('')}catch(e){box.innerHTML='<span style="color:#b91c1c;font-size:12px">'+esc(e.message||e)+'</span>'}
   }
 
   async function loadFolders(hub){
@@ -201,7 +224,7 @@
           recordType:c.recordType||'attachment',
           recordId:'cloud-hub',
           relationType:'attachment',
-          metadata:{source:'unified_cloud_hub',page:location.pathname},
+          metadata:{source:'unified_cloud_hub',page:location.pathname,documentUseMode:hub.querySelector('#cuhDocumentUseMode')?.value||'work'},
           continueOnError:true,
           onProgress:function(progress){status(hub,'جارٍ رفع '+progress.index+' من '+progress.total+'...','info');}
         });
@@ -211,6 +234,7 @@
           status(hub,'تم حفظ '+result.results.length+' ملف سحابيًا بنجاح.','ok');
           input.value='';
           renderSelected(hub);
+          await loadWorkFiles(hub);
         }
       }catch(error){status(hub,error.message||'تعذر رفع الملفات.','bad');}
       finally{button.disabled=false;}
@@ -222,6 +246,11 @@
     hub.querySelector('[data-open-onedrive]').onclick=()=>window.open('https://onedrive.live.com/login','_blank','noopener,noreferrer');
   }
 
+  document.addEventListener('click',async function(ev){
+    const hub=ev.target.closest('#'+HUB_ID);if(!hub)return;const openBtn=ev.target.closest('[data-work-open]'),editBtn=ev.target.closest('[data-work-edit]'),versBtn=ev.target.closest('[data-work-versions]');
+    try{if(openBtn)await CloudFileEngine.open(openBtn.dataset.workOpen);if(editBtn){const cdw=await ensureWorkspace();cdw.edit(editBtn.dataset.workEdit,location.href)}if(versBtn){const cdw=await ensureWorkspace();await cdw.showVersions(versBtn.dataset.workVersions,()=>loadWorkFiles(hub))}}catch(e){status(hub,e.message||'تعذر تنفيذ العملية','bad')}
+  });
+
   async function open(){
     const hub=build();
     hub.classList.add('is-open');
@@ -229,6 +258,7 @@
     hub.querySelector('#cuhFiles').value='';
     renderSelected(hub);
     await loadFolders(hub);
+    await loadWorkFiles(hub);
   }
 
   window.CloudUploadHub={open};

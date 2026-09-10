@@ -2221,9 +2221,10 @@ html.teacher-auth-pending body{visibility:hidden!important;}
 <h2 class="text-2xl font-bold text-slate-800 mb-2">أهلاً بك في لوحة الإدارة</h2>
 <p class="text-slate-500 text-xs font-bold">يرجى اختيار الإجراء المناسب للبدء</p>
 <div aria-label="ملخص مؤشرات التقارير" class="dashboard-kpi-strip">
-<div class="dashboard-kpi-card"><strong id="dash-total-reports">0</strong><span>إجمالي التقارير المؤرشفة</span></div>
-<div class="dashboard-kpi-card"><strong id="dash-complete-reports">0</strong><span>تقارير مكتملة البيانات</span></div>
-<div class="dashboard-kpi-card"><strong id="dash-draft-reports">0</strong><span>تقارير تحتاج متابعة</span></div>
+<div class="dashboard-kpi-card" title="قراءة فقط من الأرشيف الفعلي ولا تغيّر حالة أي تقرير"><strong id="dash-total-reports">0</strong><span>إجمالي التقارير المؤرشفة</span></div>
+<div class="dashboard-kpi-card" title="تقارير تحمل حالة اكتمال صريحة وفق حقول نموذج التقرير"><strong id="dash-complete-reports">0</strong><span>تقارير مستوفية حقول النموذج</span></div>
+<div class="dashboard-kpi-card" title="تقارير تحمل حالة نقص صريحة وفق حقول نموذج التقرير، ولا تعني عدم التنفيذ"><strong id="dash-draft-reports">0</strong><span>تقارير تحتاج استكمال حقول</span></div>
+<div class="dashboard-kpi-card" title="تقارير تاريخية أو مستوردة لا تحمل بيانات كافية للحكم على اكتمال الحقول"><strong id="dash-unknown-reports">0</strong><span>غير محدد اكتمال الحقول</span></div>
 </div>
 <div aria-label="أصول بصرية تعليمية رسمية" class="brand-visual-strip">
 <img alt="تصميم تقرير أداء رقمي" loading="lazy" src="https://d2xsxph8kpxj0f.cloudfront.net/310519663630178890/9TSPYyFNQVTpzbgxDTtd95/teacher_reports_evidence_visual-HpJxUEFa7Dz3233GyzaDsf.webp"/>
@@ -4625,14 +4626,36 @@ body{overflow-x:hidden}
         }
 
         function refreshDashboardMetrics() {
-            const reports = (typeof window.performanceArchiveCleanView === 'function') ? window.performanceArchiveCleanView() : [];
-            const complete = reports.filter(report => report && report.isComplete).length;
+            // مؤشرات قراءة فقط: لا تكتب أي حالة في الأرشيف ولا تغيّر واقع التنفيذ.
+            const reports = (typeof window.performanceArchiveCleanView === 'function')
+                ? window.performanceArchiveCleanView()
+                : (window.RolePerformanceLocal ? window.RolePerformanceLocal.readArray('reports_archive') : []);
+            const normalized = Array.isArray(reports) ? reports.filter(Boolean) : [];
+            const unique = [];
+            const seen = new Set();
+            normalized.forEach(report => {
+                const key = String(report.id || report.uuid || report.stateKey || [report.title, report.category, report.date, report.createdAt].join('|'));
+                if (seen.has(key)) return;
+                seen.add(key);
+                unique.push(report);
+            });
+            let complete = 0, needsCompletion = 0, unknown = 0;
+            unique.forEach(report => {
+                const status = String(report.status || report.approvalStatus || report.executionStatus || '').trim().toLowerCase();
+                const explicitComplete = report.isComplete === true || /^(completed|complete|approved|verified|final)$/i.test(status) || /مكتمل|مستوف|معتمد|مكتمل البيانات/.test(status);
+                const explicitIncomplete = report.isComplete === false || /^(draft|incomplete|returned|needs_followup|needs-completion)$/i.test(status) || /مسودة|غير مكتمل|ناقص|معاد للاستكمال|يحتاج استكمال/.test(status);
+                if (explicitComplete) complete += 1;
+                else if (explicitIncomplete) needsCompletion += 1;
+                else unknown += 1;
+            });
             const totalEl = document.getElementById('dash-total-reports');
             const completeEl = document.getElementById('dash-complete-reports');
             const draftEl = document.getElementById('dash-draft-reports');
-            if (totalEl) totalEl.innerText = reports.length;
+            const unknownEl = document.getElementById('dash-unknown-reports');
+            if (totalEl) totalEl.innerText = unique.length;
             if (completeEl) completeEl.innerText = complete;
-            if (draftEl) draftEl.innerText = Math.max(reports.length - complete, 0);
+            if (draftEl) draftEl.innerText = needsCompletion;
+            if (unknownEl) unknownEl.innerText = unknown;
         }
 
         function getCurrentReportSnapshot() {

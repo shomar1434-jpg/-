@@ -1232,8 +1232,24 @@
         }
     </script>
 
-    <!-- Alpine.js Loader with DEFER to ensure DOM compiles perfectly and scripts aren't blocked -->
-    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- Alpine.js: إصدار مثبت + defer لمنع بدء Alpine قبل اكتمال DOM.
+         fallback ثانٍ يحافظ على عمل السجل عند تعذر مزود CDN الأول (مهم لـ Safari/iOS وشبكات المدارس). -->
+    <script defer src="https://unpkg.com/alpinejs@3.14.9/dist/cdn.min.js"
+            onerror="if(!window.__teacherAlpineFallback){window.__teacherAlpineFallback=1;var s=document.createElement('script');s.defer=true;s.src='https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js';s.onerror=function(){window.__teacherAlpineLoadFailed=true};document.head.appendChild(s)}"></script>
+    <script>
+      (function(){
+        function showTeacherRecordRuntimeNotice(){
+          if(window.Alpine || document.getElementById('teacher-record-runtime-notice')) return;
+          var box=document.createElement('div');
+          box.id='teacher-record-runtime-notice';
+          box.dir='rtl';
+          box.style.cssText='position:fixed;inset:auto 16px 16px 16px;z-index:2147483000;background:#fff7ed;border:1px solid #fdba74;color:#7c2d12;padding:12px 14px;border-radius:14px;box-shadow:0 12px 30px rgba(15,23,42,.16);font-family:Tajawal,Arial,sans-serif;font-weight:700';
+          box.textContent='تعذر تهيئة الواجهة التفاعلية لسجل المعلم. تحقق من الاتصال ثم أعد تحميل الصفحة؛ بيانات السجل المحفوظة لم تُحذف.';
+          document.body && document.body.appendChild(box);
+        }
+        window.addEventListener('load',function(){setTimeout(showTeacherRecordRuntimeNotice,7000)});
+      })();
+    </script>
 
     <style>
         /* Hide scrollbars for slick aesthetics */
@@ -1245,6 +1261,7 @@
             scrollbar-width: none;
         }
         
+        [x-cloak] { display: none !important; }
         body {
             font-family: 'Cairo', 'Tajawal', sans-serif;
         }

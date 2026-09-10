@@ -1,28 +1,79 @@
 (function(){
   'use strict';
-  const VERSION='2.0.0-CDW-COMPLETE';
+  const VERSION='2.1.0-CDW-CONNECTIVITY';
   const EXTENSIONS=new Set(['docx','xlsx','pptx']);
   const USE_MODES=new Set(['reference','work','continuous']);
+  const DEFAULT_TIMEOUT_MS=15000;
+  const esc=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function parseJwtPayload(token){
+    try{const part=String(token||'').split('.')[1];if(!part)return{};const normalized=part.replace(/-/g,'+').replace(/_/g,'/');const pad='='.repeat((4-normalized.length%4)%4);return JSON.parse(decodeURIComponent(Array.from(atob(normalized+pad)).map(c=>'%'+c.charCodeAt(0).toString(16).padStart(2,'0')).join('')))}catch(_){return{}}
+  }
+  function runtimeConfig(){
+    let baseUrl='',anon='';
+    try{
+      const client=window.SmartSchoolSupabase?.getClient?.();
+      baseUrl=String(client?.supabaseUrl||client?.rest?.url?.replace(/\/rest\/v1\/?$/,'')||'').trim();
+      anon=String(client?.supabaseKey||'').trim();
+    }catch(_){ }
+    if(!baseUrl)baseUrl=String(localStorage.getItem('smartSchoolSupabaseUrl')||'').trim();
+    if(!anon)anon=String(window.SmartSchoolSupabase?.getAnonKey?.()||localStorage.getItem('smartSchoolSupabaseAnonKey')||'').trim();
+    if(!baseUrl)throw Object.assign(new Error('رابط مشروع Supabase غير موجود في إعدادات المنصة. افتح إعداد Supabase المركزي ثم أعد المحاولة.'),{code:'SUPABASE_URL_MISSING'});
+    if(!/^https:\/\//i.test(baseUrl))throw Object.assign(new Error('رابط Supabase المحفوظ غير صالح.'),{code:'SUPABASE_URL_INVALID'});
+    if(!anon)throw Object.assign(new Error('مفتاح anon لمشروع Supabase غير موجود في إعدادات المنصة.'),{code:'SUPABASE_ANON_MISSING'});
+    baseUrl=baseUrl.replace(/\/$/,'');
+    try{
+      const host=new URL(baseUrl).hostname.toLowerCase();const ref=host.endsWith('.supabase.co')?host.split('.')[0]:'';const payload=parseJwtPayload(anon);const keyRef=String(payload.ref||'').toLowerCase();
+      if(ref&&keyRef&&ref!==keyRef)throw Object.assign(new Error('رابط Supabase ومفتاح anon يعودان إلى مشروعين مختلفين. تم إيقاف فتح المستند لحماية عزل المدارس.'),{code:'SUPABASE_PROJECT_MISMATCH'});
+    }catch(e){if(e?.code==='SUPABASE_PROJECT_MISMATCH')throw e}
+    return {supabaseUrl:baseUrl,anon,endpoint:baseUrl+'/functions/v1/platform-document-workspace'};
+  }
   const cfg={
-    base:()=> (localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'')+'/functions/v1/platform-document-workspace',
-    anon:()=>localStorage.getItem('smartSchoolSupabaseAnonKey')||'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJIUzI1NiIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM',
+    base:()=>runtimeConfig().endpoint,
+    anon:()=>runtimeConfig().anon,
     token:()=>window.PlatformCloudSession?.token?.()||sessionStorage.getItem('platform_tab_session_token_v1')||localStorage.getItem('platform_file_session_token')||''
   };
-  const esc=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   function extOf(file){return String(file?.extension||file?.display_name?.split('.').pop()||'').trim().toLowerCase()}
   function modeOf(file){const m=String(file?.metadata?.documentUseMode||'').trim();return USE_MODES.has(m)?m:'work'}
   function isLibrary(file){return /library/i.test(String(file?.module_key||''))||String(file?.primary_record_type||'')==='library_file'}
   function isEditable(file){return !!file&&file.status==='active'&&EXTENSIONS.has(extOf(file))&&isLibrary(file)&&modeOf(file)!=='reference'}
   async function ensureSession(){
     if(window.PlatformCloudSession&&typeof window.PlatformCloudSession.ensure==='function'){await window.PlatformCloudSession.ensure();if(cfg.token())return cfg.token()}
-    if(cfg.token())return cfg.token();throw new Error('تعذر استعادة جلسة مساحة العمل السحابية.');
+    if(cfg.token())return cfg.token();throw Object.assign(new Error('تعذر استعادة جلسة مساحة العمل السحابية.'),{code:'PLATFORM_SESSION_MISSING'});
+  }
+  async function fetchWithTimeout(url,options,timeoutMs=DEFAULT_TIMEOUT_MS){
+    const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),timeoutMs);
+    try{return await fetch(url,{...options,signal:controller.signal,cache:'no-store'})}finally{clearTimeout(timer)}
+  }
+  function connectivityError(error,endpoint){
+    if(error?.name==='AbortError')return Object.assign(new Error('انتهت مهلة الاتصال بخدمة تحرير المستندات. تحقق من نشر Edge Function واتصال الشبكة.'),{code:'WORKSPACE_TIMEOUT',endpoint,cause:error});
+    const offline=typeof navigator!=='undefined'&&navigator.onLine===false;
+    return Object.assign(new Error(offline?'الجهاز غير متصل بالإنترنت.':'تعذر الوصول إلى خدمة Cloud Document Workspace. غالبًا لم تُنشر دالة platform-document-workspace أو منع المتصفح الاتصال بها (CORS).'),{code:'WORKSPACE_FETCH_FAILED',endpoint,cause:error});
+  }
+  async function probe(){
+    const rc=runtimeConfig();
+    try{
+      const r=await fetchWithTimeout(rc.endpoint+'?action=probe',{method:'GET',headers:{accept:'application/json'}},8000);
+      const text=await r.text();let j={};try{j=text?JSON.parse(text):{}}catch(_){j={raw:text.slice(0,300)}}
+      if(r.status===404)throw Object.assign(new Error('دالة platform-document-workspace غير منشورة في مشروع Supabase الحالي.'),{status:404,code:'WORKSPACE_FUNCTION_NOT_DEPLOYED',data:j});
+      if(r.status===401||r.status===403)throw Object.assign(new Error('بوابة Supabase رفضت الوصول إلى دالة مساحة العمل قبل التحقق من جلسة المنصة. انشر platform-document-workspace بخيار --no-verify-jwt لأن الدالة تستخدم جلسة المنصة وJWT مستقلًا لـ ONLYOFFICE.'),{status:r.status,code:'WORKSPACE_GATEWAY_JWT_BLOCKED',data:j});
+      if(!r.ok)throw Object.assign(new Error(j.error||`خدمة مساحة العمل استجابت بخطأ (${r.status}).`),{status:r.status,code:j.code||'WORKSPACE_PROBE_FAILED',data:j});
+      return j;
+    }catch(e){if(e?.status||e?.code==='SUPABASE_PROJECT_MISMATCH'||e?.code==='SUPABASE_URL_MISSING'||e?.code==='SUPABASE_ANON_MISSING')throw e;throw connectivityError(e,rc.endpoint)}
   }
   async function request(action,body){
-    await ensureSession();
-    const headers={'content-type':'application/json',apikey:cfg.anon(),'x-platform-session':cfg.token(),'x-client-version':VERSION};
-    const send=async()=>{headers['x-platform-session']=cfg.token();const r=await fetch(`${cfg.base()}?action=${encodeURIComponent(action)}`,{method:'POST',headers,body:JSON.stringify(body||{})});const j=await r.json().catch(()=>({}));return {r,j}};
+    await ensureSession();const rc=runtimeConfig();
+    const headers={'content-type':'application/json',apikey:rc.anon,authorization:'Bearer '+rc.anon,'x-platform-session':cfg.token(),'x-client-version':VERSION};
+    const send=async()=>{
+      headers['x-platform-session']=cfg.token();
+      let r;try{r=await fetchWithTimeout(`${rc.endpoint}?action=${encodeURIComponent(action)}`,{method:'POST',headers,body:JSON.stringify(body||{})})}catch(e){throw connectivityError(e,rc.endpoint)}
+      const text=await r.text();let j={};try{j=text?JSON.parse(text):{}}catch(_){j={raw:text.slice(0,500)}}return {r,j}
+    };
     let res=await send();if(res.r.status===401&&window.PlatformCloudSession&&typeof window.PlatformCloudSession.recover==='function'){await window.PlatformCloudSession.recover();res=await send()}
-    if(!res.r.ok){const e=new Error(res.j.error||`تعذر تنفيذ مساحة العمل (${res.r.status})`);e.status=res.r.status;e.code=res.j.code||'';e.data=res.j;throw e}return res.j;
+    if(!res.r.ok){let msg=res.j.error||`تعذر تنفيذ مساحة العمل (${res.r.status})`;let code=res.j.code||'';
+      if(res.r.status===404){msg='دالة platform-document-workspace غير منشورة في مشروع Supabase الحالي.';code=code||'WORKSPACE_FUNCTION_NOT_DEPLOYED'}
+      else if((res.r.status===401||res.r.status===403)&&!res.j.error){msg='تم رفض الطلب من بوابة Supabase قبل وصوله إلى محرك مساحة العمل. تحقق من نشر الدالة بخيار --no-verify-jwt.';code=code||'WORKSPACE_GATEWAY_JWT_BLOCKED'}
+      const e=new Error(msg);e.status=res.r.status;e.code=code;e.data=res.j;e.endpoint=rc.endpoint;throw e}
+    return res.j;
   }
   function edit(fileId,returnTo){const ret=returnTo||location.href;location.href=`cloud_document_workspace.html?file=${encodeURIComponent(fileId)}&return=${encodeURIComponent(ret)}`}
   const capabilities=fileId=>request('capabilities',{fileId});
@@ -32,7 +83,7 @@
   const setMode=(fileId,mode)=>request('set-mode',{fileId,mode});
   const heartbeat=sessionId=>request('heartbeat',{sessionId});
   const closeSession=sessionId=>request('close-session',{sessionId});
-  const health=()=>request('health',{});
+  const health=async()=>{const p=await probe();const h=await request('health',{});return {...p,...h}};
   async function linkCurrentAsEvidence(fileId,target){
     if(!window.CloudFileEngine?.link)throw new Error('محرك ربط الملفات غير متاح.');
     const t=target||{};if(!t.moduleKey||!t.recordType||!t.recordId)throw new Error('بيانات العمل المطلوب إرفاق الشاهد به غير مكتملة.');
@@ -51,5 +102,5 @@
       c.querySelectorAll('[data-restore]').forEach(b=>b.onclick=async()=>{if(!confirm('سيتم إنشاء إصدار جديد من هذه النسخة مع الإبقاء على جميع الإصدارات الحالية. متابعة؟'))return;await restoreVersion(fileId,b.dataset.restore,'استعادة إصدار سابق من سجل الإصدارات');alert('تمت الاستعادة كإصدار جديد دون حذف أي نسخة.');onChanged&&onChanged();d.classList.remove('open')});
     }catch(e){c.innerHTML=`<div style="color:#b91c1c">${esc(e.message)}</div>`}
   }
-  window.CloudDocumentWorkspace={VERSION,EXTENSIONS,USE_MODES,extOf,modeOf,isEditable,capabilities,openSession,versions,restoreVersion,setMode,heartbeat,closeSession,health,edit,showVersions,linkCurrentAsEvidence};
+  window.CloudDocumentWorkspace={VERSION,EXTENSIONS,USE_MODES,runtimeConfig,probe,extOf,modeOf,isEditable,capabilities,openSession,versions,restoreVersion,setMode,heartbeat,closeSession,health,edit,showVersions,linkCurrentAsEvidence};
 })();

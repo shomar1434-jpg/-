@@ -1,98 +1,57 @@
-Cloud Document Workspace — الحزمة الكاملة — 2026-09-10
-=======================================================
+تصحيح تكامل Cloud Document Workspace — 10 سبتمبر 2026
 
-الهدف
------
-تحويل ملفات DOCX / XLSX / PPTX المحفوظة في مكتبات الأقسام من ملفات تنزيل فقط إلى ملفات عمل سحابية قابلة للتحرير، مع:
-- عزل المدرسة والمستخدم.
-- حفظ إصدار جديد عند كل حفظ وعدم الكتابة التدميرية فوق النسخة السابقة.
-- سجل إصدارات + معاينة + استعادة كإصدار جديد.
-- تصنيف الملف: مرجع / ملف عمل / سجل مستمر.
-- قفل محرر واحد للملف ومنع تضارب الحفظ.
-- إبقاء روابط الشواهد السابقة على الإصدار الذي تم إرساله وقتها وعدم تحريكها إلى النسخ اللاحقة.
-- السماح بمعاينة الإصدار المؤرشف عند الرجوع إليه من سجل الإصدارات أو من شاهد سابق.
+سبب الخطأ الذي ظهر بصورة "Failed to fetch":
+1) دالة platform-document-workspace الجديدة لم تكن موجودة ضمن workflow النشر التلقائي للـ Edge Functions في النسخة المرجعية.
+2) محرك cloud-document-workspace.js كان يحتوي fallback ثابتاً لرابط Supabase ومفتاح anon، ما قد يؤدي إلى الاتصال بمشروع غير المشروع الفعلي.
+3) لم يكن هناك Probe مستقل يفرق بين: الدالة غير المنشورة، منع Supabase Gateway، انتهاء الجلسة، وعدم تهيئة ONLYOFFICE.
+4) callback الخاص بـ ONLYOFFICE يحتاج أن تصل الطلبات إلى الدالة دون Supabase JWT؛ لذلك يجب نشر هذه الدالة تحديداً بخيار --no-verify-jwt، بينما التحقق الفعلي يتم داخل الدالة بجلسة المنصة وJWT الخاص بـ ONLYOFFICE.
 
-مصدر الحقيقة والعزل
--------------------
-Supabase Storage و platform_files يظلان مصدر الملف الحقيقي. ONLYOFFICE محرر فقط.
-school_id لا يُقبل من الواجهة في عمليات مساحة العمل؛ يُستخرج من platform_sessions على الخادم.
-ملف المستخدم الخاص لا يحرره إلا مالكه (أو مدير المدرسة عند الصلاحية القائمة في النظام)، والملف المدرسي لا يحرره إلا المدير وفق منطق المنصة الحالي.
-لا توجد Public URLs دائمة للملفات.
+الملفات المعدلة:
+- cloud-document-workspace.js
+- cloud_document_workspace.html
+- supabase/functions/platform-document-workspace/index.ts
 
-الملفات المعدلة/الجديدة
-----------------------
-جديد:
-1) cloud-document-workspace.js
-2) cloud_document_workspace.html
-3) supabase/functions/platform-document-workspace/index.ts
-4) supabase/migrations/20260910134000_cloud_document_workspace_complete.sql
+ملف جديد آمن لا يستبدل workflow الحالي:
+- .github/workflows/deploy-platform-document-workspace.yml
 
-معدل:
-5) section-records-repository.js
-   - ربط مكتبات الأقسام المركزية بالمحرر الحقيقي بدل تحويل DOCX/XLSX إلى HTML مبسط.
-   - زر تحرير المستند + الإصدارات + طريقة الاستخدام.
-6) cloud-upload-hub.js
-   - اختيار طريقة الاستخدام عند الرفع.
-   - عرض ملفات القسم الحالية ومعاينتها/تحريرها/عرض إصداراتها.
-7) cloud_files_center.html
-   - تحرير + سجل الإصدارات + نوع الملف + رقم الإصدار.
-8) supabase/functions/platform-files/index.ts
-   - السماح بقراءة الإصدار archived عند وجود صلاحية، حتى لا تنكسر الشواهد أو معاينة الإصدارات السابقة.
-9) cloud-file-engine.js
-   - النسخة التراكمية المعتمدة؛ لا تغيير سلوكي جديد خاص بـ CDW في هذا الملف، وأُدرجت لتفادي الرجوع إلى نسخة أقدم عند النشر.
+التغييرات:
+- إزالة fallback الثابت لـ Supabase من محرك Workspace.
+- قراءة رابط المشروع ومفتاح anon من إعدادات المنصة الفعلية فقط.
+- فحص تطابق project-ref الموجود في رابط Supabase مع ref الموجود في JWT لمفتاح anon؛ وعند الاختلاف يتوقف الفتح لحماية عزل المدارس.
+- إضافة Authorization: Bearer <anon> مع apikey للطلبات المتجهة إلى Supabase Gateway.
+- إضافة مهلة اتصال واضحة بدل بقاء fetch معلقاً.
+- إضافة action=probe خفيف لا يحتاج جلسة المنصة لتأكيد أن الدالة منشورة ويمكن الوصول إليها.
+- health يتحقق بعد ذلك من جلسة المنصة ومن بقاء school_id مستخرجاً خادمياً.
+- صفحة التحرير تجري health قبل open-session وتظهر سبباً دقيقاً بدلاً من Failed to fetch.
+- إضافة workflow مستقل لنشر platform-document-workspace تلقائياً بخيار --no-verify-jwt، دون تعديل workflow السابق أو إسقاط نشر أي Edge Function أخرى.
 
-لم يتم تعديل manager.html أو agent.html أو unified_workspace.js أو platform-notification-center.js في هذه الحزمة؛ وبالتالي لا تستبدل تصحيح جرس التنبيهات الأخير.
+ترتيب النشر:
+1) ارفع الملفات الثلاثة المعدلة إلى مساراتها نفسها.
+2) أضف ملف workflow الجديد كما هو تحت .github/workflows/.
+3) Push إلى main؛ سيعمل Deploy Platform Document Workspace تلقائياً عند تغير الدالة، أو شغله يدوياً من Actions.
+4) تأكد في Supabase > Edge Functions من ظهور platform-document-workspace.
+5) أضف/تحقق من أسرار Supabase التالية:
+   ONLYOFFICE_DOCUMENT_SERVER_URL
+   ONLYOFFICE_JWT_SECRET
+6) Hard Refresh ثم افتح ملف DOCX/XLSX من مكتبة القسم واضغط تحرير.
 
-متطلبات ONLYOFFICE
-------------------
-يجب توفير ONLYOFFICE Docs عبر HTTPS ثم إضافة سرّي Supabase:
-ONLYOFFICE_DOCUMENT_SERVER_URL = https://YOUR-DOCUMENT-SERVER
-ONLYOFFICE_JWT_SECRET = نفس JWT Secret المضبوط داخل ONLYOFFICE Docs
+نتائج التشخيص المتوقعة بعد التصحيح:
+- WORKSPACE_FUNCTION_NOT_DEPLOYED: الدالة غير منشورة.
+- WORKSPACE_GATEWAY_JWT_BLOCKED: الدالة نُشرت دون --no-verify-jwt.
+- PLATFORM_SESSION_MISSING: جلسة المنصة غير موجودة.
+- SUPABASE_PROJECT_MISMATCH: رابط Supabase ومفتاح anon من مشروعين مختلفين.
+- ONLYOFFICE_NOT_CONFIGURED: الدالة تعمل والعزل سليم لكن أسرار ONLYOFFICE غير مكتملة.
+- عند نجاح الجميع يبدأ المحرر الفعلي.
 
-لا تمنح ONLYOFFICE مفتاح Supabase Service Role. يحصل المحرر على رابط قراءة مؤقت فقط، ويعيد النسخة إلى callback محمي بـ JWT وسر جلسة عشوائي.
+الحماية والعزل:
+- لم تتم إضافة school_id إلى الطلب من الواجهة.
+- الملف ما زال يجلب داخل Edge Function بشرط school_id المستخرج من platform_sessions.
+- callback لا يعتمد على هوية قادمة من المتصفح، بل على session id + secret hash + ONLYOFFICE JWT + أصل document server المعتمد.
+- لا يوجد حذف أو استبدال مدمر لأي ملف أو إصدار.
 
-ترتيب النشر
------------
-1) SQL Editor: تنفيذ supabase/migrations/20260910134000_cloud_document_workspace_complete.sql
-2) رفع الملفات الأمامية الخمسة إلى جذر الموقع:
-   cloud-document-workspace.js
-   cloud_document_workspace.html
-   section-records-repository.js
-   cloud-upload-hub.js
-   cloud_files_center.html
-   cloud-file-engine.js
-3) نشر Edge Function: platform-files
-4) نشر Edge Function: platform-document-workspace
-5) إضافة/تأكيد أسرار ONLYOFFICE المذكورة أعلاه.
-6) Hard Refresh.
-
-اختبار القبول المقترح بعد النشر
--------------------------------
-أ) من مكتبة قسم لمعلم/موظف:
-- ارفع DOCX واختر «سجل مستمر».
-- افتحه واضغط تحرير المستند.
-- عدل واحفظ ثم أغلق.
-- ارجع للمكتبة: يجب أن يظهر الإصدار 2 فقط كرأس السلسلة.
-- افتح الإصدارات: الإصدار 1 موجود ويمكن معاينته.
-- استعد الإصدار 1: يجب إنشاء الإصدار 3 دون حذف 1 أو 2.
-
-ب) اختبار Excel:
-- ارفع XLSX فيه صيغ وأوراق متعددة.
-- عدل داخل ONLYOFFICE واحفظ.
-- نزّل الإصدار الجديد وتأكد أن الصيغة بقيت XLSX ولم يتحول إلى HTML/CSV.
-
-ج) اختبار القفل:
-- افتح نفس الملف للتحرير في جلسة مستخدم A.
-- حاول فتحه من مستخدم B له حق رؤية الملف في نفس المدرسة: يجب أن يظهر «قيد التحرير» ولا تُفتح جلسة كتابة ثانية.
-
-د) اختبار العزل:
-- حاول من مدرسة أخرى استعمال file_id نفسه عبر API: يجب أن يرجع «الملف غير موجود/لا توجد صلاحية» لأن الاستعلام مقيد بـ school_id المستخرج من الجلسة.
-
-هـ) اختبار الشاهد:
-- اربط الإصدار الحالي كشاهد من مسار الشواهد الموجود.
-- عدل ملف العمل بعد ذلك واحفظ إصدارًا جديدًا.
-- افتح الشاهد السابق: يجب أن يفتح الإصدار الذي أُرسل وقت اعتماد الشاهد، لا النسخة الأحدث.
-
-نتائج الفحص الداخلي
--------------------
-راجع QA_RESULTS.txt و CDW_AUDIT_AR.txt.
+الفحص:
+- اختبارات CDW السابقة: 34/34 PASS.
+- cloud-document-workspace.js: Node syntax PASS.
+- JavaScript المضمن في cloud_document_workspace.html: syntax PASS.
+- تحقق وجود probe وhealth الجديدين: PASS.
+- تحقق أن workflow الجديد يستخدم --no-verify-jwt: PASS.

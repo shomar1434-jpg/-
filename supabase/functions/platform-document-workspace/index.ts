@@ -25,7 +25,7 @@ Deno.serve(async(req)=>{
   const jwtSecret=Deno.env.get('ONLYOFFICE_JWT_SECRET')||'';
   if(!supabaseUrl||!serviceRole)return json({error:'إعدادات Supabase غير مكتملة'},500);
   const sb=createClient(supabaseUrl,serviceRole,{auth:{persistSession:false,autoRefreshToken:false}});
-  const url=new URL(req.url),action=url.searchParams.get('action')||'',now=new Date(),nowIso=now.toISOString();
+  const url=new URL(req.url),action=url.searchParams.get('action')||'',now=new Date(),nowIso=now.toISOString(),requestId=crypto.randomUUID();
   const jwtKey=jwtSecret?new TextEncoder().encode(jwtSecret):null;
   const docOrigin=(()=>{try{return documentServerUrl?new URL(documentServerUrl).origin:''}catch(_){return''}})();
 
@@ -65,6 +65,7 @@ Deno.serve(async(req)=>{
   async function versionChain(head:any,schoolId:string){const rows:any[]=[];let cur=head;const seen=new Set<string>();while(cur&&!seen.has(String(cur.id))&&rows.length<200){seen.add(String(cur.id));rows.push(cur);if(!cur.replaced_file_id)break;cur=await getFile(String(cur.replaced_file_id),schoolId)}return rows}
 
   try{
+    if(action==='probe')return json({ok:true,service:'platform-document-workspace',version:'2.1.0-CDW-CONNECTIVITY',configured:!!(documentServerUrl&&jwtSecret),documentServerConfigured:!!documentServerUrl,jwtConfigured:!!jwtSecret,requestId});
     if(action==='callback'){
       const sessionId=String(url.searchParams.get('session')||''),secret=String(url.searchParams.get('secret')||'');if(!isUuid(sessionId)||!secret)return json({error:1});
       const body=await req.json().catch(()=>({}));if(!jwtSecret||!(await verifyCallback(body)))return json({error:1});
@@ -87,7 +88,7 @@ Deno.serve(async(req)=>{
 
     const s=await verifyPlatformSession();if(!s)return json({error:'جلسة مساحة العمل مفقودة أو منتهية'},401);
     const body=req.method==='GET'?{}:await req.json().catch(()=>({}));
-    if(action==='health')return json({ok:true,version:'2.0.0-CDW-COMPLETE',provider:'onlyoffice',configured:!!(documentServerUrl&&jwtSecret),schoolId:s.school_id,userId:s.user_id});
+    if(action==='health')return json({ok:true,service:'platform-document-workspace',version:'2.1.0-CDW-CONNECTIVITY',provider:'onlyoffice',configured:!!(documentServerUrl&&jwtSecret),documentServerConfigured:!!documentServerUrl,jwtConfigured:!!jwtSecret,sessionVerified:true,schoolIsolationVerified:!!s.school_id,userVerified:!!s.user_id,requestId});
     if(action==='capabilities'){const f=await getFile(String(body.fileId||''),String(s.school_id));return json({editable:canEdit(s,f),configured:!!(documentServerUrl&&jwtSecret),extension:extOf(f),libraryFile:!!f&&isLibraryFile(f),mode:modeOf(f)});}
     if(action==='open-session'){
       if(!documentServerUrl||!jwtSecret)return json({error:'محرر ONLYOFFICE Docs غير مهيأ. أضف ONLYOFFICE_DOCUMENT_SERVER_URL و ONLYOFFICE_JWT_SECRET إلى أسرار Supabase.'},503);
@@ -121,5 +122,5 @@ Deno.serve(async(req)=>{
       const id=String(body.sessionId||'');if(!isUuid(id))return json({error:'جلسة غير صالحة'},400);const {data:sess}=await sb.from('document_workspace_sessions').select('*').eq('id',id).eq('school_id',s.school_id).eq('user_id',s.user_id).maybeSingle();if(!sess)return json({error:'الجلسة غير موجودة'},404);if(sess.status==='active')await sb.from('document_workspace_sessions').update({status:'closed',closed_at:nowIso,updated_at:nowIso}).eq('id',id);return json({ok:true});
     }
     return json({error:'عملية غير مدعومة'},400);
-  }catch(e){console.error('[platform-document-workspace]',e);return json({error:e instanceof Error?e.message:String(e)},500)}
+  }catch(e){console.error('[platform-document-workspace]',e);return json({error:e instanceof Error?e.message:String(e),code:'WORKSPACE_SERVER_ERROR',requestId},500)}
 });

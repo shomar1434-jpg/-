@@ -84,9 +84,17 @@
       if(res.j.details&&normalize(res.j.details)!==msg)msg+=` — ${normalize(res.j.details)}`;const e=new Error(msg);e.status=res.r.status;e.code=code;e.data=res.j;e.endpoint=rc.endpoint;throw e}
     return res.j;
   }
+
+  function preloadEditor(){
+    try{
+      const base=String(sessionStorage.getItem('cdw_document_server_url')||'').replace(/\/$/,'');
+      if(!/^https:\/\//i.test(base)||document.getElementById('cdwOnlyOfficePreload'))return false;
+      const frame=document.createElement('iframe');frame.id='cdwOnlyOfficePreload';frame.src=base+'/web-apps/apps/api/documents/preload.html';frame.setAttribute('aria-hidden','true');frame.tabIndex=-1;frame.style.cssText='position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;border:0;left:-9999px;top:-9999px';document.body.appendChild(frame);return true;
+    }catch(_){return false}
+  }
   function edit(fileId,returnTo){const ret=returnTo||location.href;location.href=`cloud_document_workspace.html?file=${encodeURIComponent(fileId)}&return=${encodeURIComponent(ret)}`}
   const capabilities=fileId=>request('capabilities',{fileId});
-  const openSession=(fileId,force=false)=>request('open-session',{fileId,force});
+  const openSession=async(fileId,force=false)=>{const data=await request('open-session',{fileId,force});try{const u=String(data?.documentServerUrl||'').replace(/\/$/,'');if(/^https:\/\//i.test(u))sessionStorage.setItem('cdw_document_server_url',u)}catch(_){}return data};
   const versions=fileId=>request('versions',{fileId});
   const restoreVersion=(fileId,versionId,note)=>request('restore-version',{fileId,versionId,note:note||''});
   const setMode=(fileId,mode)=>request('set-mode',{fileId,mode});
@@ -112,5 +120,5 @@
       c.querySelectorAll('[data-restore]').forEach(b=>b.onclick=async()=>{if(!confirm('سيتم إنشاء إصدار جديد من هذه النسخة مع الإبقاء على جميع الإصدارات الحالية. متابعة؟'))return;await restoreVersion(fileId,b.dataset.restore,'استعادة إصدار سابق من سجل الإصدارات');alert('تمت الاستعادة كإصدار جديد دون حذف أي نسخة.');onChanged&&onChanged();d.classList.remove('open')});
     }catch(e){c.innerHTML=`<div style="color:#b91c1c">${esc(e.message)}</div>`}
   }
-  window.CloudDocumentWorkspace={VERSION,EXTENSIONS,USE_MODES,runtimeConfig,probe,extOf,modeOf,isEditable,capabilities,openSession,versions,restoreVersion,setMode,heartbeat,closeSession,health,edit,showVersions,linkCurrentAsEvidence};
+  window.CloudDocumentWorkspace={VERSION,EXTENSIONS,USE_MODES,runtimeConfig,probe,extOf,modeOf,isEditable,capabilities,openSession,versions,restoreVersion,setMode,heartbeat,closeSession,health,preloadEditor,edit,showVersions,linkCurrentAsEvidence};
 })();

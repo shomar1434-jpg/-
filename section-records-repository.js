@@ -269,7 +269,7 @@
       document.body.appendChild(inp); inp.click();
     }
   };
-  window.editSectionRepoWorkspaceSafe=async function(id){id=String(id||'');let r=null;try{r=await get(id)}catch(e){console.warn('[SectionRepo workspace stale id]',e?.message||e)}const cdw=await ensureDocumentWorkspace();if(!r){await render();alert('تم تحديث المكتبة إلى أحدث إصدار من الملف. اضغط تحرير المستند مرة أخرى.');return}const target=String(r.platformFileId||r.id);let cap=null;try{cap=await cdw.capabilities(target)}catch(e){console.warn('[SectionRepo capabilities]',e?.message||e)}if(cap&&cap.editable){cdw.edit(target,location.href);return}const fileMeta={id:r.id,status:r.status,extension:r.extension,display_name:r.name,module_key:r.moduleKey,primary_record_type:'library_file',metadata:{...(r.metadata||{}),documentUseMode:r.documentUseMode||r.metadata?.documentUseMode||'work'}};if(!cap&&cdw.isEditable(fileMeta)){cdw.edit(target,location.href);return}alert((cap?.mode||r.documentUseMode)==='reference'?'هذا الملف مصنف كمرجع. غيّر نوعه من سجل الإصدارات أولًا.':'تم تحديث حالة الملف بعد الحفظ. أعد فتح المكتبة لاستخدام أحدث إصدار.');await render();};
+  window.editSectionRepoWorkspaceSafe=async function(id){id=String(id||'');let r=null;try{r=await get(id)}catch(e){console.warn('[SectionRepo workspace stale id]',e?.message||e)}const cdw=await ensureDocumentWorkspace();if(!r){await render();alert('تم تحديث المكتبة إلى أحدث إصدار من الملف. اضغط تحرير المستند مرة أخرى.');return}const target=String(r.platformFileId||r.id);let cap=null;try{cap=await cdw.capabilities(target)}catch(e){console.warn('[SectionRepo capabilities]',e?.message||e)}if(cap&&cap.editable){const u=new URL(location.href);u.searchParams.set('cdw_library','1');u.searchParams.set('cdw_folder',activeFolder||'عام');cdw.edit(target,u.href);return}const fileMeta={id:r.id,status:r.status,extension:r.extension,display_name:r.name,module_key:r.moduleKey,primary_record_type:'library_file',metadata:{...(r.metadata||{}),documentUseMode:r.documentUseMode||r.metadata?.documentUseMode||'work'}};if(!cap&&cdw.isEditable(fileMeta)){const u=new URL(location.href);u.searchParams.set('cdw_library','1');u.searchParams.set('cdw_folder',activeFolder||'عام');cdw.edit(target,u.href);return}alert((cap?.mode||r.documentUseMode)==='reference'?'هذا الملف مصنف كمرجع. غيّر نوعه من سجل الإصدارات أولًا.':'تم تحديث حالة الملف بعد الحفظ. أعد فتح المكتبة لاستخدام أحدث إصدار.');await render();};
   window.showSectionRepoVersionsSafe=async function(id){id=String(id||'');const cdw=await ensureDocumentWorkspace();await cdw.showVersions(id,render);};
   window.printSectionRepoSafe=async function(id){id=String(id||'');
     const r=await get(id); if(!r)return; const k=r.kind||kind(r); const w=window.open('','_blank'); if(!w){alert('يرجى السماح بالنوافذ المنبثقة للطباعة');return;}
@@ -308,5 +308,15 @@
     });
   }
 
-  css(); loadLibs(); if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', injectCard); else injectCard(); setTimeout(injectCard,700); setTimeout(injectCard,1800);
+  css(); loadLibs();
+  async function restoreLibraryContext(){
+    try{
+      const u=new URL(location.href);if(u.searchParams.get('cdw_library')!=='1')return;
+      const folder=u.searchParams.get('cdw_folder');if(folder){activeFolder=folder;try{sessionStorage.setItem(folderKey(),folder)}catch(_){}}
+      u.searchParams.delete('cdw_library');u.searchParams.delete('cdw_folder');u.searchParams.delete('cdw_return');history.replaceState(null,'',u.href);
+      injectCard();window.openSectionRecordsRepositorySafe();
+    }catch(e){console.warn('[SectionRepo restore library]',e)}
+  }
+  async function warmOfficeEditor(){try{const cdw=await ensureDocumentWorkspace();cdw.preloadEditor&&cdw.preloadEditor()}catch(_){}}
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',()=>{injectCard();restoreLibraryContext();setTimeout(warmOfficeEditor,350)}); else {injectCard();restoreLibraryContext();setTimeout(warmOfficeEditor,350)} setTimeout(injectCard,700); setTimeout(injectCard,1800);
 })();

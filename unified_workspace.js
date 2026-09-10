@@ -63,7 +63,7 @@
       /* لا نغيّر أبعاد شبكات وبطاقات الأقسام الأصلية */
       #welcome-dashboard .content-overlay{padding-right:0!important}
       /* فتح الصفحات التشغيلية المستقلة بكامل الشاشة */
-      .uw-fullscreen-internal{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;z-index:2147482500!important;background:#fff!important;overflow:hidden!important}
+      .uw-fullscreen-internal{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;height:100dvh!important;max-width:none!important;max-height:none!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;z-index:2147482500!important;background:#fff!important;overflow:hidden!important}
       .uw-fullscreen-internal>.content-overlay{width:100%!important;height:100%!important;max-width:none!important;margin:0!important;padding:0!important;display:flex!important;flex-direction:column!important}
       .uw-fullscreen-internal main{max-width:none!important;width:100%!important;flex:1!important;min-height:0!important;margin:0!important;padding:0!important}
       .uw-fullscreen-internal iframe{width:100%!important;height:100%!important;min-height:0!important;border:0!important;border-radius:0!important;display:block!important}
@@ -314,7 +314,7 @@
     view.style.setProperty('position','fixed','important');
     view.style.setProperty('inset','0','important');
     view.style.setProperty('width','100vw','important');
-    view.style.setProperty('height','100vh','important');
+    view.style.setProperty('height',(window.visualViewport?Math.round(window.visualViewport.height)+'px':'100dvh'),'important');
     view.style.setProperty('max-width','none','important');
     view.style.setProperty('max-height','none','important');
     view.style.setProperty('margin','0','important');

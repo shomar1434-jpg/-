@@ -14,6 +14,7 @@ on:
       - "supabase/functions/platform-state/**"
       - "supabase/functions/platform-directory/**"
       - "supabase/functions/platform-notifications/**"
+      - "supabase/functions/platform-document-workspace/**"
       - "supabase/functions/impact-measurement/**"
       - "supabase/functions/system-admin/**"
       - ".github/workflows/deploy-supabase-functions.yml"
@@ -81,6 +82,73 @@ jobs:
           supabase functions deploy platform-notifications \
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
             --no-verify-jwt
+
+      - name: Deploy platform-document-workspace
+        run: |
+          supabase functions deploy platform-document-workspace \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
+            --no-verify-jwt
+
+      - name: Verify platform-document-workspace is reachable
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          URL="https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co/functions/v1/platform-document-workspace?action=probe"
+
+          echo "Checking platform-document-workspace..."
+          echo "URL: ${URL}"
+
+          ok=0
+
+          for attempt in 1 2 3 4 5; do
+            echo "Attempt ${attempt}/5"
+
+            http_code="$(
+              curl \
+                --silent \
+                --show-error \
+                --location \
+                --output /tmp/cdw_probe.json \
+                --write-out '%{http_code}' \
+                --connect-timeout 15 \
+                --max-time 30 \
+                "${URL}" \
+                || true
+            )"
+
+            echo "HTTP status: ${http_code}"
+
+            if [ -f /tmp/cdw_probe.json ]; then
+              echo "Response:"
+              cat /tmp/cdw_probe.json
+              echo
+            fi
+
+            if [ "${http_code}" = "200" ] && \
+               grep -q '"service":"platform-document-workspace"' /tmp/cdw_probe.json 2>/dev/null; then
+              ok=1
+              break
+            fi
+
+            if [ "${attempt}" -lt 5 ]; then
+              echo "Workspace not ready yet. Waiting 6 seconds..."
+              sleep 6
+            fi
+          done
+
+          if [ "${ok}" != "1" ]; then
+            echo "::error::platform-document-workspace was not reachable after deployment."
+            exit 1
+          fi
+
+          echo "platform-document-workspace is reachable."
+
+          if grep -q '"configured":false' /tmp/cdw_probe.json 2>/dev/null; then
+            echo "::warning::Cloud Document Workspace is deployed, but ONLYOFFICE is not configured yet."
+          else
+            echo "Cloud Document Workspace is deployed and its configuration endpoint is responding."
+          fi
 
       - name: Deploy impact-measurement
         run: |

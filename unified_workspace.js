@@ -368,6 +368,8 @@
   }
 
   function loadNotificationCenter(){
+    /* مركز التنبيهات عنصر خاص بالواجهة الرئيسية للدور؛ لا يُحمّل في الصفحات الداخلية. */
+    if(!isSectionRootPage()) return;
     if(window.__PLATFORM_NOTIFICATION_CENTER_V1__||document.querySelector('script[data-platform-notification-center]'))return;
     var s=document.createElement('script');
     s.src='platform-notification-center.js?v=20260910-regression-recovery';

@@ -373,15 +373,45 @@ Deno.serve(async (req) => {
 
     if (action === 'semester-plan-submit-evidence') {
       if(!semesterPlanTypeForRole)return json({error:'الدور الحالي غير مخول'},403);
-      const id=String(body.id||''), fileId=String(body.fileId||''); if(!fileId)return json({error:'ملف الشاهد مفقود'},400);
-      const {data,error}=await sb.from('semester_plan_weeks').update({evidence_file_id:fileId,evidence_name:String(body.fileName||''),evidence_submitted_at:now,execution_status:'pending_manager',updated_at:now}).eq('id',id).eq('school_id',session.school_id).eq('owner_user_id',session.user_id).eq('plan_status','approved').select('*').maybeSingle();if(error)throw error;if(!data)return json({error:'يجب اعتماد خطة الأسبوع قبل رفع شاهد التنفيذ'},409);return json({row:data});
+      const id=String(body.id||'');
+      const rawItems=Array.isArray(body.items)?body.items:[];
+      const legacyFileId=String(body.fileId||'');
+      const incoming=rawItems.length?rawItems:(legacyFileId?[{type:'file',fileId:legacyFileId,name:String(body.fileName||'')}]:[]);
+      if(!incoming.length)return json({error:'يجب إرفاق شاهد تنفيذ واحد على الأقل'},400);
+      if(incoming.length>20)return json({error:'الحد الأعلى 20 شاهدًا لكل أسبوع'},400);
+      const items:any[]=[];
+      for(const raw of incoming){
+        const type=String(raw?.type||'').toLowerCase();
+        if(type==='external'){
+          const url=String(raw?.url||'').trim();
+          if(!/^https?:\/\//i.test(url))return json({error:'الرابط الخارجي غير صالح'},400);
+          items.push({type:'external',url,name:String(raw?.name||url).slice(0,240)});continue;
+        }
+        if(!['file','library'].includes(type))return json({error:'نوع الشاهد غير مدعوم'},400);
+        const fileId=String(raw?.fileId||''); if(!fileId)return json({error:'معرف ملف الشاهد مفقود'},400);
+        const {data:file,error:fileErr}=await sb.from('platform_files').select('id,school_id,owner_user_id,ownership_scope,display_name,status').eq('id',fileId).eq('school_id',session.school_id).maybeSingle();
+        if(fileErr)throw fileErr;if(!file||!['active','archived'].includes(String(file.status||'')))return json({error:'أحد ملفات الشواهد غير متاح'},404);
+        if(type==='library'&&String(file.owner_user_id||'')!==String(session.user_id))return json({error:'يسمح باختيار الشاهد من مكتبة قسم صاحب الحساب فقط'},403);
+        items.push({type,fileId,name:String(raw?.name||file.display_name||'شاهد').slice(0,240)});
+      }
+      const firstFile=items.find((x:any)=>x.fileId);
+      const {data,error}=await sb.from('semester_plan_weeks').update({evidence_items:items,evidence_file_id:firstFile?.fileId||null,evidence_name:firstFile?.name||items[0]?.name||'',evidence_submitted_at:now,execution_status:'pending_manager',execution_rating:null,execution_reviewed_at:null,execution_reviewed_by:null,updated_at:now}).eq('id',id).eq('school_id',session.school_id).eq('owner_user_id',session.user_id).eq('plan_status','approved').in('execution_status',['awaiting_evidence','pending_manager']).select('*').maybeSingle();
+      if(error)throw error;if(!data)return json({error:'يجب اعتماد خطة الأسبوع قبل رفع شواهد التنفيذ'},409);return json({row:data});
     }
 
-    if (action === 'semester-plan-execution-decision') {
-      if(!isSemesterPlanManager)return json({error:'اعتماد التنفيذ متاح للمدير فقط'},403);
-      const id=String(body.id||''), decision=String(body.decision||''), note=String(body.note||'');
-      const patch:any=decision==='approve'?{execution_status:'approved',execution_approved_at:now,execution_approved_by:session.user_id,manager_note:note,updated_at:now}:{execution_status:'awaiting_evidence',manager_note:note,updated_at:now};
-      const {data,error}=await sb.from('semester_plan_weeks').update(patch).eq('id',id).eq('school_id',session.school_id).eq('plan_status','approved').select('*').maybeSingle();if(error)throw error;if(!data)return json({error:'تعذر اعتماد التنفيذ'},409);return json({row:data});
+    if (action === 'semester-plan-execution-decision' || action === 'semester-plan-execution-rating') {
+      if(!isSemesterPlanManager)return json({error:'تقييم التنفيذ متاح لمدير المدرسة فقط'},403);
+      const id=String(body.id||''), note=String(body.note||'');
+      let rating=String(body.rating||'').toLowerCase();
+      if(!rating && String(body.decision||'')==='approve')rating='medium';
+      if(!['high','medium','low'].includes(rating))return json({error:'اختر مستوى تنفيذ صحيحًا'},400);
+      if(body.previewConfirmed!==true && action==='semester-plan-execution-rating')return json({error:'يجب معاينة جميع الشواهد قبل تقييم التنفيذ'},409);
+      const {data:row,error:readErr}=await sb.from('semester_plan_weeks').select('id,evidence_items,evidence_file_id,execution_status').eq('id',id).eq('school_id',session.school_id).eq('plan_status','approved').maybeSingle();
+      if(readErr)throw readErr;if(!row)return json({error:'الأسبوع غير موجود أو غير معتمد'},404);
+      const hasEvidence=(Array.isArray(row.evidence_items)&&row.evidence_items.length>0)||!!row.evidence_file_id;
+      if(!hasEvidence||String(row.execution_status)!=='pending_manager')return json({error:'لا يمكن تقييم التنفيذ قبل وصول الشواهد للمدير'},409);
+      const patch:any={execution_status:'approved',execution_rating:rating,execution_approved_at:now,execution_approved_by:session.user_id,execution_reviewed_at:now,execution_reviewed_by:session.user_id,manager_note:note,updated_at:now};
+      const {data,error}=await sb.from('semester_plan_weeks').update(patch).eq('id',id).eq('school_id',session.school_id).select('*').single();if(error)throw error;return json({row:data});
     }
 
     if (action === 'dashboard') {

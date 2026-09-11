@@ -1,22 +1,24 @@
-تصحيح حصر سجل المعلم الشامل + تكليف الدور الكامل — 2026-09-11
+تصحيح نهائي لمسار تكليف الدور الكامل للموجه الصحي – 11 سبتمبر 2026
 
-الملفات المعدلة:
-1) platform-record-catalog.js
-2) central_task_center.html
-3) supabase/migrations/20260911183000_fix_health_advisor_record_catalog.sql
+سبب استمرار الرسالة:
+- الواجهة أصبحت ترسل المعرف الصحيح health_advisor_comprehensive_record.
+- لكن platform-tasks يتحقق من جدول platform_record_types في Supabase؛ إذا لم يكن migration قد نُفّذ أو لم يصل التعريف إلى القاعدة، يرفض التكليف برسالة «السجل غير مسجل في القاموس الموحد».
 
-ما تم تصحيحه:
-- إزالة الاستخدام الداخلي الخاطئ للمعرف teacher_comprehensive_record من سجل الموجه الصحي الشامل.
-- المعرف الصحيح أصبح health_advisor_comprehensive_record.
-- سجل المعلم الشامل يبقى خاصًا بقسم المعلم، مع السماح بنسخة معلمة رياض الأطفال في وحدتها الخاصة.
-- إضافة حاجز في تكليف الدور الكامل يمنع إدخال أي سجل تابع teacher_records أو kindergarten_teacher_records أو teacher_comprehensive_record ضمن أدوار:
-  الموجه الصحي / الموجه الطلابي / رائد النشاط.
-- تسجيل سجلات الموجه الصحي اللازمة في القاموس السحابي حتى لا يتوقف تكليف الدور الكامل عند السجل التالي.
-- لا يوجد حذف لبيانات أو ملفات محفوظة. أي تعريف خاطئ سابق في قاعدة البيانات يتم تعطيله فقط، لا حذفه.
+التصحيح:
+1) يبقى سجل المعلم الشامل محصورًا في teacher_records و kindergarten_teacher_records فقط.
+2) سجل الموجه الصحي الشامل يستخدم health_advisor_comprehensive_record.
+3) platform-tasks ينفذ فحصًا مسبقًا قبل إنشاء التكليف.
+4) للسجلات المعيارية المعروفة للموجه الصحي فقط، إذا كان تعريف القاموس مفقودًا يتم إصلاحه تلقائيًا في platform_record_types من قائمة خادم مغلقة، وليس من بيانات العميل.
+5) يمنع الفحص المسبق إنشاء تكليفات يتيمة إذا فشل التحقق من السجلات.
+6) migration السابقة مرفقة أيضًا كإجراء دائم وآمن.
 
-ترتيب التطبيق:
-1) ارفع platform-record-catalog.js و central_task_center.html.
-2) نفذ migration: supabase/migrations/20260911183000_fix_health_advisor_record_catalog.sql
-3) حدّث الصفحة تحديثًا قسريًا ثم اختبر تكليف دور كامل للموجه الصحي والموجه الطلابي ورائد النشاط.
+الملفات:
+- central_task_center.html
+- platform-record-catalog.js
+- supabase/functions/platform-tasks/index.ts
+- supabase/migrations/20260911183000_fix_health_advisor_record_catalog.sql
 
-لا توجد Edge Function جديدة في هذا التصحيح، لذلك لا يحتاج workflow إلى إضافة جديدة.
+النشر:
+- ارفع الملفات بنفس المسارات.
+- platform-tasks موجود أصلًا في workflow المركزي deploy-supabase-functions.yml، لذلك سيُنشر تلقائيًا عند رفع تغييره ولا توجد وظيفة جديدة تحتاج إضافة للـworkflow.
+- يُفضّل تنفيذ migration المرفقة مرة واحدة أيضًا، لكن التصحيح الجديد لا يعتمد على نجاح تنفيذها حتى يعمل سجل الموجه الصحي المعياري.

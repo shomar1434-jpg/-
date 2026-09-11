@@ -5,6 +5,14 @@ const sha256=async(v:string)=>Array.from(new Uint8Array(await crypto.subtle.dige
 const isUuid=(v:unknown)=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(v||''));
 const safeKey=(v:unknown,f='general')=>String(v||f).replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,100)||f;
 const ownerRoles=new Set(['manager','owner','school_manager','principal','agent','deputy','deputy_admin','deputy_academic','deputy_students','وكيل','مدير','مديرة']);
+// سجلات معيارية معروفة يجب أن تكون قابلة لتكليف الدور الكامل حتى لو لم تُنفّذ migration بعد.
+// القائمة مغلقة عمدًا ولا تقبل أي module/record مرسل من العميل بشكل ديناميكي.
+const canonicalRecordFallbacks:Record<string,any>={
+ 'health_advisor_records/health_advisor_comprehensive_record':{module_key:'health_advisor_records',record_type:'health_advisor_comprehensive_record',display_name:'سجل الموجه الصحي الشامل',route_url:'health_advisor_comprehensive_record.html',owner_role:'health_advisor',is_assignable:true,supports_files:true,supports_approval:true,supports_analysis:true,is_active:true,configuration_json:{owner:'health_advisor',permission_scope:'module',aliases:[]}},
+ 'health_advisor_records/student_attendance_record':{module_key:'health_advisor_records',record_type:'student_attendance_record',display_name:'سجل حضور الطلاب',route_url:'health_advisor_records_attendance.html',owner_role:'health_advisor',is_assignable:true,supports_files:true,supports_approval:true,supports_analysis:true,is_active:true,configuration_json:{owner:'health_advisor',permission_scope:'module',aliases:[]}},
+ 'health_advisor_records/student_participation_record':{module_key:'health_advisor_records',record_type:'student_participation_record',display_name:'سجل المشاركة الصفية',route_url:'health_advisor_records_participation.html',owner_role:'health_advisor',is_assignable:true,supports_files:true,supports_approval:true,supports_analysis:true,is_active:true,configuration_json:{owner:'health_advisor',permission_scope:'module',aliases:[]}},
+ 'health_advisor_records/student_work_record':{module_key:'health_advisor_records',record_type:'student_work_record',display_name:'سجل أعمال الطلاب',route_url:'health_advisor_records_student_work.html',owner_role:'health_advisor',is_assignable:true,supports_files:true,supports_approval:true,supports_analysis:true,is_active:true,configuration_json:{owner:'health_advisor',permission_scope:'module',aliases:[]}}
+};
 Deno.serve(async(req)=>{
  if(req.method==='OPTIONS')return new Response('ok',{headers:cors});
  const url=Deno.env.get('SUPABASE_URL'),key=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -69,6 +77,19 @@ Deno.serve(async(req)=>{
    await sb.from('central_task_assignments').update({is_current:false,ended_at:now}).eq('task_id',taskId).eq('is_current',true);
   };
   const uniqueGrantRows=(rows:any[])=>{const m=new Map();for(const r of rows||[]){const k=[r.module_key,r.record_type||'',r.record_id||''].join('|');if(!m.has(k))m.set(k,r)}return Array.from(m.values())};
+  const ensureRegisteredRecord=async(moduleKey:string,recordType:string)=>{
+   const mk=safeKey(moduleKey),rt=String(recordType||'');
+   const {data:registered,error:readErr}=await sb.from('platform_record_types').select('module_key,record_type,is_active').eq('module_key',mk).eq('record_type',rt).eq('is_active',true).maybeSingle();
+   if(readErr)throw readErr;if(registered)return registered;
+   const fallback=canonicalRecordFallbacks[`${mk}/${rt}`];if(!fallback)return null;
+   if(mk==='health_advisor_records'){
+    const {error:moduleErr}=await sb.from('platform_modules').upsert({module_key:'health_advisor_records',display_name:'سجلات الموجه الصحي',is_active:true},{onConflict:'module_key'});if(moduleErr)throw moduleErr;
+   }
+   const {error:upsertErr}=await sb.from('platform_record_types').upsert(fallback,{onConflict:'module_key,record_type'});if(upsertErr)throw upsertErr;
+   const {data:repaired,error:verifyErr}=await sb.from('platform_record_types').select('module_key,record_type,is_active').eq('module_key',mk).eq('record_type',rt).eq('is_active',true).maybeSingle();if(verifyErr)throw verifyErr;
+   if(repaired)console.warn('[platform-tasks:registry-auto-repair]',{moduleKey:mk,recordType:rt,requestId});
+   return repaired||null;
+  };
   console.log('[platform-tasks]',{requestId,action,schoolId:s.school_id,userId:s.user_id,role:s.role});
   if(action==='health')return json({ok:true,version:'2.3.0-deputy-multi-role-refresh',schoolId:s.school_id,userId:s.user_id,role:s.role});
   if(action==='set-deputy-classification'){
@@ -150,6 +171,16 @@ Deno.serve(async(req)=>{
     const effectiveRole=String(membership?.role||u.role||'').toLowerCase();
     if(['administrative_employee','admin_employee'].includes(effectiveRole)&&String(membership?.status||u.status||'pending').toLowerCase()!=='active')return json({error:'الموظف الإداري يجب أن يكون مفعّلاً قبل إسناد التكليف'},409);
    }
+   // فحص الدور الكامل قبل إنشاء central_tasks لمنع إنشاء تكليف يتيم عند وجود سجل غير مسجل.
+   const preDelegated=Array.isArray(body.metadata?.delegatedRecords)?body.metadata.delegatedRecords.filter((r:any)=>r?.moduleKey&&r?.recordType):[];
+   const preSourceOwner=String(body.sourceOwner||'');
+   const preOwnerModuleAllowed=(m:string)=>preSourceOwner==='manager'?m==='manager_records':preSourceOwner==='agent'?(m.startsWith('deputy_')||['academic_affairs','school_operations','student_affairs'].includes(m)):preSourceOwner==='shared'?!m.startsWith('deputy_')&&m!=='manager_records':true;
+   for(const r of preDelegated){
+    const mk=safeKey(r.moduleKey),rt=String(r.recordType);
+    if(!preOwnerModuleAllowed(mk))return json({error:'نطاق السجل لا يطابق الجهة المالكة المحددة'},409);
+    const registered=await ensureRegisteredRecord(mk,rt);
+    if(!registered)return json({error:`السجل غير مسجل في القاموس الموحد: ${mk}/${rt}`},409);
+   }
    const row={school_id:s.school_id,module_key:safeKey(body.moduleKey||body.sourceOwner||'central_tasks'),record_type:body.recordType||body.assignmentType||null,record_id:body.recordId||null,title:String(body.title||'').trim().slice(0,300),description:String(body.description||'').trim()||null,assignment_type:['record','partial','additional_role'].includes(body.assignmentType)?body.assignmentType:'partial',source_owner:body.sourceOwner||null,record_key:body.recordKey||null,created_by:s.user_id,owner_role:s.role,owner_label:body.ownerLabel||null,assigned_to:assignedTo,assignee_email:assigneeEmail,assignee_name:body.assigneeName||null,assignee_role:body.assigneeRole||null,priority:['low','normal','high','urgent'].includes(body.priority)?body.priority:'normal',status:'active',start_date:body.startDate||null,due_date:body.dueDate||null,requires_approval:body.requiresApproval!==false,metadata:{...(body.metadata||{}),assignment_engine_version:'2.0.0',assignment_engine:'unified',created_via:'platform-tasks'}};
    if(!row.title)return json({error:'عنوان التكليف مطلوب'},400);
    const {data:t,error}=await sb.from('central_tasks').insert(row).select('*').single();if(error){console.error('[platform-tasks:create:insert]',requestId,error,row);throw error;}if(!t?.id)throw new Error('تعذر إنشاء معرف التكليف بعد الإدراج');
@@ -168,8 +199,8 @@ Deno.serve(async(req)=>{
    const requestedPairs=delegatedRecords.length?delegatedRecords.filter((r:any)=>r?.moduleKey&&r?.recordType).map((r:any)=>({moduleKey:safeKey(r.moduleKey),recordType:String(r.recordType)})):(body.recordType?[{moduleKey:row.module_key,recordType:String(body.recordType)}]:[]);
    for(const pair of requestedPairs){
     if(!ownerModuleAllowed(pair.moduleKey))return json({error:'نطاق السجل لا يطابق الجهة المالكة المحددة'},409);
-    const {data:registered,error:regError}=await sb.from('platform_record_types').select('module_key,record_type,is_active').eq('module_key',pair.moduleKey).eq('record_type',pair.recordType).eq('is_active',true).maybeSingle();
-    if(regError)throw regError;if(!registered)return json({error:`السجل غير مسجل في القاموس الموحد: ${pair.moduleKey}/${pair.recordType}`},409);
+    const registered=await ensureRegisteredRecord(pair.moduleKey,pair.recordType);
+    if(!registered)return json({error:`السجل غير مسجل في القاموس الموحد: ${pair.moduleKey}/${pair.recordType}`},409);
    }
    if(delegatedRecords.length){
     const links=delegatedRecords.filter((r:any)=>r&&r.moduleKey&&r.recordType).map((r:any)=>({school_id:s.school_id,task_id:t.id,module_key:safeKey(r.moduleKey),record_type:String(r.recordType),record_id:r.recordId||null,relation_type:'delegated_record',created_by:s.user_id}));

@@ -1886,7 +1886,10 @@ window.readExcel = async function(){
 
   const teacherExtraOptions=['موجه/موجهة طلابية','موجه صحي','محضر مختبر','رائد نشاط','مسؤول اختبارات','منسق موهوبين','أخرى'];
   const subjectOptions=['القرآن الكريم','الدراسات الإسلامية','اللغة العربية','الرياضيات','العلوم','الدراسات الاجتماعية','اللغة الإنجليزية','الحاسب وتقنية المعلومات','التربية الفنية','التربية البدنية','المهارات الحياتية والأسرية','التفكير الناقد','المهارات الرقمية','الفيزياء','الكيمياء','الأحياء','علم الأرض والفضاء','أخرى'];
+  const kindergartenProgramOptions=['حلقة','وجبة','تعليمي','أركان','لعب','قراءة جهرية','لقاء أخير'];
   const stageGrades={
+    'رياض أطفال':['الأول','الثاني','الثالث'],
+    'طفولة مبكرة':['الأول','الثاني','الثالث'],
     'ابتدائي':['الأول','الثاني','الثالث','الرابع','الخامس','السادس'],
     'متوسط':['الأول المتوسط','الثاني المتوسط','الثالث المتوسط'],
     'ثانوي':['الأول الثانوي','الثاني الثانوي','الثالث الثانوي']
@@ -2019,6 +2022,8 @@ window.readExcel = async function(){
   }
   function canonicalTeacherStage(v){
     const n=normText(v||'');
+    if(/رياض\s*الاطفال|رياض\s*أطفال|رياض\s*اطفال|روضة/.test(n)) return 'رياض أطفال';
+    if(/طفولة\s*مبكرة|الطفولة\s*المبكرة/.test(n)) return 'طفولة مبكرة';
     if(/ابتدائ/.test(n)) return 'ابتدائي';
     if(/متوسط/.test(n)) return 'متوسط';
     if(/ثانو/.test(n)) return 'ثانوي';
@@ -2041,28 +2046,55 @@ window.readExcel = async function(){
     }
     return raw;
   }
-  function stageOptions(selected){selected=canonicalTeacherStage(selected);return ['','ابتدائي','متوسط','ثانوي'].map(v=>'<option value="'+html(v)+'" '+(v===selected?'selected':'')+'>'+(v||'اختر المرحلة')+'</option>').join('')}
+  function stageOptions(selected){selected=canonicalTeacherStage(selected);return ['','رياض أطفال','طفولة مبكرة','ابتدائي','متوسط','ثانوي'].map(v=>'<option value="'+html(v)+'" '+(v===selected?'selected':'')+'>'+(v||'اختر المرحلة')+'</option>').join('')}
   function gradeOptions(stage,selected){stage=canonicalTeacherStage(stage);selected=canonicalTeacherGrade(stage,selected);const arr=stageGrades[stage]||[]; const values=arr.slice(); if(selected&&!values.includes(selected))values.unshift(selected); return [''].concat(values).map(v=>'<option value="'+html(v)+'" '+(v===selected?'selected':'')+'>'+(v||'اختر الصف')+'</option>').join('')}
   function trackOptions(stage,selected){stage=canonicalTeacherStage(stage);const arr=stage==='ثانوي'?secondaryTracks:['']; return arr.map(v=>'<option value="'+html(v)+'" '+(v===selected?'selected':'')+'>'+(v||'لا يوجد')+'</option>').join('')}
   function sectionOptions(selected){const fromStudents=unique(allStudents.map(x=>x.section_name)); const arr=(fromStudents.length?fromStudents:['أ','ب','ج','د','هـ','و']); return [''].concat(arr).map(v=>'<option value="'+html(v)+'" '+(v===selected?'selected':'')+'>'+(v||'اختر الشعبة')+'</option>').join('')}
-  function subjectSelectClass(v){return '<select class="teachSubject">'+[''].concat(subjectOptions).map(x=>'<option value="'+html(x)+'" '+(x===v?'selected':'')+'>'+(x||'اختر المادة')+'</option>').join('')+'</select>'}
-  function renderSubjectsEditor(subjects){
-    const a=subjects&&subjects.length?subjects:[{subject:'',weekly_lessons:''}];
-    return a.map((x,i)=>'<div class="assignmentBox teachingSubjectBox" data-subject-index="'+i+'"><div class="row"><div><label>المادة</label>'+subjectSelectClass(x.subject||'')+'</div><div><label>نصاب المادة الأسبوعي</label><input class="teachLessons" type="number" min="1" max="40" value="'+html(x.weekly_lessons||'')+'" placeholder="عدد الحصص"></div></div><div class="actions" style="margin-top:10px"><button class="btn small danger" onclick="removeTeachingSubject(this)">حذف المادة</button></div></div>').join('');
+  function isKindergartenTeacherStage(v){return canonicalTeacherStage(v)==='رياض أطفال'}
+  function activeTeacherMaterialOptions(){
+    const rows=[...document.querySelectorAll('.teachingAssignmentBox .assStage')];
+    return rows.some(sel=>isKindergartenTeacherStage(sel.value))?kindergartenProgramOptions:subjectOptions;
   }
-  window.addTeachingSubject=function(){const host=$('subjectsEditor');host.insertAdjacentHTML('beforeend',renderSubjectsEditor([{subject:'',weekly_lessons:''}]));}
+  function subjectSelectClass(v,options){
+    const list=Array.isArray(options)&&options.length?options:subjectOptions;
+    const selected=safe(v);
+    const values=list.slice();
+    if(selected&&!values.includes(selected)) values.unshift(selected);
+    return '<select class="teachSubject">'+[''].concat(values).map(x=>'<option value="'+html(x)+'" '+(x===selected?'selected':'')+'>'+(x||'اختر المادة')+'</option>').join('')+'</select>';
+  }
+  function renderSubjectsEditor(subjects,options){
+    const a=subjects&&subjects.length?subjects:[{subject:'',weekly_lessons:''}];
+    const list=Array.isArray(options)&&options.length?options:subjectOptions;
+    return a.map((x,i)=>'<div class="assignmentBox teachingSubjectBox" data-subject-index="'+i+'"><div class="row"><div><label>المادة</label>'+subjectSelectClass(x.subject||'',list)+'</div><div><label>نصاب المادة الأسبوعي</label><input class="teachLessons" type="number" min="1" max="40" value="'+html(x.weekly_lessons||'')+'" placeholder="عدد الحصص"></div></div><div class="actions" style="margin-top:10px"><button class="btn small danger" onclick="removeTeachingSubject(this)">حذف المادة</button></div></div>').join('');
+  }
+  function syncTeacherMaterialOptions(){
+    const list=activeTeacherMaterialOptions();
+    const kg=list===kindergartenProgramOptions;
+    document.querySelectorAll('.teachingSubjectBox').forEach(box=>{
+      const sel=box.querySelector('.teachSubject'); if(!sel)return;
+      const old=safe(sel.value);
+      const allowed=list.includes(old)?old:'';
+      sel.outerHTML=subjectSelectClass(allowed,list);
+    });
+    const title=document.getElementById('teacherSubjectsTitle');
+    const note=document.getElementById('teacherSubjectsNote');
+    if(title) title.textContent=kg?'فترات وبرامج رياض الأطفال':'المواد والأنصبة';
+    if(note) note.textContent=kg?'تظهر فترات وبرامج رياض الأطفال بدل المواد، ويمكن تحديد النصاب الأسبوعي لكل فترة/برنامج.':'يمكن إسناد أكثر من مادة للمعلم، ولكل مادة نصاب أسبوعي مستقل.';
+  }
+  window.addTeachingSubject=function(){const host=$('subjectsEditor');host.insertAdjacentHTML('beforeend',renderSubjectsEditor([{subject:'',weekly_lessons:''}],activeTeacherMaterialOptions()));}
   window.removeTeachingSubject=function(btn){const box=btn.closest('.teachingSubjectBox');if(document.querySelectorAll('.teachingSubjectBox').length>1)box.remove();}
   function renderAssignmentEditor(assignments){
     const a=assignments&&assignments.length?assignments:[{stage:'',grade:'',track:'',section:''}];
     return a.map((x,i)=>'<div class="assignmentBox teachingAssignmentBox" data-assignment-index="'+i+'"><div class="row"><div><label>المرحلة</label><select class="assStage" onchange="refreshAssignmentRow(this)">'+stageOptions(x.stage)+'</select></div><div><label>الصف</label><select class="assGrade">'+gradeOptions(x.stage,x.grade)+'</select></div><div><label>المسار</label><select class="assTrack">'+trackOptions(x.stage,x.track)+'</select></div><div><label>الفصل / الشعبة</label><select class="assSection">'+sectionOptions(x.section)+'</select></div></div><div class="actions" style="margin-top:10px"><button class="btn small danger" onclick="removeAssignmentRow(this)">حذف التكليف التدريسي</button></div></div>').join('');
   }
-  window.refreshAssignmentRow=function(sel){const box=sel.closest('.teachingAssignmentBox'); const stage=sel.value; box.querySelector('.assGrade').innerHTML=gradeOptions(stage,''); box.querySelector('.assTrack').innerHTML=trackOptions(stage,'');}
+  window.refreshAssignmentRow=function(sel){const box=sel.closest('.teachingAssignmentBox'); const stage=sel.value; box.querySelector('.assGrade').innerHTML=gradeOptions(stage,''); box.querySelector('.assTrack').innerHTML=trackOptions(stage,''); syncTeacherMaterialOptions();}
   window.removeAssignmentRow=function(btn){const box=btn.closest('.teachingAssignmentBox'); if(document.querySelectorAll('.teachingAssignmentBox').length>1) box.remove();}
   window.addAssignmentRow=function(){const host=$('assignmentsEditor'); host.insertAdjacentHTML('beforeend',renderAssignmentEditor([{stage:'',grade:'',track:'',section:''}]));}
   window.openTeacherDrawer=function(userId){
     const t=allTeachers.find(x=>String(x.user_id)===String(userId)); if(!t) return;
     $('teacherDrawerHost').className='drawerBackdrop noPrint';
-    $('teacherDrawerHost').innerHTML='<aside class="teacherDrawer"><div class="drawerHead"><div><h2>استكمال بيانات المعلم</h2><div class="muted">الاسم والبريد مرتبطان بحساب المستخدم ولا يعدلان من مركز المعلومات.</div></div><button class="btn secondary" onclick="closeTeacherDrawer()">إغلاق</button></div><div class="linkHint"><b>'+html(t.name)+'</b><br>'+html(t.email||'')+'<br>المدرسة: '+html(currentSchool.name||currentSchool.id)+'</div><div class="miniTitle">المواد والأنصبة</div><div class="note">يمكن إسناد أكثر من مادة للمعلم، ولكل مادة نصاب أسبوعي مستقل.</div><div id="subjectsEditor">'+renderSubjectsEditor(teacherSubjects(t))+'</div><div class="actions" style="margin-top:10px"><button class="btn secondary" onclick="addTeachingSubject()">+ إضافة مادة</button></div><div class="miniTitle">التكليفات التدريسية / الفصول</div><div class="note">يمكن إضافة أكثر من فصل أو شعبة للمعلم. هذه التكليفات تدريسية فقط؛ أما الأدوار والمهام الإضافية فتدار من مركز التكليفات.</div><div id="assignmentsEditor">'+renderAssignmentEditor(t.assignments||[])+'</div><div class="actions" style="margin-top:10px"><button class="btn secondary" onclick="addAssignmentRow()">+ إضافة تكليف تدريسي / فصل</button></div><div class="actions" style="margin-top:18px"><button class="btn" onclick="saveTeacherProfile(\''+html(t.user_id)+'\')">حفظ البيانات</button><button class="btn secondary" onclick="closeTeacherDrawer()">إلغاء</button></div></aside>';
+    $('teacherDrawerHost').innerHTML='<aside class="teacherDrawer"><div class="drawerHead"><div><h2>استكمال بيانات المعلم</h2><div class="muted">الاسم والبريد مرتبطان بحساب المستخدم ولا يعدلان من مركز المعلومات.</div></div><button class="btn secondary" onclick="closeTeacherDrawer()">إغلاق</button></div><div class="linkHint"><b>'+html(t.name)+'</b><br>'+html(t.email||'')+'<br>المدرسة: '+html(currentSchool.name||currentSchool.id)+'</div><div class="miniTitle" id="teacherSubjectsTitle">'+((Array.isArray(t.assignments)?t.assignments:[]).some(a=>isKindergartenTeacherStage(a.stage))?'فترات وبرامج رياض الأطفال':'المواد والأنصبة')+'</div><div class="note" id="teacherSubjectsNote">'+((Array.isArray(t.assignments)?t.assignments:[]).some(a=>isKindergartenTeacherStage(a.stage))?'تظهر فترات وبرامج رياض الأطفال بدل المواد، ويمكن تحديد النصاب الأسبوعي لكل فترة/برنامج.':'يمكن إسناد أكثر من مادة للمعلم، ولكل مادة نصاب أسبوعي مستقل.')+'</div><div id="subjectsEditor">'+renderSubjectsEditor(teacherSubjects(t),(Array.isArray(t.assignments)?t.assignments:[]).some(a=>isKindergartenTeacherStage(a.stage))?kindergartenProgramOptions:subjectOptions)+'</div><div class="actions" style="margin-top:10px"><button class="btn secondary" onclick="addTeachingSubject()">+ إضافة مادة</button></div><div class="miniTitle">التكليفات التدريسية / الفصول</div><div class="note">يمكن إضافة أكثر من فصل أو شعبة للمعلم. هذه التكليفات تدريسية فقط؛ أما الأدوار والمهام الإضافية فتدار من مركز التكليفات.</div><div id="assignmentsEditor">'+renderAssignmentEditor(t.assignments||[])+'</div><div class="actions" style="margin-top:10px"><button class="btn secondary" onclick="addAssignmentRow()">+ إضافة تكليف تدريسي / فصل</button></div><div class="actions" style="margin-top:18px"><button class="btn" onclick="saveTeacherProfile(\''+html(t.user_id)+'\')">حفظ البيانات</button><button class="btn secondary" onclick="closeTeacherDrawer()">إلغاء</button></div></aside>';
+    syncTeacherMaterialOptions();
   }
   window.closeTeacherDrawer=function(){$('teacherDrawerHost').className='hidden noPrint'; $('teacherDrawerHost').innerHTML='';}
   window.saveTeacherProfile=async function(userId){

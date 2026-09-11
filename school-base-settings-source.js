@@ -3,7 +3,7 @@
   if(window.__SSP_BASE_SETTINGS_SOURCE__) return;
   window.__SSP_BASE_SETTINGS_SOURCE__=true;
 
-  const STAGES=['رياض أطفال','ابتدائية','متوسطة','ثانوية'];
+  const STAGES=['رياض أطفال','طفولة مبكرة','ابتدائية','متوسطة','ثانوية'];
   function hijriYear(){
     try{
       const parts=new Intl.DateTimeFormat('en-US-u-ca-islamic-umalqura',{year:'numeric'}).formatToParts(new Date());
@@ -69,12 +69,12 @@
     if(el.tagName==='SELECT'){
       const old=el.value;
       el.innerHTML='<option value="">-- اختر المرحلة --</option>'+STAGES.map(x=>'<option value="'+x+'">'+x+'</option>').join('');
-      const map={'ابتدائي':'ابتدائية','متوسط':'متوسطة','ثانوي':'ثانوية','روضة':'رياض أطفال','رياض الاطفال':'رياض أطفال'};
+      const map={'ابتدائي':'ابتدائية','متوسط':'متوسطة','ثانوي':'ثانوية','روضة':'رياض أطفال','رياض الاطفال':'رياض أطفال','الطفولة المبكرة':'طفولة مبكرة'};
       el.value=STAGES.includes(old)?old:(map[old]||'');
     }else if(el.tagName==='INPUT' && !['hidden','file','checkbox','radio'].includes((el.type||'').toLowerCase())){
       const s=document.createElement('select');copyAttrs(el,s);s.dataset.sspStageReady='1';
       s.innerHTML='<option value="">-- اختر المرحلة --</option>'+STAGES.map(x=>'<option value="'+x+'">'+x+'</option>').join('');
-      const old=el.value;const map={'ابتدائي':'ابتدائية','متوسط':'متوسطة','ثانوي':'ثانوية'};s.value=STAGES.includes(old)?old:(map[old]||'');
+      const old=el.value;const map={'ابتدائي':'ابتدائية','متوسط':'متوسطة','ثانوي':'ثانوية','روضة':'رياض أطفال','رياض الاطفال':'رياض أطفال','الطفولة المبكرة':'طفولة مبكرة'};s.value=STAGES.includes(old)?old:(map[old]||'');
       el.replaceWith(s);
     }
   }

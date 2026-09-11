@@ -2141,6 +2141,10 @@ html.health-advisor-auth-pending body{visibility:hidden!important;}
   window.performanceRoleLocalRemove=function(k){return window.RolePerformanceLocal.remove(k);};
 })();
 </script>
+<style id="health-advisor-entry-visibility-guard">
+#health-advisor-entry-visibility-guard{}
+#welcome-gate[style*="display: flex"] > *{visibility:visible!important;opacity:1!important;}
+</style>
 </head>
 <body data-platform-role="health_advisor" class="global-app-bg" data-ss-role="teacher">
 <script data-openai-engine="true" defer="" src="./openai-engine.js"></script>
@@ -4733,24 +4737,54 @@ body{overflow-x:hidden}
         const __enhancedUpdateReportProgress = updateReportProgress;
         updateReportProgress = function() { __enhancedUpdateReportProgress(); };
 
-        window.onload = function () { 
-            loadSavedTheme();
-            setupSecurityGuardrails(); 
-            document.getElementById('device-id-value').innerText = getDeviceId(); 
-            localStorage.setItem('app_activated', 'true');
+        // RL80: deterministic boot. Do not rely on assigning window.onload because
+        // other platform modules can replace it, leaving both the welcome gate and
+        // dashboard hidden. Route authorization remains the responsibility of
+        // platform-cloud-session; this code only initializes the already-authorized page UI.
+        let __healthAdvisorBooted = false;
+        function bootHealthAdvisorUI() {
+            if (__healthAdvisorBooted) return;
+            __healthAdvisorBooted = true;
 
-            // RL79: keep the portal's native welcome gate for both normal and
-            // verified delegated entry. Authorization is handled independently by
-            // platform-cloud-session before the body becomes visible. This avoids
-            // a second competing entry flow that could leave both the welcome gate
-            // and dashboard hidden after delegation.
-            showWelcomeGate();
-            setupDateDropdown(); 
-            populateBeneficiaries(); 
-            setTimeout(checkPendingReminders, 2000);
-            refreshDashboardMetrics();
-            refreshAssistantAlertCount();
-        };
+            // Always restore a visible native entry gate first. A later click on
+            // "دخول للنظام" switches to the dashboard through enterApp().
+            try {
+                const activation = document.getElementById('activation-overlay');
+                const gate = document.getElementById('welcome-gate');
+                const dashboard = document.getElementById('welcome-dashboard');
+                if (activation) activation.style.setProperty('display', 'none', 'important');
+                if (dashboard) dashboard.style.display = 'none';
+                if (gate) {
+                    gate.style.setProperty('display', 'flex', 'important');
+                    gate.style.setProperty('visibility', 'visible', 'important');
+                    gate.style.setProperty('opacity', '1', 'important');
+                    gate.querySelectorAll(':scope > *').forEach(function(el){
+                        el.style.setProperty('visibility', 'visible', 'important');
+                        el.style.setProperty('opacity', '1', 'important');
+                    });
+                }
+            } catch (e) { console.error('[health-advisor] welcome gate restore failed', e); }
+
+            try { loadSavedTheme(); } catch (e) { console.error('[health-advisor] theme init', e); }
+            try { setupSecurityGuardrails(); } catch (e) { console.error('[health-advisor] guardrails init', e); }
+            try {
+                const device = document.getElementById('device-id-value');
+                if (device) device.innerText = getDeviceId();
+            } catch (e) { console.error('[health-advisor] device id init', e); }
+            try { localStorage.setItem('app_activated', 'true'); } catch (_) {}
+            try { setupDateDropdown(); } catch (e) { console.error('[health-advisor] date init', e); }
+            try { populateBeneficiaries(); } catch (e) { console.error('[health-advisor] beneficiaries init', e); }
+            try { setTimeout(checkPendingReminders, 2000); } catch (_) {}
+            try { refreshDashboardMetrics(); } catch (e) { console.error('[health-advisor] metrics init', e); }
+            try { refreshAssistantAlertCount(); } catch (e) { console.error('[health-advisor] alerts init', e); }
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', bootHealthAdvisorUI, { once: true });
+        } else {
+            bootHealthAdvisorUI();
+        }
+        window.addEventListener('load', bootHealthAdvisorUI, { once: true });
     </script>
 <!-- SmartSchool Cloud Storage Unified Menu -->
 <!-- SmartSchool Final Role Actions Module -->

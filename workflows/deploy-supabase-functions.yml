@@ -13,7 +13,10 @@ on:
       - "supabase/functions/platform-core/**"
       - "supabase/functions/platform-state/**"
       - "supabase/functions/platform-directory/**"
+      - "supabase/functions/platform-notifications/**"
       - "supabase/functions/platform-document-workspace/**"
+      - "supabase/functions/platform-evaluation-team/**"
+      - "supabase/functions/platform-absence-excuses/**"
       - "supabase/functions/impact-measurement/**"
       - "supabase/functions/system-admin/**"
       - ".github/workflows/deploy-supabase-functions.yml"
@@ -76,6 +79,12 @@ jobs:
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
             --no-verify-jwt
 
+      - name: Deploy platform-notifications
+        run: |
+          supabase functions deploy platform-notifications \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
+            --no-verify-jwt
+
       - name: Deploy platform-document-workspace
         run: |
           supabase functions deploy platform-document-workspace \
@@ -87,33 +96,61 @@ jobs:
         run: |
           set -euo pipefail
           URL="https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co/functions/v1/platform-document-workspace?action=probe"
-          echo "Checking: ${URL}"
+          echo "Checking platform-document-workspace..."
+          echo "URL: ${URL}"
           ok=0
           for attempt in 1 2 3 4 5; do
-            http_code="$(curl --silent --show-error --location \
-              --output /tmp/cdw_probe.json \
-              --write-out '%{http_code}' \
-              --connect-timeout 15 \
-              --max-time 30 \
-              "$URL" || true)"
-            echo "Attempt ${attempt}: HTTP ${http_code}"
-            cat /tmp/cdw_probe.json 2>/dev/null || true
-            echo
-            if [ "$http_code" = "200" ] && grep -q '"service":"platform-document-workspace"' /tmp/cdw_probe.json; then
+            echo "Attempt ${attempt}/5"
+            http_code="$(
+              curl \
+                --silent \
+                --show-error \
+                --location \
+                --output /tmp/cdw_probe.json \
+                --write-out '%{http_code}' \
+                --connect-timeout 15 \
+                --max-time 30 \
+                "${URL}" \
+                || true
+            )"
+            echo "HTTP status: ${http_code}"
+            if [ -f /tmp/cdw_probe.json ]; then
+              echo "Response:"
+              cat /tmp/cdw_probe.json
+              echo
+            fi
+            if [ "${http_code}" = "200" ] && \
+               grep -q '"service":"platform-document-workspace"' /tmp/cdw_probe.json 2>/dev/null; then
               ok=1
               break
             fi
-            sleep 6
+            if [ "${attempt}" -lt 5 ]; then
+              echo "Workspace not ready yet. Waiting 6 seconds..."
+              sleep 6
+            fi
           done
-          if [ "$ok" != "1" ]; then
-            echo "::error::platform-document-workspace was deployed but is not reachable from the Supabase project."
+          if [ "${ok}" != "1" ]; then
+            echo "::error::platform-document-workspace was not reachable after deployment."
             exit 1
           fi
-          if grep -q '"configured":false' /tmp/cdw_probe.json; then
-            echo "::warning::platform-document-workspace is reachable, but ONLYOFFICE_DOCUMENT_SERVER_URL and/or ONLYOFFICE_JWT_SECRET are not configured in Supabase secrets."
+          echo "platform-document-workspace is reachable."
+          if grep -q '"configured":false' /tmp/cdw_probe.json 2>/dev/null; then
+            echo "::warning::Cloud Document Workspace is deployed, but ONLYOFFICE is not configured yet."
           else
-            echo "Cloud Document Workspace Edge Function is reachable and ONLYOFFICE configuration is present."
+            echo "Cloud Document Workspace is deployed and its configuration endpoint is responding."
           fi
+
+      - name: Deploy platform-evaluation-team
+        run: |
+          supabase functions deploy platform-evaluation-team \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
+            --no-verify-jwt
+
+      - name: Deploy platform-absence-excuses
+        run: |
+          supabase functions deploy platform-absence-excuses \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
+            --no-verify-jwt
 
       - name: Deploy impact-measurement
         run: |

@@ -4737,7 +4737,35 @@ body{overflow-x:hidden}
             loadSavedTheme();
             setupSecurityGuardrails(); 
             document.getElementById('device-id-value').innerText = getDeviceId(); 
-            localStorage.setItem('app_activated', 'true'); showWelcomeGate(); 
+            localStorage.setItem('app_activated', 'true');
+
+            // RL77: when this portal is opened through a verified full-role
+            // delegation, do not stop at the legacy welcome/login gate.  The
+            // user's base role is NOT changed; platform-cloud-session verifies
+            // the delegated task first and exposes the verified tab context.
+            (function openVerifiedDelegatedHealthPortal(){
+                var q=new URLSearchParams(location.search||'');
+                var delegatedRequest=q.get('delegated_role')==='1' && !!q.get('delegated_role_task');
+                if(!delegatedRequest){ showWelcomeGate(); return; }
+                var attempts=0, maxAttempts=50;
+                function waitForVerifiedDelegation(){
+                    attempts++;
+                    var verified=!!window.__PLATFORM_DELEGATED_ROLE_ACCESS__ ||
+                      document.documentElement.getAttribute('data-platform-delegated-role')==='1';
+                    if(verified){
+                        try{ enterApp(); }catch(_){
+                            var gate=document.getElementById('welcome-gate'); if(gate)gate.style.display='none';
+                            var dash=document.getElementById('welcome-dashboard'); if(dash)dash.style.display='block';
+                        }
+                        return;
+                    }
+                    // Never grant access from query parameters alone.  If the
+                    // server-side verification has not succeeded, leave the
+                    // normal access/role guard in control.
+                    if(attempts<maxAttempts){ setTimeout(waitForVerifiedDelegation,100); }
+                }
+                waitForVerifiedDelegation();
+            })();
             setupDateDropdown(); 
             populateBeneficiaries(); 
             setTimeout(checkPendingReminders, 2000);

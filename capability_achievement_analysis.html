@@ -3,12 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>تحليل القدرات و التحصيلي</title>
+<title>بطاقة تحليل القدرات والتحصيلي</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="active_school_scope.js"></script>
+<script src="school_isolation_guard.js?v=nonblock20260614"></script>
+<script src="platform-cloud-session.js"></script>
+<script src="platform-state-engine.js?v=20260828-school-isolation-v8"></script>
 <style>
 :root{
  --teal:#0d6b63;--teal2:#148f80;--mint:#eaf7f4;--blue:#2e6da4;--gold:#d39b2c;
@@ -98,7 +102,6 @@ body{background:radial-gradient(circle at 90% 0%,rgba(24,169,153,.08),transparen
 @media print{body{background:#fff!important}.source-card,.card,.hero,.kpi{box-shadow:none!important}}
 
 </style>
-<meta name="capability-achievement-analysis-version" content="2026.09.05-RL42-manager-integration">
 </head>
 <body>
 <header class="topbar">
@@ -108,7 +111,7 @@ body{background:radial-gradient(circle at 90% 0%,rgba(24,169,153,.08),transparen
       <div><h1>بطاقة تحليل القدرات والتحصيلي</h1><p>منظومة تحليل مؤشرات الاختبارات وبناء خطط التحسين وقياس الأثر</p></div>
     </div>
     <div class="actions">
-      <button class="btn btn-white" onclick="returnToManager()">↩ العودة إلى أقسام المدير</button>
+      <button class="btn btn-white" onclick="returnToManager()">↩ العودة لواجهة المدير</button>
       <button class="btn btn-white" onclick="go('import')">▣ استيراد البطاقة</button>
       <button class="btn btn-gold" onclick="saveSnapshot()">▤ حفظ نسخة</button>
       <button class="btn btn-dark" onclick="printCurrent()">▧ طباعة / PDF</button>
@@ -136,7 +139,7 @@ body{background:radial-gradient(circle at 90% 0%,rgba(24,169,153,.08),transparen
           <div class="dropzone" onclick="document.getElementById('pdfInput').click()">
             <div class="icon">📄</div><strong>اسحب بطاقة PDF هنا أو اضغط للاختيار</strong>
             <span class="small">يدعم ملفًا يحتوي بطاقة القدرات و/أو التحصيلي</span>
-            <input id="pdfInput" type="file" accept="application/pdf" onchange="readPdf(this.files[0])">
+            <input id="pdfInput" type="file" accept="application/pdf" onchange="handleQatPdfUpload(event)">
           </div>
           <div id="status" class="status">بانتظار ملف PDF.</div>
           <div style="margin-top:12px"><button class="btn btn-soft" onclick="loadDemo()">تعبئة نموذج استدلالي للمعاينة</button></div>
@@ -279,9 +282,38 @@ body{background:radial-gradient(circle at 90% 0%,rgba(24,169,153,.08),transparen
 </div>
 
 <script>
-function returnToManager(){try{window.top.location.href='manager.html';}catch(e){window.location.href='manager.html';}}
 pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 let charts={};
+const QAT_MODULE_KEY='qat_results_analysis';
+const QAT_STATE_KEY='latest_school_analysis_v1';
+let qatCurrentSourceFile='';
+function qatSchoolId(){
+ return String(window.PlatformCloudSession?.schoolId?.()||localStorage.getItem('active_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||localStorage.getItem('smart_school_id')||'').trim();
+}
+function qatCacheKey(){const sid=qatSchoolId();return sid?`qat_results_analysis_cache_v1:${sid}`:'';}
+async function ensureQatCloud(){
+ if(window.PlatformCloudSession&&typeof PlatformCloudSession.ensure==='function')await PlatformCloudSession.ensure();
+ let tries=0;while(!window.PlatformStateEngine&&tries++<60)await new Promise(r=>setTimeout(r,50));
+ if(!window.PlatformStateEngine||typeof PlatformStateEngine.pull!=='function'||typeof PlatformStateEngine.bulkUpsert!=='function')throw new Error('محرك الحفظ السحابي غير متاح');
+ const sid=qatSchoolId();if(!sid)throw new Error('تعذر تحديد المدرسة الحالية');
+ const tokenSid=String(window.PlatformCloudSession?.schoolId?.()||'').trim();if(tokenSid&&tokenSid!==sid)throw new Error('جلسة السحابة لا تطابق المدرسة الحالية');
+ return sid;
+}
+async function persistQatAnalysis(reason='analysis'){
+ const sid=await ensureQatCloud();
+ const payload={schemaVersion:1,schoolId:sid,savedAt:new Date().toISOString(),sourceFileName:qatCurrentSourceFile||state.sourceFile||'',state:JSON.parse(JSON.stringify(state))};
+ await PlatformStateEngine.bulkUpsert(QAT_MODULE_KEY,'school',[{key:QAT_STATE_KEY,value:JSON.stringify(payload),deleted:false}],{timeout:20000});
+ const verify=await PlatformStateEngine.pull(QAT_MODULE_KEY,'school',[QAT_STATE_KEY]);
+ const raw=verify&&verify.values?verify.values[QAT_STATE_KEY]:verify?.[QAT_STATE_KEY];const cloud=typeof raw==='string'?JSON.parse(raw):raw;
+ if(!cloud||cloud.schoolId!==sid||!cloud.state)throw new Error('لم يكتمل التحقق من حفظ تحليل القدرات والتحصيلي سحابيًا');
+ const ck=qatCacheKey();if(ck)try{localStorage.setItem(ck,JSON.stringify(cloud))}catch(_){}
+ return cloud;
+}
+async function hydrateQatAnalysis(){
+ let saved=null;try{await ensureQatCloud();const r=await PlatformStateEngine.pull(QAT_MODULE_KEY,'school',[QAT_STATE_KEY]);const raw=r&&r.values?r.values[QAT_STATE_KEY]:r?.[QAT_STATE_KEY];if(raw)saved=typeof raw==='string'?JSON.parse(raw):raw;}catch(e){console.warn('[QAT hydrate cloud]',e);const ck=qatCacheKey();if(ck)try{saved=JSON.parse(localStorage.getItem(ck)||'null')}catch(_){}}
+ if(saved&&saved.state&&(!saved.schoolId||saved.schoolId===qatSchoolId())){state={...state,...saved.state};qatCurrentSourceFile=String(saved.sourceFileName||'');Object.keys({school:1,code:1,edu:1,region:1,gender:1,stage:1,year:1,qCount:1,tCount:1,qAvg:1,qVerbal:1,qQuant:1,qRef:1,tAvg:1,tScience:1,tMath:1,tRef:1}).forEach(k=>setVal(k,state[k]));renderAll();}
+}
+
 
 // ======================================================
 // ذاكرة داخلية مرجعية لمواد مسارات الاختبار التحصيلي
@@ -408,37 +440,59 @@ function loadDemo(){
  Object.entries(d).forEach(([k,v])=>{const map={school:'school',code:'code',edu:'edu',region:'region',gender:'gender',stage:'stage',year:'year',qCount:'qCount',tCount:'tCount',qAvg:'qAvg',qVerbal:'qVerbal',qQuant:'qQuant',qRef:'qRef',tAvg:'tAvg',tScience:'tScience',tMath:'tMath',tRef:'tRef'};setVal(map[k],v)});
  document.getElementById('status').className='status good';document.getElementById('status').textContent='تم تحميل بيانات استدلالية للمعاينة. استبدلها ببيانات بطاقتك عند الاستخدام الفعلي.';
 }
-async function readPdf(file){
- if(!file)return;
- const st=document.getElementById('status'); st.className='status'; st.textContent='جاري قراءة بطاقة القدرات والتحصيلي الرسمية...';
- try{
-   const buf=await file.arrayBuffer(),pdf=await pdfjsLib.getDocument({data:buf}).promise;
-   let pages=[], full='';
-   for(let i=1;i<=pdf.numPages;i++){
-     const p=await pdf.getPage(i),c=await p.getTextContent();
-     const source=c.items.map(x=>x.str).join(' ');
-     const spatial=buildSpatialText(c.items);
-     const raw=source+'\n'+spatial;
-     pages.push({raw,source,spatial,page:p,items:c.items}); full+='\n--- PAGE '+i+' ---\n'+raw;
-   }
-   const extracted=await extractOfficialCardData(pages,pdf);
-   extracted.sourceFile=file.name||'بطاقة القدرات والتحصيلي.pdf';
-   const map={school:'school',code:'code',edu:'edu',region:'region',gender:'gender',stage:'stage',year:'year',qCount:'qCount',tCount:'tCount',qAvg:'qAvg',qVerbal:'qVerbal',qQuant:'qQuant',qRef:'qRef',tAvg:'tAvg',tScience:'tScience',tMath:'tMath',tRef:'tRef'};
-   Object.entries(map).forEach(([k,id])=>{ if(extracted[k]!==undefined && extracted[k]!==null && extracted[k]!=='') setVal(id,extracted[k]); });
-   state={...state,...extracted,rawParsed:extracted};
-   document.getElementById('debugText').textContent=full;
-   renderOfficialExtract(extracted);
-   const core=['school','code','edu','region','gender','stage','year','qCount','qAvg','tCount','tAvg'].filter(k=>extracted[k]!==''&&extracted[k]!==undefined&&extracted[k]!==0).length;
-   const fullPages = extracted.pagesRead === extracted.pagesExpected && extracted.pagesRead >= 4;
-   const domainCount = (extracted.tFields?Object.keys(extracted.tFields).length:0) + ((extracted.qQuant?1:0)+(extracted.qVerbal?1:0));
-   st.className=(fullPages&&core>=10)?'status good':core>=7?'status warn':'status bad';
-   st.textContent=(fullPages&&core>=10)
-     ? `تمت قراءة الملف كاملًا (${extracted.pagesRead}/${extracted.pagesExpected} صفحات) واستخراج البيانات الأساسية للقدرات والتحصيلي، مع ${domainCount}/6 من مؤشرات المجالات الرسومية. راجع القيم ثم اضغط اعتماد.`
-     : core>=7
-       ? `تمت قراءة ${extracted.pagesRead||0}/${extracted.pagesExpected||pdf.numPages} صفحات، لكن بعض البيانات الأساسية لم تُلتقط آليًا. راجع الحقول قبل الاعتماد.`
-       : 'تم فتح PDF لكن لم يتم التعرف على بنية بطاقة القدرات والتحصيلي الرسمية.';
- }catch(e){console.error(e);st.className='status bad';st.textContent='تعذر تحليل البطاقة: '+(e?.message||'خطأ غير معروف');}
+async function handleQatPdfUpload(event){
+  const file=event?.target?.files?.[0];
+  if(!file)return;
+  const st=document.getElementById('status');
+  st.className='status';
+  st.textContent='جاري قراءة بطاقة القدرات والتحصيلي (PDF)...';
+  try{
+    // نفس طبقة فتح/قراءة PDF المثبتة في بطاقة نافس: PDF.js + normalizeWhitespace
+    // + قراءة جميع الصفحات قبل تمرير المحتوى إلى محلل البطاقة المتخصص.
+    if(typeof pdfjsLib==='undefined'||!pdfjsLib.getDocument){
+      throw new Error('مكتبة PDF.js غير متاحة في الصفحة');
+    }
+    const arrayBuffer=await file.arrayBuffer();
+    const pdf=await pdfjsLib.getDocument({data:arrayBuffer}).promise;
+    const pages=[];
+    let full='';
+    for(let i=1;i<=pdf.numPages;i++){
+      const page=await pdf.getPage(i);
+      const textContent=await page.getTextContent({normalizeWhitespace:true});
+      // نافس يعتمد النص المتصل لأنه أكثر ثباتًا مع بطاقات الجهات الرسمية.
+      const compact=textContent.items.map(item=>item.str).join('');
+      // نحتفظ أيضًا بالصيغة المفصولة والإحداثيات لأن محلل القدرات/التحصيلي يحتاجها.
+      const spaced=textContent.items.map(item=>item.str).join(' ');
+      const spatial=buildSpatialText(textContent.items);
+      const raw=compact+'\n'+spaced+'\n'+spatial;
+      pages.push({text:compact,raw,source:spaced,spatial,page,items:textContent.items});
+      full+=`\n--- الصفحة ${i} ---\n${raw}\n`;
+    }
+    const extracted=await extractOfficialCardData(pages,pdf);
+    extracted.sourceFile=file.name||'بطاقة القدرات والتحصيلي.pdf';
+    qatCurrentSourceFile=extracted.sourceFile;
+    const map={school:'school',code:'code',edu:'edu',region:'region',gender:'gender',stage:'stage',year:'year',qCount:'qCount',tCount:'tCount',qAvg:'qAvg',qVerbal:'qVerbal',qQuant:'qQuant',qRef:'qRef',tAvg:'tAvg',tScience:'tScience',tMath:'tMath',tRef:'tRef'};
+    Object.entries(map).forEach(([k,id])=>{if(extracted[k]!==undefined&&extracted[k]!==null&&extracted[k]!=='')setVal(id,extracted[k]);});
+    state={...state,...extracted,rawParsed:extracted};
+    document.getElementById('debugText').textContent=full;
+    renderOfficialExtract(extracted);
+    const core=['school','code','edu','region','gender','stage','year','qCount','qAvg','tCount','tAvg'].filter(k=>extracted[k]!==''&&extracted[k]!==undefined&&extracted[k]!==0).length;
+    const fullPages=extracted.pagesRead===extracted.pagesExpected&&extracted.pagesRead>=1;
+    const domainCount=(extracted.tFields?Object.keys(extracted.tFields).length:0)+((extracted.qQuant?1:0)+(extracted.qVerbal?1:0));
+    st.className=(fullPages&&core>=10)?'status good':core>=7?'status warn':'status bad';
+    st.textContent=(fullPages&&core>=10)
+      ?`تمت قراءة الملف كاملًا (${extracted.pagesRead}/${extracted.pagesExpected} صفحات) واستخراج البيانات الأساسية للقدرات والتحصيلي، مع ${domainCount}/6 من مؤشرات المجالات الرسومية. راجع القيم ثم اضغط اعتماد.`
+      :core>=7
+        ?`تمت قراءة ${extracted.pagesRead||0}/${extracted.pagesExpected||pdf.numPages} صفحات، وبعض البيانات تحتاج مراجعة قبل الاعتماد.`
+        :'تم فتح PDF وقراءة صفحاته، لكن لم يتم التعرف على بيانات كافية من بطاقة القدرات والتحصيلي.';
+    try{await persistQatAnalysis('pdf-upload');}catch(cloudErr){console.warn('[QAT cloud save]',cloudErr);}
+  }catch(e){
+    console.error('[QAT PDF import]',e);
+    st.className='status bad';
+    st.textContent='تعذر استخراج بيانات بطاقة القدرات والتحصيلي من الملف: '+(e?.message||'خطأ غير معروف');
+  }
 }
+
 function buildSpatialText(items){
  const pts=items.filter(i=>String(i.str||'').trim()).map(i=>({s:String(i.str).trim(),x:i.transform?.[4]||0,y:i.transform?.[5]||0}));
  pts.sort((a,b)=>Math.abs(b.y-a.y)>2?b.y-a.y:b.x-a.x);
@@ -610,7 +664,7 @@ function parsePercentilePage(s){
 }
 function coordinatePercentilePage(pageObj){
  const toks=officialTokens(pageObj);
- // التصميم الجديد يرسم العبارة العربية حرفًا حرفًا، لكنه يحفظ المئين كرقم يبدأ بـ %.
+ // في بطاقة Skia الحديثة يرسم النص العربي كأحرف منفصلة، ويبقى المئين رقمًا يبدأ بـ %.
  const pct=toks.filter(t=>/^%\s*\d{1,3}(?:\.\d+)?$/.test(t.raw)).sort((a,b)=>b.y-a.y).slice(0,2);
  const rankFor=(anchor)=>{
    if(!anchor)return '';
@@ -1025,20 +1079,28 @@ function renderSummary(){
  if(state.tAvg)rec.push('تنفيذ قياس قبلي/بعدي للتحصيلي وربطه بالموضوعات الأعلى خطأً.');rec.push('حفظ بطاقة كل دورة اختبار لبناء مقارنة زمنية وقياس الأثر.');
  summaryRecs.innerHTML=rec.map(box).join('');
 }
-function saveSnapshot(){
+function qatHistoryKey(){const sid=qatSchoolId();return sid?`qat_history:${sid}`:'';}
+async function saveSnapshot(){
  applyForm();
- const arr=JSON.parse(localStorage.getItem('qat_history')||'[]');arr.push({...state,savedAt:Date.now()});localStorage.setItem('qat_history',JSON.stringify(arr));renderHistory();alert('تم حفظ لقطة النتائج في هذا المتصفح.');
+ const hk=qatHistoryKey();if(!hk){alert('تعذر تحديد المدرسة الحالية؛ لم يتم الحفظ لحماية عزل المدارس.');return;}
+ const arr=JSON.parse(localStorage.getItem(hk)||'[]');arr.push({...state,savedAt:Date.now()});localStorage.setItem(hk,JSON.stringify(arr));renderHistory();
+ try{await persistQatAnalysis('manual-snapshot');alert('تم حفظ نسخة النتائج لهذه المدرسة وتأكيد الحفظ السحابي.');}catch(e){console.warn(e);alert('تم حفظ نسخة محلية خاصة بهذه المدرسة، وتعذر تأكيد الحفظ السحابي.');}
 }
-function clearHistory(){if(confirm('حذف جميع اللقطات المحفوظة؟')){localStorage.removeItem('qat_history');renderHistory()}}
+function clearHistory(){const hk=qatHistoryKey();if(hk&&confirm('حذف اللقطات المحلية لهذه المدرسة فقط؟')){localStorage.removeItem(hk);renderHistory()}}
 function renderHistory(){
- const arr=JSON.parse(localStorage.getItem('qat_history')||'[]');
+ const hk=qatHistoryKey();const arr=hk?JSON.parse(localStorage.getItem(hk)||'[]'):[];
  historyBody.innerHTML=arr.length?arr.map(x=>`<tr><td>${x.year||'—'}</td><td>${x.school||'—'}</td><td>${x.qAvg||'—'}</td><td>${x.tAvg||'—'}</td><td>${x.qVerbal||'—'}</td><td>${x.qQuant||'—'}</td></tr>`).join(''):'<tr><td colspan="6">لا توجد بطاقات محفوظة بعد.</td></tr>';
  chart('historyChart','line',{labels:arr.map(x=>x.year||'بطاقة'),datasets:[{label:'القدرات',data:arr.map(x=>x.qAvg)},{label:'التحصيلي',data:arr.map(x=>x.tAvg)}]});
 }
+function returnToManager(){
+ try{ window.location.href='manager.html'; }catch(_){ history.back(); }
+}
+
 function printCurrent(){
  document.querySelectorAll('.view').forEach(v=>v.classList.remove('printable'));document.querySelector('.view.active').classList.add('printable');window.print();
 }
 renderAll();
+hydrateQatAnalysis().catch(e=>console.warn('[QAT hydrate]',e));
 </script>
 </body>
 </html>

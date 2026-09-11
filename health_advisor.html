@@ -305,7 +305,7 @@
         }
 
         #activation-overlay { position: fixed; inset: 0; z-index: 9999; display: none; align-items: center; justify-content: center; padding: 20px; }
-        #welcome-gate { position: fixed; inset: 0; z-index: 9998; display: none; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
+        #welcome-gate { position: fixed; inset: 0; z-index: 9998; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
 
         .content-overlay { background: rgba(248, 250, 252, 0.85); backdrop-filter: blur(8px); min-height: 100vh; }
 
@@ -2146,7 +2146,7 @@ html.health-advisor-auth-pending body{visibility:hidden!important;}
 #welcome-gate[style*="display: flex"] > *{visibility:visible!important;opacity:1!important;}
 </style>
 </head>
-<body data-platform-role="health_advisor" class="global-app-bg" data-ss-role="teacher">
+<body data-platform-role="health_advisor" class="global-app-bg" data-ss-role="health_advisor">
 <script data-openai-engine="true" defer="" src="./openai-engine.js"></script>
 <script data-top-ai-center="true" defer="" src="./top-ai-center.js"></script>
 <div class="hidden no-print fixed inset-0 bg-white/90 backdrop-blur flex-col items-center justify-center z-[10001]" id="share-loader">
@@ -4737,34 +4737,11 @@ body{overflow-x:hidden}
         const __enhancedUpdateReportProgress = updateReportProgress;
         updateReportProgress = function() { __enhancedUpdateReportProgress(); };
 
-        // RL80: deterministic boot. Do not rely on assigning window.onload because
-        // other platform modules can replace it, leaving both the welcome gate and
-        // dashboard hidden. Route authorization remains the responsibility of
-        // platform-cloud-session; this code only initializes the already-authorized page UI.
-        let __healthAdvisorBooted = false;
-        function bootHealthAdvisorUI() {
-            if (__healthAdvisorBooted) return;
-            __healthAdvisorBooted = true;
-
-            // Always restore a visible native entry gate first. A later click on
-            // "دخول للنظام" switches to the dashboard through enterApp().
-            try {
-                const activation = document.getElementById('activation-overlay');
-                const gate = document.getElementById('welcome-gate');
-                const dashboard = document.getElementById('welcome-dashboard');
-                if (activation) activation.style.setProperty('display', 'none', 'important');
-                if (dashboard) dashboard.style.display = 'none';
-                if (gate) {
-                    gate.style.setProperty('display', 'flex', 'important');
-                    gate.style.setProperty('visibility', 'visible', 'important');
-                    gate.style.setProperty('opacity', '1', 'important');
-                    gate.querySelectorAll(':scope > *').forEach(function(el){
-                        el.style.setProperty('visibility', 'visible', 'important');
-                        el.style.setProperty('opacity', '1', 'important');
-                    });
-                }
-            } catch (e) { console.error('[health-advisor] welcome gate restore failed', e); }
-
+        // Health advisor UI initialization.
+        // Visibility is declarative: the secure-entry guard hides the body until
+        // school/delegated access is verified, while #welcome-gate is visible by default.
+        // Therefore UI access no longer depends on a timing loop or a second authorization path.
+        function initializeHealthAdvisorUI() {
             try { loadSavedTheme(); } catch (e) { console.error('[health-advisor] theme init', e); }
             try { setupSecurityGuardrails(); } catch (e) { console.error('[health-advisor] guardrails init', e); }
             try {
@@ -4778,13 +4755,11 @@ body{overflow-x:hidden}
             try { refreshDashboardMetrics(); } catch (e) { console.error('[health-advisor] metrics init', e); }
             try { refreshAssistantAlertCount(); } catch (e) { console.error('[health-advisor] alerts init', e); }
         }
-
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', bootHealthAdvisorUI, { once: true });
+            document.addEventListener('DOMContentLoaded', initializeHealthAdvisorUI, { once: true });
         } else {
-            bootHealthAdvisorUI();
+            initializeHealthAdvisorUI();
         }
-        window.addEventListener('load', bootHealthAdvisorUI, { once: true });
     </script>
 <!-- SmartSchool Cloud Storage Unified Menu -->
 <!-- SmartSchool Final Role Actions Module -->
@@ -5389,7 +5364,7 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
   function currentUser(){var p=new URLSearchParams(location.search);return {id:p.get('uid')||p.get('userId')||localStorage.getItem('currentUserId')||'',email:(p.get('email')||localStorage.getItem('currentUserEmail')||'').toLowerCase()}}
   function myTasks(){var u=currentUser();var arr=parse(localStorage.getItem(taskKey())||'[]',[]);return arr.filter(function(t){return !['withdrawn','archived'].includes(t.status) && ((u.id&&String(t.assignee_id)===String(u.id))||(u.email&&String(t.assignee_email||'').toLowerCase()===u.email));});}
   window.updateTeacherCentralTasksCard=function(){var card=document.getElementById('teacher-central-tasks-card'); if(!card)return; var c=myTasks().length; if(c){card.classList.remove('hidden');card.style.display=''; var d=document.getElementById('teacher-central-tasks-desc'); if(d)d.textContent='لديك '+c+' تكليفات مركزية نشطة تحتاج متابعة أو إرسال للاعتماد.';}else{card.classList.add('hidden');card.style.display='none';}};
-  window.openTeacherCentralTasks=function(){var u=currentUser();location.href='central_task_center.html?mode=assignee&role=teacher&uid='+encodeURIComponent(u.id||'')+'&email='+encodeURIComponent(u.email||'');};
+  window.openTeacherCentralTasks=function(){var u=currentUser();location.href='central_task_center.html?mode=assignee&role=health_advisor&uid='+encodeURIComponent(u.id||'')+'&email='+encodeURIComponent(u.email||'');};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',window.updateTeacherCentralTasksCard);else window.updateTeacherCentralTasksCard();
 })();
 </script>

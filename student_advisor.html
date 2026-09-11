@@ -3535,6 +3535,34 @@ body{overflow-x:hidden}
 </style>
 <style id="evidence-print-fix">@media print{.evidence-box img,.evidence-box canvas,.evidence-box iframe,.evidence-box .uploaded-file,.evidence-box [data-evidence]{display:block!important;visibility:visible!important;opacity:1!important}}</style></head><body dir="rtl"><div id="portfolio-root">${portfolioHTML}</div><script>window.onload = function() { setTimeout(() => { window.print(); }, 1200); };<\/script>
 
+
+<script id="PERFORMANCE_CANONICAL_DELETE_V7">
+(function(){
+'use strict';
+const MODULE='student_advisor',CANON='performance_reports_archive_v2',LEGACY='reports_archive';
+function arr(raw){try{const a=JSON.parse(raw||'[]');return Array.isArray(a)?a:[]}catch(_){return[]}}
+window.confirmDeleteReport=async function(){
+  const id=window.pendingDeleteId??pendingDeleteId;
+  const G=window.PlatformPersistenceGuard;
+  if(!G||typeof G.readExactValues!=='function'||typeof G.writeExactValues!=='function'){showToast('محرك الحذف السحابي غير متاح');return false}
+  try{
+    const r=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:[CANON]});if(!r?.ok)throw new Error(r?.error||'تعذر قراءة الأرشيف المرجعي');
+    const before=arr(r.values?.[CANON]!==undefined?r.values[CANON]:(performanceRoleLocalGet(LEGACY)||'[]'));
+    const next=before.filter(x=>String(x?.id??'')!==String(id??''));
+    if(next.length===before.length)throw new Error('تعذر العثور على التقرير في الأرشيف المرجعي');
+    const raw=JSON.stringify(next);
+    const w=await G.writeExactValues({moduleKey:MODULE,scope:'user',values:{[CANON]:raw}});if(!w?.ok)throw new Error(w?.error||'تعذر حذف التقرير من الأرشيف المرجعي');
+    const v=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:[CANON]});if(!v?.ok||arr(v.values?.[CANON]).some(x=>String(x?.id??'')===String(id??'')))throw new Error('لم يكتمل التحقق النهائي من الحذف');
+    performanceRoleLocalSet(LEGACY,raw);
+    if(typeof closeConfirmModal==='function')closeConfirmModal();
+    showToast('تم حذف التقرير سحابيًا والتحقق من الحذف 🗑️');
+    if(window.currentArchiveViewCatId||typeof currentArchiveViewCatId!=='undefined'&&currentArchiveViewCatId)openArchiveFolder(window.currentArchiveViewCatId||currentArchiveViewCatId);else renderArchiveFolders();
+    if(typeof refreshDashboardMetrics==='function')refreshDashboardMetrics();
+    return true;
+  }catch(e){console.error('[Performance canonical delete V7]',e);showToast('تعذر حذف التقرير: '+String(e?.message||e));return false}
+};
+})();
+</script>
 </body></html>`);
             printWindow.document.close();
             setTimeout(() => { loader.classList.add('hidden'); showToast("تم تجهيز مسودة ملف الإنجاز المهني كملف واحد ✅"); }, 1800);
@@ -5912,4 +5940,42 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
 </script>
 
 </body>
+<script id="PERFORMANCE_BENEFICIARIES_RELIABILITY_V1">
+(function(){
+'use strict';
+if(window.__PERFORMANCE_BENEFICIARIES_RELIABILITY_V1__)return;window.__PERFORMANCE_BENEFICIARIES_RELIABILITY_V1__=true;
+const MAX=400;
+function currentSavedValue(el){return String(el?.getAttribute?.('data-saved-value')||el?.value||'').trim();}
+function ensure(){
+  const cell=document.getElementById('beneficiaries-cell')||document.getElementById('beneficiariesSelect')?.parentElement;
+  if(!cell)return;
+  const label=String(document.getElementById('beneficiaries-label')?.textContent||'');
+  if(/التخصص/.test(label)||cell.querySelector('#plcSpecializationSelect,#plcSpecializationOther'))return;
+  let sel=cell.querySelector('#beneficiariesSelect');
+  let prior='';
+  if(sel)prior=currentSavedValue(sel);
+  const counter=cell.querySelector('#beneficiariesCounter');
+  if(counter&&!prior)prior=currentSavedValue(counter);
+  if(!sel){
+    sel=document.createElement('select');sel.id='beneficiariesSelect';sel.className='w-full h-full text-center text-[11px] font-bold';
+    sel.setAttribute('onchange','updateReportProgress()');cell.replaceChildren(sel);
+  }
+  const selected=currentSavedValue(sel)||prior;
+  if(sel.options.length<MAX){
+    const frag=document.createDocumentFragment();const ph=document.createElement('option');ph.value='';ph.textContent='اختر العدد';frag.appendChild(ph);
+    for(let i=1;i<=MAX;i++){const o=document.createElement('option');o.value=String(i);o.textContent=String(i);frag.appendChild(o)}
+    sel.replaceChildren(frag);
+  }
+  const wanted=selected&&Number(selected)>=1&&Number(selected)<=MAX?selected:(prior&&Number(prior)>=1&&Number(prior)<=MAX?prior:'');
+  if(wanted)sel.value=String(wanted);
+  sel.setAttribute('data-saved-value',String(sel.value||wanted||''));
+  if(!sel.dataset.benefReliability){sel.dataset.benefReliability='1';sel.addEventListener('change',()=>sel.setAttribute('data-saved-value',String(sel.value||'')))}
+}
+const prevLoad=window.loadReport;if(typeof prevLoad==='function'&&!prevLoad.__benefWrapped){const w=async function(){const r=await prevLoad.apply(this,arguments);ensure();setTimeout(ensure,30);setTimeout(ensure,150);return r};w.__benefWrapped=true;window.loadReport=w;}
+const prevStart=window.startNewReport;if(typeof prevStart==='function'&&!prevStart.__benefWrapped){const w=function(){const r=prevStart.apply(this,arguments);ensure();setTimeout(ensure,30);return r};w.__benefWrapped=true;window.startNewReport=w;}
+const root=document.getElementById('report-content-container');if(root&&window.MutationObserver){let t;new MutationObserver(()=>{clearTimeout(t);t=setTimeout(ensure,25)}).observe(root,{childList:true,subtree:true})}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{ensure();setTimeout(ensure,250)});else{ensure();setTimeout(ensure,250)}
+window.ensurePerformanceBeneficiariesControl=ensure;
+})();
+</script>
 </html>

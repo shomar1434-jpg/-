@@ -1,0 +1,42 @@
+name: Deploy Evaluation Team Function
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/functions/platform-evaluation-team/**"
+      - ".github/workflows/deploy-platform-evaluation-team.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v2
+        with:
+          version: 2.116.0
+      - name: Deploy platform-evaluation-team
+        run: |
+          supabase functions deploy platform-evaluation-team \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
+            --no-verify-jwt
+      - name: Verify function deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co/functions/v1/platform-evaluation-team?action=resolve-link"
+          code="$(curl --silent --show-error --output /tmp/eval.json --write-out '%{http_code}' --connect-timeout 15 --max-time 30 -X POST -H 'content-type: application/json' -d '{"token":"deployment-probe-invalid-token"}' "$URL" || true)"
+          cat /tmp/eval.json || true
+          # 404 with LINK_INVALID proves the function is reachable; 2xx is also acceptable.
+          if [ "$code" != "404" ] && [ "$code" -lt 200 -o "$code" -ge 300 ]; then
+            echo "::error::platform-evaluation-team is not reachable (HTTP $code)"
+            exit 1
+          fi

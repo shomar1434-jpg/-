@@ -91,7 +91,7 @@ Deno.serve(async(req)=>{
    return repaired||null;
   };
   console.log('[platform-tasks]',{requestId,action,schoolId:s.school_id,userId:s.user_id,role:s.role});
-  if(action==='health')return json({ok:true,version:'2.3.0-deputy-multi-role-refresh',schoolId:s.school_id,userId:s.user_id,role:s.role});
+  if(action==='health')return json({ok:true,version:'2.4.0-secure-delegated-role-route-access',schoolId:s.school_id,userId:s.user_id,role:s.role});
   if(action==='set-deputy-classification'){
    if(!['manager','owner','school_manager','principal','مدير','مديرة'].includes(role))return json({error:'تحديد تصنيف الوكيل متاح لمدير المدرسة فقط'},403);
    const userId=String(body.userId||'');const email=String(body.email||'').trim().toLowerCase();
@@ -143,6 +143,27 @@ Deno.serve(async(req)=>{
    const users=[...out.values()].filter((u:any)=>{const role=String(u.role||'').toLowerCase();const st=String(u.status||'active').toLowerCase();if(['administrative_employee','admin_employee'].includes(role))return st==='active';return st!=='deleted';}).sort((a:any,b:any)=>String(a.full_name||a.email||'').localeCompare(String(b.full_name||b.email||''),'ar'));
    return json({users});
   }
+  if(action==='validate-delegated-role'){
+   const taskId=String(body.taskId||'').trim(),requiredRole=String(body.requiredRole||'').trim().toLowerCase();
+   if(!taskId||!requiredRole)return json({error:'بيانات الدخول بالدور المكلف به غير مكتملة',code:'DELEGATED_ROLE_CONTEXT_MISSING'},400);
+   const t=await getTask(taskId);
+   if(!t)return json({error:'تكليف الدور غير موجود أو لم يعد متاحاً',code:'DELEGATED_ROLE_TASK_NOT_FOUND'},404);
+   // Deliberately do NOT use canRead(): managers/owners can read tasks they created,
+   // but only the actual assignee may use a full-role delegation as route access.
+   if(!mine(t))return json({error:'هذا التكليف غير مسند للمستخدم الحالي',code:'DELEGATED_ROLE_ASSIGNEE_MISMATCH'},403);
+   if(String(t.assignment_type||'')!=='additional_role')return json({error:'التكليف ليس تكليف دور كامل',code:'DELEGATED_ROLE_TYPE_MISMATCH'},409);
+   const activeDelegationStatuses=new Set(['active','in_progress','transferred','returned','pending_approval']);
+   if(!activeDelegationStatuses.has(String(t.status||'')))return json({error:'تكليف الدور غير نشط',code:'DELEGATED_ROLE_INACTIVE'},403);
+   const roleCode=String(t?.metadata?.delegatedRoleCode||t.record_key||t.record_id||'').trim();
+   const delegatedRoleRoutes:Record<string,string>={
+    deputy_educational:'agent',deputy_school_affairs:'agent',deputy_student_affairs:'agent',
+    health_advisor:'health_advisor',activity_leader:'activity_leader',student_advisor:'student_advisor'
+   };
+   const delegatedRequiredRole=String(delegatedRoleRoutes[roleCode]||'');
+   if(!delegatedRequiredRole||delegatedRequiredRole!==requiredRole)return json({error:'الدور المطلوب لا يطابق الدور المسند في التكليف',code:'DELEGATED_ROLE_ROUTE_MISMATCH'},403);
+   return json({ok:true,delegation:{taskId:t.id,roleCode,requiredRole:delegatedRequiredRole,schoolId:s.school_id,status:t.status}});
+  }
+
   if(action==='list'){
    let q=sb.from('central_tasks').select('*,central_task_updates(*),central_task_evidence(*),central_task_assignments(*)').eq('school_id',s.school_id).is('deleted_at',null).order('updated_at',{ascending:false}).limit(Math.min(Number(body.limit)||500,1000));
    if(!isOwner)q=q.or(`assigned_to.eq.${s.user_id},created_by.eq.${s.user_id}${sessionEmail?`,assignee_email.eq.${sessionEmail}`:''}`);

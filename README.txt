@@ -1,24 +1,44 @@
-تصحيح نهائي لمسار تكليف الدور الكامل للموجه الصحي – 11 سبتمبر 2026
+تصحيح دخول «تكليف دور كامل» — 2026-09-11
 
-سبب استمرار الرسالة:
-- الواجهة أصبحت ترسل المعرف الصحيح health_advisor_comprehensive_record.
-- لكن platform-tasks يتحقق من جدول platform_record_types في Supabase؛ إذا لم يكن migration قد نُفّذ أو لم يصل التعريف إلى القاعدة، يرفض التكليف برسالة «السجل غير مسجل في القاموس الموحد».
+السبب الجذري:
+platform-cloud-session.js يفرض عزل المسارات حسب الدور الأساسي للمستخدم. عند فتح دور مكلف به عبر:
+?delegated_role=1&delegated_role_task=<task-id>
+كان routeRequiredRole() يرى مثلاً health_advisor بينما جلسة المستخدم الأساسية teacher، فيستدعي verifyAccess([health_advisor]) ثم يعيد المستخدم إلى قسمه الأساسي.
 
 التصحيح:
-1) يبقى سجل المعلم الشامل محصورًا في teacher_records و kindergarten_teacher_records فقط.
-2) سجل الموجه الصحي الشامل يستخدم health_advisor_comprehensive_record.
-3) platform-tasks ينفذ فحصًا مسبقًا قبل إنشاء التكليف.
-4) للسجلات المعيارية المعروفة للموجه الصحي فقط، إذا كان تعريف القاموس مفقودًا يتم إصلاحه تلقائيًا في platform_record_types من قائمة خادم مغلقة، وليس من بيانات العميل.
-5) يمنع الفحص المسبق إنشاء تكليفات يتيمة إذا فشل التحقق من السجلات.
-6) migration السابقة مرفقة أيضًا كإجراء دائم وآمن.
+1) لا يتم إلغاء عزل الأدوار ولا تغيير الدور الأساسي للمستخدم.
+2) أضيف تحقق خادمي جديد داخل platform-tasks باسم validate-delegated-role.
+3) يسمح بتجاوز شرط الدور للمسار فقط إذا تحقق الخادم من:
+   - أن التكليف من نوع additional_role.
+   - أن التكليف نشط.
+   - أن المستخدم الحالي هو المكلف الفعلي، وليس مجرد منشئ التكليف أو مدير المدرسة.
+   - أن الدور المطلوب في الصفحة يطابق delegatedRoleCode المسجل في التكليف.
+   - أن التكليف ضمن المدرسة الحالية؛ وهذا مضمون من جلسة platform-tasks وعزل school_id.
+4) بعد التحقق، يحفظ سياق التفويض في sessionStorage للتاب الحالي فقط حتى يستطيع المستخدم فتح صفحات الدور الفرعية دون تغيير دوره الأساسي.
+5) عند الضغط على «العودة إلى قسمي الرئيسي» يمسح سياق التفويض.
+6) إذا انتهى/سحب/أغلق التكليف، يفشل التحقق التالي تلقائياً ويعاد تطبيق عزل الدور الطبيعي.
 
-الملفات:
-- central_task_center.html
-- platform-record-catalog.js
+الأدوار المدعومة:
+- وكيل/وكيلة الشؤون التعليمية
+- وكيل/وكيلة الشؤون المدرسية
+- وكيل/وكيلة شؤون الطلاب
+- الموجه/الموجهة الصحي/الصحية
+- الموجه/الموجهة الطلابية
+- رائد/رائدة النشاط
+
+الملفات المعدلة:
+- platform-cloud-session.js
+- platform-delegated-role-portal.js
+- unified_workspace.js
+- health_advisor.html
+- student_advisor.html
+- activity_leader.html
+- agent.html
 - supabase/functions/platform-tasks/index.ts
-- supabase/migrations/20260911183000_fix_health_advisor_record_catalog.sql
 
 النشر:
 - ارفع الملفات بنفس المسارات.
-- platform-tasks موجود أصلًا في workflow المركزي deploy-supabase-functions.yml، لذلك سيُنشر تلقائيًا عند رفع تغييره ولا توجد وظيفة جديدة تحتاج إضافة للـworkflow.
-- يُفضّل تنفيذ migration المرفقة مرة واحدة أيضًا، لكن التصحيح الجديد لا يعتمد على نجاح تنفيذها حتى يعمل سجل الموجه الصحي المعياري.
+- platform-tasks موجود مسبقاً في .github/workflows/deploy-supabase-functions.yml، لذلك نشره يتم تلقائياً ولا يحتاج إضافة Workflow جديدة.
+- انتظر نجاح GitHub Actions ثم نفذ تحديثاً إجبارياً للمتصفح.
+
+لا توجد Migration أو SQL في هذا التصحيح.

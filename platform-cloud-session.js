@@ -470,11 +470,74 @@
   function explicitFollowMode(){
     try{const q=new URLSearchParams(location.search);return q.get('mode')==='follow'||q.get('follow')==='1'||q.get('readOnly')==='1'}catch(_){return false}
   }
+
+  // RL76: full-role delegation is a temporary execution authorization, not a
+  // permanent role mutation.  It must be verified by platform-tasks before the
+  // normal role isolation guard is bypassed.  Query parameters alone never grant
+  // access.  A verified context is kept only in this browser tab so nested pages
+  // of the delegated role can be opened without changing the user's base role.
+  const DELEGATED_ROLE_CONTEXT_KEY='platform_delegated_role_context_v1';
+  function readDelegatedRoleContext(){
+    try{return parseJson(sessionStorage.getItem(DELEGATED_ROLE_CONTEXT_KEY))||{}}catch(_){return {}}
+  }
+  function clearDelegatedRoleContext(){
+    try{sessionStorage.removeItem(DELEGATED_ROLE_CONTEXT_KEY)}catch(_){}
+    try{delete window.__PLATFORM_DELEGATED_ROLE_ACCESS__}catch(_){}
+    try{document.documentElement.removeAttribute('data-platform-delegated-role')}catch(_){}
+  }
+  function delegatedRoleCandidate(required){
+    try{
+      const q=new URLSearchParams(location.search||'');
+      if(q.get('delegated_role')==='1' && q.get('delegated_role_task')){
+        return {taskId:String(q.get('delegated_role_task')||'').trim(),requiredRole:String(required||'').trim().toLowerCase(),source:'query'};
+      }
+      const c=readDelegatedRoleContext();
+      if(c && c.taskId && String(c.requiredRole||'').toLowerCase()===String(required||'').toLowerCase())
+        return {taskId:String(c.taskId),requiredRole:String(required||'').trim().toLowerCase(),source:'tab'};
+    }catch(_){}
+    return null;
+  }
+  async function verifyDelegatedRoleAccess(required){
+    const candidate=delegatedRoleCandidate(required);
+    if(!candidate||!candidate.taskId)return null;
+    const platformToken=String(token()||'').trim();
+    if(!platformToken){clearDelegatedRoleContext();return null;}
+    try{
+      const response=await fetch(`${url()}/functions/v1/platform-tasks?action=validate-delegated-role`,{
+        method:'POST',
+        headers:{'content-type':'application/json',apikey:key(),'x-platform-session':platformToken},
+        body:JSON.stringify({taskId:candidate.taskId,requiredRole:candidate.requiredRole})
+      });
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok||data?.ok!==true||!data?.delegation){throw new Error(data?.error||'DELEGATED_ROLE_NOT_AUTHORIZED');}
+      const ctx={
+        taskId:candidate.taskId,
+        requiredRole:String(data.delegation.requiredRole||candidate.requiredRole),
+        roleCode:String(data.delegation.roleCode||''),
+        schoolId:String(data.delegation.schoolId||schoolId()||''),
+        verifiedAt:Date.now()
+      };
+      sessionStorage.setItem(DELEGATED_ROLE_CONTEXT_KEY,JSON.stringify(ctx));
+      window.__PLATFORM_DELEGATED_ROLE_ACCESS__=Object.freeze({...ctx});
+      document.documentElement.setAttribute('data-platform-delegated-role','1');
+      return ctx;
+    }catch(err){
+      clearDelegatedRoleContext();
+      if(candidate.source==='query')console.warn('[platform-session] delegated role authorization rejected',err);
+      return null;
+    }
+  }
+
   async function enforceRouteRole(){
     const required=routeRequiredRole();
     if(!required||isSystemAdminContext())return true;
     document.documentElement.dataset.platformRoleChecking='1';
     try{
+      const delegated=await verifyDelegatedRoleAccess(required);
+      if(delegated){
+        document.documentElement.dataset.platformRoleVerified='1';
+        return delegated;
+      }
       const verified=await verifyAccess([required]);
       document.documentElement.dataset.platformRoleVerified='1';
       return verified;
@@ -513,7 +576,7 @@
     }
   }
 
-  const SESSION_VERSION='2026.09.10-RL33-cdw-connection-config';
+  const SESSION_VERSION='2026.09.11-RL76-delegated-role-access';
 
   window.PlatformCloudSession = {
     VERSION:SESSION_VERSION,
@@ -531,6 +594,7 @@
     restoreFromKnownContext,
     verifyAccess,
     enforceRouteRole,
+    clearDelegatedRoleContext,
     clear,
     // Canonical read-only connection descriptor for child platform modules.
     // It exposes only the public project URL + anon key already used by this

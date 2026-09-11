@@ -381,7 +381,7 @@
   function loadDelegatedRolePortal(){
     if(document.querySelector('script[data-delegated-role-portal]'))return;
     var s=document.createElement('script');
-    s.src='platform-delegated-role-portal.js?v=20260910-role-v1';
+    s.src='platform-delegated-role-portal.js?v=20260911-role-v2';
     s.defer=true;
     s.dataset.delegatedRolePortal='1';
     document.head.appendChild(s);

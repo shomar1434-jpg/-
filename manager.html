@@ -3470,10 +3470,10 @@ async function legacyPerformanceSave_DISABLED() {
         }
 
         async function removeManagerRecord(id) {
-            if (!confirm('هل تريد حذف هذا السجل من الحفظ المحلي؟')) return;
+            if (!confirm('هل تريد حذف هذا الملف من مكتبة القسم؟')) return;
             await deleteManagerLocalRecord(id);
             await renderManagerRecordsList();
-            showToast('تم حذف السجل');
+            showToast('تم حذف الملف من مكتبة القسم');
         }
 
         function printManagerPDF() {
@@ -5235,7 +5235,7 @@ function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
     const listView=document.getElementById('manager-files-list-view'); if(!listView) return;
     if(!document.getElementById('managerLibraryFolderTools')){
       const tools=document.createElement('div'); tools.id='managerLibraryFolderTools'; tools.style.cssText='display:grid;grid-template-columns:240px 1fr;gap:14px;margin-bottom:16px;';
-      tools.innerHTML='<aside style="border:1px solid #e2e8f0;border-radius:20px;overflow:hidden;background:#fff"><div style="padding:13px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-weight:900;color:#334155">مجلدات المكتبة</div><div id="managerLibraryFolders" style="display:grid;gap:8px;padding:10px"></div><button onclick="window.createManagerLibraryFolderSafe()" style="margin:10px;width:calc(100% - 20px);padding:11px;border:0;border-radius:14px;background:#2563eb;color:white;font-weight:900;cursor:pointer">+ مجلد جديد</button></aside><section style="border:1px solid #e2e8f0;border-radius:20px;background:#f8fafc;padding:14px;color:#64748b;font-size:12px;font-weight:800">اختر مجلدًا ثم أضف ملفات PDF أو Word أو Excel أو PowerPoint أو الصور. الملفات القديمة تظهر تلقائيًا داخل مجلد عام.</section>';
+      tools.innerHTML='<aside style="border:1px solid #e2e8f0;border-radius:20px;overflow:hidden;background:#fff"><div style="padding:13px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-weight:900;color:#334155">مجلدات المكتبة</div><div id="managerLibraryFolders" style="display:grid;gap:8px;padding:10px"></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px"><button onclick="window.createManagerLibraryFolderSafe()" style="padding:11px;border:0;border-radius:14px;background:#2563eb;color:white;font-weight:900;cursor:pointer">+ إضافة مجلد</button><button onclick="window.deleteManagerLibraryFolderSafe()" style="padding:11px;border:0;border-radius:14px;background:#fee2e2;color:#dc2626;font-weight:900;cursor:pointer">حذف مجلد</button></div></aside><section style="border:1px solid #e2e8f0;border-radius:20px;background:#f8fafc;padding:14px;color:#64748b;font-size:12px;font-weight:800">اختر مجلدًا ثم أضف ملفات PDF أو Word أو Excel أو PowerPoint أو الصور. الملفات القديمة تظهر تلقائيًا داخل مجلد عام.</section>';
       listView.insertBefore(tools, listView.firstChild);
       if(window.innerWidth<900) tools.style.gridTemplateColumns='1fr';
     }
@@ -5245,6 +5245,8 @@ function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
 
   window.selectManagerLibraryFolderSafe=function(name){activeFolder=name||'عام';localStorage.setItem(FOLDERS_KEY+'_active',activeFolder); window.renderManagerRecordsList();};
   window.createManagerLibraryFolderSafe=function(){const name=prompt('اكتب اسم المجلد الجديد:'); if(!name||!name.trim())return; const arr=folders(); arr.push(name.trim()); saveFolders(arr); window.selectManagerLibraryFolderSafe(name.trim());};
+  window.deleteManagerLibraryFolderSafe=async function(){const name=String(activeFolder||'عام');if(name==='عام'){showToast('لا يمكن حذف المجلد العام.');return;}const rows=await getAllManagerLocalRecords();const count=rows.filter(r=>String(r.folder||'عام')===name).length;if(count){showToast('لا يمكن حذف المجلد لأنه يحتوي على '+count+' ملف/ملفات. انقل الملفات أو احذفها أولًا.');return;}if(!confirm('حذف المجلد «'+name+'»؟ لن يتم حذف أي ملف.'))return;saveFolders(folders().filter(f=>f!==name));window.selectManagerLibraryFolderSafe('عام');};
+  window.delegateManagerLibraryFileSafe=async function(id){const record=await getManagerLocalRecord(String(id||''));if(!record){showToast('تعذر العثور على الملف');return;}const x=ext(record.name);if(!['docx','xlsx','pptx'].includes(x)){showToast('التكليف بالعمل متاح لملفات DOCX/XLSX/PPTX القابلة للتحرير السحابي.');return;}const q=new URLSearchParams({role:'manager',library_file_id:String(record.id),library_file_name:record.name||'سجل من مكتبة المدير',library_owner:'manager',library_module:'manager_records_archive',library_folder:record.folder||activeFolder||'عام'});location.href='central_task_center.html?'+q.toString();};
 
   window.openManagerRecordsView=function(){ if(typeof oldOpen==='function') oldOpen(); ensureUI(); window.renderManagerRecordsList(); };
 
@@ -5256,7 +5258,7 @@ function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
       const records=await getAllManagerLocalRecords();
       const rows=records.filter(r=>(r.folder||'عام')===activeFolder).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
       if(!rows.length){list.innerHTML='<div style="padding:18px;background:#fff8e1;border:1px solid #ffe08a;border-radius:18px;color:#777;text-align:center;font-size:12px;font-weight:bold;">لا توجد ملفات داخل مجلد '+esc(activeFolder)+'.</div>';return;}
-      list.innerHTML=rows.map(record=>{const k=record.kind||kind(record); return '<div class="manager-record-item"><div style="flex:1;min-width:200px;"><div style="color:#334155;font-weight:bold;font-size:13px;">'+icon(k)+' — '+esc(record.name)+'</div><div style="color:#94a3b8;font-size:10px;margin-top:4px;">'+new Date(record.createdAt).toLocaleString('ar-SA')+' - '+fmt(record.size)+' - مجلد: '+esc(record.folder||'عام')+'</div></div><button onclick="editManagerRecordSafe('+record.id+')" class="manager-record-btn" style="background:#2563eb;color:white;">تعديل</button><button onclick="previewManagerLocalPDF('+record.id+')" class="manager-record-btn" style="background:#0ea5e9;color:white;">معاينة</button><button onclick="printManagerRecordSafe('+record.id+')" class="manager-record-btn" style="background:#7c3aed;color:white;">طباعة</button><button onclick="removeManagerRecord('+record.id+')" class="manager-record-btn" style="background:#ef4444;color:white;">حذف</button></div>';}).join('');
+      list.innerHTML=rows.map(record=>{const k=record.kind||kind(record),rid=String(record.id||'');const editable=['docx','xlsx','pptx'].includes(ext(record.name)); return '<div class="manager-record-item"><div style="flex:1;min-width:200px;"><div style="color:#334155;font-weight:bold;font-size:13px;">'+icon(k)+' — '+esc(record.name)+'</div><div style="color:#94a3b8;font-size:10px;margin-top:4px;">'+new Date(record.createdAt).toLocaleString('ar-SA')+' - '+fmt(record.size)+' - مجلد: '+esc(record.folder||'عام')+'</div></div>'+(editable?'<button onclick="delegateManagerLibraryFileSafe(\''+rid+'\')" class="manager-record-btn" style="background:#0f766e;color:white;">تكليف بالعمل</button>':'')+'<button onclick="editManagerRecordSafe(\''+rid+'\')" class="manager-record-btn" style="background:#2563eb;color:white;">تعديل</button><button onclick="previewManagerLocalPDF(\''+rid+'\')" class="manager-record-btn" style="background:#0ea5e9;color:white;">معاينة</button><button onclick="printManagerRecordSafe(\''+rid+'\')" class="manager-record-btn" style="background:#7c3aed;color:white;">طباعة</button><button onclick="removeManagerRecord(\''+rid+'\')" class="manager-record-btn" style="background:#ef4444;color:white;">حذف ملف</button></div>';}).join('');
     }catch(error){list.innerHTML='<div style="padding:15px;color:#dc2626;text-align:center;font-size:12px;">'+esc(error)+'</div>';}
   };
 

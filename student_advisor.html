@@ -304,7 +304,7 @@
         }
 
         #activation-overlay { position: fixed; inset: 0; z-index: 9999; display: none; align-items: center; justify-content: center; padding: 20px; }
-        #welcome-gate { position: fixed; inset: 0; z-index: 9998; display: none; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
+        #welcome-gate { position: fixed; inset: 0; z-index: 9998; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
 
         .content-overlay { background: rgba(248, 250, 252, 0.85); backdrop-filter: blur(8px); min-height: 100vh; }
 
@@ -1947,7 +1947,7 @@ body{overflow-x:hidden}
 })();
 </script>
 </head>
-<body class="global-app-bg" data-ss-role="student_advisor">
+<body data-platform-role="student_advisor" class="global-app-bg" data-ss-role="student_advisor">
 <div class="hidden no-print fixed inset-0 bg-white/90 backdrop-blur flex-col items-center justify-center z-[10001]" id="share-loader">
 <div class="w-12 h-12 border-4 border-teal-600 border-t-transparent rounded-full animate-spin mb-4"></div>
 <p class="font-bold text-teal-800 text-center px-4" id="loader-text">جاري معالجة البيانات...<br/><span class="text-xs font-normal">يرجى الانتظار</span></p>
@@ -4603,17 +4603,28 @@ body{overflow-x:hidden}
         const __enhancedUpdateReportProgress = updateReportProgress;
         updateReportProgress = function() { __enhancedUpdateReportProgress(); };
 
-        window.onload = function () { 
-            loadSavedTheme();
-            setupSecurityGuardrails(); 
-            document.getElementById('device-id-value').innerText = getDeviceId(); 
-            localStorage.setItem('app_activated', 'true'); showWelcomeGate(); 
-            setupDateDropdown(); 
-            populateBeneficiaries(); 
-            setTimeout(checkPendingReminders, 2000);
-            refreshDashboardMetrics();
-            refreshAssistantAlertCount();
-        };
+        // Unified role-portal initialization: the secure route guard controls access,
+        // while the welcome gate is visible by default after authorization.  Avoid
+        // assigning window.onload because cloned role pages may overwrite it later.
+        function initializeStudentAdvisorUI() {
+            try { loadSavedTheme(); } catch (e) { console.error('[student-advisor] theme init', e); }
+            try { setupSecurityGuardrails(); } catch (e) { console.error('[student-advisor] guardrails init', e); }
+            try {
+                const device = document.getElementById('device-id-value');
+                if (device) device.innerText = getDeviceId();
+            } catch (e) { console.error('[student-advisor] device id init', e); }
+            try { localStorage.setItem('app_activated', 'true'); } catch (_) {}
+            try { setupDateDropdown(); } catch (e) { console.error('[student-advisor] date init', e); }
+            try { populateBeneficiaries(); } catch (e) { console.error('[student-advisor] beneficiaries init', e); }
+            try { setTimeout(checkPendingReminders, 2000); } catch (_) {}
+            try { refreshDashboardMetrics(); } catch (e) { console.error('[student-advisor] metrics init', e); }
+            try { refreshAssistantAlertCount(); } catch (e) { console.error('[student-advisor] alerts init', e); }
+        }
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeStudentAdvisorUI, { once: true });
+        } else {
+            initializeStudentAdvisorUI();
+        }
     </script>
 <!-- SmartSchool Cloud Storage Unified Menu -->
 <!-- SmartSchool Final Role Actions Module -->

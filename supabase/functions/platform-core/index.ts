@@ -2,7 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-platform-session, x-client-version',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-platform-session, x-client-version, x-platform-delegated-task, x-platform-delegated-role',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
 };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
@@ -37,6 +37,27 @@ Deno.serve(async (req) => {
     const isOwner = ownerRoles.has(role) || ownerRoles.has(String(session.role || ''));
     const action = new URL(req.url).searchParams.get('action') || 'bootstrap';
     const body = req.method === 'GET' ? {} : await req.json().catch(() => ({}));
+
+    // RL77 — verified full-role delegation. The base platform session remains
+    // unchanged, but role-sensitive section actions may use the delegated role
+    // after this function independently verifies the active assignment.
+    const delegatedTaskId = String(req.headers.get('x-platform-delegated-task') || '').trim();
+    const delegatedRoleRequested = String(req.headers.get('x-platform-delegated-role') || '').trim().toLowerCase();
+    let effectiveRole = role;
+    let delegatedTask:any = null;
+    if (delegatedTaskId || delegatedRoleRequested) {
+      if (!delegatedTaskId || !delegatedRoleRequested) return json({error:'سياق التكليف بالدور غير مكتمل',code:'DELEGATED_ROLE_CONTEXT_INCOMPLETE'},403);
+      const {data:task,error:taskErr}=await sb.from('central_tasks').select('*')
+        .eq('id',delegatedTaskId).eq('school_id',session.school_id).is('deleted_at',null).maybeSingle();
+      if(taskErr) throw taskErr;
+      const activeDelegatedStatuses=new Set(['active','in_progress','transferred','returned','pending_approval']);
+      const assignedToSession=!!task && (String(task.assigned_to||'')===String(session.user_id||'') || (!!task.assignee_email && String(task.assignee_email).toLowerCase()===String(session.user_email||'').toLowerCase()));
+      const delegatedCode=String(task?.metadata?.delegatedRoleCode||task?.record_id||task?.record_key||'').trim().toLowerCase();
+      if(!task || String(task.assignment_type||'')!=='additional_role' || !activeDelegatedStatuses.has(String(task.status||'')) || !assignedToSession || delegatedCode!==delegatedRoleRequested){
+        return json({error:'تكليف الدور غير صالح أو لا يخص المستخدم الحالي',code:'DELEGATED_ROLE_NOT_AUTHORIZED'},403);
+      }
+      effectiveRole=delegatedCode; delegatedTask=task;
+    }
 
     const readTask = async (taskId: string) => {
       const { data, error } = await sb.from('central_tasks').select('*').eq('id', taskId).eq('school_id', session.school_id).is('deleted_at', null).maybeSingle();
@@ -216,7 +237,7 @@ Deno.serve(async (req) => {
         record_id: body.recordId || null,
         task_id: taskId,
         actor_id: session.user_id,
-        execution_role: body.executionRole || session.role || null,
+        execution_role: body.executionRole || effectiveRole || session.role || null,
         event_type: eventType,
         event_data: { ...(body.data || {}), execution_source: taskId ? 'delegated_task' : String(body.data?.execution_source || 'direct_role') }
       }).select('*').single();
@@ -250,7 +271,7 @@ Deno.serve(async (req) => {
           const nextStatus = ['active','transferred','returned'].includes(String(task?.status || '')) ? 'in_progress' : task?.status;
           await sb.from('central_tasks').update({ progress_percent: nextProgress, status: nextStatus, updated_at: new Date().toISOString() }).eq('id', taskId).eq('school_id', session.school_id);
           await sb.from('central_task_updates').insert({ school_id: session.school_id, task_id: taskId, user_id: session.user_id, update_type: 'execution', title: body.data?.title || 'تنفيذ داخل السجل', notes: body.data?.notes || 'تم توثيق نشاط تنفيذي داخل السجل المرتبط بالتكليف.', progress_percent: nextProgress, status: 'draft', metadata: { module_key: moduleKey, record_type: recordType, record_id: body.recordId || null, record_event_id: event.id, internal_evidence: true } });
-          await sb.from('central_task_events').insert({ school_id: session.school_id, task_id: taskId, event_type: 'record_execution_evidence', actor_id: session.user_id, event_note: `${moduleKey}/${recordType}: ${eventType}`, old_values: null, new_values: { record_event_id: event.id, record_id: body.recordId || null, internal_evidence: true, progress_percent: nextProgress, execution_role: session.role } });
+          await sb.from('central_task_events').insert({ school_id: session.school_id, task_id: taskId, event_type: 'record_execution_evidence', actor_id: session.user_id, event_note: `${moduleKey}/${recordType}: ${eventType}`, old_values: null, new_values: { record_event_id: event.id, record_id: body.recordId || null, internal_evidence: true, progress_percent: nextProgress, execution_role: effectiveRole } });
         }
       }
 
@@ -315,7 +336,7 @@ Deno.serve(async (req) => {
       student_advisor:'التوجيه الطلابي', activity_leader:'النشاط الطلابي',
       kindergarten_teacher:'رياض الأطفال', health_advisor:'التوجيه الصحي'
     };
-    const normalizedSessionRole=String(session.role||'').toLowerCase();
+    const normalizedSessionRole=String(effectiveRole||session.role||'').toLowerCase();
     const semesterPlanTypeForRole=semesterPlanRoleMap[normalizedSessionRole]||'';
     const isSemesterPlanManager=/manager|principal|school_manager|مدير|مديرة/.test(normalizedSessionRole)||isOwner;
 
@@ -380,7 +401,7 @@ Deno.serve(async (req) => {
         sb.from('platform_record_events').select('id,module_key,record_type,record_id,task_id,actor_id,execution_role,event_type,event_data,occurred_at').eq('school_id', session.school_id).gte('occurred_at', since).order('occurred_at', { ascending: false }).limit(5000)
       ]);
       if (coreError) throw coreError; if (indicatorsError) throw indicatorsError; if (activityError) throw activityError;
-      const visibleBase = isOwner ? (indicators || []) : (indicators || []).filter((x: any) => x.module_key === role || x.created_by === session.user_id);
+      const visibleBase = isOwner ? (indicators || []) : (indicators || []).filter((x: any) => x.module_key === effectiveRole || x.created_by === session.user_id);
       const visible = visibleBase.filter((x:any)=>focus==='all'||(focus==='evaluation'?/evaluation|improvement|performance/.test(String(x.module_key||'').toLowerCase()):true));
       const events = (activityEvents || []).filter((ev:any)=>selectedRoles.includes(normalizeDashboardRole(ev.execution_role)) && matchesFocus(ev));
       const stage:any = {record_opened:10,record_created:50,record_updated:60,record_saved:60,record_submitted:80,record_completed:100,performance_plan_saved:40,performance_plan_submitted:80,performance_execution_updated:60,performance_evaluation_saved:100};

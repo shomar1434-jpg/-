@@ -269,9 +269,20 @@
     return tabFirst(TAB_SCHOOL_KEY,SCHOOL_KEY);
   }
 
-  function role() {
+  function baseRole() {
     if (isSystemAdminContext()) return 'system_admin';
     return tabFirst(TAB_ROLE_KEY,ROLE_KEY);
+  }
+
+  function role() {
+    if (isSystemAdminContext()) return 'system_admin';
+    try {
+      const delegated = window.__PLATFORM_DELEGATED_ROLE_ACCESS__;
+      const delegatedRole = String(delegated?.requiredRole || delegated?.roleCode || '').trim().toLowerCase();
+      const delegatedSchool = String(delegated?.schoolId || '').trim();
+      if (delegatedRole && (!delegatedSchool || delegatedSchool === String(schoolId() || '').trim())) return delegatedRole;
+    } catch (_) {}
+    return baseRole();
   }
 
   function valid() {
@@ -290,7 +301,7 @@
 
   function applyPayload(payload, renewed = true) {
     if (!payload || !payload.token) throw new Error('استجابة تجديد الجلسة لا تحتوي على رمز صالح');
-    const sid=payload.schoolId || currentSchoolId() || '';const rr=payload.role || role() || (hasTabIdentity()?'':localStorage.getItem('currentRole')) || '';
+    const sid=payload.schoolId || currentSchoolId() || '';const rr=payload.role || baseRole() || (hasTabIdentity()?'':localStorage.getItem('currentRole')) || '';
     sessionStorage.setItem(TAB_TOKEN_KEY,payload.token);sessionStorage.setItem(TAB_EXPIRES_KEY,payload.expiresAt||'');sessionStorage.setItem(TAB_USER_KEY,payload.userId||'');sessionStorage.setItem(TAB_SCHOOL_KEY,sid);sessionStorage.setItem(TAB_ROLE_KEY,rr);
     updateKnownContext({...payload,schoolId:sid,role:rr});
     window.dispatchEvent(new CustomEvent('platform-cloud-session-ready',{detail:{userId:payload.userId||'',schoolId:sid,role:rr,expiresAt:payload.expiresAt||'',renewed:Boolean(renewed)}}));
@@ -333,10 +344,18 @@
       error.code = 'SYSTEM_ADMIN_SCHOOL_SESSION_BLOCKED';
       throw error;
     }
-    if (valid()) return token();
-    restoreFromKnownContext();
-    if (valid()) return token();
-    return recover();
+    let currentToken = '';
+    if (valid()) currentToken = token();
+    else {
+      restoreFromKnownContext();
+      if (valid()) currentToken = token();
+      else currentToken = await recover();
+    }
+    // Full-role delegation is revalidated on every nested page that calls ensure().
+    // This makes legacy internal modules see the delegated role only after the
+    // server confirms the task, user and school again; stale/revoked contexts are cleared.
+    await refreshDelegatedRoleContext().catch(()=>null);
+    return currentToken || token();
   }
 
 
@@ -424,7 +443,7 @@
         if(['agent','deputy','vice','wakil','agency','وكيل','وكيلة'].includes(s))return 'agent';
         if(['manager','principal','school_manager','leadership','مدير','مديرة'].includes(s))return 'manager';
       }catch(_){}
-      const current=String(role()||'').trim().toLowerCase();
+      const current=String(baseRole()||'').trim().toLowerCase();
       if(['agent','deputy','vice','wakil','agency','وكيل','وكيلة'].includes(current))return 'agent';
       if(['manager','principal','school_manager','leadership','مدير','مديرة'].includes(current))return 'manager';
       return '';
@@ -447,7 +466,7 @@
         if(supervisorMode){
           if(['agent','deputy','vice','wakil','agency','وكيل','وكيلة'].includes(s))return 'agent';
           if(['manager','principal','school_manager','leadership','مدير','مديرة'].includes(s))return 'manager';
-          const current=String(role()||'').trim().toLowerCase();
+          const current=String(baseRole()||'').trim().toLowerCase();
           if(['agent','deputy','vice','wakil','agency','وكيل','وكيلة'].includes(current))return 'agent';
           if(['manager','principal','school_manager','leadership','مدير','مديرة'].includes(current))return 'manager';
         }
@@ -528,6 +547,27 @@
     }
   }
 
+  async function refreshDelegatedRoleContext(){
+    const ctx=readDelegatedRoleContext();
+    const required=String(ctx?.requiredRole||ctx?.roleCode||'').trim().toLowerCase();
+    if(!ctx?.taskId||!required){
+      try{delete window.__PLATFORM_DELEGATED_ROLE_ACCESS__}catch(_){}
+      return null;
+    }
+    return verifyDelegatedRoleAccess(required);
+  }
+
+  function delegatedRole(){
+    try{return String(window.__PLATFORM_DELEGATED_ROLE_ACCESS__?.requiredRole||window.__PLATFORM_DELEGATED_ROLE_ACCESS__?.roleCode||'').trim().toLowerCase()}catch(_){return ''}
+  }
+  function delegatedTaskId(){
+    try{return String(window.__PLATFORM_DELEGATED_ROLE_ACCESS__?.taskId||'').trim()}catch(_){return ''}
+  }
+  function delegationHeaders(){
+    const taskId=delegatedTaskId(), delegated=delegatedRole();
+    return taskId&&delegated?{'x-platform-delegated-task':taskId,'x-platform-delegated-role':delegated}:{};
+  }
+
   async function enforceRouteRole(){
     const required=routeRequiredRole();
     if(!required||isSystemAdminContext())return true;
@@ -555,7 +595,7 @@
         }catch(_){}
       }
       document.documentElement.dataset.platformRoleDenied='1';
-      const current=String(role()||'').toLowerCase();
+      const current=String(baseRole()||'').toLowerCase();
       const normalized=current==='performance'?'teacher':current;
       let target=ROLE_ROOTS[normalized]||'';
       if(!target){
@@ -576,7 +616,7 @@
     }
   }
 
-  const SESSION_VERSION='2026.09.11-RL76-delegated-role-access';
+  const SESSION_VERSION='2026.09.11-RL77-delegated-role-effective-access';
 
   window.PlatformCloudSession = {
     VERSION:SESSION_VERSION,
@@ -588,6 +628,10 @@
     userId,
     schoolId,
     role,
+    baseRole,
+    delegatedRole,
+    delegatedTaskId,
+    delegationHeaders,
     valid,
     ensure,
     recover,

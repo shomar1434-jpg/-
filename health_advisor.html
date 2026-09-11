@@ -4739,38 +4739,12 @@ body{overflow-x:hidden}
             document.getElementById('device-id-value').innerText = getDeviceId(); 
             localStorage.setItem('app_activated', 'true');
 
-            // RL77: when this portal is opened through a verified full-role
-            // delegation, do not stop at the legacy welcome/login gate.  The
-            // user's base role is NOT changed; platform-cloud-session verifies
-            // the delegated task first and exposes the verified tab context.
-            (async function openVerifiedDelegatedHealthPortal(){
-                var q=new URLSearchParams(location.search||'');
-                var delegatedRequest=q.get('delegated_role')==='1' && !!q.get('delegated_role_task');
-                if(!delegatedRequest){ showWelcomeGate(); return; }
-
-                // RL78: wait for the SAME authoritative route-role verification
-                // instead of racing it with a fixed 5-second polling window.
-                // Query parameters never grant access by themselves.
-                try{
-                    if(!window.PlatformCloudSession || typeof PlatformCloudSession.enforceRouteRole!=='function'){
-                        throw new Error('DELEGATED_ROLE_VERIFIER_UNAVAILABLE');
-                    }
-                    var access=await PlatformCloudSession.enforceRouteRole();
-                    var verified=!!window.__PLATFORM_DELEGATED_ROLE_ACCESS__ ||
-                      document.documentElement.getAttribute('data-platform-delegated-role')==='1' ||
-                      !!(access && access.taskId && access.requiredRole==='health_advisor');
-                    if(!verified) throw new Error('DELEGATED_ROLE_NOT_VERIFIED');
-
-                    try{ enterApp(); }catch(_){
-                        var gate=document.getElementById('welcome-gate'); if(gate)gate.style.display='none';
-                        var dash=document.getElementById('welcome-dashboard'); if(dash)dash.style.display='block';
-                    }
-                }catch(err){
-                    console.error('[health-advisor delegated entry]',err);
-                    // Do not expose the role dashboard on verification failure.
-                    // The platform route guard remains responsible for redirect/denial.
-                }
-            })();
+            // RL79: keep the portal's native welcome gate for both normal and
+            // verified delegated entry. Authorization is handled independently by
+            // platform-cloud-session before the body becomes visible. This avoids
+            // a second competing entry flow that could leave both the welcome gate
+            // and dashboard hidden after delegation.
+            showWelcomeGate();
             setupDateDropdown(); 
             populateBeneficiaries(); 
             setTimeout(checkPendingReminders, 2000);

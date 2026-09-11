@@ -99,9 +99,6 @@ body{background:radial-gradient(circle at 90% 0%,rgba(24,169,153,.08),transparen
 
 </style>
 <meta name="capability-achievement-analysis-version" content="2026.09.05-RL42-manager-integration">
-
-<script defer src="school-base-settings-source.js?v=20260910-master-source-v1"></script>
-<script defer src="school-information-source.js?v=20260910-master-source-v1"></script>
 </head>
 <body>
 <header class="topbar">
@@ -506,12 +503,14 @@ function canonicalHeaderFields(out){
            (/ابتدا/.test(normalizeArabic(out.stage))?'المرحلة الابتدائية':polishArabic(out.stage)));
  out.region=canonicalSaudiRegion(out.region);
  if(/الرش\s*قية|الرشقية|الشر\s*قية/.test(String(out.region||''))) out.region='الشرقية';
- // إدارة التعليم في البطاقة الرسمية تُعرض بصيغة إدارية سليمة. إذا تشوهت حروفها داخل PDF
- // نعيد بناء الصياغة من المنطقة المستخرجة بدل عرض النص المشوه للمستخدم.
+ // نحتفظ باسم إدارة التعليم كما ورد في البطاقة (مثل: بمحافظة جدة).
+ // لا نعيد بناء الاسم من المنطقة إلا عند فقدان النص الإداري الفعلي.
  const en=normalizeArabic(out.edu);
  const enc=en.replace(/\s+/g,'');
  if(!out.region && /الرشقي|الشرقي/.test(enc)) out.region='الشرقية';
- if(out.region && (en.includes('التعليم') || en.includes('الاداره') || en.length>8)){
+ if(en.includes('التعليم') && en.includes('الاداره')){
+   out.edu=polishArabic(out.edu);
+ } else if(out.region && !en){
    out.edu = out.region==='الشرقية'
      ? 'الإدارة العامة للتعليم بالمنطقة الشرقية'
      : `الإدارة العامة للتعليم بمنطقة ${out.region}`;
@@ -609,6 +608,21 @@ function parsePercentilePage(s){
  const pairs=[...s.matchAll(/\(?\s*(\d{1,6})\s*من\s*(\d{1,6})\s*\)?/g)].map(m=>{const a=+m[1],b=+m[2];return {rank:Math.min(a,b),total:Math.max(a,b)}});
  return {kingdom:pct[0]||0,education:pct[1]||0,kingdomRank:pairs[0]?`${pairs[0].rank} من ${pairs[0].total}`:'',educationRank:pairs[1]?`${pairs[1].rank} من ${pairs[1].total}`:''};
 }
+function coordinatePercentilePage(pageObj){
+ const toks=officialTokens(pageObj);
+ // التصميم الجديد يرسم العبارة العربية حرفًا حرفًا، لكنه يحفظ المئين كرقم يبدأ بـ %.
+ const pct=toks.filter(t=>/^%\s*\d{1,3}(?:\.\d+)?$/.test(t.raw)).sort((a,b)=>b.y-a.y).slice(0,2);
+ const rankFor=(anchor)=>{
+   if(!anchor)return '';
+   const nums=toks.filter(t=>/^\d{1,6}$/.test(t.raw)&&t.x>=15&&t.x<=90&&t.y<anchor.y-2&&t.y>anchor.y-22).map(t=>parseInt(t.raw));
+   return nums.length>=2?`${Math.min(...nums)} من ${Math.max(...nums)}`:'';
+ };
+ return {
+   kingdom:pct[0]?parseFloat(pct[0].raw.replace('%','')):0,
+   education:pct[1]?parseFloat(pct[1].raw.replace('%','')):0,
+   kingdomRank:rankFor(pct[0]),educationRank:rankFor(pct[1])
+ };
+}
 async function scanGreenBars(pageObj, bandStart=0, bandEnd=1){
  try{
     const page=pageObj.page||pageObj;
@@ -626,8 +640,8 @@ async function scanGreenBars(pageObj, bandStart=0, bandEnd=1){
 
     // الرسم الرسمي للمجالات الفرعية يقع في النطاق الأفقي الأوسط من الصفحة.
     // تقييد المسح هنا يمنع التقاط مساحات رمادية/خضراء أخرى من البطاقة.
-    const x0=Math.max(0,Math.floor(canvas.width*.12));
-    const x1=Math.min(canvas.width,Math.ceil(canvas.width*.84));
+    const x0=Math.max(0,Math.floor(canvas.width*.04));
+    const x1=Math.min(canvas.width,Math.ceil(canvas.width*.96));
 
     const rows=[];
     for(let y=y0;y<y1;y+=2){
@@ -699,7 +713,7 @@ async function scanGreenBars(pageObj, bandStart=0, bandEnd=1){
  }
 }
 function officialTokens(pageObj){
- return (pageObj?.items||[]).map(i=>({raw:String(i.str||'').trim(),n:normalizeArabic(String(i.str||'')),x:i.transform?.[4]||0,y:i.transform?.[5]||0})).filter(i=>i.raw);
+ return (pageObj?.items||[]).map(i=>({raw:String(i.str||'').trim(),n:normalizeArabic(String(i.str||'')),x:i.transform?.[4]||0,y:i.transform?.[5]||0,w:Number(i.width)||0})).filter(i=>i.raw);
 }
 function tokensInBox(pageObj,x1,x2,y1,y2){
  return officialTokens(pageObj).filter(t=>t.x>=x1&&t.x<=x2&&t.y>=y1&&t.y<=y2);
@@ -709,7 +723,16 @@ function boxValue(pageObj,x1,x2,y1,y2,accept){
  if(!arr.length)return '';
  // بطاقة الهيئة عربية RTL؛ إذا كانت القيمة مجزأة نعيد ترتيب القطع من اليمين إلى اليسار.
  arr.sort((a,b)=>Math.abs(b.y-a.y)>3?b.y-a.y:b.x-a.x);
- return arr.map(t=>t.raw).join(' ').replace(/\s+/g,' ').trim();
+ let value='',previous=null;
+ for(const t of arr){
+   if(previous&&Math.abs(previous.y-t.y)<=3){
+     const gap=previous.x-(t.x+t.w);
+     if(gap>2.4)value+=' ';
+   }else if(previous)value+=' ';
+   value+=t.raw;previous=t;
+ }
+ // بعض مولدات Skia تعيد لام/ميم التعريف بترتيب Unicode مختلف رغم صحة الرسم المرئي.
+ return value.normalize('NFKC').replace(/امل(?=[\u0600-\u06ff])/g,'الم').replace(/\s+/g,' ').trim();
 }
 function coordinateOfficialHeader(pageObj){
  // خريطة موضعية للصفحة الأولى من بطاقة ETEC الرسمية (595×842 تقريبًا).
@@ -718,12 +741,12 @@ function coordinateOfficialHeader(pageObj){
  const scaleX=(pageObj?.page?.view?.[2]||595.2756)/595.2756;
  const scaleY=(pageObj?.page?.view?.[3]||841.8898)/841.8898;
  const bx=(a,b,c,d,accept)=>boxValue(pageObj,a*scaleX,b*scaleX,c*scaleY,d*scaleY,accept);
- out.code=bx(465,548,655,682,t=>/^[A-Za-z0-9-]+$/.test(t.raw)&&/[0-9]/.test(t.raw));
- out.school=bx(225,390,655,682,t=>!t.n.includes('اسم المدرسه'));
- out.gender=bx(135,225,655,682,t=>/بنات|بنين/.test(t.n));
- out.edu=bx(385,550,606,635,t=>!t.n.includes('اداره التعليم'));
- out.region=bx(315,390,606,635,t=>!t.n.includes('المنطقه'));
- out.stage=bx(135,225,606,635,t=>!t.n.includes('المرحله الدراسيه'));
+ out.code=bx(465,580,680,705,t=>/^[A-Za-z0-9-]+$/.test(t.raw)&&/[0-9]/.test(t.raw));
+ out.school=bx(215,395,680,705);
+ out.gender=bx(130,210,680,705);
+ out.edu=bx(420,580,625,650);
+ out.region=bx(325,395,625,650);
+ out.stage=bx(130,210,625,650);
  // تنظيف ناتج القالب دون محاولة قلب الجملة؛ PDF.js يعيد كل قيمة غالبًا كقطعة عربية صحيحة.
  for(const k of ['school','edu','region','stage','gender']) out[k]=String(out[k]||'').trim();
  const sn=normalizeArabic(out.school); if(sn.startsWith('مسارات')&&sn.includes('الثانويه')) out.school=reversePhrase(out.school);
@@ -736,13 +759,16 @@ function coordinateOfficialHeader(pageObj){
 function coordinateTestNumbers(pageObj,kind){
  const out={};
  // kind=t الصفحة الأولى، kind=q الصفحة الثالثة. الإحداثيات مبنية على قالب ETEC نفسه.
- const yNum=kind==='t'?[535,570]:[682,715];
- const yPerf=kind==='t'?[455,490]:[600,635];
+ const yNum=kind==='t'?[535,570]:[680,750];
+ const yPerf=kind==='t'?[455,490]:[600,660];
  const count=boxValue(pageObj,385,430,yNum[0],yNum[1],t=>/^\d{3,4}$/.test(t.raw));
  const avg=boxValue(pageObj,215,265,yNum[0],yNum[1],t=>/^\d{2}(?:\.\d+)?$/.test(t.raw));
- const change=boxValue(pageObj,60,120,yNum[0],yNum[1],t=>/^-?\d+(?:\.\d+)?%$/.test(t.raw));
- out.count=parseInt(count)||0; out.avg=parseFloat(avg)||0; out.change=parseFloat(String(change).replace('%',''))||0;
- const vals=tokensInBox(pageObj,60,470,yPerf[0],yPerf[1]).map(t=>{
+ const change=boxValue(pageObj,25,125,yNum[0],yNum[1],t=>/[+-]?\d+(?:\.\d+)?\s*%/.test(t.raw));
+ const changeMatch=String(change).match(/[+-]?\d+(?:\.\d+)?/);
+ if(count)out.count=parseInt(count)||0;
+ if(avg)out.avg=parseFloat(avg)||0;
+ if(changeMatch)out.change=parseFloat(changeMatch[0]);
+ const vals=tokensInBox(pageObj,20,510,yPerf[0],yPerf[1]).map(t=>{
    const m=t.raw.match(/(\d{1,3}(?:\.\d+)?)\s*%/);return m?{x:t.x,v:parseFloat(m[1])}:null;
  }).filter(Boolean).sort((a,b)=>b.x-a.x);
  if(vals.length>=4){
@@ -760,8 +786,12 @@ function exactOfficialHeader(pageObj){
  // احتياطيات بنيوية فقط إذا تعذر حقل موضعي بعينه.
  if(!out.code)out.code=(toks.find(t=>/^[A-Za-z]\d{5,}$/.test(t.raw))||{}).raw||'';
  if(!out.school){const t=toks.find(t=>t.n.includes('الثانويه')&&!t.n.includes('المرحله')&&t.n.length>12&&!t.n.includes('القدرات'));if(t)out.school=t.raw}
- if(!out.edu){const t=toks.find(t=>t.n.includes('الاداره')&&t.n.includes('التعليم')&&t.n.length>18&&t.n.includes('المنطقه'));if(t)out.edu=t.raw}
- if(!out.region){const t=toks.find(t=>/^(الشرقيه|المنطقه الشرقيه)$/.test(t.n));if(t)out.region=t.raw}
+ if(!out.edu){const t=toks.find(t=>t.n.includes('الاداره')&&t.n.includes('التعليم')&&t.n.length>18);if(t)out.edu=t.raw}
+ if(!out.region){
+   const labels=new Set(['الشرقية','الرياض','مكة المكرمة','المدينة المنورة','القصيم','عسير','تبوك','حائل','الحدود الشمالية','جازان','نجران','الباحة','الجوف']);
+   const t=toks.find(t=>!t.n.includes('التعليم')&&labels.has(canonicalSaudiRegion(t.raw)));
+   if(t)out.region=canonicalSaudiRegion(t.raw);
+ }
  if(!out.gender){const t=toks.find(t=>/^(بنات|بنين)$/.test(t.n));if(t)out.gender=t.raw}
  if(!out.stage){const t=toks.find(t=>t.n.includes('المرحله الثانويه')||t.n==='الثانويه المرحله');if(t)out.stage=t.raw}
  const year=toks.find(t=>/^14\d{2}$/.test(t.raw));if(year)out.year=year.raw+' هـ';
@@ -773,7 +803,7 @@ function parseOfficialTestNumbers(pageObj){
  out.count=firstNumberToken(toks,(v,raw)=>Number.isInteger(v)&&v>=101&&v<=999);
  // متوسط الدرجات: أول عدد عشري بين 55 و 95 وغير متبوع بعلامة %.
  out.avg=firstNumberToken(toks,(v,raw)=>v>=55&&v<=95&&raw.includes('.')&&!raw.includes('%'));
- const change=toks.map(t=>t.raw).join(' ').match(/(-\d{1,2}(?:\.\d+)?)\s*%/);out.change=change?parseFloat(change[1]):0;
+ const change=toks.map(t=>t.raw).join(' ').match(/([+-]\d{1,2}(?:\.\d+)?)\s*%/);out.change=change?parseFloat(change[1]):0;
  const pct=[]; for(const t of toks){for(const m of t.raw.matchAll(/(\d{1,3}(?:\.\d+)?)\s*%/g)){const v=parseFloat(m[1]);if(v>=0&&v<=100)pct.push(v)}}
  for(let i=0;i<=pct.length-4;i++){const a=pct.slice(i,i+4);if(a.every(v=>v<80)&&Math.abs(a.reduce((x,y)=>x+y,0)-100)<1.2){
    // ترتيب PDF النصي يسار→يمين: منخفض جدًا، منخفض، متوسط، مرتفع.
@@ -795,23 +825,40 @@ async function extractOfficialCardData(pages,pdf){
  if(!out.year){out.year=firstMatch(all,[/(?<!\d)(14\d{2})(?!\d)/]);if(out.year)out.year+=' هـ'}
  const tPage=pages.find((p,i)=>texts[i].includes('التحصيلي'))||pages[0];
  const qPage=pages.find((p,i)=>texts[i].includes('القدرات العامه')||texts[i].includes('العامه القدرات'))||pages[2];
- const tn={...parseOfficialTestNumbers(tPage),...coordinateTestNumbers(tPage,'t')}, qn={...parseOfficialTestNumbers(qPage),...coordinateTestNumbers(qPage,'q')};
+ const mergeTestNumbers=(textual,positional)=>({
+   ...textual,
+   ...(positional.count?{count:positional.count}:{}),
+   ...(positional.avg?{avg:positional.avg}:{}),
+   ...(positional.change!==undefined?{change:positional.change}:{}),
+   ...(positional.perf?{perf:positional.perf}:{})
+ });
+ const tn=mergeTestNumbers(parseOfficialTestNumbers(tPage),coordinateTestNumbers(tPage,'t'));
+ const qn=mergeTestNumbers(parseOfficialTestNumbers(qPage),coordinateTestNumbers(qPage,'q'));
  out.tCount=tn.count||numberAfter(texts[pages.indexOf(tPage)]||p1,'عدد المختبرين');out.tAvg=tn.avg||numberAfter(texts[pages.indexOf(tPage)]||p1,'متوسط الدرجات');out.tChange=tn.change;out.tPerf=tn.perf||parsePerformance(p1);out.tMeans=tn.means||[];
  out.qCount=qn.count||numberAfter(texts[pages.indexOf(qPage)]||p3,'عدد المختبرين');out.qAvg=qn.avg||numberAfter(texts[pages.indexOf(qPage)]||p3,'متوسط الدرجات');out.qChange=qn.change;out.qPerf=qn.perf||parsePerformance(p3);out.qMeans=qn.means||[];
  if(out.tMeans.length>=3){out.tSchoolMean=out.tMeans[0];out.tEducationMean=out.tMeans[1];out.tKingdomMean=out.tMeans[2];out.tRef=out.tKingdomMean}
  if(out.qMeans.length>=3){out.qSchoolMean=out.qMeans[0];out.qEducationMean=out.qMeans[1];out.qKingdomMean=out.qMeans[2];out.qRef=out.qKingdomMean}
- const tp=parsePercentilePage(p2), qp=parsePercentilePage(p4);
+ const mergePercentiles=(textual,positional)=>({
+   kingdom:positional.kingdom||textual.kingdom,
+   education:positional.education||textual.education,
+   kingdomRank:positional.kingdomRank||textual.kingdomRank,
+   educationRank:positional.educationRank||textual.educationRank
+ });
+ const tp=mergePercentiles(parsePercentilePage(p2),coordinatePercentilePage(pages[1]));
+ const qp=mergePercentiles(parsePercentilePage(p4),coordinatePercentilePage(pages[3]));
  out.tPercentileK=tp.kingdom;out.tPercentileE=tp.education;out.tRankK=tp.kingdomRank;out.tRankE=tp.educationRank;
  out.qPercentileK=qp.kingdom;out.qPercentileE=qp.education;out.qRankK=qp.kingdomRank;out.qRankE=qp.educationRank;
  // المجالات الفرعية ليست نصوص أرقام داخل PDF؛ تُستخرج من أطوال الأشرطة الملونة نفسها.
- const tBars1=pages[0]?await scanGreenBars(pages[0],.78,.94):[];
- const tBars2=pages[1]?await scanGreenBars(pages[1],0,.13):[];
- const qBars=pages[2]?await scanGreenBars(pages[2],.62,.78):[];
- // الصفحة الأولى: أحياء، رياضيات، فيزياء. الصفحة الثانية تكرر الفيزياء ثم تعرض الكيمياء.
- if(tBars1.length>=3){
-   const chemistry=tBars2.length?tBars2[tBars2.length-1]:0;
-   if(chemistry)out.tFields={biology:tBars1[0],math:tBars1[1],physics:tBars1[2],chemistry};
- }
+ const tBars1=pages[0]?await scanGreenBars(pages[0]):[];
+ const tBars2=pages[1]?await scanGreenBars(pages[1]):[];
+ const qBars=pages[2]?await scanGreenBars(pages[2]):[];
+ // يدعم القالبين: توزيع 3+1 بين الصفحتين، أو انتقال الأشرطة الأربعة كاملة إلى الصفحة الثانية.
+ let tBars=[];
+ if(tBars2.length>=4)tBars=tBars2.slice(0,4);
+ else if(tBars1.length>=4)tBars=tBars1.slice(0,4);
+ else if(tBars1.length>=3&&tBars2.length)tBars=[...tBars1.slice(0,3),tBars2[tBars2.length-1]];
+ else tBars=[...tBars1,...tBars2].slice(0,4);
+ if(tBars.length>=4)out.tFields={biology:tBars[0],math:tBars[1],physics:tBars[2],chemistry:tBars[3]};
  if(qBars.length>=2){out.qQuant=qBars[0];out.qVerbal=qBars[1]}
  if(!out.qVerbal||!out.qQuant){const nums=decimalsBetween(texts[2]||'','متوسط درجات المختبرين في المجالات الفرعيه','الترتيب علي مستوي');if(nums.length>=2){out.qQuant=nums[0];out.qVerbal=nums[1]}}
  if(out.tFields?.math)out.tMath=out.tFields.math;

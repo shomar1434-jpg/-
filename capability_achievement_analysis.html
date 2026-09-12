@@ -793,19 +793,50 @@ function boxValue(pageObj,x1,x2,y1,y2,accept){
  return value.normalize('NFKC').replace(/امل(?=[\u0600-\u06ff])/g,'الم').replace(/\s+/g,' ').trim();
 }
 function coordinateOfficialHeader(pageObj){
- // خريطة موضعية للصفحة الأولى من بطاقة ETEC الرسمية (595×842 تقريبًا).
- // استخدام الإحداثيات يمنع تشوه العبارات العربية الناتج عن ترتيب النص الداخلي في PDF.
+ // قارئ تكيفي لبيانات المدرسة في الصفحة الأولى من بطاقة ETEC الرسمية.
+ // توجد نسختان من القالب تختلفان رأسيًا عدة نقاط. الاعتماد على نطاق ثابت واحد
+ // قد يلتقط عناوين الحقول بدل قيمها؛ لذلك نثبت صف القيم من موضع الرقم الوزاري نفسه.
  const out={};
  const scaleX=(pageObj?.page?.view?.[2]||595.2756)/595.2756;
  const scaleY=(pageObj?.page?.view?.[3]||841.8898)/841.8898;
- const bx=(a,b,c,d,accept)=>boxValue(pageObj,a*scaleX,b*scaleX,c*scaleY,d*scaleY,accept);
- out.code=bx(465,580,680,705,t=>/^[A-Za-z0-9-]+$/.test(t.raw)&&/[0-9]/.test(t.raw));
- out.school=bx(215,395,680,705);
- out.gender=bx(130,210,680,705);
- out.edu=bx(420,580,625,650);
- out.region=bx(325,395,625,650);
- out.stage=bx(130,210,625,650);
- // تنظيف ناتج القالب دون محاولة قلب الجملة؛ PDF.js يعيد كل قيمة غالبًا كقطعة عربية صحيحة.
+ const toks=officialTokens(pageObj);
+ const codeTok=toks
+   .filter(t=>t.x>=430*scaleX && /^[A-Za-z]?\d{5,}$/.test(t.raw) && /\d/.test(t.raw))
+   .sort((a,b)=>b.y-a.y)[0];
+
+ // القالب القديم: صف القيم الأول ≈ 665–682، والقالب الأحدث أعلى منه قليلًا.
+ // عند وجود الرقم الوزاري نستخدم y الفعلي للقيمة نفسها ونبني بقية الحقول نسبةً إليه.
+ const firstY=codeTok?.y || 678*scaleY;
+ const secondY=firstY-(47.5*scaleY);
+ const halfH=10.5*scaleY;
+ const bxRow=(a,b,y,accept)=>boxValue(pageObj,a*scaleX,b*scaleX,y-halfH,y+halfH,accept);
+
+ out.code=codeTok?.raw || bxRow(455,580,firstY,t=>/^[A-Za-z0-9-]+$/.test(t.raw)&&/[0-9]/.test(t.raw));
+ out.school=bxRow(215,400,firstY,t=>!t.n.includes('اسم المدرسه'));
+ out.gender=bxRow(125,225,firstY,t=>!t.n.includes('جنس المدرسه'));
+ out.edu=bxRow(390,580,secondY,t=>!t.n.includes('اداره التعليم'));
+ out.region=bxRow(305,400,secondY,t=>!t.n.includes('المنطقه'));
+ out.stage=bxRow(125,225,secondY,t=>!t.n.includes('المرحله الدراسيه'));
+
+ // احتياط للقالبين المعروفين إذا كان الرقم الوزاري مجزأ إلى أكثر من عنصر نصي.
+ const headerScore=o=>['code','school','gender','edu','region','stage'].reduce((n,k)=>n+(String(o[k]||'').trim()?1:0),0);
+ if(headerScore(out)<4){
+   const candidates=[
+     {v:[655,682],s:[606,635]}, // القالب الأصلي الذي كانت البطاقة الأولى تُقرأ به بصورة سليمة
+     {v:[668,692],s:[615,645]}  // النسخة المزاحة رأسيًا
+   ].map(r=>({
+     code:boxValue(pageObj,455*scaleX,580*scaleX,r.v[0]*scaleY,r.v[1]*scaleY,t=>/^[A-Za-z0-9-]+$/.test(t.raw)&&/[0-9]/.test(t.raw)),
+     school:boxValue(pageObj,215*scaleX,400*scaleX,r.v[0]*scaleY,r.v[1]*scaleY,t=>!t.n.includes('اسم المدرسه')),
+     gender:boxValue(pageObj,125*scaleX,225*scaleX,r.v[0]*scaleY,r.v[1]*scaleY,t=>!t.n.includes('جنس المدرسه')),
+     edu:boxValue(pageObj,390*scaleX,580*scaleX,r.s[0]*scaleY,r.s[1]*scaleY,t=>!t.n.includes('اداره التعليم')),
+     region:boxValue(pageObj,305*scaleX,400*scaleX,r.s[0]*scaleY,r.s[1]*scaleY,t=>!t.n.includes('المنطقه')),
+     stage:boxValue(pageObj,125*scaleX,225*scaleX,r.s[0]*scaleY,r.s[1]*scaleY,t=>!t.n.includes('المرحله الدراسيه'))
+   })).sort((a,b)=>headerScore(b)-headerScore(a));
+   const fallback=candidates[0]||{};
+   for(const k of ['code','school','gender','edu','region','stage']) if(!String(out[k]||'').trim()) out[k]=fallback[k]||'';
+ }
+
+ // تنظيف ناتج القالب دون قلب القيم السليمة.
  for(const k of ['school','edu','region','stage','gender']) out[k]=String(out[k]||'').trim();
  const sn=normalizeArabic(out.school); if(sn.startsWith('مسارات')&&sn.includes('الثانويه')) out.school=reversePhrase(out.school);
  const en=normalizeArabic(out.edu); if(en.startsWith('الشرقيه')&&en.includes('التعليم')) out.edu=reversePhrase(out.edu);

@@ -84,6 +84,7 @@ function normalizePlan(p){p.id=p.id||('emp_'+Date.now()+Math.random().toString(1
 function plans(){return allPlans().map(normalizePlan).filter(x=>(x.supervisor||'manager')===supervisor)}
 let administrativeEmployeeAccounts=[];
 let cloudPlansByOwner=new Map();
+let canonicalPlansByOwner=new Map();
 function normalizeSupervisor(v){
   v=String(v||'').trim().toLowerCase();
   if(['agent','agency','wakil','vice','deputy','vice_principal','وكيل','وكيلة','الوكيل','الوكيلة'].includes(v))return 'agent';
@@ -143,13 +144,28 @@ async function loadAdministrativeEmployeeAccounts(){
   return administrativeEmployeeAccounts;
 }
 async function loadCloudAdministrativePlans(){
-  cloudPlansByOwner=new Map();
+  cloudPlansByOwner=new Map();canonicalPlansByOwner=new Map();
   if(!window.PlatformStateEngine?.pullSchoolUsers||!isCurrentSupervisorSession())return cloudPlansByOwner;
   try{
-    const r=await window.PlatformStateEngine.pullSchoolUsers('admin_performance',['administrative_employee_plans']);
-    for(const item of (r.items||[])){
+    const [legacyResult,canonicalResult]=await Promise.all([
+      window.PlatformStateEngine.pullSchoolUsers('admin_performance',['administrative_employee_plans']).catch(e=>({items:[],_error:e})),
+      window.PlatformStateEngine.pullSchoolUsers('admin_employee_records').catch(e=>({items:[],_error:e}))
+    ]);
+    if(legacyResult._error)console.warn('تعذر تحميل مرآة خطط الموظفين الإداريين',legacyResult._error);
+    for(const item of (legacyResult.items||[])){
       if(item.deleted_at||item.state_key!=='administrative_employee_plans')continue;
       try{const arr=JSON.parse(item.payload?.value||'[]');if(Array.isArray(arr))cloudPlansByOwner.set(String(item.owner_key||''),arr.map(normalizePlan));}catch(_){ }
+    }
+    if(canonicalResult._error)console.warn('تعذر تحميل السجل المرجعي لخطط الموظفين الإداريين',canonicalResult._error);
+    for(const item of (canonicalResult.items||[])){
+      if(item.deleted_at||!String(item.state_key||'').startsWith('record_v1:admin_plan:'))continue;
+      try{
+        const wrapper=JSON.parse(item.payload?.value||'{}'),plan=normalizePlan(wrapper&&wrapper.data?wrapper.data:wrapper);
+        if(!plan||!Object.keys(plan).length)continue;
+        const owner=String(item.owner_key||plan.userId||plan.user_id||plan.ownerUserId||'');if(!owner)continue;
+        const old=canonicalPlansByOwner.get(owner),oldTs=Date.parse(old?old.updatedAt||old.updated_at||'':0)||0,newTs=Date.parse(plan.updatedAt||plan.updated_at||wrapper?.meta?.updatedAt||item.updated_at||'')||0;
+        if(!old||newTs>=oldTs)canonicalPlansByOwner.set(owner,plan);
+      }catch(_){ }
     }
   }catch(e){console.warn('تعذر تحميل خطط الموظفين الإداريين السحابية',e)}
   return cloudPlansByOwner;
@@ -179,8 +195,9 @@ function combinedEmployees(){
   return administrativeEmployeeAccounts.map(u=>{
     const email=String(u.email||'').toLowerCase();
     const ownerId=String(u.id||''); const cloudArr=cloudPlansByOwner.get(ownerId)||[];
+    const canonicalPlan=canonicalPlansByOwner.get(ownerId)||null;
     const cloudPlan=cloudArr.find(x=>String(x.userId||x.user_id||x.ownerUserId||x.id||'')===ownerId)||cloudArr.find(x=>String(x.contact||x.email||x.id||'').toLowerCase()===email)||cloudArr[0]||null;
-    const plan=cloudPlan||byEmail.get(email)||null,legacyPlanId=plan&&String(plan.id||'').toLowerCase()!==email?String(plan.id||''):'';
+    const plan=cloudPlan||canonicalPlan||byEmail.get(email)||null,legacyPlanId=plan&&String(plan.id||'').toLowerCase()!==email?String(plan.id||''):'';
     return Object.assign({jobTitle:'موظف/ة إداري/ة',year:'-',status:'draft',active:u.status==='active'},plan||{},{id:email||ownerId,userId:ownerId,user_id:ownerId,ownerUserId:ownerId,name:u.name||u.fullName||'',contact:u.email||'',email:u.email||'',schoolId:currentSchoolScope(),school_id:currentSchoolScope(),supervisor:u.adminSupervisor||supervisor,_userId:ownerId,_ownerUserId:ownerId,_accountStatus:u.status||'pending',_hasPlan:!!plan,_legacyPlanId:legacyPlanId,_identityCorrected:!!legacyPlanId||!!(plan&&String(plan.contact||plan.email||'').toLowerCase()!==email)});
   });
 }

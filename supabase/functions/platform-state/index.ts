@@ -10,7 +10,7 @@ const sha256=async(v:string)=>Array.from(new Uint8Array(await crypto.subtle.dige
 const safeKey=(v:unknown,max=120)=>String(v||'').trim().replace(/[^\p{L}\p{N}._:@/\-]+/gu,'_').slice(0,max);
 const managers=new Set(['manager','owner','school_manager','principal','مدير','مديرة']);
 const agents=new Set(['agent','agency','wakil','vice','deputy','وكيل','وكيلة']);
-const schoolAggregateModules=new Set(['teacher_comprehensive','admin_performance','weekly_teacher_work']);
+const schoolAggregateModules=new Set(['teacher_comprehensive','admin_performance','admin_employee_records','weekly_teacher_work']);
 const MAX_ITEMS=250;
 const MAX_TOTAL_CHARS=6_500_000;
 const PRIVATE_PERFORMANCE_MODULES=new Set(['manager','teacher','agent','student_advisor','student_advisor_analysis_tool','health_advisor','activity_leader','kindergarten_teacher','administrative_employee_portal','administrative_employee_library','admin_employee_management','admin_performance']);
@@ -122,11 +122,11 @@ Deno.serve(async(req)=>{
     }
 
     if(action==='pull-school-users'){
-      if(!isManager && !(moduleKey==='admin_performance'&&isAgent) && !(moduleKey==='weekly_teacher_work'&&isAgent)) return json({error:'هذه القراءة تتطلب صلاحية المسؤول المباشر',code:'STATE_SUPERVISOR_REQUIRED',requestId},403);
+      if(!isManager && !(['admin_performance','admin_employee_records'].includes(moduleKey)&&isAgent) && !(moduleKey==='weekly_teacher_work'&&isAgent)) return json({error:'هذه القراءة تتطلب صلاحية المسؤول المباشر',code:'STATE_SUPERVISOR_REQUIRED',requestId},403);
       if(!schoolAggregateModules.has(moduleKey)) return json({error:'هذا المصدر غير متاح للتجميع المدرسي',code:'STATE_AGGREGATE_MODULE_FORBIDDEN',requestId},403);
       const keys=Array.isArray(body.keys)?body.keys.slice(0,50).map((x:unknown)=>safeKey(x,220)).filter(Boolean):[];
       let allowedOwners:string[]|null=null;
-      if(moduleKey==='admin_performance'&&isAdministrativeSupervisor){
+      if(['admin_performance','admin_employee_records'].includes(moduleKey)&&isAdministrativeSupervisor){
         const {data:members,error:memberError}=await sb.from('school_members').select('id,user_id,role_label,status,supervisor_user_id').eq('school_id',s.school_id).in('role',['administrative_employee','admin_employee']).neq('status','deleted');if(memberError)throw memberError;
         const owned:any[]=[];for(const m of members||[])if(await supervisorOwnsMembership(m))owned.push(m);
         allowedOwners=owned.map((m:any)=>String(m.user_id||'')).filter(Boolean);
@@ -146,7 +146,7 @@ Deno.serve(async(req)=>{
           }catch(_){return false;}
         });
       }
-      return json({items:result,scope:'school-users',schoolId:s.school_id,supervisor:moduleKey==='admin_performance'?supervisorKey:undefined});
+      return json({items:result,scope:'school-users',schoolId:s.school_id,supervisor:['admin_performance','admin_employee_records'].includes(moduleKey)?supervisorKey:undefined});
     }
 
 

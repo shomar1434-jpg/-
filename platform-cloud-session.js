@@ -628,7 +628,7 @@
     }
   }
 
-  const SESSION_VERSION='2026.09.13-RL143-role-family-manager-entry-stability';
+  const SESSION_VERSION='2026.09.13-RL145-unified-cloud-session-heartbeat';
 
   window.PlatformCloudSession = {
     VERSION:SESSION_VERSION,
@@ -663,9 +663,46 @@
     }),
   };
 
+  // RL145 — Unified session heartbeat for every independent-school page.
+  // A school tab may remain open for many hours. Previously the visual shell could
+  // stay usable after the 12-hour cloud session expired, so a later protected
+  // section appeared to lose the cloud connection. Keep the verified tab session
+  // warm without changing school/user/role and retry only through the canonical
+  // platform-session renew path.
+  let __heartbeatTimer = null;
+  let __heartbeatInFlight = false;
+  async function heartbeat(reason = 'interval') {
+    if (isSystemAdminContext() || __heartbeatInFlight) return false;
+    const known = Boolean(token() || restoreFromKnownContext());
+    if (!known) return false;
+    __heartbeatInFlight = true;
+    try {
+      await ensure();
+      window.dispatchEvent(new CustomEvent('platform-cloud-session-heartbeat',{detail:{ok:true,reason,schoolId:schoolId(),userId:userId(),role:role()}}));
+      return true;
+    } catch (err) {
+      // Never clear or redirect on a transient heartbeat failure. Individual
+      // protected pages may decide how to present a definitive authorization error.
+      console.warn('[platform-session] heartbeat failed', reason, err?.code || err?.message || err);
+      window.dispatchEvent(new CustomEvent('platform-cloud-session-heartbeat',{detail:{ok:false,reason,code:String(err?.code||''),message:String(err?.message||'')}}));
+      return false;
+    } finally {
+      __heartbeatInFlight = false;
+    }
+  }
+  function startHeartbeat(){
+    if(__heartbeatTimer || isSystemAdminContext()) return;
+    // Five minutes is comfortably inside the 12-hour server TTL and also catches
+    // a session that is within ensure()'s one-minute renewal threshold.
+    __heartbeatTimer=setInterval(()=>heartbeat('interval'),5*60*1000);
+    document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible') heartbeat('visibility');});
+    window.addEventListener('pageshow',()=>heartbeat('pageshow'));
+  }
+
   // Same-tab navigation normally keeps sessionStorage, but restoring here also
   // covers pages opened after a browser/sessionStorage transition.
   restoreFromKnownContext();
+  startHeartbeat();
   const roleContract=routeRequiredRole();
   // Pages with their own verified access gate (manager.html) must not start a
   // second concurrent role check. The explicit gate still calls verifyAccess().

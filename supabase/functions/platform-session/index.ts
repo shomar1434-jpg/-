@@ -400,11 +400,18 @@ Deno.serve(async (request) => {
         }
         if(!mq.error && mq.data && activeStatus(mq.data.status)) resolvedMembership = mq.data;
       } catch(_) {}
-      const memberUid = text(resolvedMembership?.user_id);
-      const canonicalUid = isUuid(memberUid) ? memberUid : authUser.id;
-      if(!isUuid(text(user.id)) || lower(user.email)===normalizedLogin) {
-        user = {...user, id:canonicalUid, email:normalizedLogin, school_id:school.id, role:resolvedMembership?.role || user.role};
-      }
+      // RL141 — MULTI-SCHOOL IDENTITY LOCK:
+      // Supabase Auth is the canonical identity whenever the credential was verified by Auth.
+      // school_members.user_id may be a legacy per-school UUID and MUST NOT replace the Auth UUID.
+      // Authorization remains school-scoped through resolvedMembership + school.id.
+      const canonicalUid = authUser.id;
+      user = {
+        ...user,
+        id: canonicalUid,
+        email: normalizedLogin,
+        school_id: school.id,
+        role: resolvedMembership?.role || user.role,
+      };
     }
 
     // إذا لم يوجد سجل مستخدم مستقل داخل المدرسة المختارة، نتحقق من عضوية نفس الهوية في school_members.
@@ -440,7 +447,16 @@ Deno.serve(async (request) => {
             diagnosticMembershipActive = Boolean(!mq.error && mq.data && activeStatus(mq.data.status));
             if (diagnosticMembershipActive) {
               resolvedMembership = mq.data;
-              user = { ...identityUser, id: mq.data.user_id || identityUser.id, school_id: school.id, role: mq.data.role || identityUser.role };
+              // RL141: keep the verified Auth UUID as the platform-session identity.
+              // A legacy membership UUID is authorization metadata for this school, not a new identity.
+              const canonicalIdentityId = authUser && isUuid(authUser.id) ? authUser.id : (mq.data.user_id || identityUser.id);
+              user = {
+                ...identityUser,
+                id: canonicalIdentityId,
+                email: authUser && normalizedLogin.includes('@') ? normalizedLogin : identityUser.email,
+                school_id: school.id,
+                role: mq.data.role || identityUser.role,
+              };
             }
           } catch (_) {}
         }
@@ -485,6 +501,9 @@ Deno.serve(async (request) => {
       );
     }
 
+    // First prefer a direct membership bound to the canonical session identity.
+    // If this school still carries an old per-school user_id, resolvedMembership (matched
+    // above inside the SAME school by the verified e-mail) is merged below.
     const membershipsQ = await admin
       .from('school_members')
       .select('*')
@@ -546,7 +565,7 @@ Deno.serve(async (request) => {
       return json(
         {
           error: 'تعذر إنشاء جلسة الملفات السحابية',
-          details: sessionInsert.error.message,
+          diagnosticMessage: sessionInsert.error.message,
           code: 'SESSION_INSERT_FAILED',
           details: 'LD501',
           requestId,

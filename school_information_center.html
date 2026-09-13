@@ -26,7 +26,28 @@
   .approvedStagesHeading{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:18px;margin-bottom:8px}
   .approvedStagesHeading h3{margin:0;font-size:15px}.approvedStagesHeading .pill{white-space:nowrap}
 </style>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script id="school-info-first-paint-watchdog">
+(function(){
+  window.__SCHOOL_INFO_GATE_STARTED_AT__=Date.now();
+  window.__SCHOOL_INFO_GATE_WATCHDOG__=setTimeout(function(){
+    var gate=document.getElementById('platform-protected-page-gate');
+    if(gate){
+      gate.remove();
+      document.documentElement.style.removeProperty('visibility');
+      console.error('[school-information-center] access gate timed out before first paint');
+      var show=function(){
+        if(document.getElementById('school-info-gate-timeout'))return;
+        var box=document.createElement('div');box.id='school-info-gate-timeout';box.dir='rtl';
+        box.style.cssText='position:fixed;inset:0;z-index:2147483647;background:#f8fafc;display:flex;align-items:center;justify-content:center;padding:24px;font-family:Tahoma,Arial,sans-serif';
+        box.innerHTML='<div style="max-width:600px;width:100%;background:#fff;border:1px solid #e2e8f0;border-radius:24px;padding:28px;text-align:center;box-shadow:0 20px 60px rgba(15,23,42,.14)"><h2 style="margin:0 0 10px;color:#0f172a">تعذر إكمال التحقق من الجلسة</h2><p style="color:#64748b;line-height:1.9">لم يتم تسجيل خروجك. تأخر تحميل خدمة التحقق، ويمكن إعادة المحاولة دون فقد جلسة المدرسة.</p><button onclick="location.reload()" style="border:0;border-radius:14px;padding:11px 18px;background:#0f766e;color:#fff;font-weight:800;cursor:pointer">إعادة المحاولة</button> <button onclick="location.href=&quot;manager.html&quot;" style="border:1px solid #cbd5e1;border-radius:14px;padding:11px 18px;background:#fff;color:#334155;font-weight:800;cursor:pointer">العودة للمدير</button></div>';
+        document.body.appendChild(box);
+      };
+      if(document.body)show();else document.addEventListener('DOMContentLoaded',show,{once:true});
+    }
+  },8000);
+})();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
 <script>window.__PLATFORM_EXPLICIT_ACCESS_GATE__ = true;</script>
 <script src="platform-cloud-session.js?v=20260913-global-session-role-family-v2"></script>
 <script id="platform-manager-access-gate-final">
@@ -35,7 +56,7 @@
   const SUPABASE_KEY=localStorage.getItem('smartSchoolSupabaseAnonKey')||'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaWpoZ3ZidHJ2bW1sY3NzZ3hodCIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzc4Njk2ODM1LCJleHAiOjIwOTQyNzI4MzV9.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
   const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
   function isSystemAdminContext(){try{const q=new URLSearchParams(location.search||'');return q.get('systemAdmin')==='1'||q.get('systemAdminReturn')==='1'||sessionStorage.getItem('system_admin_context')==='1'||sessionStorage.getItem('system_admin_verified')==='true';}catch(_){return false}}
-  function release(){const gate=document.getElementById('platform-protected-page-gate');if(gate)gate.remove();document.documentElement.style.removeProperty('visibility')}
+  function release(){if(window.__SCHOOL_INFO_GATE_WATCHDOG__)clearTimeout(window.__SCHOOL_INFO_GATE_WATCHDOG__);const gate=document.getElementById('platform-protected-page-gate');if(gate)gate.remove();document.documentElement.style.removeProperty('visibility')}
   function isDefinitiveSchoolDenial(err){
     const code=String(err&&err.code||'').trim().toUpperCase();
     return ['VERIFIED_MEMBERSHIP_MISSING','VERIFIED_ROLE_DENIED','MEMBERSHIP_NOT_ALLOWED','MEMBERSHIP_INACTIVE','LOGIN_ROLE_NOT_ALLOWED','SESSION_RENEW_ROLE_MEMBERSHIP_DENIED','USER_NOT_RESOLVED','SCHOOL_NOT_FOUND'].includes(code);
@@ -73,12 +94,13 @@
     sessionStorage.setItem('system_admin_context','1');sessionStorage.setItem('system_admin_verified','true');document.documentElement.setAttribute('data-system-admin-context','1');
     return ctx;
   }
+  function withTimeout(promise,ms,code){return Promise.race([Promise.resolve(promise),new Promise((_,reject)=>setTimeout(()=>{const e=new Error(code||'SESSION_VERIFY_TIMEOUT');e.code=code||'SESSION_VERIFY_TIMEOUT';reject(e)},ms))])}
   async function verifyManagerWithRecovery(){
     if(!window.PlatformCloudSession||typeof PlatformCloudSession.verifyAccess!=='function'){const e=new Error('SECURITY_GATE_MISSING');e.code='SECURITY_GATE_MISSING';throw e}
-    if(typeof PlatformCloudSession.ensure==='function')await PlatformCloudSession.ensure();
+    if(typeof PlatformCloudSession.ensure==='function')await withTimeout(PlatformCloudSession.ensure(),6000,'SESSION_ENSURE_TIMEOUT');
     let last=null;
     for(let i=0;i<3;i++){
-      try{return await PlatformCloudSession.verifyAccess(['manager'])}
+      try{return await withTimeout(PlatformCloudSession.verifyAccess(['manager']),6000,'SESSION_VERIFY_TIMEOUT')}
       catch(e){last=e;if(isDefinitiveSchoolDenial(e))throw e;if(i<2)await sleep(220*(i+1))}
     }
     throw last||new Error('SCHOOL_INFO_MANAGER_VERIFY_FAILED');

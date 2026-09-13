@@ -428,6 +428,50 @@
   }
 
 
+  function recentlyVerified(requiredRoles = [], maxAgeMs = 5 * 60 * 1000) {
+    try {
+      const raw=parseJson(sessionStorage.getItem(VERIFIED_CONTEXT_KEY))||{};
+      const sid=String(schoolId()||'').trim(), uid=String(userId()||'').trim(), rr=canonicalRole(baseRole()||'');
+      const allowed=(requiredRoles||[]).map(canonicalRole).filter(Boolean);
+      if(!raw || !raw.verifiedAt || Date.now()-Number(raw.verifiedAt)>maxAgeMs) return null;
+      if(String(raw.schoolId||'')!==sid || String(raw.userId||'')!==uid || canonicalRole(raw.role||'')!==rr) return null;
+      if(allowed.length && !allowed.includes(rr)) return null;
+      return {schoolId:sid,userId:uid,role:rr,verified:true,verifiedAt:Number(raw.verifiedAt)};
+    } catch(_) { return null; }
+  }
+
+  function markVerifiedContext(ctx) {
+    try {
+      sessionStorage.setItem(VERIFIED_CONTEXT_KEY,JSON.stringify({
+        schoolId:String((ctx&&ctx.schoolId)||schoolId()||'').trim(),
+        userId:String((ctx&&ctx.userId)||userId()||'').trim(),
+        role:canonicalRole((ctx&&ctx.role)||baseRole()||''),
+        verifiedAt:Date.now()
+      }));
+    } catch(_) {}
+  }
+
+  async function ensureLive(requiredRoles = []) {
+    if (isSystemAdminContext()) {
+      const error = new Error('جلسة مدير النظام منفصلة عن جلسات المدارس المستقلة.');
+      error.code = 'SYSTEM_ADMIN_SCHOOL_SESSION_BLOCKED';
+      throw error;
+    }
+    const recent=recentlyVerified(requiredRoles);
+    if(recent && token()) return recent;
+    await ensure();
+    try {
+      return await verifyAccess(requiredRoles);
+    } catch (e) {
+      const code=String(e&&e.code||'').toUpperCase();
+      const recoverable=['SESSION_INVALID','SESSION_EXPIRED','SESSION_MISSING','SESSION_RENEW_NOT_FOUND','HTTP_401'].includes(code);
+      if(!recoverable) throw e;
+      await recover();
+      return await verifyAccess(requiredRoles);
+    }
+  }
+
+
   async function verifyAccess(requiredRoles = []) {
     if (isSystemAdminContext()) {
       const error = new Error('التحقق من عضوية المدرسة غير متاح داخل سياق مدير النظام.');
@@ -572,7 +616,8 @@
       }
       const c=readDelegatedRoleContext();
       if(c && c.taskId && String(c.requiredRole||'').toLowerCase()===String(required||'').toLowerCase())
-        return {taskId:String(c.taskId),requiredRole:String(required||'').trim().toLowerCase(),source:'tab'};
+        markVerifiedContext({schoolId:sid,userId:uid,role:rr});
+    return {taskId:String(c.taskId),requiredRole:String(required||'').trim().toLowerCase(),source:'tab'};
     }catch(_){}
     return null;
   }
@@ -676,7 +721,7 @@
     }
   }
 
-  const SESSION_VERSION='2026.09.14-RL148-legacy-session-bridge';
+  const SESSION_VERSION='2026.09.14-RL149-nonblocking-verified-session';
 
   window.PlatformCloudSession = {
     VERSION:SESSION_VERSION,
@@ -696,6 +741,8 @@
     delegationHeaders,
     valid,
     ensure,
+    ensureLive,
+    recentlyVerified,
     recover,
     restoreFromKnownContext,
     verifyAccess,

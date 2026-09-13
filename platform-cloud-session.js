@@ -25,6 +25,8 @@
     'activeSchoolId','active_school_id','current_school_id','school_id','smart_school_id',
     'current_school_name','school_name','active_school_name'
   ]);
+  let __rawLocalGet = null;
+
   const LEGACY_TO_TAB={
     platform_file_session_token:TAB_TOKEN_KEY,
     platform_file_session_expires_at:TAB_EXPIRES_KEY,
@@ -44,6 +46,7 @@
     if(window.__PLATFORM_TAB_IDENTITY_FIREWALL_RL33__)return;
     window.__PLATFORM_TAB_IDENTITY_FIREWALL_RL33__=true;
     const proto=Storage.prototype, originalGet=proto.getItem, originalSet=proto.setItem, originalRemove=proto.removeItem;
+    __rawLocalGet=(key)=>{try{return originalGet.call(window.localStorage,String(key))}catch(_){return null}};
     const isLocal=(store)=>{try{return store===window.localStorage}catch(_){return false}};
     const tabValue=(key)=>{
       const mapped=LEGACY_TO_TAB[key];
@@ -132,6 +135,44 @@
     } catch (_) { return false; }
   }
 
+  // RL148 — Safe legacy-session bridge for browsers upgraded from pre-RL33 builds.
+  // Older builds persisted the school cloud token in localStorage. RL33 correctly
+  // isolated identity per tab, but deliberately stopped reading those shared keys.
+  // A school that had not logged in again after that upgrade could therefore keep
+  // its visual manager shell while protected child pages saw SESSION_MISSING.
+  // Migrate the legacy token into this tab ONLY when school + user (+ role when known)
+  // exactly match the current tab identity. Nothing is deleted from localStorage.
+  const LEGACY_BRIDGE_MARK='platform_legacy_cloud_session_bridge_rl148';
+  function migrateLegacyCloudSessionToTab(){
+    if(isSystemAdminContext())return '';
+    const existing=String(sessionStorage.getItem(TAB_TOKEN_KEY)||'').trim();
+    if(existing)return existing;
+    if(typeof __rawLocalGet!=='function')return '';
+    try{
+      const legacyToken=String(__rawLocalGet(TOKEN_KEY)||'').trim();
+      if(!legacyToken)return '';
+      const legacySchool=String(__rawLocalGet(SCHOOL_KEY)||'').trim();
+      const legacyUser=String(__rawLocalGet(USER_KEY)||'').trim();
+      const legacyRole=String(__rawLocalGet(ROLE_KEY)||'').trim();
+      const legacyExp=String(__rawLocalGet(EXPIRES_KEY)||'').trim();
+      const sess=parseJson(sessionStorage.getItem('smart_school_current_session'))||{};
+      const tabSchool=String(sessionStorage.getItem(TAB_SCHOOL_KEY)||sessionStorage.getItem('smart_school_tab_school_v1')||sess.cloudSchoolId||sess.schoolId||sess.school_id||'').trim();
+      const tabUser=String(sessionStorage.getItem(TAB_USER_KEY)||sessionStorage.getItem('currentUserId')||sess.cloudUserId||sess.userId||sess.id||'').trim();
+      const tabRole=String(sessionStorage.getItem(TAB_ROLE_KEY)||sess.cloudRole||sess.role||'').trim();
+      // Never import a shared legacy token into an unbound tab.
+      if(!tabSchool||!tabUser||!legacySchool||!legacyUser)return '';
+      if(tabSchool!==legacySchool||tabUser!==legacyUser)return '';
+      if(tabRole&&legacyRole&&canonicalRole(tabRole)!==canonicalRole(legacyRole))return '';
+      sessionStorage.setItem(TAB_TOKEN_KEY,legacyToken);
+      sessionStorage.setItem(TAB_EXPIRES_KEY,legacyExp);
+      sessionStorage.setItem(TAB_USER_KEY,tabUser);
+      sessionStorage.setItem(TAB_SCHOOL_KEY,tabSchool);
+      sessionStorage.setItem(TAB_ROLE_KEY,tabRole||legacyRole);
+      sessionStorage.setItem(LEGACY_BRIDGE_MARK,JSON.stringify({schoolId:tabSchool,userId:tabUser,at:Date.now()}));
+      return legacyToken;
+    }catch(_){return ''}
+  }
+
   function sessionContexts() {
     return [parseJson(sessionStorage.getItem('smart_school_current_session')),parseJson(sessionStorage.getItem('administrative_employee_tab_session_v1'))].filter(Boolean);
   }
@@ -146,6 +187,8 @@
     const activeUser = directActiveUserId();
     const tabToken=String(sessionStorage.getItem(TAB_TOKEN_KEY)||'').trim();
     if(tabToken)return tabToken;
+    const bridged=migrateLegacyCloudSessionToTab();
+    if(bridged)return bridged;
     for (const ctx of sessionContexts()) {
       const candidate = contextToken(ctx);
       if (!candidate) continue;
@@ -633,7 +676,7 @@
     }
   }
 
-  const SESSION_VERSION='2026.09.14-RL147-fast-first-paint';
+  const SESSION_VERSION='2026.09.14-RL148-legacy-session-bridge';
 
   window.PlatformCloudSession = {
     VERSION:SESSION_VERSION,

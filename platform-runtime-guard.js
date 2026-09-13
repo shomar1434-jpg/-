@@ -1,8 +1,8 @@
 (function(){
   'use strict';
-  // RL147 — Fast first-paint, non-destructive cache/version guard.
+  // RL148 — Fast first-paint + safe legacy session bridge, non-destructive cache/version guard.
   // Never clears browser storage and never touches cloud records/files.
-  const EMBEDDED_BUILD='2026.09.14-RL147-fast-first-paint';
+  const EMBEDDED_BUILD='2026.09.14-RL148-legacy-session-bridge';
   const MANIFEST_URL='platform-build.json';
   const BUILD_SEEN_KEY='platform_runtime_build_seen_v1';
   const RELOAD_ATTEMPT_KEY='platform_runtime_refresh_attempt_v1';

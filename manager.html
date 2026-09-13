@@ -2,6 +2,11 @@
 
 <html dir="rtl" lang="ar">
 <head>
+<meta name="platform-runtime-cache-policy" content="versioned-non-destructive">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+
 <style id="platform-protected-page-gate">html{visibility:hidden!important}</style>
 <style id="platform-first-paint-guard">#elsPicker{display:none!important;visibility:hidden!important}html[data-system-admin-context="1"] #activeSchoolLabel{display:none!important;visibility:hidden!important}</style>
 <script src="system-admin-context.js"></script>
@@ -2164,8 +2169,10 @@ body{overflow-x:hidden}
         }
 
         function deactivateSystem() {
-            if(confirm("تحذير: سيتم إلغاء تنشيط النظام ومسح كافة البيانات والإعدادات نهائياً. هل أنت متأكد؟")) {
-                localStorage.clear();
+            if(confirm("سيتم إلغاء تنشيط هذه الواجهة مع الاحتفاظ بجميع البيانات والسجلات والإعدادات السابقة. هل تريد المتابعة؟")) {
+                // RL146: non-destructive deactivation. Never clear the browser storage wholesale.
+                localStorage.removeItem('school_active');
+                try { if (window.PlatformCloudSession && PlatformCloudSession.clear) PlatformCloudSession.clear(); } catch (_) {}
                 window.location.reload();
             }
         }
@@ -6096,7 +6103,8 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
   // session engine from starting a second concurrent route gate on this page.
   window.__PLATFORM_EXPLICIT_ACCESS_GATE__ = true;
 </script>
-<script src="platform-cloud-session.js?v=20260913-RL145-unified-cloud-session-heartbeat"></script>
+<script src="platform-runtime-guard.js?v=20260914-RL146-safe-runtime-cache"></script>
+<script src="platform-cloud-session.js?v=20260914-RL146-safe-runtime-cache"></script>
 <script id="platform-manager-access-gate-clean-v6-bisha-stability">
 (function(){
   function requestedSystemAdminContext(){

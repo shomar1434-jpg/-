@@ -628,7 +628,7 @@
     }
   }
 
-  const SESSION_VERSION='2026.09.13-RL145-unified-cloud-session-heartbeat';
+  const SESSION_VERSION='2026.09.14-RL146-safe-runtime-cache';
 
   window.PlatformCloudSession = {
     VERSION:SESSION_VERSION,

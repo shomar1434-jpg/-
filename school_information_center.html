@@ -27,13 +27,41 @@
   .approvedStagesHeading h3{margin:0;font-size:15px}.approvedStagesHeading .pill{white-space:nowrap}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="platform-cloud-session.js?v=20260905-RL33-complete-tab-role-isolation"></script>
+<script>window.__PLATFORM_EXPLICIT_ACCESS_GATE__ = true;</script>
+<script src="platform-cloud-session.js?v=20260913-global-session-role-family-v2"></script>
 <script id="platform-manager-access-gate-final">
 (function(){
   const SUPABASE_URL=(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'');
-  const SUPABASE_KEY=localStorage.getItem('smartSchoolSupabaseAnonKey')||'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
+  const SUPABASE_KEY=localStorage.getItem('smartSchoolSupabaseAnonKey')||'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaWpoZ3ZidHJ2bW1sY3NzZ3hodCIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzc4Njk2ODM1LCJleHAiOjIwOTQyNzI4MzV9.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
+  const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
   function isSystemAdminContext(){try{const q=new URLSearchParams(location.search||'');return q.get('systemAdmin')==='1'||q.get('systemAdminReturn')==='1'||sessionStorage.getItem('system_admin_context')==='1'||sessionStorage.getItem('system_admin_verified')==='true';}catch(_){return false}}
   function release(){const gate=document.getElementById('platform-protected-page-gate');if(gate)gate.remove();document.documentElement.style.removeProperty('visibility')}
+  function isDefinitiveSchoolDenial(err){
+    const code=String(err&&err.code||'').trim().toUpperCase();
+    return ['VERIFIED_MEMBERSHIP_MISSING','VERIFIED_ROLE_DENIED','MEMBERSHIP_NOT_ALLOWED','MEMBERSHIP_INACTIVE','LOGIN_ROLE_NOT_ALLOWED','SESSION_RENEW_ROLE_MEMBERSHIP_DENIED','USER_NOT_RESOLVED','SCHOOL_NOT_FOUND'].includes(code);
+  }
+  function loginTarget(reason){
+    try{
+      const q=new URLSearchParams(); q.set('reason',reason||'school_access_denied');
+      const sid=String((window.PlatformCloudSession&&PlatformCloudSession.schoolId&&PlatformCloudSession.schoolId())||sessionStorage.getItem('platform_tab_session_school_v1')||sessionStorage.getItem('smart_school_tab_school_v1')||new URLSearchParams(location.search||'').get('schoolId')||new URLSearchParams(location.search||'').get('school_id')||'').trim();
+      if(sid){q.set('schoolId',sid);q.set('school_id',sid)}
+      q.set('schoolMode','independent');q.set('scope','school');
+      return 'school-login.html?'+q.toString();
+    }catch(_){return 'school-login.html?reason='+(reason||'school_access_denied')}
+  }
+  function showRetryGate(err){
+    document.documentElement.style.removeProperty('visibility');
+    let box=document.getElementById('school-info-session-retry');
+    if(!box){
+      box=document.createElement('div'); box.id='school-info-session-retry'; box.dir='rtl';
+      box.style.cssText='position:fixed;inset:0;z-index:2147483647;background:#f8fafc;display:flex;align-items:center;justify-content:center;padding:24px;font-family:Tahoma,Arial,sans-serif';
+      box.innerHTML='<div style="max-width:560px;width:100%;background:white;border:1px solid #e2e8f0;border-radius:24px;padding:28px;box-shadow:0 20px 60px rgba(15,23,42,.14);text-align:center"><h2 style="margin:0 0 10px;color:#0f172a">تعذر التحقق المؤقت من الجلسة</h2><p style="color:#64748b;line-height:1.9">لم يتم تسجيل خروجك. أعد المحاولة لاستعادة جلسة المدرسة نفسها.</p><div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><button id="school-info-retry-btn" style="border:0;border-radius:14px;padding:11px 18px;background:#0f766e;color:white;font-weight:800;cursor:pointer">إعادة المحاولة</button><button id="school-info-login-btn" style="border:1px solid #cbd5e1;border-radius:14px;padding:11px 18px;background:white;color:#334155;font-weight:800;cursor:pointer">صفحة الدخول</button></div><small id="school-info-error-code" style="display:block;margin-top:14px;color:#94a3b8"></small></div>';
+      document.body.appendChild(box);
+    }
+    const c=box.querySelector('#school-info-error-code'); if(c)c.textContent=String(err&&err.code||'TEMPORARY_SESSION_VERIFICATION');
+    const rb=box.querySelector('#school-info-retry-btn'); if(rb)rb.onclick=()=>location.reload();
+    const lb=box.querySelector('#school-info-login-btn'); if(lb)lb.onclick=()=>location.assign(loginTarget('manual_login'));
+  }
   async function verifySystemAdmin(){
     if(!window.supabase||typeof window.supabase.createClient!=='function')throw new Error('SYSTEM_ADMIN_AUTH_LIBRARY_MISSING');
     const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
@@ -45,16 +73,25 @@
     sessionStorage.setItem('system_admin_context','1');sessionStorage.setItem('system_admin_verified','true');document.documentElement.setAttribute('data-system-admin-context','1');
     return ctx;
   }
+  async function verifyManagerWithRecovery(){
+    if(!window.PlatformCloudSession||typeof PlatformCloudSession.verifyAccess!=='function'){const e=new Error('SECURITY_GATE_MISSING');e.code='SECURITY_GATE_MISSING';throw e}
+    if(typeof PlatformCloudSession.ensure==='function')await PlatformCloudSession.ensure();
+    let last=null;
+    for(let i=0;i<3;i++){
+      try{return await PlatformCloudSession.verifyAccess(['manager'])}
+      catch(e){last=e;if(isDefinitiveSchoolDenial(e))throw e;if(i<2)await sleep(220*(i+1))}
+    }
+    throw last||new Error('SCHOOL_INFO_MANAGER_VERIFY_FAILED');
+  }
   window.__PLATFORM_ACCESS_READY__=(async function(){
     const adminRequested=isSystemAdminContext();
     try{
       if(adminRequested){const ctx=await verifySystemAdmin();release();return ctx;}
-      if(!window.PlatformCloudSession||typeof PlatformCloudSession.verifyAccess!=='function')throw new Error('SECURITY_GATE_MISSING');
-      if(typeof PlatformCloudSession.ensure==='function')await PlatformCloudSession.ensure();
-      const ctx=await PlatformCloudSession.verifyAccess(['manager']);window.__VERIFIED_SCHOOL_CONTEXT__=ctx;release();return ctx;
+      const ctx=await verifyManagerWithRecovery();window.__VERIFIED_SCHOOL_CONTEXT__=ctx;release();return ctx;
     }catch(e){
       if(adminRequested){location.replace('index.html?systemAdminReturn=1&reason=system_admin_access_denied');}
-      else{location.replace('school-login.html?reason=school_access_denied');}
+      else if(isDefinitiveSchoolDenial(e)){location.replace(loginTarget('school_access_denied'));}
+      else{console.warn('[school-information-center-access] transient verification failure; session preserved',e);showRetryGate(e);}
       throw e;
     }
   })();

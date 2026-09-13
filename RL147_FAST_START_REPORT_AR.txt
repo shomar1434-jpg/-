@@ -1,0 +1,27 @@
+تصحيح RL147 — تسريع دخول المدارس المستقلة وظهور الواجهات
+
+الهدف:
+- إرجاع فحص التحديث/الكاش إلى الخلفية وعدم حجبه لأول ظهور للواجهة.
+- منع Heartbeat من منافسة تحقق الدخول الأول.
+- منع تكرار ensure() المتزامن داخل الصفحة نفسها.
+- إزالة الصور العملاقة المضمنة Base64 من HTML وتحويلها إلى أصول خارجية قابلة للكاش مع الحفاظ على الصورة نفسها.
+- إزالة حمولة CSS تالفة/زائدة كانت ملحقة بخلفية teacher.html و health_advisor.html.
+
+حماية البيانات:
+- لا localStorage.clear ولا sessionStorage.clear.
+- لا تعديل SQL أو قاعدة بيانات أو Edge Functions أو Storage bucket.
+- لا تغيير school_id/user_id أو مسارات الأرشيف أو الملفات أو الشواهد.
+- لا حذف لتقارير أو تنفيذات أو أعمال مدارس.
+
+تحسينات الأداء الجوهرية:
+- manager.html: 4,640,299 -> 576,366 bytes (خفض 87.6%).
+- teacher.html: 10,803,838 -> 421,269 bytes (خفض 96.1%).
+- health_advisor.html: 10,843,457 -> 460,888 bytes (خفض 95.7%).
+- student_advisor_analysis_tool.html: 2,688,103 -> 389,455 bytes (خفض 85.5%).
+
+ملاحظة النشر:
+يجب رفع مجلد assets/runtime مع ملفات HTML وملفي platform-runtime-guard.js وplatform-cloud-session.js وplatform-build.json.
+
+تحسين إضافي:
+- أزيل التحميل المكرر لـ openai-engine.js و top-ai-center.js من 7 واجهات رئيسية؛ بقيت النسخة المؤجلة canonical فقط لمنع تكرار التهيئة والمستمعات.
+- أزيلت نسخة Base64 داخلية غير مستخدمة بحجم يقارب 150KB من agent.html؛ مسار wakil-records.html الفعلي لم يتغير.

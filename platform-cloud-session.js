@@ -359,24 +359,29 @@
     finally { recoveryPromise = null; }
   }
 
+  let ensurePromise = null;
   async function ensure() {
-    if (isSystemAdminContext()) {
-      const error = new Error('جلسة مدير النظام منفصلة عن جلسات المدارس المستقلة.');
-      error.code = 'SYSTEM_ADMIN_SCHOOL_SESSION_BLOCKED';
-      throw error;
-    }
-    let currentToken = '';
-    if (valid()) currentToken = token();
-    else {
-      restoreFromKnownContext();
+    if (ensurePromise) return ensurePromise;
+    ensurePromise = (async () => {
+      if (isSystemAdminContext()) {
+        const error = new Error('جلسة مدير النظام منفصلة عن جلسات المدارس المستقلة.');
+        error.code = 'SYSTEM_ADMIN_SCHOOL_SESSION_BLOCKED';
+        throw error;
+      }
+      let currentToken = '';
       if (valid()) currentToken = token();
-      else currentToken = await recover();
-    }
-    // Full-role delegation is revalidated on every nested page that calls ensure().
-    // This makes legacy internal modules see the delegated role only after the
-    // server confirms the task, user and school again; stale/revoked contexts are cleared.
-    await refreshDelegatedRoleContext().catch(()=>null);
-    return currentToken || token();
+      else {
+        restoreFromKnownContext();
+        if (valid()) currentToken = token();
+        else currentToken = await recover();
+      }
+      // Delegated access is still revalidated server-side. Single-flight only prevents
+      // duplicate startup calls in the same page from repeating the same work concurrently.
+      await refreshDelegatedRoleContext().catch(()=>null);
+      return currentToken || token();
+    })();
+    try { return await ensurePromise; }
+    finally { ensurePromise = null; }
   }
 
 
@@ -628,7 +633,7 @@
     }
   }
 
-  const SESSION_VERSION='2026.09.14-RL146-safe-runtime-cache';
+  const SESSION_VERSION='2026.09.14-RL147-fast-first-paint';
 
   window.PlatformCloudSession = {
     VERSION:SESSION_VERSION,
@@ -692,11 +697,17 @@
   }
   function startHeartbeat(){
     if(__heartbeatTimer || isSystemAdminContext()) return;
-    // Five minutes is comfortably inside the 12-hour server TTL and also catches
-    // a session that is within ensure()'s one-minute renewal threshold.
+    // Heartbeat must never compete with the initial page access check. The first
+    // automatic heartbeat is delayed; returning to a tab only checks after it has
+    // actually spent time in the background.
+    let hiddenAt=0;
     __heartbeatTimer=setInterval(()=>heartbeat('interval'),5*60*1000);
-    document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible') heartbeat('visibility');});
-    window.addEventListener('pageshow',()=>heartbeat('pageshow'));
+    document.addEventListener('visibilitychange',()=>{
+      if(document.visibilityState==='hidden'){hiddenAt=Date.now();return;}
+      if(document.visibilityState==='visible'&&hiddenAt&&Date.now()-hiddenAt>60*1000) heartbeat('visibility');
+      hiddenAt=0;
+    });
+    window.addEventListener('pageshow',(event)=>{if(event && event.persisted) setTimeout(()=>heartbeat('bfcache'),250);});
   }
 
   // Same-tab navigation normally keeps sessionStorage, but restoring here also

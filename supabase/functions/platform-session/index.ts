@@ -27,28 +27,23 @@ const sha256 = async (value: string) =>
 
 const text = (value: unknown) => String(value ?? '').trim();
 const lower = (value: unknown) => text(value).toLowerCase();
-
-// Compatibility for historical role labels used by independent schools.
-// This normalizes only role labels; school_id and user_id checks remain strict.
 const canonicalRole = (value: unknown) => {
-  const r = lower(value);
+  const role = lower(value);
   const groups: Record<string, string[]> = {
-    manager: ['manager','principal','school_manager','leadership','admin','owner','مدير','مديرة','مدير المدرسة','مديرة المدرسة'],
+    manager: ['manager','principal','school_manager','school-manager','leadership','مدير','مديرة','مدير المدرسة','مديرة المدرسة'],
     agent: ['agent','deputy','vice','wakil','agency','وكيل','وكيلة'],
     teacher: ['teacher','performance','معلم','معلمة'],
-    student_advisor: ['student_advisor','advisor','counselor','مرشد','موجه'],
-    health_advisor: ['health_advisor','health-advisor','موجه صحي','الموجه الصحي'],
+    student_advisor: ['student_advisor','student-advisor','advisor','counselor','مرشد','مرشدة','موجه','موجهة'],
+    health_advisor: ['health_advisor','health-advisor','موجه صحي','موجهة صحية','الموجه الصحي'],
     activity_leader: ['activity_leader','activity-leader','activity','رائد النشاط','رائدة النشاط'],
     kindergarten_teacher: ['kindergarten_teacher','kindergarten-teacher','معلمة رياض الأطفال'],
     administrative_employee: ['administrative_employee','admin_employee','employee_admin','موظف إداري','موظفة إدارية'],
   };
-  for (const [canonical, list] of Object.entries(groups)) {
-    if (r === canonical || list.includes(r)) return canonical;
+  for (const [canonical, aliases] of Object.entries(groups)) {
+    if (role === canonical || aliases.includes(role)) return canonical;
   }
-  return r;
+  return role;
 };
-const sameRoleFamily = (a: unknown, b: unknown) => canonicalRole(a) === canonicalRole(b);
-
 const isUuid = (value: unknown) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     text(value),
@@ -125,38 +120,66 @@ const activeSession = async (admin: any, rawToken: string) => {
 const membershipsForIdentity = async (admin: any, session: any) => {
   const uq = await admin.from('users').select('*').eq('id', session.user_id).limit(1).maybeSingle();
   const identity = uq.data || {};
-  const email = lower(identity.email || identity.microsoft_email || '');
+  const email = lower(identity.email || identity.microsoft_email || session.email || '');
   const rows: any[] = [];
-  const add = (a:any[]) => (a||[]).forEach(x=>{ if(x && activeStatus(x.status)) rows.push(x); });
-  try { const q=await admin.from('school_members').select('*').eq('user_id',session.user_id); if(!q.error)add(q.data); } catch(_){}
+  const add = (items:any[], source:'user_id'|'email') => (items||[]).forEach((x:any)=>{
+    if(!x || !activeStatus(x.status)) return;
+    const row={...x,__identityMatch:source};
+    // An e-mail match is accepted only when the membership itself carries the
+    // exact verified identity e-mail. This repairs legacy memberships whose
+    // user_id points to an older account row without weakening school isolation.
+    if(source==='email' && email && lower(x.email||x.microsoft_email||'')!==email) return;
+    rows.push(row);
+  });
+  try { const q=await admin.from('school_members').select('*').eq('user_id',session.user_id); if(!q.error)add(q.data,'user_id'); } catch(_){}
   if(email){
-    try { const q=await admin.from('school_members').select('*').eq('email',email); if(!q.error)add(q.data); } catch(_){}
-    try { const q=await admin.from('school_members').select('*').eq('microsoft_email',email); if(!q.error)add(q.data); } catch(_){}
+    try { const q=await admin.from('school_members').select('*').eq('email',email); if(!q.error)add(q.data,'email'); } catch(_){}
+    try { const q=await admin.from('school_members').select('*').eq('microsoft_email',email); if(!q.error)add(q.data,'email'); } catch(_){}
   }
-  const byKey = new Map<string,any>(); rows.forEach(r=>byKey.set(`${r.school_id}|${lower(r.role)}`,r));
+  const byKey = new Map<string,any>();
+  rows.forEach((r:any)=>{
+    const k=`${r.school_id}|${canonicalRole(r.role)}`;
+    const prev=byKey.get(k);
+    // Prefer direct user_id membership over legacy e-mail binding when both exist.
+    if(!prev || (prev.__identityMatch!=='user_id' && r.__identityMatch==='user_id')) byKey.set(k,r);
+  });
   if(email){
-    try { const q=await admin.from('users').select('*').eq('email',email).limit(1000); if(!q.error)(q.data||[]).forEach((u:any)=>{if(activeStatus(u.status)){const k=`${u.school_id}|${lower(u.role)}`;if(!byKey.has(k))byKey.set(k,{id:`user:${u.id}`,school_id:u.school_id,user_id:u.id,email,role:u.role,status:u.status,__userRow:u});}}); } catch(_){}
+    try {
+      const q=await admin.from('users').select('*').eq('email',email).limit(1000);
+      if(!q.error)(q.data||[]).forEach((u:any)=>{
+        if(!activeStatus(u.status)||!u.school_id)return;
+        const k=`${u.school_id}|${canonicalRole(u.role)}`;
+        if(!byKey.has(k))byKey.set(k,{id:`user:${u.id}`,school_id:u.school_id,user_id:session.user_id,email,role:u.role,status:u.status,__userRow:u,__identityMatch:'email'});
+      });
+    } catch(_){}
   }
-  // توافق المجمعات التعليمية: المدارس التي يحمل سجلها نفس بريد المدير تعد عضويات مدير،
-  // حتى لو كانت مدرسة قديمة أُنشئت قبل تفعيل school_members.
+  // Legacy independent schools may predate school_members. A school whose manager
+  // e-mail equals the verified identity remains an authoritative manager binding.
   if(email){
-    const managerCols=['manager_email'];
-    for(const col of managerCols){
-      try{
-        const q=await admin.from('schools').select('*').eq(col,email).limit(1000);
-        if(!q.error)(q.data||[]).forEach((school:any)=>{
-          if(!school?.id||!activeStatus(school.status))return;
-          const k=`${school.id}|manager`;
-          if(!byKey.has(k))byKey.set(k,{id:`manager:${school.id}`,school_id:school.id,user_id:session.user_id,email,role:'manager',status:'active',is_primary_manager:true,__schoolRow:school});
-        });
-      }catch(_){}
-    }
+    try{
+      const q=await admin.from('schools').select('*').eq('manager_email',email).limit(1000);
+      if(!q.error)(q.data||[]).forEach((school:any)=>{
+        if(!school?.id||!activeStatus(school.status))return;
+        const k=`${school.id}|manager`;
+        if(!byKey.has(k))byKey.set(k,{id:`manager:${school.id}`,school_id:school.id,user_id:session.user_id,email,role:'manager',status:'active',is_primary_manager:true,__schoolRow:school,__identityMatch:'email'});
+      });
+    }catch(_){}
   }
   const memberships=[...byKey.values()].filter((r:any)=>r.school_id);
   const ids=[...new Set(memberships.map((r:any)=>r.school_id))];
   const schools=new Map<string,any>();
   if(ids.length){const sq=await admin.from('schools').select('*').in('id',ids);if(!sq.error)(sq.data||[]).forEach((x:any)=>schools.set(String(x.id),x));}
-  return memberships.map((m:any)=>{const school=schools.get(String(m.school_id))||{};return {membershipId:String(m.id||''),schoolId:String(m.school_id||''),schoolName:text(school.school_name||school.schoolName),schoolCode:text(school.school_code||school.schoolCode),role:text(m.role||identity.role||session.role||'member'),roleLabel:text(m.role_label||''),userId:String(m.user_id||m.__userRow?.id||session.user_id),status:text(m.status||'active'),isPrimary:Boolean(m.is_primary||m.is_primary_manager)};}).filter((m:any)=>m.schoolId && activeStatus(schools.get(m.schoolId)?.status||'active'));
+  return memberships.map((m:any)=>{
+    const school=schools.get(String(m.school_id))||{};
+    return {
+      membershipId:String(m.id||''),schoolId:String(m.school_id||''),schoolName:text(school.school_name||school.schoolName),schoolCode:text(school.school_code||school.schoolCode),
+      role:text(m.role||identity.role||session.role||'member'),roleLabel:text(m.role_label||''),
+      // Memberships returned by this function are already proven to belong to
+      // the current identity (direct user_id or exact verified e-mail). Expose
+      // the active session user id so old duplicated user ids cannot eject a user.
+      userId:String(session.user_id),status:text(m.status||'active'),isPrimary:Boolean(m.is_primary||m.is_primary_manager)
+    };
+  }).filter((m:any)=>m.schoolId && activeStatus(schools.get(m.schoolId)?.status||'active'));
 };
 
 const issueSession = async (admin:any, userId:string, schoolId:string, role:string, previousSessionId?:string) => {
@@ -228,7 +251,7 @@ Deno.serve(async (request) => {
       const memberships = await membershipsForIdentity(admin, previous);
       const requestedSchool = text(payload?.schoolId || previous.school_id);
       // RL33: renewal must preserve the exact school + role. A renewal is never a role switch.
-      const allowed = memberships.find((m:any)=>m.schoolId===requestedSchool && sameRoleFamily(m.role,previous.role) && String(m.userId||previous.user_id)===String(previous.user_id));
+      const allowed = memberships.find((m:any)=>m.schoolId===requestedSchool && canonicalRole(m.role)===canonicalRole(previous.role) && String(m.userId||previous.user_id)===String(previous.user_id));
       if (!allowed) return json({error:'عضوية الحساب في المدرسة أو الدور الحالي لم تعد فعالة. اختر الدور صراحة من مبدّل العضويات.',code:'SESSION_RENEW_ROLE_MEMBERSHIP_DENIED',requestId},403);
       const next = await issueSession(admin, previous.user_id, allowed.schoolId, previous.role, previous.id);
       return json({...next,membershipId:allowed.membershipId,schoolName:allowed.schoolName,schoolCode:allowed.schoolCode,requestId,renewed:true});
@@ -239,8 +262,8 @@ Deno.serve(async (request) => {
       if (!currentSession) return json({error:'جلسة المنصة غير صالحة أو منتهية',code:'SESSION_INVALID',requestId},401);
       const memberships = await membershipsForIdentity(admin,currentSession);
       if(action === 'memberships') return json({memberships,current:{schoolId:currentSession.school_id,userId:currentSession.user_id,role:currentSession.role},requestId});
-      const targetSchool=text(payload?.schoolId), targetRole=lower(payload?.role), membershipId=text(payload?.membershipId);
-      const allowed=memberships.find((m:any)=>(!membershipId||m.membershipId===membershipId)&&m.schoolId===targetSchool&&(!targetRole||sameRoleFamily(m.role,targetRole)));
+      const targetSchool=text(payload?.schoolId), targetRole=canonicalRole(payload?.role), membershipId=text(payload?.membershipId);
+      const allowed=memberships.find((m:any)=>(!membershipId||m.membershipId===membershipId)&&m.schoolId===targetSchool&&(!targetRole||canonicalRole(m.role)===targetRole));
       if(!allowed) return json({error:'الحساب غير مرتبط بالمدرسة أو الدور المطلوب',code:'MEMBERSHIP_NOT_ALLOWED',requestId},403);
       const next=await issueSession(admin,allowed.userId||currentSession.user_id,allowed.schoolId,allowed.role,currentSession.id);
       return json({...next,membershipId:allowed.membershipId,schoolName:allowed.schoolName,schoolCode:allowed.schoolCode,requestId});
@@ -445,26 +468,26 @@ Deno.serve(async (request) => {
       console.warn('[platform-session]', requestId, 'membership_lookup_warning', membershipsQ.error);
     }
     const activeMemberships=(membershipsQ.data||[]).filter((m:any)=>activeStatus(m.status));
-    const requestedLoginRole=lower(payload?.role||'');
-    const preferredRole=lower(resolvedMembership?.role||user.role||'');
+    const requestedLoginRole=canonicalRole(payload?.role||'');
+    const preferredRole=canonicalRole(resolvedMembership?.role||user.role||'');
     let selectedMembership:any=null;
     // RL122 — automatic role resolution from the account/email within the bound school.
     // Normal school login does not ask the user to choose a role. If exactly one active
     // school_members row exists, it is authoritative even when users.role is stale.
     // An explicit requested role remains supported only for specialized callers.
-    if(requestedLoginRole) selectedMembership=activeMemberships.find((m:any)=>sameRoleFamily(m.role,requestedLoginRole))||null;
+    if(requestedLoginRole) selectedMembership=activeMemberships.find((m:any)=>canonicalRole(m.role)===requestedLoginRole)||null;
     if(!selectedMembership&&activeMemberships.length===1) selectedMembership=activeMemberships[0];
-    if(!selectedMembership&&activeMemberships.length>1&&preferredRole) selectedMembership=activeMemberships.find((m:any)=>sameRoleFamily(m.role,preferredRole))||null;
+    if(!selectedMembership&&activeMemberships.length>1&&preferredRole) selectedMembership=activeMemberships.find((m:any)=>canonicalRole(m.role)===preferredRole)||null;
     if(requestedLoginRole&&!selectedMembership) return json({error:'الحساب لا يملك الدور المطلوب في هذه المدرسة',code:'LOGIN_ROLE_NOT_ALLOWED',details:'LD401',requestId},403);
     if(!selectedMembership&&activeMemberships.length>1) return json({error:'للحساب أكثر من دور في المدرسة. اختر الدور المطلوب قبل الدخول.',code:'ROLE_SELECTION_REQUIRED',details:'LD402',roles:activeMemberships.map((m:any)=>text(m.role)),requestId},409);
     if(!selectedMembership&&activeMemberships.length===0){
       const legacyRole=text(user.role||'member');
       const sameSchool=String(user.school_id||school.id)===String(school.id);
-      const managerLegacy=lower(legacyRole)==='manager'&&lower(school.manager_email||'')===normalizedLogin;
+      const managerLegacy=canonicalRole(legacyRole)==='manager'&&lower(school.manager_email||'')===normalizedLogin;
       if(!sameSchool&&!managerLegacy)return json({error:'عضوية المستخدم في المدرسة غير فعالة',code:'MEMBERSHIP_INACTIVE',details:'LD403',requestId},403);
       selectedMembership={role:legacyRole,status:'active',user_id:user.id,school_id:school.id};
     }
-    const role = text(selectedMembership?.role || user.role || 'member');
+    const role = canonicalRole(selectedMembership?.role || user.role || 'member') || 'member';
     const rawToken = `${crypto.randomUUID()}${crypto.randomUUID()}`;
     const tokenHash = await sha256(rawToken);
     const now = new Date().toISOString();

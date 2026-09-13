@@ -475,6 +475,7 @@
                         grade: (gradeValue || '').toString().trim(),
                         track_name: raw.track_name || raw.track || raw.path || raw['المسار'] || '',
                         section_name: raw.section_name || raw.section || raw.division || raw.classroom || raw['الشعبة'] || raw['الفصل'] || raw['الصف/الشعبة'] || '',
+                        student_status: raw.student_status || raw.status || raw['حالة الطالب'] || '',
                         records: raw.records || {},
                         noorGrades: { ...this.defaultNoorGrades(), ...(raw.noorGrades || {}) },
                         assessments: raw.assessments || this.defaultAssessments()
@@ -555,9 +556,30 @@
 
                     this.applyCenterDiscoveredClass();
                     this.centerImportStatus = 'جاري جلب طلاب الصف المختار من مركز المعلومات...';
-                    let sourceStudents = await this.getInformationCenterStudents(true);
 
                     const form = this.centerImportForm;
+                    let sourceStudents = [];
+                    // المصدر المفضل: طلب الصف/الشعبة نفسها من مركز المعلومات حتى لا تختلط
+                    // صفوف متشابهة في الاسم أو مراحل مختلفة عند الاستيراد الشامل.
+                    try {
+                        if (window.SchoolInformationSource && typeof SchoolInformationSource.getStudentsByScope === 'function') {
+                            sourceStudents = await SchoolInformationSource.getStudentsByScope({
+                                stage: form.stage ? (this.stagesMeta[form.stage]?.label || form.stage) : '',
+                                grade: form.grade || '',
+                                track_name: form.track || '',
+                                section_name: form.section || ''
+                            }, true);
+                            // بعض المدارس تحفظ stage بالمفتاح البرمجي لا بالوصف العربي؛ جرّب المفتاح أيضًا.
+                            if (!sourceStudents.length && form.stage) {
+                                sourceStudents = await SchoolInformationSource.getStudentsByScope({
+                                    stage: form.stage, grade: form.grade || '', track_name: form.track || '', section_name: form.section || ''
+                                }, false);
+                            }
+                        }
+                    } catch (scopeError) {
+                        console.warn('[teacher comprehensive] scoped student import fallback', scopeError);
+                    }
+                    if (!sourceStudents.length) sourceStudents = await this.getInformationCenterStudents(true);
                     const stageLabel = this.stagesMeta[form.stage]?.label || '';
                     const normalizeText = value => (value || '').toString().replace(/\s+/g, ' ').trim();
                     const includesMatch = (value, wanted) => {

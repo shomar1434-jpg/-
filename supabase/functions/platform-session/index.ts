@@ -195,9 +195,15 @@ const issueSession = async (admin:any, userId:string, schoolId:string, role:stri
   const tokenHash = await sha256(rawToken);
   const now = new Date().toISOString();
   const expiresAt = new Date(Date.now()+12*60*60*1000).toISOString();
-  if(previousSessionId) await admin.from('platform_sessions').update({status:'revoked',revoked_at:now}).eq('id',previousSessionId);
+  // أنشئ الجلسة البديلة أولاً. لا تُلغِ الجلسة العاملة قبل نجاح الإدراج؛
+  // وإلا فإن أي فشل عابر أثناء التجديد يطرد المستخدم من المدرسة، ويظهر أكثر
+  // مع الحساب الواحد المرتبط بأكثر من مدرسة.
   const ins=await admin.from('platform_sessions').insert({session_token_hash:tokenHash,user_id:userId,school_id:schoolId,role,status:'active',expires_at:expiresAt,last_seen_at:now}).select('id').single();
   if(ins.error) throw new Error(ins.error.message);
+  if(previousSessionId) {
+    const revoke=await admin.from('platform_sessions').update({status:'revoked',revoked_at:now}).eq('id',previousSessionId);
+    if(revoke.error) console.warn('[platform-session] replacement_created_old_revoke_failed', previousSessionId, revoke.error.message);
+  }
   return {token:rawToken,expiresAt,userId,schoolId,role};
 };
 

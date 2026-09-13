@@ -365,9 +365,6 @@
       error.code = 'SYSTEM_ADMIN_SCHOOL_VERIFY_BLOCKED';
       throw error;
     }
-    // RL140: recover/renew a signed school session before strict membership checks.
-    // This prevents a recoverable legacy session from being rejected during the first paint.
-    await ensure();
     const payload = await memberships();
     const current = payload && payload.current ? payload.current : {};
     const sid = String(current.schoolId || '').trim();
@@ -381,35 +378,27 @@
     const membershipsList = Array.isArray(payload.memberships) ? payload.memberships : [];
     const normalizeRole = (v) => String(v || '').trim().toLowerCase();
     const aliases = {
-      manager: ['manager','principal','school_manager','school-manager','leadership','مدير','مديرة','مدير المدرسة','مديرة المدرسة'],
+      manager: ['manager','principal','school_manager','leadership','مدير','مديرة','مدير المدرسة','مديرة المدرسة'],
       agent: ['agent','deputy','vice','wakil','agency','وكيل','وكيلة'],
       teacher: ['teacher','performance','معلم','معلمة'],
-      student_advisor: ['student_advisor','student-advisor','advisor','counselor','مرشد','مرشدة','موجه','موجهة'],
-      health_advisor: ['health_advisor','health-advisor','موجه صحي','موجهة صحية','الموجه الصحي'],
+      student_advisor: ['student_advisor','advisor','counselor','مرشد','موجه'],
+      health_advisor: ['health_advisor','health-advisor','موجه صحي','الموجه الصحي'],
       activity_leader: ['activity_leader','activity-leader','activity','رائد النشاط','رائدة النشاط'],
       kindergarten_teacher: ['kindergarten_teacher','kindergarten-teacher','معلمة رياض الأطفال'],
       administrative_employee: ['administrative_employee','admin_employee','employee_admin','موظف إداري','موظفة إدارية']
     };
-    const canonicalRole = (value) => {
-      const v = normalizeRole(value);
-      for (const [canonical, list] of Object.entries(aliases)) {
-        if (canonical === v || list.map(normalizeRole).includes(v)) return canonical;
-      }
-      return v;
-    };
-    const allowed = (requiredRoles || []).map(canonicalRole).filter(Boolean);
-    const currentRole = canonicalRole(rr);
+    const allowed = (requiredRoles || []).flatMap((role) => aliases[normalizeRole(role)] || [normalizeRole(role)]);
     const member = membershipsList.find((m) =>
       String(m.schoolId || '') === sid &&
       String(m.userId || '') === uid &&
-      canonicalRole(m.role) === currentRole
+      normalizeRole(m.role) === normalizeRole(rr)
     );
     if (!member) {
       const error = new Error('المستخدم غير مرتبط بالمدرسة الحالية بعضوية فعالة.');
       error.code = 'VERIFIED_MEMBERSHIP_MISSING';
       throw error;
     }
-    if (allowed.length && !allowed.includes(currentRole)) {
+    if (allowed.length && !allowed.includes(normalizeRole(rr))) {
       const error = new Error('الدور الحالي غير مخول بفتح هذه الصفحة.');
       error.code = 'VERIFIED_ROLE_DENIED';
       throw error;
@@ -627,7 +616,7 @@
     }
   }
 
-  const SESSION_VERSION='2026.09.13-RL78-role-family-identity-binding';
+  const SESSION_VERSION='2026.09.13-RL142-manager-entry-stability';
 
   window.PlatformCloudSession = {
     VERSION:SESSION_VERSION,
@@ -664,7 +653,9 @@
   // covers pages opened after a browser/sessionStorage transition.
   restoreFromKnownContext();
   const roleContract=routeRequiredRole();
-  if(roleContract){
+  // Pages with their own verified access gate (manager.html) must not start a
+  // second concurrent role check. The explicit gate still calls verifyAccess().
+  if(roleContract && !window.__PLATFORM_EXPLICIT_ACCESS_GATE__){
     const st=document.createElement('style');
     st.id='platform-role-lock-style';
     st.textContent='html[data-platform-role-checking=\"1\"]:not([data-platform-role-verified=\"1\"]) body{visibility:hidden!important}';

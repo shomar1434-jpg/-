@@ -1472,7 +1472,7 @@ body{overflow-x:hidden}
 <h3 class="font-black text-xl text-slate-800">تحليل نتائج نافس</h3>
 <p class="text-[11px] text-slate-400 font-bold mt-2">تحليل بطاقة نافس، قراءة فجوات الأداء، وبناء خطة التحسين وقياس الأثر</p>
 </div>
-</div><div id="qat-analysis-card" class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-violet-400 cursor-pointer transition-all flex flex-col items-center gap-4 group manager-section-card" onclick="window.location.href='qat_results_analysis.html'" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window.location.href='qat_results_analysis.html';}" aria-label="فتح قسم تحليل نتائج القدرات والتحصيلي">
+</div><div id="qat-analysis-card" class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-violet-400 cursor-pointer transition-all flex flex-col items-center gap-4 group manager-section-card" onclick="window.location.href='capability_achievement_analysis.html'" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window.location.href='capability_achievement_analysis.html';}" aria-label="فتح قسم تحليل نتائج القدرات والتحصيلي">
 <div class="w-20 h-20 bg-gradient-to-br from-violet-500 to-indigo-700 text-white rounded-[26px] flex items-center justify-center shadow-xl text-3xl">🎯</div><div class="text-center">
 <h3 class="font-black text-xl text-slate-800">تحليل نتائج القدرات والتحصيلي</h3>
 <p class="text-[11px] text-slate-400 font-bold mt-2">للمرحلة الثانوية: استيراد بطاقة PDF، تحليل المؤشرات، وبناء خطة التحسين وقياس الأثر</p>
@@ -6091,8 +6091,13 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
 </script>
 
 <!-- Unified Comprehensive Cloud Storage -->
-<script src="platform-cloud-session.js?v=20260829-security-isolation-v5-clean"></script>
-<script id="platform-manager-access-gate-clean-v5-2">
+<script>
+  // Manager owns an explicit verified access gate below. Prevent the shared
+  // session engine from starting a second concurrent route gate on this page.
+  window.__PLATFORM_EXPLICIT_ACCESS_GATE__ = true;
+</script>
+<script src="platform-cloud-session.js?v=20260913-manager-entry-stability-v1"></script>
+<script id="platform-manager-access-gate-clean-v6-bisha-stability">
 (function(){
   function requestedSystemAdminContext(){
     try{
@@ -6107,6 +6112,46 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
     if(gate) gate.remove();
     document.documentElement.style.removeProperty('visibility');
   }
+  function sleep(ms){ return new Promise(function(resolve){ setTimeout(resolve,ms); }); }
+  function isDefinitiveSchoolDenial(err){
+    var code=String(err&&err.code||'').toUpperCase();
+    return [
+      'VERIFIED_MEMBERSHIP_MISSING','VERIFIED_ROLE_DENIED','MEMBERSHIP_NOT_ALLOWED',
+      'MEMBERSHIP_INACTIVE','LOGIN_ROLE_NOT_ALLOWED','SESSION_RENEW_ROLE_MEMBERSHIP_DENIED',
+      'USER_NOT_RESOLVED','SCHOOL_NOT_FOUND'
+    ].indexOf(code)>=0;
+  }
+  function loginTarget(reason){
+    try{
+      var q=new URLSearchParams();
+      q.set('reason',reason||'school_access_denied');
+      var sid=String((window.PlatformCloudSession&&window.PlatformCloudSession.schoolId&&window.PlatformCloudSession.schoolId())||sessionStorage.getItem('smart_school_tab_school_v1')||sessionStorage.getItem('platform_tab_session_school_v1')||sessionStorage.getItem('current_school_id')||new URLSearchParams(location.search||'').get('schoolId')||new URLSearchParams(location.search||'').get('school_id')||'').trim();
+      var sname=String(sessionStorage.getItem('current_school_name')||new URLSearchParams(location.search||'').get('school_name')||'').trim();
+      if(sid)q.set('schoolId',sid);
+      if(sname)q.set('school_name',sname);
+      q.set('schoolMode','independent');q.set('scope','school');
+      return 'school-login.html?'+q.toString();
+    }catch(_){ return 'school-login.html?reason='+(reason||'school_access_denied'); }
+  }
+  function showRetryGate(err){
+    var gate=document.getElementById('platform-protected-page-gate');
+    if(!gate){
+      gate=document.createElement('div');
+      gate.id='platform-protected-page-gate';
+      document.body&&document.body.appendChild(gate);
+    }
+    if(!gate)return;
+    gate.style.cssText='position:fixed;inset:0;z-index:2147483646;background:#f8fafc;display:flex;align-items:center;justify-content:center;padding:24px;font-family:Tajawal,Arial,sans-serif;direction:rtl';
+    gate.innerHTML='<div style="max-width:560px;background:white;border:1px solid #dbeafe;border-radius:24px;padding:28px;box-shadow:0 18px 60px rgba(15,23,42,.14);text-align:center">'+
+      '<div style="font-size:42px;margin-bottom:10px">🔄</div><h2 style="margin:0 0 8px;color:#0f172a">تعذر التحقق من الجلسة مؤقتًا</h2>'+
+      '<p style="margin:0 0 18px;color:#64748b;line-height:1.8">لم يتم تسجيل الخروج ولم تُحذف جلسة المدرسة. أعد المحاولة، وإذا استمر الخطأ استخدم صفحة الدخول الخاصة بالمدرسة.</p>'+
+      '<button id="mgrAccessRetry" style="border:0;border-radius:12px;padding:11px 18px;background:#0f766e;color:white;font-weight:800;cursor:pointer;margin:4px">إعادة المحاولة</button>'+
+      '<button id="mgrAccessLogin" style="border:1px solid #cbd5e1;border-radius:12px;padding:11px 18px;background:white;color:#334155;font-weight:800;cursor:pointer;margin:4px">صفحة الدخول</button></div>';
+    var r=document.getElementById('mgrAccessRetry');if(r)r.onclick=function(){ location.reload(); };
+    var l=document.getElementById('mgrAccessLogin');if(l)l.onclick=function(){ location.href=loginTarget('manual_relogin'); };
+    document.documentElement.style.removeProperty('visibility');
+    console.warn('[manager-access-gate] transient verification failure; session preserved',err);
+  }
   async function verifySystemAdminAccess(){
     var bridge=window.SmartSchoolSupabase;
     var sb=bridge&&typeof bridge.getClient==='function' ? bridge.getClient() : null;
@@ -6115,44 +6160,45 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
     var session=sessionResult&&sessionResult.data&&sessionResult.data.session;
     if(!session||!session.access_token) throw new Error('SYSTEM_ADMIN_SESSION_MISSING');
     var result=await sb.functions.invoke('system-admin',{body:{action:'verify'}});
-    if(result.error||!result.data||result.data.ok!==true)
-      throw new Error((result.error&&result.error.message)||'SYSTEM_ADMIN_NOT_AUTHORIZED');
+    if(result.error||!result.data||result.data.ok!==true) throw new Error((result.error&&result.error.message)||'SYSTEM_ADMIN_NOT_AUTHORIZED');
     var ctx={type:'system_admin',role:'system_admin',user:result.data.user||null,verified:true};
     window.__VERIFIED_SYSTEM_ADMIN_CONTEXT__=ctx;
-    try{
-      sessionStorage.setItem('system_admin_context','1');
-      sessionStorage.setItem('system_admin_verified','true');
-      document.documentElement.setAttribute('data-system-admin-context','1');
-    }catch(_){}
+    try{sessionStorage.setItem('system_admin_context','1');sessionStorage.setItem('system_admin_verified','true');document.documentElement.setAttribute('data-system-admin-context','1');}catch(_){}
     return ctx;
+  }
+  async function verifyManagerWithRecovery(){
+    if(!window.PlatformCloudSession||typeof window.PlatformCloudSession.verifyAccess!=='function'){
+      var miss=new Error('SECURITY_GATE_MISSING');miss.code='SECURITY_GATE_MISSING';throw miss;
+    }
+    // First ensure/renew the tab-scoped session. The previous gate called
+    // memberships immediately and could race a just-created or restored session.
+    if(typeof window.PlatformCloudSession.ensure==='function') await window.PlatformCloudSession.ensure();
+    var last=null;
+    for(var i=0;i<3;i++){
+      try{return await window.PlatformCloudSession.verifyAccess(['manager']);}
+      catch(e){last=e;if(isDefinitiveSchoolDenial(e))throw e;if(i<2)await sleep(220*(i+1));}
+    }
+    throw last||new Error('MANAGER_VERIFY_FAILED');
   }
   window.__PLATFORM_ACCESS_READY__=(async function(){
     var systemAdminRequested=requestedSystemAdminContext();
     try{
-      if(systemAdminRequested){
-        var adminCtx=await verifySystemAdminAccess();
-        releaseProtectedPage();
-        return adminCtx;
-      }
-      if(!window.PlatformCloudSession||typeof window.PlatformCloudSession.verifyAccess!=='function')
-        throw new Error('SECURITY_GATE_MISSING');
-      // RL140: restore/renew the signed session before checking the manager membership.
-      if(typeof window.PlatformCloudSession.ensure==='function') await window.PlatformCloudSession.ensure();
-      var ctx=await window.PlatformCloudSession.verifyAccess(['manager']);
+      if(systemAdminRequested){var adminCtx=await verifySystemAdminAccess();releaseProtectedPage();return adminCtx;}
+      var ctx=await verifyManagerWithRecovery();
       window.__VERIFIED_SCHOOL_CONTEXT__=ctx;
       releaseProtectedPage();
       return ctx;
     }catch(e){
       if(systemAdminRequested){
-        try{
-          sessionStorage.removeItem('system_admin_context');
-          sessionStorage.removeItem('system_admin_verified');
-        }catch(_){}
+        try{sessionStorage.removeItem('system_admin_context');sessionStorage.removeItem('system_admin_verified');}catch(_){}
         location.replace('index.html?systemAdminReturn=1&reason=system_admin_access_denied');
+      }else if(isDefinitiveSchoolDenial(e)){
+        // A proven membership/role denial may return to login, but do not erase
+        // the session pre-emptively; this avoids destroying another valid tab context.
+        location.replace(loginTarget('school_access_denied'));
       }else{
-        // RL140: keep a recoverable tab session intact; clearing it here caused a login loop.
-        try{sessionStorage.setItem('platform_last_access_error',String(e&&e.code||e&&e.message||'school_access_denied'));}catch(_){}
-        location.replace((function(){try{var q=new URLSearchParams();q.set('reason','school_access_denied');var sid=String((window.PlatformCloudSession&&window.PlatformCloudSession.schoolId&&window.PlatformCloudSession.schoolId())||sessionStorage.getItem('smart_school_tab_school_v1')||sessionStorage.getItem('platform_tab_session_school_id_v1')||sessionStorage.getItem('current_school_id')||new URLSearchParams(location.search||'').get('schoolId')||new URLSearchParams(location.search||'').get('school_id')||'').trim();var sname=String(sessionStorage.getItem('current_school_name')||new URLSearchParams(location.search||'').get('school_name')||'').trim();if(sid)q.set('schoolId',sid);if(sname)q.set('school_name',sname);q.set('schoolMode','independent');q.set('scope','school');return 'school-login.html?'+q.toString()}catch(_){return 'school-login.html?reason=school_access_denied'}})());
+        // Network/race/temporary backend failures must never log the manager out.
+        showRetryGate(e);
       }
       throw e;
     }

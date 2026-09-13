@@ -378,27 +378,35 @@
     const membershipsList = Array.isArray(payload.memberships) ? payload.memberships : [];
     const normalizeRole = (v) => String(v || '').trim().toLowerCase();
     const aliases = {
-      manager: ['manager','principal','school_manager','leadership','مدير','مديرة','مدير المدرسة','مديرة المدرسة'],
+      manager: ['manager','principal','school_manager','school-manager','leadership','مدير','مديرة','مدير المدرسة','مديرة المدرسة'],
       agent: ['agent','deputy','vice','wakil','agency','وكيل','وكيلة'],
       teacher: ['teacher','performance','معلم','معلمة'],
-      student_advisor: ['student_advisor','advisor','counselor','مرشد','موجه'],
-      health_advisor: ['health_advisor','health-advisor','موجه صحي','الموجه الصحي'],
+      student_advisor: ['student_advisor','student-advisor','advisor','counselor','مرشد','مرشدة','موجه','موجهة'],
+      health_advisor: ['health_advisor','health-advisor','موجه صحي','موجهة صحية','الموجه الصحي'],
       activity_leader: ['activity_leader','activity-leader','activity','رائد النشاط','رائدة النشاط'],
       kindergarten_teacher: ['kindergarten_teacher','kindergarten-teacher','معلمة رياض الأطفال'],
       administrative_employee: ['administrative_employee','admin_employee','employee_admin','موظف إداري','موظفة إدارية']
     };
-    const allowed = (requiredRoles || []).flatMap((role) => aliases[normalizeRole(role)] || [normalizeRole(role)]);
+    const canonicalRole = (value) => {
+      const v = normalizeRole(value);
+      for (const [canonical, list] of Object.entries(aliases)) {
+        if (canonical === v || list.map(normalizeRole).includes(v)) return canonical;
+      }
+      return v;
+    };
+    const allowed = (requiredRoles || []).map(canonicalRole).filter(Boolean);
+    const currentRole = canonicalRole(rr);
     const member = membershipsList.find((m) =>
       String(m.schoolId || '') === sid &&
       String(m.userId || '') === uid &&
-      normalizeRole(m.role) === normalizeRole(rr)
+      canonicalRole(m.role) === currentRole
     );
     if (!member) {
       const error = new Error('المستخدم غير مرتبط بالمدرسة الحالية بعضوية فعالة.');
       error.code = 'VERIFIED_MEMBERSHIP_MISSING';
       throw error;
     }
-    if (allowed.length && !allowed.includes(normalizeRole(rr))) {
+    if (allowed.length && !allowed.includes(currentRole)) {
       const error = new Error('الدور الحالي غير مخول بفتح هذه الصفحة.');
       error.code = 'VERIFIED_ROLE_DENIED';
       throw error;
@@ -616,7 +624,7 @@
     }
   }
 
-  const SESSION_VERSION='2026.09.13-RL142-manager-entry-stability';
+  const SESSION_VERSION='2026.09.13-RL143-role-family-manager-entry-stability';
 
   window.PlatformCloudSession = {
     VERSION:SESSION_VERSION,

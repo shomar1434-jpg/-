@@ -33,8 +33,8 @@
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
 <script>window.__PLATFORM_EXPLICIT_ACCESS_GATE__ = true;</script>
-<script src="platform-runtime-guard.js?v=20260914-RL149-nonblocking-verified-session"></script>
-<script src="platform-cloud-session.js?v=20260914-RL149-nonblocking-verified-session"></script>
+<script src="platform-runtime-guard.js?v=20260914-RL150-cloud-session-authoritative"></script>
+<script src="platform-cloud-session.js?v=20260914-RL150-cloud-session-authoritative"></script>
 <script id="platform-manager-access-gate-final">
 (function(){
   // RL149: access verification no longer blocks first paint. Server-side APIs still enforce school/role isolation.
@@ -64,7 +64,7 @@
       box=document.createElement('div'); box.id='school-info-session-retry'; box.dir='rtl';
       box.style.cssText='position:fixed;left:18px;bottom:18px;z-index:2147483647;max-width:520px;background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:16px;font-family:Tahoma,Arial,sans-serif;box-shadow:0 14px 40px rgba(15,23,42,.16)';
       box.innerHTML='<div style="max-width:560px;width:100%;background:white;border:1px solid #e2e8f0;border-radius:24px;padding:28px;box-shadow:0 20px 60px rgba(15,23,42,.14);text-align:center"><h2 style="margin:0 0 10px;color:#0f172a">تعذر التحقق المؤقت من الجلسة</h2><p style="color:#64748b;line-height:1.9">لم يتم تسجيل خروجك. أعد المحاولة لاستعادة جلسة المدرسة نفسها.</p><div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><button id="school-info-retry-btn" style="border:0;border-radius:14px;padding:11px 18px;background:#0f766e;color:white;font-weight:800;cursor:pointer">إعادة المحاولة</button><button id="school-info-login-btn" style="border:1px solid #cbd5e1;border-radius:14px;padding:11px 18px;background:white;color:#334155;font-weight:800;cursor:pointer">صفحة الدخول</button></div><small id="school-info-error-code" style="display:block;margin-top:14px;color:#94a3b8"></small></div>';
-      document.body.appendChild(box);
+      if(document.body)document.body.appendChild(box);else{document.addEventListener('DOMContentLoaded',()=>{if(!document.getElementById('school-info-session-retry'))document.body.appendChild(box)},{once:true});}
     }
     const c=box.querySelector('#school-info-error-code'); if(c)c.textContent=String(err&&err.code||'TEMPORARY_SESSION_VERIFICATION');
     const rb=box.querySelector('#school-info-retry-btn'); if(rb)rb.onclick=()=>location.reload();
@@ -84,9 +84,7 @@
   function withTimeout(promise,ms,code){return Promise.race([Promise.resolve(promise),new Promise((_,reject)=>setTimeout(()=>{const e=new Error(code||'SESSION_VERIFY_TIMEOUT');e.code=code||'SESSION_VERIFY_TIMEOUT';reject(e)},ms))])}
   async function verifyManagerWithRecovery(){
     if(!window.PlatformCloudSession){const e=new Error('SECURITY_GATE_MISSING');e.code='SECURITY_GATE_MISSING';throw e}
-    const recent=typeof PlatformCloudSession.recentlyVerified==='function'?PlatformCloudSession.recentlyVerified(['manager']):null;
-    if(recent)return recent;
-    if(typeof PlatformCloudSession.ensureLive==='function')return await PlatformCloudSession.ensureLive(['manager']);
+    if(typeof PlatformCloudSession.ensureLive==='function')return await PlatformCloudSession.ensureLive(['manager'],{force:true});
     if(typeof PlatformCloudSession.ensure==='function')await PlatformCloudSession.ensure();
     return await PlatformCloudSession.verifyAccess(['manager']);
   }
@@ -428,7 +426,10 @@
       if(!currentSchool.id)throw new Error('اختر المدرسة أولاً.');
       const session=await adminAuthSession();headers.authorization='Bearer '+session.access_token;requestBody.schoolId=currentSchool.id;requestBody.accessMode='system_admin';
     }else{
-      if(!window.PlatformCloudSession||!PlatformCloudSession.valid())throw new Error('جلسة المدرسة غير صالحة. أعد تسجيل الدخول.');
+      if(!window.PlatformCloudSession)throw new Error('محرك جلسة المدرسة غير متاح.');
+      if(typeof PlatformCloudSession.ensureLive==='function')await PlatformCloudSession.ensureLive(['manager'],{force:true});
+      else await PlatformCloudSession.ensure();
+      if(!PlatformCloudSession.valid()||!PlatformCloudSession.token())throw new Error('جلسة المدرسة السحابية غير صالحة. أعد تسجيل الدخول.');
       headers['x-platform-session']=PlatformCloudSession.token();
       delete requestBody.schoolId;delete requestBody.accessMode;
     }
@@ -626,7 +627,7 @@
   let academicStructure={academicYear:'1447',stages:[],updatedAt:''},scopedPreviewRows=[],scopedPreviewScope=null;
   function phase2IsSystemAdmin(){return isVerifiedSystemAdmin()}
   function phase2SchoolInfoHeaders(){if(phase2IsSystemAdmin())return null;const token=(window.PlatformCloudSession?.token?.()||sessionStorage.getItem('platform_tab_session_token_v1')||'');return token?{'x-platform-session':token}:null}
-  async function phase2Call(action,body={}){await window.__PLATFORM_ACCESS_READY__;const headers={'content-type':'application/json','apikey':SUPABASE_KEY};if(phase2IsSystemAdmin()){const session=await adminAuthSession();headers.authorization='Bearer '+session.access_token;body=Object.assign({},body,{schoolId:currentSchool.id})}else{const ph=phase2SchoolInfoHeaders();if(!ph)throw new Error('جلسة المدرسة غير متاحة.');Object.assign(headers,ph)}const r=await fetch(SUPABASE_URL+'/functions/v1/school-information-structure',{method:'POST',headers,body:JSON.stringify(Object.assign({},body,{action}))});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'تعذر تنفيذ العملية');return j}
+  async function phase2Call(action,body={}){await window.__PLATFORM_ACCESS_READY__;const headers={'content-type':'application/json','apikey':SUPABASE_KEY};if(phase2IsSystemAdmin()){const session=await adminAuthSession();headers.authorization='Bearer '+session.access_token;body=Object.assign({},body,{schoolId:currentSchool.id})}else{if(!window.PlatformCloudSession)throw new Error('محرك جلسة المدرسة غير متاح.');if(typeof PlatformCloudSession.ensureLive==='function')await PlatformCloudSession.ensureLive(['manager'],{force:true});else await PlatformCloudSession.ensure();const ph=phase2SchoolInfoHeaders();if(!ph)throw new Error('جلسة المدرسة السحابية غير متاحة.');Object.assign(headers,ph)}const r=await fetch(SUPABASE_URL+'/functions/v1/school-information-structure',{method:'POST',headers,body:JSON.stringify(Object.assign({},body,{action}))});const j=await r.json().catch(()=>({}));if(!r.ok){const e=new Error(j.error||'تعذر تنفيذ العملية');e.code=j.code||('HTTP_'+r.status);e.requestId=j.requestId||'';throw e}return j}
   // RL6: Canonical stage/grade helpers are local to this page so class import never depends on an external script.
   const GRADE_CANONICAL_MAP={
     'اول':'grade_1','أول':'grade_1','الأول':'grade_1','الاول':'grade_1','1':'grade_1','١':'grade_1',

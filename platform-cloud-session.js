@@ -451,14 +451,15 @@
     } catch(_) {}
   }
 
-  async function ensureLive(requiredRoles = []) {
+  async function ensureLive(requiredRoles = [], options = {}) {
     if (isSystemAdminContext()) {
       const error = new Error('جلسة مدير النظام منفصلة عن جلسات المدارس المستقلة.');
       error.code = 'SYSTEM_ADMIN_SCHOOL_SESSION_BLOCKED';
       throw error;
     }
-    const recent=recentlyVerified(requiredRoles);
-    if(recent && token()) return recent;
+    const forceLive=options&&options.force===true;
+    const recent=forceLive?null:recentlyVerified(requiredRoles);
+    if(recent && valid()) return recent;
     await ensure();
     try {
       return await verifyAccess(requiredRoles);
@@ -721,7 +722,7 @@
     }
   }
 
-  const SESSION_VERSION='2026.09.14-RL149-nonblocking-verified-session';
+  const SESSION_VERSION='2026.09.14-RL150-nonblocking-verified-session';
 
   window.PlatformCloudSession = {
     VERSION:SESSION_VERSION,

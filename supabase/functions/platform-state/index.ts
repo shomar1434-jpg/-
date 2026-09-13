@@ -233,7 +233,7 @@ Deno.serve(async(req)=>{
 
     if(action==='pull-user'){
       if(!isAdministrativeSupervisor) return json({error:'هذه القراءة تتطلب صلاحية المسؤول المباشر',code:'STATE_SUPERVISOR_REQUIRED',requestId},403);
-      if(moduleKey!=='admin_performance') return json({error:'هذه القراءة مخصصة لأداء الموظف الإداري',code:'STATE_TARGET_MODULE_FORBIDDEN',requestId},403);
+      if(!['admin_performance','admin_employee_records'].includes(moduleKey)) return json({error:'هذه القراءة مخصصة لأداء الموظف الإداري',code:'STATE_TARGET_MODULE_FORBIDDEN',requestId},403);
       const targetUserId=String(body.ownerUserId||body.userId||'').trim();
       if(!targetUserId) return json({error:'معرف الموظف الإداري مطلوب',code:'STATE_TARGET_USER_REQUIRED',requestId},400);
       const membership=await sb.from('school_members').select('id,user_id,role,status,role_label,supervisor_user_id').eq('school_id',s.school_id).eq('user_id',targetUserId).in('role',['administrative_employee','admin_employee']).neq('status','deleted').maybeSingle();
@@ -249,7 +249,7 @@ Deno.serve(async(req)=>{
 
     if(action==='manager-upsert-user'){
       if(!isAdministrativeSupervisor) return json({error:'هذه العملية تتطلب صلاحية المسؤول المباشر',code:'STATE_SUPERVISOR_REQUIRED',requestId},403);
-      if(moduleKey!=='admin_performance') return json({error:'هذه العملية مخصصة لأداء الموظف الإداري',code:'STATE_TARGET_MODULE_FORBIDDEN',requestId},403);
+      if(!['admin_performance','admin_employee_records'].includes(moduleKey)) return json({error:'هذه العملية مخصصة لأداء الموظف الإداري',code:'STATE_TARGET_MODULE_FORBIDDEN',requestId},403);
       const targetUserId=String(body.ownerUserId||body.userId||'').trim();
       if(!targetUserId) return json({error:'معرف الموظف الإداري مطلوب',code:'STATE_TARGET_USER_REQUIRED',requestId},400);
       const membership=await sb.from('school_members').select('id,user_id,role,status,role_label,supervisor_user_id').eq('school_id',s.school_id).eq('user_id',targetUserId).in('role',['administrative_employee','admin_employee']).neq('status','deleted').maybeSingle();

@@ -189,6 +189,13 @@ async function persistEmployeePlanCloud(plan,ownerUserId){
   const items=[{key:'administrative_employee_plans',value:JSON.stringify(preserved.concat([clean])),deleted:false}];
   if(String(clean.status||'')==='approved'){const seed=executionSeedForApprovedPlan(clean);localStorage.setItem(seed.key,JSON.stringify(seed.value));items.push({key:seed.key,value:JSON.stringify(seed.value),deleted:false});}
   await window.PlatformStateEngine.managerUpsertUser('admin_performance',ownerUserId,items);
+  // حافظ على السجل المرجعي admin_employee_records متزامنًا مع قرار المسؤول، لا المرآة فقط.
+  const ay=String(clean.year||localStorage.getItem('school_info_academic_year')||'1448').match(/\d{4}/)?.[0]||'1448';
+  const semRaw=String(clean.semester||'سنوي').trim(),sem=/الأول|الاول|semester_1/.test(semRaw)?'semester_1':/الثاني|semester_2/.test(semRaw)?'semester_2':/الثالث|semester_3/.test(semRaw)?'semester_3':'annual';
+  const safe=v=>String(v==null?'':v).trim().replace(/[^\p{L}\p{N}._:@/\-]+/gu,'_').slice(0,160),recordId=safe(clean.id||clean.contact||clean.email||ownerUserId),rk=`record_v1:admin_plan:${ay}:${sem}:${recordId}`,mk=`record_meta_v2:admin_plan:${ay}:${sem}:${recordId}`,now=new Date().toISOString();
+  const meta={id:String(clean.id||clean.contact||clean.email||ownerUserId),recordType:'admin_plan',schoolId:currentSchoolScope(),userId:String(ownerUserId),academicYear:ay,semester:sem,folderId:'admin_plan',title:'خطة أداء الموظف الإداري',updatedAt:now};
+  const wrapper={meta,data:clean,savedAt:now,version:'4.0.0-supervisor-lifecycle-sync'};
+  await window.PlatformStateEngine.managerUpsertUser('admin_employee_records',ownerUserId,[{key:rk,value:JSON.stringify(wrapper),deleted:false},{key:mk,value:JSON.stringify(meta),deleted:false}]);
 }
 function combinedEmployees(){
   const p=plans(), byEmail=new Map(p.map(x=>[String(x.contact||x.email||x.id||'').toLowerCase(),x]));

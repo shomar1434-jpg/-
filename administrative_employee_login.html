@@ -45,7 +45,7 @@ async function activeAdministrativeMembership(){const d=await window.SmartSchool
 
 function saveAdministrativeContext(member,cloud,email){
   const ctx={
-    version:2,userId:String(member.user_id||cloud.userId||''),email:String(email||'').toLowerCase(),
+    version:3,userId:String(cloud.userId||member.user_id||''),email:String(email||'').toLowerCase(),
     name:'',role:'administrative_employee',schoolId:String(schoolId),schoolName:String(schoolName),
     membershipId:String(member.id||''),adminSupervisor:supervisorFromLabel(member.role_label),
     status:'active',loginAt:new Date().toISOString(),token:String(cloud.token||''),expiresAt:String(cloud.expiresAt||'')
@@ -84,24 +84,28 @@ $('loginForm').addEventListener('submit',async e=>{
     const email=$('email').value.trim().toLowerCase(),password=$('password').value.trim();
     if(!email||!password)throw new Error('أدخل البريد وكلمة المرور.');
     if(!window.PlatformCloudSession||typeof PlatformCloudSession.open!=='function')throw new Error('محرك جلسة المدرسة غير متاح.');
-    const cloud=await PlatformCloudSession.open(email,password,schoolId);
+    const cloud=await PlatformCloudSession.open(email,password,schoolId,'administrative_employee');
     if(!cloud?.token)throw new Error('تعذر إنشاء جلسة المدرسة السحابية.');
     if(String(cloud.schoolId||'')!==schoolId)throw new Error('جلسة الحساب مرتبطة بمدرسة مختلفة.');
     if(normRole(cloud.role)!=='administrative_employee')throw new Error('جلسة الحساب لا تحمل دور الموظف الإداري.');
-    const member=await activeAdministrativeMembership();
     const ms=await PlatformCloudSession.memberships();
     const current=ms?.current||{};
     const verified=(ms?.memberships||[]).find(x=>
       String(x.schoolId||'')===schoolId &&
-      String(x.userId||'')===String(cloud.userId||'') &&
       normRole(x.role)==='administrative_employee' &&
-      String(x.status||'').toLowerCase()==='active'
+      String(x.status||'active').toLowerCase()==='active'
     );
-    if(!verified||String(current.schoolId||'')!==schoolId||String(current.userId||'')!==String(cloud.userId||'')){
+    if(!verified||String(current.schoolId||'')!==schoolId||normRole(current.role||cloud.role)!=='administrative_employee'){
       try{PlatformCloudSession.clear()}catch(_){}
       throw new Error('تعذر تأكيد عضوية الموظف الإداري المفعلة في المدرسة.');
     }
-    member.role_label=verified.roleLabel||member.role_label;
+    // لا نجعل اختلاف user_id التاريخي في school_members يمنع حسابًا موثقًا وصحيح المدرسة/الدور.
+    // هوية الجلسة السحابية هي المرجع، والعضوية تثبت فقط المدرسة والدور والحالة.
+    let member={id:verified.membershipId||'',user_id:String(cloud.userId||current.userId||''),role:'administrative_employee',status:'active',role_label:verified.roleLabel||''};
+    try{
+      const directoryMember=await activeAdministrativeMembership();
+      if(directoryMember&&normRole(directoryMember.role)==='administrative_employee')member=Object.assign({},directoryMember,{user_id:String(cloud.userId||current.userId||directoryMember.user_id||''),role_label:verified.roleLabel||directoryMember.role_label||''});
+    }catch(directoryError){console.warn('[admin employee login] directory membership fallback',directoryError)}
     const ctx=saveAdministrativeContext(member,cloud,email);
     await resolveName(ctx);
     sessionStorage.setItem(ADMIN_CTX_KEY,JSON.stringify(ctx));

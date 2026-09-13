@@ -135,15 +135,18 @@
                 },
                 get centerGradeOptions() {
                     const stage = this.centerImportForm.stage;
+                    // لا نعرض أي صف قبل اختيار المرحلة صراحةً؛ المرحلة هي مفتاح التصفية الأول.
+                    if (!stage) return [];
                     return [...new Set((this.centerDiscoveredClasses || [])
-                        .filter(g => !stage || g.stage === stage)
+                        .filter(g => g.stage === stage)
                         .map(g => (g.grade || '').toString().trim())
                         .filter(Boolean))].sort((a,b) => a.localeCompare(b, 'ar'));
                 },
                 get centerSectionOptions() {
                     const form = this.centerImportForm;
+                    if (!form.stage || !form.grade) return [];
                     return [...new Set((this.centerDiscoveredClasses || [])
-                        .filter(g => (!form.stage || g.stage === form.stage) && (!form.grade || g.grade === form.grade))
+                        .filter(g => g.stage === form.stage && g.grade === form.grade)
                         .map(g => (g.section || '').toString().trim())
                         .filter(Boolean))].sort((a,b) => a.localeCompare(b, 'ar'));
                 },
@@ -518,27 +521,58 @@
                     return [];
                 },
 
+                normalizeArabicEducationText(value) {
+                    return (value || '').toString()
+                        .normalize('NFKC')
+                        .replace(/[\u064B-\u065F\u0670\u06D6-\u06ED]/g, '')
+                        .replace(/ـ/g, '')
+                        .replace(/[إأآٱ]/g, 'ا')
+                        .replace(/ى/g, 'ي')
+                        .replace(/ؤ/g, 'و')
+                        .replace(/ئ/g, 'ي')
+                        .replace(/[\-_\/\\|،,؛;:()\[\]{}]+/g, ' ')
+                        .replace(/\s+/g, ' ')
+                        .trim()
+                        .toLowerCase();
+                },
+
                 stageLabelToKey(label) {
-                    const text = (label || '').toString();
-                    if (text.includes('رياض') || text.includes('روضة')) return 'kindergarten';
-                    if (text.includes('طفولة') || text.includes('مبكرة')) return 'early';
-                    if (text.includes('ابتد')) return 'primary';
-                    if (text.includes('متوسط')) return 'middle';
-                    if (text.includes('ثانو')) return 'high';
-                    return this.centerImportForm.stage || 'middle';
+                    const text = this.normalizeArabicEducationText(label);
+                    if (!text) return '';
+
+                    // مفاتيح برمجية وإنجليزية قديمة/حديثة.
+                    if (['kindergarten','kg','kg1','kg2','kg3'].includes(text)) return 'kindergarten';
+                    if (['early','early childhood','early_childhood'].includes(text)) return 'early';
+                    if (['primary','elementary'].includes(text)) return 'primary';
+                    if (['middle','intermediate'].includes(text)) return 'middle';
+                    if (['high','secondary','high school'].includes(text)) return 'high';
+
+                    // اختلافات التسميات العربية في مركز المعلومات والمدارس المختلفة.
+                    if (/رياض\s*(ال)?اطفال|رياض الاطفال|روضة|روضه|مرحلة الروضة|مرحلة رياض/.test(text)) return 'kindergarten';
+                    if (/طفول[هة]\s*مبكر[هة]|الطفول[هة] المبكر[هة]|طفولة مبكرة/.test(text)) return 'early';
+                    if (/ابتداي|ابتدائي|ابتدائية|المرحلة الابتدائية|تعليم ابتدائي/.test(text)) return 'primary';
+                    if (/متوسط|متوسطة|المرحلة المتوسطة|تعليم متوسط/.test(text)) return 'middle';
+                    if (/ثانو|ثانوي|ثانوية|المرحلة الثانوية|تعليم ثانوي|مسارات/.test(text)) return 'high';
+                    return '';
                 },
 
                 normalizeCenterStudent(raw, idx = 0) {
                     const name = raw.student_name || raw.studentName || raw.name || raw.full_name || raw['اسم الطالب'] || raw['الطالب'] || raw['الاسم'] || '';
                     const studentNumber = raw.student_number || raw.studentNumber || raw.national_id || raw.nationalId || raw.id_number || raw.identity || raw['السجل المدني'] || raw['رقم السجل المدني'] || raw['رقم الهوية'] || raw['رقم الطالب'] || raw['رقم نور'] || raw['الهوية'] || '';
-                    const stageValue = raw.stage || raw.stage_name || raw['المرحلة'] || raw['المرحلة الدراسية'] || raw.level || raw['المرحلة/الصف'] || '';
-                    const gradeValue = raw.grade || raw.grade_name || raw.class_name || raw.class || raw['الصف'] || raw['الصف الدراسي'] || raw['المرحلة/الصف'] || raw['المرحلة'] || '';
+                    // المرحلة تُقرأ من حقول المرحلة فقط، ولا يجوز استنتاجها من الصف إلا كحل أخير إذا كان الحقل المركب يحمل اسم المرحلة صراحةً.
+                    const explicitStageValue = raw.stage || raw.stage_name || raw['المرحلة'] || raw['المرحلة الدراسية'] || raw.level || raw.education_stage || raw.school_stage || '';
+                    const combinedStageGrade = raw['المرحلة/الصف'] || raw.stage_grade || '';
+                    const stageKey = this.stageLabelToKey(explicitStageValue) || this.stageLabelToKey(combinedStageGrade);
+                    const stageValue = explicitStageValue || combinedStageGrade || '';
+                    // الصف لا يرث قيمة "المرحلة"؛ هذا كان سبب ظهور الصف مباشرة وكأنه مرحلة.
+                    const gradeValue = raw.grade || raw.grade_name || raw.class_name || raw.class || raw['الصف'] || raw['الصف الدراسي'] || raw.education_grade || raw.school_grade || '';
                     return {
                         id: raw.id ? `center-${raw.id}` : `center-${studentNumber || Date.now()}-${idx}`,
                         centerStudentId: raw.id || '',
                         student_number: studentNumber,
                         name: (name || '').toString().trim(),
                         stage: (stageValue || '').toString().trim(),
+                        stage_key: stageKey,
                         grade: (gradeValue || '').toString().trim(),
                         track_name: raw.track_name || raw.track || raw.path || raw['المسار'] || '',
                         section_name: raw.section_name || raw.section || raw.division || raw.classroom || raw['الشعبة'] || raw['الفصل'] || raw['الصف/الشعبة'] || '',
@@ -575,10 +609,12 @@
                 groupCenterStudentsForTeacher(rows) {
                     const normalized = (rows || []).map((s, idx) => this.normalizeCenterStudent(s, idx)).filter(s => s.name);
                     const groupsMap = new Map();
-                    const stageKeyFromStudent = (s) => this.stageLabelToKey(s.stage || s.grade || '') || this.centerImportForm.stage || 'middle';
                     normalized.forEach(s => {
-                        const stage = stageKeyFromStudent(s);
-                        const grade = (s.grade || s.stage || 'صف غير محدد').toString().trim();
+                        // لا نضع الطالب في مرحلة افتراضية. الطالب الذي لا تحمل بياناته مرحلة معروفة لا يدخل قوائم الصفوف حتى يتم تصحيح بياناته في مركز المعلومات.
+                        const stage = s.stage_key || this.stageLabelToKey(s.stage || '');
+                        if (!stage) return;
+                        const grade = (s.grade || '').toString().trim();
+                        if (!grade) return;
                         const track = (s.track_name || '').toString().trim();
                         const section = (s.section_name || '').toString().trim();
                         const key = [stage, grade, track, section].join('||');
@@ -600,9 +636,8 @@
                         this.showAlert('لم يتم العثور على صفوف مستوردة من مركز المعلومات.');
                         return;
                     }
-                    // لا نختار صفاً تلقائياً؛ يبدأ المعلم من المرحلة حتى لا تختلط سجلات مدرسة متعددة المراحل.
-                    const stages = this.centerStageOptions;
-                    if (!stages.includes(this.centerImportForm.stage)) this.centerImportForm.stage = stages[0] || '';
+                    // لا نختار مرحلة أو صفاً تلقائياً؛ يجب أن يحدد المعلم المرحلة أولاً صراحةً.
+                    this.centerImportForm.stage = '';
                     this.centerImportForm.grade = '';
                     this.centerImportForm.section = '';
                     this.centerImportForm.track = '';
@@ -675,8 +710,9 @@
                     const filtered = sourceStudents
                         .map((s, idx) => this.normalizeCenterStudent(s, idx))
                         .filter(s => !s.student_status || ['نشط', 'active', 'فعال', ''].includes(String(s.student_status).trim()))
-                        .filter(s => !form.stage || this.stageLabelToKey(s.stage || s.grade) === form.stage || includesMatch(s.stage || s.grade, stageLabel.replace('المرحلة ', '')))
-                        .filter(s => !form.grade || includesMatch(s.grade || s.stage, form.grade))
+                        // المرحلة أولاً وبمفتاح معياري، ولا نستخدم الصف بديلاً عنها.
+                        .filter(s => !!form.stage && (s.stage_key || this.stageLabelToKey(s.stage || '')) === form.stage)
+                        .filter(s => !form.grade || includesMatch(s.grade, form.grade))
                         .filter(s => !form.track || includesMatch(s.track_name, form.track))
                         .filter(s => !form.section || includesMatch(s.section_name, form.section))
                         .filter(s => s.name);
@@ -2647,10 +2683,10 @@
                     </template>
                     <div class="space-y-1">
                         <label class="text-[10px] font-bold text-slate-500">المادة</label>
-                        <input id="teacherCenterSubjectInput" x-model="centerImportForm.subject" type="text" placeholder="اكتب اسم المادة يدوياً" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs font-bold">
+                        <input id="teacherCenterSubjectInput" x-model="centerImportForm.subject" type="text" placeholder="اكتب اسم المادة يدوياً" :disabled="!centerImportForm.stage || !centerImportForm.grade || (centerSectionOptions.length && !centerImportForm.section)" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs font-bold disabled:opacity-50">
                     </div>
-                    <button @click="importClassFromInformationCenter()"
-                            class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs font-black transition shadow-sm">
+                    <button @click="importClassFromInformationCenter()" :disabled="!centerImportForm.stage || !centerImportForm.grade || (centerSectionOptions.length && !centerImportForm.section) || !centerImportForm.subject.trim()"
+                            class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs font-black transition shadow-sm disabled:opacity-40 disabled:cursor-not-allowed">
                         📥 إنشاء سجل الصف
                     </button>
                 </div>

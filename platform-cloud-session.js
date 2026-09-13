@@ -378,7 +378,7 @@
     const membershipsList = Array.isArray(payload.memberships) ? payload.memberships : [];
     const normalizeRole = (v) => String(v || '').trim().toLowerCase();
     const aliases = {
-      manager: ['manager','principal','school_manager','leadership','مدير','مديرة','مدير المدرسة','مديرة المدرسة'],
+      manager: ['manager','principal','school_manager','leadership','admin','owner','مدير','مديرة','مدير المدرسة','مديرة المدرسة'],
       agent: ['agent','deputy','vice','wakil','agency','وكيل','وكيلة'],
       teacher: ['teacher','performance','معلم','معلمة'],
       student_advisor: ['student_advisor','advisor','counselor','مرشد','موجه'],
@@ -387,18 +387,26 @@
       kindergarten_teacher: ['kindergarten_teacher','kindergarten-teacher','معلمة رياض الأطفال'],
       administrative_employee: ['administrative_employee','admin_employee','employee_admin','موظف إداري','موظفة إدارية']
     };
-    const allowed = (requiredRoles || []).flatMap((role) => aliases[normalizeRole(role)] || [normalizeRole(role)]);
+    const canonicalRole = (value) => {
+      const n = normalizeRole(value);
+      for (const [canonical, list] of Object.entries(aliases)) {
+        if (canonical === n || list.includes(n)) return canonical;
+      }
+      return n;
+    };
+    const allowed = (requiredRoles || []).map(canonicalRole);
+    const currentCanonicalRole = canonicalRole(rr);
     const member = membershipsList.find((m) =>
       String(m.schoolId || '') === sid &&
       String(m.userId || '') === uid &&
-      normalizeRole(m.role) === normalizeRole(rr)
+      canonicalRole(m.role) === currentCanonicalRole
     );
     if (!member) {
       const error = new Error('المستخدم غير مرتبط بالمدرسة الحالية بعضوية فعالة.');
       error.code = 'VERIFIED_MEMBERSHIP_MISSING';
       throw error;
     }
-    if (allowed.length && !allowed.includes(normalizeRole(rr))) {
+    if (allowed.length && !allowed.includes(currentCanonicalRole)) {
       const error = new Error('الدور الحالي غير مخول بفتح هذه الصفحة.');
       error.code = 'VERIFIED_ROLE_DENIED';
       throw error;

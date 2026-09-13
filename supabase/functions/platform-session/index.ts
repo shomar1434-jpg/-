@@ -27,6 +27,28 @@ const sha256 = async (value: string) =>
 
 const text = (value: unknown) => String(value ?? '').trim();
 const lower = (value: unknown) => text(value).toLowerCase();
+
+// Compatibility for historical role labels used by independent schools.
+// This normalizes only role labels; school_id and user_id checks remain strict.
+const canonicalRole = (value: unknown) => {
+  const r = lower(value);
+  const groups: Record<string, string[]> = {
+    manager: ['manager','principal','school_manager','leadership','admin','owner','مدير','مديرة','مدير المدرسة','مديرة المدرسة'],
+    agent: ['agent','deputy','vice','wakil','agency','وكيل','وكيلة'],
+    teacher: ['teacher','performance','معلم','معلمة'],
+    student_advisor: ['student_advisor','advisor','counselor','مرشد','موجه'],
+    health_advisor: ['health_advisor','health-advisor','موجه صحي','الموجه الصحي'],
+    activity_leader: ['activity_leader','activity-leader','activity','رائد النشاط','رائدة النشاط'],
+    kindergarten_teacher: ['kindergarten_teacher','kindergarten-teacher','معلمة رياض الأطفال'],
+    administrative_employee: ['administrative_employee','admin_employee','employee_admin','موظف إداري','موظفة إدارية'],
+  };
+  for (const [canonical, list] of Object.entries(groups)) {
+    if (r === canonical || list.includes(r)) return canonical;
+  }
+  return r;
+};
+const sameRoleFamily = (a: unknown, b: unknown) => canonicalRole(a) === canonicalRole(b);
+
 const isUuid = (value: unknown) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     text(value),
@@ -206,7 +228,7 @@ Deno.serve(async (request) => {
       const memberships = await membershipsForIdentity(admin, previous);
       const requestedSchool = text(payload?.schoolId || previous.school_id);
       // RL33: renewal must preserve the exact school + role. A renewal is never a role switch.
-      const allowed = memberships.find((m:any)=>m.schoolId===requestedSchool && lower(m.role)===lower(previous.role) && String(m.userId||previous.user_id)===String(previous.user_id));
+      const allowed = memberships.find((m:any)=>m.schoolId===requestedSchool && sameRoleFamily(m.role,previous.role) && String(m.userId||previous.user_id)===String(previous.user_id));
       if (!allowed) return json({error:'عضوية الحساب في المدرسة أو الدور الحالي لم تعد فعالة. اختر الدور صراحة من مبدّل العضويات.',code:'SESSION_RENEW_ROLE_MEMBERSHIP_DENIED',requestId},403);
       const next = await issueSession(admin, previous.user_id, allowed.schoolId, previous.role, previous.id);
       return json({...next,membershipId:allowed.membershipId,schoolName:allowed.schoolName,schoolCode:allowed.schoolCode,requestId,renewed:true});
@@ -218,7 +240,7 @@ Deno.serve(async (request) => {
       const memberships = await membershipsForIdentity(admin,currentSession);
       if(action === 'memberships') return json({memberships,current:{schoolId:currentSession.school_id,userId:currentSession.user_id,role:currentSession.role},requestId});
       const targetSchool=text(payload?.schoolId), targetRole=lower(payload?.role), membershipId=text(payload?.membershipId);
-      const allowed=memberships.find((m:any)=>(!membershipId||m.membershipId===membershipId)&&m.schoolId===targetSchool&&(!targetRole||lower(m.role)===targetRole));
+      const allowed=memberships.find((m:any)=>(!membershipId||m.membershipId===membershipId)&&m.schoolId===targetSchool&&(!targetRole||sameRoleFamily(m.role,targetRole)));
       if(!allowed) return json({error:'الحساب غير مرتبط بالمدرسة أو الدور المطلوب',code:'MEMBERSHIP_NOT_ALLOWED',requestId},403);
       const next=await issueSession(admin,allowed.userId||currentSession.user_id,allowed.schoolId,allowed.role,currentSession.id);
       return json({...next,membershipId:allowed.membershipId,schoolName:allowed.schoolName,schoolCode:allowed.schoolCode,requestId});
@@ -430,9 +452,9 @@ Deno.serve(async (request) => {
     // Normal school login does not ask the user to choose a role. If exactly one active
     // school_members row exists, it is authoritative even when users.role is stale.
     // An explicit requested role remains supported only for specialized callers.
-    if(requestedLoginRole) selectedMembership=activeMemberships.find((m:any)=>lower(m.role)===requestedLoginRole)||null;
+    if(requestedLoginRole) selectedMembership=activeMemberships.find((m:any)=>sameRoleFamily(m.role,requestedLoginRole))||null;
     if(!selectedMembership&&activeMemberships.length===1) selectedMembership=activeMemberships[0];
-    if(!selectedMembership&&activeMemberships.length>1&&preferredRole) selectedMembership=activeMemberships.find((m:any)=>lower(m.role)===preferredRole)||null;
+    if(!selectedMembership&&activeMemberships.length>1&&preferredRole) selectedMembership=activeMemberships.find((m:any)=>sameRoleFamily(m.role,preferredRole))||null;
     if(requestedLoginRole&&!selectedMembership) return json({error:'الحساب لا يملك الدور المطلوب في هذه المدرسة',code:'LOGIN_ROLE_NOT_ALLOWED',details:'LD401',requestId},403);
     if(!selectedMembership&&activeMemberships.length>1) return json({error:'للحساب أكثر من دور في المدرسة. اختر الدور المطلوب قبل الدخول.',code:'ROLE_SELECTION_REQUIRED',details:'LD402',roles:activeMemberships.map((m:any)=>text(m.role)),requestId},409);
     if(!selectedMembership&&activeMemberships.length===0){

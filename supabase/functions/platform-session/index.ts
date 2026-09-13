@@ -120,7 +120,15 @@ const activeSession = async (admin: any, rawToken: string) => {
 const membershipsForIdentity = async (admin: any, session: any) => {
   const uq = await admin.from('users').select('*').eq('id', session.user_id).limit(1).maybeSingle();
   const identity = uq.data || {};
-  const email = lower(identity.email || identity.microsoft_email || session.email || '');
+  let email = lower(identity.email || identity.microsoft_email || session.email || '');
+  // RL140: if the canonical session UUID is an Auth identity without a matching
+  // legacy users row, recover its verified e-mail for membership resolution.
+  if(!email && isUuid(session.user_id)) {
+    try {
+      const au = await admin.auth.admin.getUserById(session.user_id);
+      email = lower(au?.data?.user?.email || '');
+    } catch(_) {}
+  }
   const rows: any[] = [];
   const add = (items:any[], source:'user_id'|'email') => (items||[]).forEach((x:any)=>{
     if(!x || !activeStatus(x.status)) return;
@@ -380,6 +388,25 @@ Deno.serve(async (request) => {
       }) || null;
 
     let resolvedMembership: any = null;
+
+    // RL140: a legacy users row can match the verified e-mail while carrying an
+    // obsolete/non-canonical id. Resolve the active membership with the verified
+    // Auth identity/e-mail and use a valid UUID before issuing platform_sessions.
+    if(user && authUser && isUuid(authUser.id)) {
+      try {
+        let mq = await admin.from('school_members').select('*').eq('school_id', school.id).eq('user_id', authUser.id).limit(1).maybeSingle();
+        if((!mq.data || mq.error) && normalizedLogin.includes('@')) {
+          mq = await admin.from('school_members').select('*').eq('school_id', school.id).eq('email', normalizedLogin).limit(1).maybeSingle();
+        }
+        if(!mq.error && mq.data && activeStatus(mq.data.status)) resolvedMembership = mq.data;
+      } catch(_) {}
+      const memberUid = text(resolvedMembership?.user_id);
+      const canonicalUid = isUuid(memberUid) ? memberUid : authUser.id;
+      if(!isUuid(text(user.id)) || lower(user.email)===normalizedLogin) {
+        user = {...user, id:canonicalUid, email:normalizedLogin, school_id:school.id, role:resolvedMembership?.role || user.role};
+      }
+    }
+
     // إذا لم يوجد سجل مستخدم مستقل داخل المدرسة المختارة، نتحقق من عضوية نفس الهوية في school_members.
     if (!user) {
       const allUsersResult = await admin.from('users').select('*').limit(5000);
@@ -468,6 +495,9 @@ Deno.serve(async (request) => {
       console.warn('[platform-session]', requestId, 'membership_lookup_warning', membershipsQ.error);
     }
     const activeMemberships=(membershipsQ.data||[]).filter((m:any)=>activeStatus(m.status));
+    if(resolvedMembership && activeStatus(resolvedMembership.status) && !activeMemberships.some((m:any)=>String(m.id||'')===String(resolvedMembership.id||''))) {
+      activeMemberships.push(resolvedMembership);
+    }
     const requestedLoginRole=canonicalRole(payload?.role||'');
     const preferredRole=canonicalRole(resolvedMembership?.role||user.role||'');
     let selectedMembership:any=null;

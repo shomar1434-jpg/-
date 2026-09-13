@@ -365,6 +365,9 @@
       error.code = 'SYSTEM_ADMIN_SCHOOL_VERIFY_BLOCKED';
       throw error;
     }
+    // RL140: recover/renew a signed school session before strict membership checks.
+    // This prevents a recoverable legacy session from being rejected during the first paint.
+    await ensure();
     const payload = await memberships();
     const current = payload && payload.current ? payload.current : {};
     const sid = String(current.schoolId || '').trim();

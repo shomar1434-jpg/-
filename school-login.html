@@ -575,7 +575,7 @@
 </script>
 
 <script src="platform-runtime-guard.js?v=20260914-RL148-legacy-session-bridge"></script>
-<script src="platform-cloud-session.js?v=20260914-RL150-cloud-session-authoritative"></script>
+<script src="platform-cloud-session.js?v=20260914-RL151-single-cloud-session"></script>
 <!-- RL115: strict independent-school link binding; fail closed on school mismatch. -->
 <!-- RL136: legacy active-account school-bound login + cloud-session compatibility merge. -->
 <script id="independent-school-login-engine">
@@ -968,19 +968,18 @@
         }, school);
       }
 
-      // التوافق القديم يبقى فقط عندما ثبت محليًا أن الحساب نفسه Active داخل المدرسة.
+      // RL151 — عقد موحد للمدارس المستقلة (مطابق لمسار المدرسة التجريبية):
+      // لا يجوز فتح أي واجهة مدرسة من تحقق محلي فقط. يجب أن تنشأ platform-session
+      // خادمية أولاً، وإلا ستظهر الواجهة بلا x-platform-session وتنفصل عن السحابة.
       if(!platformSessionPayload){
-        if(!user){
-          console.warn('RL139: server and legacy login both failed', platformSessionError);
-          const diagCode = String(platformSessionError && platformSessionError.details || '').trim();
-          const reqId = String(platformSessionError && platformSessionError.requestId || '').trim();
-          const suffix = diagCode ? ` — رمز التشخيص: ${diagCode}${reqId ? ` / ${reqId}` : ''}` : '';
-          setMsg('بيانات الدخول غير صحيحة أو الحساب غير موجود في هذه المدرسة' + suffix);
-          return;
-        }
-        if(!isActiveAccount(user)){ setMsg('الحساب غير مفعل بعد'); return; }
-        sessionCompatFallback = true;
+        console.warn('RL151: cloud session issuance failed; local-only entry blocked', platformSessionError);
+        const code = String(platformSessionError && (platformSessionError.code || platformSessionError.details) || 'SESSION_CREATE_FAILED').trim();
+        const reqId = String(platformSessionError && platformSessionError.requestId || '').trim();
+        const suffix = ` — ${code}${reqId ? ` / ${reqId}` : ''}`;
+        setMsg('تعذر إنشاء جلسة المدرسة السحابية. لم يتم فتح الواجهة لحماية اتصال المدرسة بالسحابة' + suffix);
+        return;
       }
+      sessionCompatFallback = false;
 
       if(!user){ setMsg('بيانات الدخول غير صحيحة أو الحساب غير موجود في هذه المدرسة'); return; }
       if(!isActiveAccount(user)){ setMsg('الحساب غير مفعل بعد'); return; }

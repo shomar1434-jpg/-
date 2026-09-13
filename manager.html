@@ -6103,8 +6103,8 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
   // session engine from starting a second concurrent route gate on this page.
   window.__PLATFORM_EXPLICIT_ACCESS_GATE__ = true;
 </script>
-<script src="platform-runtime-guard.js?v=20260914-RL150-cloud-session-authoritative"></script>
-<script src="platform-cloud-session.js?v=20260914-RL150-cloud-session-authoritative"></script>
+<script src="platform-runtime-guard.js?v=20260914-RL151-single-cloud-session"></script>
+<script src="platform-cloud-session.js?v=20260914-RL151-single-cloud-session"></script>
 <script id="platform-manager-access-gate-clean-v6-bisha-stability">
 (function(){
   function requestedSystemAdminContext(){
@@ -6160,6 +6160,11 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
     document.documentElement.style.removeProperty('visibility');
     console.warn('[manager-access-gate] transient verification failure; session preserved',err);
   }
+
+  function isCloudSessionAbsent(err){
+    var code=String(err&&err.code||'').trim().toUpperCase();
+    return ['SESSION_MISSING','SESSION_INVALID','SESSION_EXPIRED','SESSION_RENEW_NOT_FOUND','SESSION_RENEW_GRACE_EXPIRED','HTTP_401'].includes(code);
+  }
   async function verifySystemAdminAccess(){
     var bridge=window.SmartSchoolSupabase;
     var sb=bridge&&typeof bridge.getClient==='function' ? bridge.getClient() : null;
@@ -6200,12 +6205,13 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
       if(systemAdminRequested){
         try{sessionStorage.removeItem('system_admin_context');sessionStorage.removeItem('system_admin_verified');}catch(_){}
         location.replace('index.html?systemAdminReturn=1&reason=system_admin_access_denied');
+      }else if(isCloudSessionAbsent(e)){
+        // RL151: a school interface must never remain open without its server-issued cloud session.
+        location.replace(loginTarget('cloud_session_required'));
       }else if(isDefinitiveSchoolDenial(e)){
-        // A proven membership/role denial may return to login, but do not erase
-        // the session pre-emptively; this avoids destroying another valid tab context.
         location.replace(loginTarget('school_access_denied'));
       }else{
-        // Network/race/temporary backend failures must never log the manager out.
+        // Only genuine transient network/backend failures keep the local shell and retry UI.
         showRetryGate(e);
       }
       throw e;

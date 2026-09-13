@@ -1495,8 +1495,7 @@
 
     </style>
 <!-- STUDENT_ADVISOR_AI_CENTER_START -->
-<script data-openai-engine="true" defer="" src="./openai-engine.js"></script>
-<script data-top-ai-center="true" defer="" src="./top-ai-center.js"></script>
+<!-- Entry stability: duplicate AI engine loads removed; canonical loads remain near agent-core. -->
 <!-- STUDENT_ADVISOR_AI_CENTER_END -->
 <style id="GLOBAL_VERTICAL_FLOATING_ICONS_FIX">
 @media screen {
@@ -4576,7 +4575,10 @@ body{overflow-x:hidden}
         // Unified role-portal initialization: the secure route guard controls access,
         // while the welcome gate is visible by default after authorization.  Avoid
         // assigning window.onload because cloned role pages may overwrite it later.
+        let __studentAdvisorUIInitialized = false;
         function initializeStudentAdvisorUI() {
+            if (__studentAdvisorUIInitialized) return;
+            __studentAdvisorUIInitialized = true;
             try { loadSavedTheme(); } catch (e) { console.error('[student-advisor] theme init', e); }
             try { setupSecurityGuardrails(); } catch (e) { console.error('[student-advisor] guardrails init', e); }
             try {
@@ -4986,7 +4988,7 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
  var write=$('safeAiWrite'); if(write) write.onclick=function(){var t=$('safeAiWriter').value||''; out('safeAiWriterOut', t?'بناءً على ما ورد، نوصي بما يلي:\n'+t.split(/\n+/).filter(Boolean).map(function(x,i){return (i+1)+'. '+x.trim()}).join('\n'):'أدخل نصًا أولًا.')};
  var att=$('safeAiAttendance'); if(att) att.onclick=function(){var t=$('safeAiMeet').value||''; var names=[...new Set(t.split(/[\n,،;؛]+/).map(x=>x.trim()).filter(x=>x.length>1 && !/دخل|خرج|انضم|غادر/.test(x)))]; out('safeAiMeetOut',names.length?'قائمة الحضور الفعلية:\n• '+names.join('\n• '):'لم يتم العثور على أسماء واضحة.')};
  var search=$('safeAiDoSearch'); if(search) search.onclick=function(){var q=$('safeAiSearch').value||''; var text=document.body.innerText||''; var ok=q && text.includes(q); out('safeAiSearchOut', ok?'تم العثور على نتائج في الصفحة الحالية.':'لا توجد نتائج واضحة في الصفحة الحالية.')};
- var save=$('safeAiSaveSchool'); if(save) save.onclick=function(){localStorage.setItem('smartSchool.currentSchool', JSON.stringify({schoolName:$('safeAiSchool').value||'مدرسة', schoolId:$('safeAiSchoolId').value||'SCH-DEMO'})); out('safeAiSyncOut','تم حفظ بيئة المدرسة محليًا.')};
+ var save=$('safeAiSaveSchool'); if(save) save.onclick=function(){var sid=String((window.PlatformCloudSession&&PlatformCloudSession.schoolId&&PlatformCloudSession.schoolId())||sessionStorage.getItem('platform_tab_session_school_v1')||sessionStorage.getItem('smart_school_tab_school_v1')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||'').trim();var sname=String(sessionStorage.getItem('current_school_name')||localStorage.getItem('current_school_name')||localStorage.getItem('school_name')||'').trim();if(!sid){out('safeAiSyncOut','تعذر تحديد المدرسة الموثقة. أعد فتح القسم من بوابة المدرسة.');return;}var typedId=String($('safeAiSchoolId').value||'').trim();if(typedId&&typedId!==sid){out('safeAiSyncOut','لا يمكن استبدال هوية المدرسة الموثقة بمعرف محلي مختلف.');return;}localStorage.setItem('smartSchool.currentSchool',JSON.stringify({schoolName:String($('safeAiSchool').value||sname||'المدرسة الحالية').trim(),schoolId:sid}));out('safeAiSyncOut','تم حفظ بيئة المدرسة الحالية دون تغيير هوية المدرسة الموثقة.')};
  var sync=$('safeAiSync'); if(sync) sync.onclick=function(){localStorage.setItem('smartSchool.lastSync', new Date().toISOString()); out('safeAiSyncOut','تم تجهيز المزامنة المحلية. عند ربط Firebase ستتم المزامنة السحابية الحقيقية.')};
 })();
 </script>
@@ -5944,11 +5946,15 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
     try{if(typeof refreshDashboardMetrics==='function')refreshDashboardMetrics()}catch(_){}
     try{if(document.getElementById('archive-view')?.style.display==='block'&&typeof renderArchiveFolders==='function')renderArchiveFolders()}catch(_){}
   });
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(bootstrap,0),{once:true});else setTimeout(bootstrap,0);
+  function scheduleBootstrap(){
+    const run=()=>bootstrap();
+    if('requestIdleCallback' in window) requestIdleCallback(run,{timeout:1200});
+    else setTimeout(run,450);
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',scheduleBootstrap,{once:true});else scheduleBootstrap();
 })();
 </script>
 
-</body>
 <script id="PERFORMANCE_BENEFICIARIES_RELIABILITY_V1">
 (function(){
 'use strict';
@@ -5987,4 +5993,5 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 window.ensurePerformanceBeneficiariesControl=ensure;
 })();
 </script>
+</body>
 </html>

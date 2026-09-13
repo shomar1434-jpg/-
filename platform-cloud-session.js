@@ -274,6 +274,27 @@
     return tabFirst(TAB_ROLE_KEY,ROLE_KEY);
   }
 
+  // RL143 — Unified Independent School Identity Contract
+  // One source of truth for every school/tab: verified cloud session school + user + canonical role.
+  function canonicalRole(value) {
+    const v=String(value||'').trim().toLowerCase();
+    const groups={
+      manager:['manager','principal','school_manager','school-manager','leadership','مدير','مديرة','مدير المدرسة','مديرة المدرسة'],
+      agent:['agent','deputy','vice','wakil','agency','وكيل','وكيلة'],
+      teacher:['teacher','performance','معلم','معلمة'],
+      student_advisor:['student_advisor','student-advisor','advisor','counselor','مرشد','مرشدة','موجه','موجهة'],
+      health_advisor:['health_advisor','health-advisor','موجه صحي','موجهة صحية','الموجه الصحي'],
+      activity_leader:['activity_leader','activity-leader','activity','رائد النشاط','رائدة النشاط'],
+      kindergarten_teacher:['kindergarten_teacher','kindergarten-teacher','معلمة رياض الأطفال'],
+      administrative_employee:['administrative_employee','admin_employee','employee_admin','موظف إداري','موظفة إدارية']
+    };
+    for(const [k,a] of Object.entries(groups)) if(v===k||a.includes(v)) return k;
+    return v;
+  }
+  function verifiedContext(){
+    return {schoolId:String(schoolId()||'').trim(),userId:String(userId()||'').trim(),role:canonicalRole(role()||'')};
+  }
+
   function role() {
     if (isSystemAdminContext()) return 'system_admin';
     try {
@@ -376,24 +397,7 @@
       throw error;
     }
     const membershipsList = Array.isArray(payload.memberships) ? payload.memberships : [];
-    const normalizeRole = (v) => String(v || '').trim().toLowerCase();
-    const aliases = {
-      manager: ['manager','principal','school_manager','school-manager','leadership','مدير','مديرة','مدير المدرسة','مديرة المدرسة'],
-      agent: ['agent','deputy','vice','wakil','agency','وكيل','وكيلة'],
-      teacher: ['teacher','performance','معلم','معلمة'],
-      student_advisor: ['student_advisor','student-advisor','advisor','counselor','مرشد','مرشدة','موجه','موجهة'],
-      health_advisor: ['health_advisor','health-advisor','موجه صحي','موجهة صحية','الموجه الصحي'],
-      activity_leader: ['activity_leader','activity-leader','activity','رائد النشاط','رائدة النشاط'],
-      kindergarten_teacher: ['kindergarten_teacher','kindergarten-teacher','معلمة رياض الأطفال'],
-      administrative_employee: ['administrative_employee','admin_employee','employee_admin','موظف إداري','موظفة إدارية']
-    };
-    const canonicalRole = (value) => {
-      const v = normalizeRole(value);
-      for (const [canonical, list] of Object.entries(aliases)) {
-        if (canonical === v || list.map(normalizeRole).includes(v)) return canonical;
-      }
-      return v;
-    };
+    // RL143: use the single module-level canonical role contract.
     const allowed = (requiredRoles || []).map(canonicalRole).filter(Boolean);
     const currentRole = canonicalRole(rr);
     const member = membershipsList.find((m) =>
@@ -636,6 +640,8 @@
     userId,
     schoolId,
     role,
+    canonicalRole,
+    verifiedContext,
     baseRole,
     delegatedRole,
     delegatedTaskId,

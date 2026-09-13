@@ -140,8 +140,6 @@ async function resolveDelegatedLibraryFileId(t){try{const r=await CloudFileEngin
 async function openDelegatedLibraryFileFromTask(){try{if(!inlineWs?.task)throw new Error('التكليف غير محدد');const t=inlineWs.task,fileId=await resolveDelegatedLibraryFileId(t);if(!fileId)throw new Error('لم يتم العثور على السجل المرتبط بالتكليف');const cdw=await ensureTaskDocumentWorkspace();const ret=new URL(location.href);ret.searchParams.set('mode','assignee');ret.searchParams.set('task_id',String(t.id||t.task_id||''));ret.searchParams.set('library_work_return','1');ret.searchParams.delete('library_file_id');ret.searchParams.delete('library_file_name');ret.searchParams.delete('library_owner');ret.searchParams.delete('library_module');ret.searchParams.delete('library_folder');cdw.edit(fileId,ret.href)}catch(e){toast(e.message||'تعذر فتح السجل السحابي',false)}}
 async function recordLibraryWorkReturn(){if(qs('library_work_return')!=='1'||mode()!=='assignee')return;const taskId=qs('task_id');if(!taskId)return;try{await CloudTaskEngine.addUpdate({taskId,updateType:'execution',title:'العمل على السجل السحابي',notes:'تم فتح السجل المكلف به من مكتبة القسم والعمل عليه عبر محرر المستندات السحابي.',status:'draft'});toast('تم توثيق العمل على السجل السحابي');const u=new URL(location.href);u.searchParams.delete('library_work_return');history.replaceState(null,'',u.href)}catch(e){console.warn('[library work return]',e)}}
 function qs(k){return new URLSearchParams(location.search).get(k)||''}function esc(s){return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}function uid(){return 'task_'+Date.now()+'_'+Math.random().toString(36).slice(2,8)}function parse(v,d){try{return JSON.parse(v)}catch(e){return d}}function read(k,d){return parse(localStorage.getItem(k),d)}
-const CENTRAL_TASK_QUOTA_REPAIR_SCHOOL_ID='ec9130d2-edbf-4d7d-a1c5-471a90eb24e1';
-const CENTRAL_TASK_QUOTA_REPAIR_SCHOOL_CODE='SCH-B03813C1';
 function isStorageQuotaError(e){
   return !!e && (e.name==='QuotaExceededError'||e.name==='NS_ERROR_DOM_QUOTA_REACHED'||e.code===22||e.code===1014);
 }
@@ -196,19 +194,18 @@ function write(k,v){
     return true;
   }catch(e){
     if(!isStorageQuotaError(e))throw e;
-    const sid=(typeof currentSchoolId==='function'?String(currentSchoolId()||''):'');
-    const isTargetSchool=sid===CENTRAL_TASK_QUOTA_REPAIR_SCHOOL_ID||sid===CENTRAL_TASK_QUOTA_REPAIR_SCHOOL_CODE;
+    const sid=(typeof currentSchoolId==='function'?String(currentSchoolId()||'').trim():'');
     const isTaskCache=/^central_school_tasks_/.test(String(k||''));
-    if(!(isTargetSchool&&isTaskCache))throw e;
+    // RL143 — سياسة موحدة لكل المدارس: معالجة امتلاء كاش مركز التكليفات
+    // لا تعتمد على school_id محدد. لا نمس البيانات السحابية أو مفاتيح مدرسة أخرى.
+    if(!isTaskCache)throw e;
 
-    // إصلاح خاص بالمدرسة المتأثرة: نحذف الكاش المحلي الممتلئ فقط،
-    // ولا نمس أي جدول سحابي ولا مفاتيح مدارس أخرى.
     try{localStorage.removeItem(k);}catch(_){}
 
     // المحاولة الأولى: كتابة النسخة السحابية الجديدة كاملة بعد تحرير المساحة.
     try{
       localStorage.setItem(k,payload);
-      try{localStorage.setItem('central_task_quota_repaired_'+CENTRAL_TASK_QUOTA_REPAIR_SCHOOL_CODE,new Date().toISOString());}catch(_){}
+      try{localStorage.setItem('central_task_quota_repaired_'+(sid||'active_school'),new Date().toISOString());}catch(_){}
       return true;
     }catch(e2){
       if(!isStorageQuotaError(e2))throw e2;
@@ -217,7 +214,7 @@ function write(k,v){
       const compact=JSON.stringify(compactCentralTaskCache(v));
       localStorage.removeItem(k);
       localStorage.setItem(k,compact);
-      try{localStorage.setItem('central_task_quota_repaired_'+CENTRAL_TASK_QUOTA_REPAIR_SCHOOL_CODE,new Date().toISOString());}catch(_){}
+      try{localStorage.setItem('central_task_quota_repaired_'+(sid||'active_school'),new Date().toISOString());}catch(_){}
       return true;
     }
   }

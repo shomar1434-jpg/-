@@ -127,6 +127,73 @@
                     high: { label: 'المرحلة الثانوية', icon: '🎓', color: 'bg-amber-600' }
                 },
 
+                // خيارات الاستيراد المتسلسلة من مركز المعلومات: مرحلة ← صف ← شعبة ← (مسار للثانوي فقط)
+                get centerStageOptions() {
+                    const order = ['kindergarten', 'early', 'primary', 'middle', 'high'];
+                    const used = new Set((this.centerDiscoveredClasses || []).map(g => g.stage).filter(Boolean));
+                    return order.filter(key => used.has(key));
+                },
+                get centerGradeOptions() {
+                    const stage = this.centerImportForm.stage;
+                    return [...new Set((this.centerDiscoveredClasses || [])
+                        .filter(g => !stage || g.stage === stage)
+                        .map(g => (g.grade || '').toString().trim())
+                        .filter(Boolean))].sort((a,b) => a.localeCompare(b, 'ar'));
+                },
+                get centerSectionOptions() {
+                    const form = this.centerImportForm;
+                    return [...new Set((this.centerDiscoveredClasses || [])
+                        .filter(g => (!form.stage || g.stage === form.stage) && (!form.grade || g.grade === form.grade))
+                        .map(g => (g.section || '').toString().trim())
+                        .filter(Boolean))].sort((a,b) => a.localeCompare(b, 'ar'));
+                },
+                get centerTrackOptions() {
+                    if (this.centerImportForm.stage !== 'high') return [];
+                    const form = this.centerImportForm;
+                    return [...new Set((this.centerDiscoveredClasses || [])
+                        .filter(g => (!form.stage || g.stage === form.stage)
+                            && (!form.grade || g.grade === form.grade)
+                            && (!form.section || g.section === form.section))
+                        .map(g => (g.track || '').toString().trim())
+                        .filter(Boolean))].sort((a,b) => a.localeCompare(b, 'ar'));
+                },
+                centerSelectionStudentCount({ includeTrack = true } = {}) {
+                    const form = this.centerImportForm;
+                    return (this.centerDiscoveredClasses || [])
+                        .filter(g => (!form.stage || g.stage === form.stage)
+                            && (!form.grade || g.grade === form.grade)
+                            && (!form.section || g.section === form.section)
+                            && (!includeTrack || !form.track || g.track === form.track))
+                        .reduce((sum, g) => sum + (Number(g.count) || 0), 0);
+                },
+                onCenterStageChange() {
+                    this.centerImportForm.grade = '';
+                    this.centerImportForm.section = '';
+                    this.centerImportForm.track = '';
+                    this.centerSelectedClassKey = '';
+                    const count = this.centerSelectionStudentCount({ includeTrack: false });
+                    this.centerImportStatus = `المرحلة المحددة تحتوي على ${count} طالب/طالبة في مركز المعلومات. اختر الصف.`;
+                },
+                onCenterGradeChange() {
+                    this.centerImportForm.section = '';
+                    this.centerImportForm.track = '';
+                    this.centerSelectedClassKey = '';
+                    const count = this.centerSelectionStudentCount({ includeTrack: false });
+                    this.centerImportStatus = `الصف المحدد يحتوي على ${count} طالب/طالبة. اختر الشعبة.`;
+                },
+                onCenterSectionChange() {
+                    this.centerImportForm.track = '';
+                    this.centerSelectedClassKey = '';
+                    const count = this.centerSelectionStudentCount({ includeTrack: false });
+                    this.centerImportStatus = this.centerImportForm.stage === 'high'
+                        ? `الشعبة المحددة تحتوي على ${count} طالب/طالبة. اختر المسار إن كان مسجلاً، ثم اكتب المادة.`
+                        : `الشعبة المحددة تحتوي على ${count} طالب/طالبة. اكتب اسم المادة ثم أنشئ السجل.`;
+                },
+                onCenterTrackChange() {
+                    const count = this.centerSelectionStudentCount();
+                    this.centerImportStatus = `النطاق المحدد يحتوي على ${count} طالب/طالبة. اكتب اسم المادة ثم أنشئ السجل.`;
+                },
+
 
                 // المراحل المعروضة في الواجهة تُستخرج من الصفوف المستوردة فعلياً من مركز المعلومات
                 get availableStageEntries() {
@@ -533,10 +600,15 @@
                         this.showAlert('لم يتم العثور على صفوف مستوردة من مركز المعلومات.');
                         return;
                     }
-                    this.centerSelectedClassKey = this.centerDiscoveredClasses[0].key;
-                    this.applyCenterDiscoveredClass();
-                    this.centerImportStatus = `تم التعرف على ${this.centerDiscoveredClasses.length} صف/شعبة من مركز المعلومات وتوزيع الطلاب عليها تلقائياً. اختر الصف من القائمة، أدخل اسم المادة، ثم اضغط إنشاء سجل الصف لتظهر بطاقته ويرتبط بالسجلات.`;
-                    this.showNotification('تم التعرف على الصفوف وتوزيع الطلاب حسب الشعب من مركز المعلومات.', 'success');
+                    // لا نختار صفاً تلقائياً؛ يبدأ المعلم من المرحلة حتى لا تختلط سجلات مدرسة متعددة المراحل.
+                    const stages = this.centerStageOptions;
+                    if (!stages.includes(this.centerImportForm.stage)) this.centerImportForm.stage = stages[0] || '';
+                    this.centerImportForm.grade = '';
+                    this.centerImportForm.section = '';
+                    this.centerImportForm.track = '';
+                    this.centerSelectedClassKey = '';
+                    this.centerImportStatus = `تم تحميل بيانات مركز المعلومات (${this.centerDiscoveredClasses.length} صف/شعبة). اختر المرحلة ثم الصف ثم الشعبة، وسيظهر المسار للمرحلة الثانوية فقط.`;
+                    this.showNotification('تم تحميل المراحل والصفوف والشعب من مركز المعلومات.', 'success');
                 },
 
                 applyCenterDiscoveredClass() {
@@ -549,13 +621,26 @@
                 },
 
                 async importClassFromInformationCenter() {
-                    if (!this.centerImportForm.grade.trim() || !this.centerImportForm.subject.trim()) {
-                        this.showAlert('يرجى تحديد الصف واسم المادة قبل إنشاء سجل المعلم من مركز المعلومات.');
+                    const current = this.centerImportForm;
+                    if (!current.stage) {
+                        this.showAlert('يرجى اختيار المرحلة أولاً.');
+                        return;
+                    }
+                    if (!current.grade || !current.grade.trim()) {
+                        this.showAlert('يرجى اختيار الصف.');
+                        return;
+                    }
+                    if (this.centerSectionOptions.length && (!current.section || !current.section.trim())) {
+                        this.showAlert('يرجى اختيار الشعبة.');
+                        return;
+                    }
+                    if (!current.subject || !current.subject.trim()) {
+                        this.showAlert('يرجى كتابة اسم المادة التي تدرسها.');
                         return;
                     }
 
-                    this.applyCenterDiscoveredClass();
-                    this.centerImportStatus = 'جاري جلب طلاب الصف المختار من مركز المعلومات...';
+                    // لا نعيد تطبيق مجموعة مكتشفة تلقائياً؛ خيارات المعلم الحالية هي مصدر النطاق المقصود.
+                    this.centerImportStatus = 'جاري جلب طلاب المرحلة والصف والشعبة المحددة من مركز المعلومات...';
 
                     const form = this.centerImportForm;
                     let sourceStudents = [];
@@ -2516,43 +2601,53 @@
                     </button>
                 </div>
 
-                <template x-if="centerDiscoveredClasses.length > 0">
-                    <div class="mb-4 p-3 rounded-xl bg-blue-50 border border-blue-100">
-                        <label class="block text-[11px] font-black text-blue-900 mb-2">اختر الصف/الشعبة المستوردة من مركز المعلومات</label>
-                        <select x-model="centerSelectedClassKey" @change="applyCenterDiscoveredClass()" class="w-full bg-white border border-blue-200 rounded-lg p-2.5 text-xs font-bold text-blue-950">
-                            <template x-for="grp in centerDiscoveredClasses" :key="grp.key">
-                                <option :value="grp.key" x-text="`${stagesMeta[grp.stage]?.label || grp.stage} - ${grp.grade}${grp.track ? ' - ' + grp.track : ''}${grp.section ? ' - شعبة ' + grp.section : ''} (${grp.count} طالب)`"></option>
-                            </template>
-                        </select>
-                    </div>
-                </template>
+                <div class="mb-4 p-3 rounded-xl bg-blue-50 border border-blue-100">
+                    <p class="text-[11px] font-black text-blue-900">آلية الاستيراد: المرحلة ← الصف ← الشعبة ← المسار (للثانوي فقط) ← المادة</p>
+                    <p class="text-[10px] text-blue-700 mt-1">كل اختيار يفلتر بيانات مركز المعلومات مباشرة، ويمكن للمعلم إنشاء أكثر من سجل لمراحل أو صفوف أو مواد مختلفة.</p>
+                </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
                     <div class="space-y-1">
                         <label class="text-[10px] font-bold text-slate-500">المرحلة</label>
-                        <select x-model="centerImportForm.stage" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs font-bold">
-                            <option value="kindergarten">رياض الأطفال</option>
-                            <option value="early">الطفولة المبكرة</option>
-                            <option value="primary">المرحلة الابتدائية</option>
-                            <option value="middle">المرحلة المتوسطة</option>
-                            <option value="high">المرحلة الثانوية</option>
+                        <select x-model="centerImportForm.stage" @change="onCenterStageChange()" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs font-bold">
+                            <option value="">اختر المرحلة</option>
+                            <template x-for="stageKey in centerStageOptions" :key="stageKey">
+                                <option :value="stageKey" x-text="stagesMeta[stageKey]?.label || stageKey"></option>
+                            </template>
                         </select>
                     </div>
                     <div class="space-y-1">
                         <label class="text-[10px] font-bold text-slate-500">الصف</label>
-                        <input x-model="centerImportForm.grade" type="text" placeholder="مثال: الأول المتوسط" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs font-bold">
-                    </div>
-                    <div class="space-y-1">
-                        <label class="text-[10px] font-bold text-slate-500">المسار</label>
-                        <input x-model="centerImportForm.track" type="text" placeholder="اختياري للثانوي" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs font-bold">
+                        <select x-model="centerImportForm.grade" @change="onCenterGradeChange()" :disabled="!centerImportForm.stage" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs font-bold disabled:opacity-50">
+                            <option value="">اختر الصف</option>
+                            <template x-for="gradeName in centerGradeOptions" :key="gradeName">
+                                <option :value="gradeName" x-text="gradeName"></option>
+                            </template>
+                        </select>
                     </div>
                     <div class="space-y-1">
                         <label class="text-[10px] font-bold text-slate-500">الشعبة</label>
-                        <input x-model="centerImportForm.section" type="text" placeholder="أ / ب / ج" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs font-bold">
+                        <select x-model="centerImportForm.section" @change="onCenterSectionChange()" :disabled="!centerImportForm.grade" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs font-bold disabled:opacity-50">
+                            <option value="">اختر الشعبة</option>
+                            <template x-for="sectionName in centerSectionOptions" :key="sectionName">
+                                <option :value="sectionName" x-text="sectionName"></option>
+                            </template>
+                        </select>
                     </div>
+                    <template x-if="centerImportForm.stage === 'high'">
+                        <div class="space-y-1">
+                            <label class="text-[10px] font-bold text-slate-500">المسار</label>
+                            <select x-model="centerImportForm.track" @change="onCenterTrackChange()" :disabled="!centerImportForm.grade" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs font-bold disabled:opacity-50">
+                                <option value="">بدون تحديد / اختر المسار</option>
+                                <template x-for="trackName in centerTrackOptions" :key="trackName">
+                                    <option :value="trackName" x-text="trackName"></option>
+                                </template>
+                            </select>
+                        </div>
+                    </template>
                     <div class="space-y-1">
                         <label class="text-[10px] font-bold text-slate-500">المادة</label>
-                        <input id="teacherCenterSubjectInput" x-model="centerImportForm.subject" type="text" placeholder="اسم المادة" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs font-bold">
+                        <input id="teacherCenterSubjectInput" x-model="centerImportForm.subject" type="text" placeholder="اكتب اسم المادة يدوياً" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs font-bold">
                     </div>
                     <button @click="importClassFromInformationCenter()"
                             class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs font-black transition shadow-sm">

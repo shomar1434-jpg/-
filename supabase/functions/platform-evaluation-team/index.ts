@@ -18,6 +18,11 @@ const allowedMimeTypes=new Set([
 ]);
 const safeExt=(name:string)=>{const x=(name.split('.').pop()||'bin').toLowerCase().replace(/[^a-z0-9]/g,'');return x||'bin'};
 const isUuid=(v:unknown)=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(v||''));
+const libraryModules=new Set(['manager_records_archive','vice_principal_library','administrative_employee_library','section_records_repository']);
+const isLibraryModule=(v:unknown)=>{const x=String(v||'').toLowerCase();return x.startsWith('section_library_')||libraryModules.has(x)};
+const isArchiveFile=(row:any)=>{const m=String(row?.module_key||'').toLowerCase(),r=String(row?.primary_record_type||'').toLowerCase();return m.includes('archive')||r.includes('archive')||r.includes('record')};
+const cleanUrl=(v:unknown)=>{try{const u=new URL(String(v||'').trim());return ['http:','https:'].includes(u.protocol)?u.toString():''}catch(_){return ''}};
+
 
 Deno.serve(async(req)=>{
  if(req.method==='OPTIONS')return new Response('ok',{headers:cors});
@@ -105,17 +110,82 @@ Deno.serve(async(req)=>{
        original_name:file.name,display_name:file.name,stored_name:`${id}.${ext}`,extension:ext,mime_type:mime,file_size:storedSize,visibility:'private',status:'active',version_number:1,metadata
      }).select('*').single();
      if(ins.error){await sb.storage.from('school-platform-files').remove([path]);throw ins.error}
-     const sub=await sb.from('evaluation_team_submissions').insert({school_id:l.school_id,link_id:l.id,batch_id:batchId,platform_file_id:id,title:file.name,original_name:file.name,uploader_name:uploaderName,reviewer_user_id:l.reviewer_user_id,status:'pending'}).select('*').single();
+     const sub=await sb.from('evaluation_team_submissions').insert({school_id:l.school_id,link_id:l.id,batch_id:batchId,platform_file_id:id,title:file.name,original_name:file.name,uploader_name:uploaderName,reviewer_user_id:l.reviewer_user_id,status:'pending',source_type:'upload',metadata:{source:'new_upload'}}).select('*').single();
      if(sub.error){await sb.from('platform_files').delete().eq('id',id);await sb.storage.from('school-platform-files').remove([path]);throw sub.error}
      const linkRow=await sb.from('platform_file_links').insert({school_id:l.school_id,file_id:id,module_key:'evaluation_team_monitor',record_type:'evaluation_team_submission',record_id:String(sub.data.id),relation_type:'evidence',linked_by:l.created_by,is_primary:true});
      if(linkRow.error){await sb.from('evaluation_team_submissions').delete().eq('id',sub.data.id);await sb.from('platform_files').delete().eq('id',id);await sb.storage.from('school-platform-files').remove([path]);throw linkRow.error}
      return json({ok:true,submission:{id:sub.data.id,title:sub.data.title,status:sub.data.status},file:{id,file_size:storedSize}});
    }
 
+
+   if(action==='submit-external-link'){
+     const body=await readJson();
+     const l=await tokenLink(String(body.token||''));
+     if(!l)return json({error:'رابط الرفع غير صالح أو منتهي',code:'LINK_INVALID'},404);
+     const externalUrl=cleanUrl(body.externalUrl);
+     if(!externalUrl)return json({error:'الرابط الخارجي غير صالح. استخدم رابط http أو https.',code:'EXTERNAL_URL_INVALID'},400);
+     const uploaderName=String(body.uploaderName||'').trim().slice(0,180);
+     const title=String(body.title||'رابط شاهد خارجي').trim().slice(0,255)||'رابط شاهد خارجي';
+     const sub=await sb.from('evaluation_team_submissions').insert({
+       school_id:l.school_id,link_id:l.id,batch_id:crypto.randomUUID(),platform_file_id:null,title,original_name:null,uploader_name:uploaderName,
+       reviewer_user_id:l.reviewer_user_id,status:'pending',source_type:'external_link',external_url:externalUrl,metadata:{source:'external_link'}
+     }).select('*').single();
+     if(sub.error)throw sub.error;
+     return json({ok:true,submission:sub.data});
+   }
+
+   if(action==='recipient-files'||action==='submit-existing-file'){
+     const body=await readJson();
+     const l=await tokenLink(String(body.token||''));
+     if(!l)return json({error:'رابط الرفع غير صالح أو منتهي',code:'LINK_INVALID'},404);
+     const rs=await session();
+     if(String(rs.school_id)!==String(l.school_id))return json({error:'لا يمكن استخدام ملفات من مدرسة أخرى',code:'SCHOOL_SCOPE_MISMATCH'},403);
+     const sourceType=String(body.sourceType||'library');
+     if(!['library','archive'].includes(sourceType))return json({error:'مصدر الملف غير صالح',code:'SOURCE_INVALID'},400);
+
+     if(action==='recipient-files'){
+       const q=await sb.from('platform_files').select('id,display_name,original_name,module_key,primary_record_type,file_size,mime_type,created_at,updated_at')
+         .eq('school_id',rs.school_id).eq('owner_user_id',rs.user_id).eq('status','active').is('deleted_at',null)
+         .order('updated_at',{ascending:false}).limit(500);
+       if(q.error)throw q.error;
+       const rows=(q.data||[]).filter((f:any)=>sourceType==='library'?isLibraryModule(f.module_key):isArchiveFile(f));
+       return json({ok:true,files:rows});
+     }
+
+     const fileId=String(body.fileId||'');
+     if(!isUuid(fileId))return json({error:'معرف الملف غير صالح',code:'FILE_ID_INVALID'},400);
+     const fq=await sb.from('platform_files').select('*').eq('id',fileId).eq('school_id',rs.school_id).eq('owner_user_id',rs.user_id).eq('status','active').is('deleted_at',null).maybeSingle();
+     if(fq.error)throw fq.error;
+     const f=fq.data;
+     if(!f)return json({error:'الملف غير موجود في حسابك أو لا تملك صلاحية استخدامه',code:'FILE_NOT_OWNED'},404);
+     if(sourceType==='library'&&!isLibraryModule(f.module_key))return json({error:'الملف المحدد ليس من مكتبة قسمك',code:'FILE_SOURCE_MISMATCH'},409);
+     if(sourceType==='archive'&&!isArchiveFile(f))return json({error:'الملف المحدد ليس من أرشيفك',code:'FILE_SOURCE_MISMATCH'},409);
+
+     const duplicate=await sb.from('evaluation_team_submissions').select('id,status').eq('school_id',rs.school_id).eq('link_id',l.id).eq('platform_file_id',fileId).in('status',['pending','approved']).limit(1);
+     if(duplicate.error)throw duplicate.error;
+     if((duplicate.data||[]).length)return json({error:'هذا الملف مرتبط بالفعل بهذا البرنامج ولم يتم إنشاء نسخة أو ارتباط مكرر',code:'EVIDENCE_ALREADY_LINKED'},409);
+
+     const uploaderName=String(body.uploaderName||'').trim().slice(0,180);
+     const sub=await sb.from('evaluation_team_submissions').insert({
+       school_id:l.school_id,link_id:l.id,batch_id:crypto.randomUUID(),platform_file_id:fileId,
+       title:f.display_name||f.original_name||'شاهد',original_name:f.original_name||f.display_name||null,uploader_name:uploaderName,
+       reviewer_user_id:l.reviewer_user_id,status:'pending',source_type:sourceType,
+       metadata:{source:sourceType,originalModule:f.module_key,ownerUserId:rs.user_id}
+     }).select('*').single();
+     if(sub.error)throw sub.error;
+     const existingLink=await sb.from('platform_file_links').select('id').eq('school_id',l.school_id).eq('file_id',fileId).eq('module_key','evaluation_team_monitor').eq('record_type','evaluation_team_submission').eq('record_id',String(sub.data.id)).eq('relation_type','evidence').maybeSingle();
+     if(existingLink.error)throw existingLink.error;
+     if(!existingLink.data){
+       const linkRow=await sb.from('platform_file_links').insert({school_id:l.school_id,file_id:fileId,module_key:'evaluation_team_monitor',record_type:'evaluation_team_submission',record_id:String(sub.data.id),relation_type:'evidence',linked_by:rs.user_id,is_primary:true});
+       if(linkRow.error){await sb.from('evaluation_team_submissions').delete().eq('id',sub.data.id);throw linkRow.error}
+     }
+     return json({ok:true,submission:sub.data,reusedFile:true});
+   }
+
    const s=await managerSession();
    const body=await readJson();
 
-   if(action==='health')return json({ok:true,service:'platform-evaluation-team',version:'2026.09.11.1',schoolId:s.school_id,userId:s.user_id});
+   if(action==='health')return json({ok:true,service:'platform-evaluation-team',version:'2026.09.14.3',schoolId:s.school_id,userId:s.user_id});
 
    if(action==='create-link'){
      const token=crypto.randomUUID()+'-'+crypto.randomUUID(), tokenHash=await sha256(token);
@@ -155,6 +225,23 @@ Deno.serve(async(req)=>{
    if(action==='list-submissions'){
      const q=await sb.from('evaluation_team_submissions').select('*').eq('school_id',s.school_id).eq('reviewer_user_id',s.user_id).order('created_at',{ascending:false});
      if(q.error)throw q.error;return json({ok:true,submissions:q.data||[]});
+   }
+
+   if(action==='preview-submission'){
+     const id=String(body.submissionId||'');
+     if(!isUuid(id))return json({error:'معرف الشاهد غير صالح'},400);
+     const existing=await sb.from('evaluation_team_submissions').select('*').eq('id',id).eq('school_id',s.school_id).eq('reviewer_user_id',s.user_id).maybeSingle();
+     if(existing.error)throw existing.error;
+     const sub=existing.data;
+     if(!sub)return json({error:'الشاهد غير موجود أو لا تملك صلاحية معاينته'},404);
+     if(sub.external_url){const u=cleanUrl(sub.external_url);if(!u)return json({error:'الرابط الخارجي غير صالح'},409);return json({ok:true,externalUrl:u});}
+     if(!sub.platform_file_id)return json({error:'لا يوجد ملف مرتبط بهذا الشاهد'},409);
+     const fq=await sb.from('platform_files').select('id,school_id,bucket_name,storage_path,status').eq('id',sub.platform_file_id).eq('school_id',s.school_id).maybeSingle();
+     if(fq.error)throw fq.error;
+     if(!fq.data||!['active','archived'].includes(String(fq.data.status||'')))return json({error:'الملف المرتبط غير متاح'},404);
+     const su=await sb.storage.from(fq.data.bucket_name||'school-platform-files').createSignedUrl(fq.data.storage_path,300);
+     if(su.error)throw su.error;
+     return json({ok:true,signedUrl:su.data.signedUrl,expiresIn:300});
    }
 
    if(action==='decide-submission'){

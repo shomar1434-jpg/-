@@ -25,8 +25,6 @@
     'activeSchoolId','active_school_id','current_school_id','school_id','smart_school_id',
     'current_school_name','school_name','active_school_name'
   ]);
-  let __rawLocalGet = null;
-
   const LEGACY_TO_TAB={
     platform_file_session_token:TAB_TOKEN_KEY,
     platform_file_session_expires_at:TAB_EXPIRES_KEY,
@@ -46,7 +44,6 @@
     if(window.__PLATFORM_TAB_IDENTITY_FIREWALL_RL33__)return;
     window.__PLATFORM_TAB_IDENTITY_FIREWALL_RL33__=true;
     const proto=Storage.prototype, originalGet=proto.getItem, originalSet=proto.setItem, originalRemove=proto.removeItem;
-    __rawLocalGet=(key)=>{try{return originalGet.call(window.localStorage,String(key))}catch(_){return null}};
     const isLocal=(store)=>{try{return store===window.localStorage}catch(_){return false}};
     const tabValue=(key)=>{
       const mapped=LEGACY_TO_TAB[key];
@@ -135,44 +132,6 @@
     } catch (_) { return false; }
   }
 
-  // RL148 — Safe legacy-session bridge for browsers upgraded from pre-RL33 builds.
-  // Older builds persisted the school cloud token in localStorage. RL33 correctly
-  // isolated identity per tab, but deliberately stopped reading those shared keys.
-  // A school that had not logged in again after that upgrade could therefore keep
-  // its visual manager shell while protected child pages saw SESSION_MISSING.
-  // Migrate the legacy token into this tab ONLY when school + user (+ role when known)
-  // exactly match the current tab identity. Nothing is deleted from localStorage.
-  const LEGACY_BRIDGE_MARK='platform_legacy_cloud_session_bridge_rl148';
-  function migrateLegacyCloudSessionToTab(){
-    if(isSystemAdminContext())return '';
-    const existing=String(sessionStorage.getItem(TAB_TOKEN_KEY)||'').trim();
-    if(existing)return existing;
-    if(typeof __rawLocalGet!=='function')return '';
-    try{
-      const legacyToken=String(__rawLocalGet(TOKEN_KEY)||'').trim();
-      if(!legacyToken)return '';
-      const legacySchool=String(__rawLocalGet(SCHOOL_KEY)||'').trim();
-      const legacyUser=String(__rawLocalGet(USER_KEY)||'').trim();
-      const legacyRole=String(__rawLocalGet(ROLE_KEY)||'').trim();
-      const legacyExp=String(__rawLocalGet(EXPIRES_KEY)||'').trim();
-      const sess=parseJson(sessionStorage.getItem('smart_school_current_session'))||{};
-      const tabSchool=String(sessionStorage.getItem(TAB_SCHOOL_KEY)||sessionStorage.getItem('smart_school_tab_school_v1')||sess.cloudSchoolId||sess.schoolId||sess.school_id||'').trim();
-      const tabUser=String(sessionStorage.getItem(TAB_USER_KEY)||sessionStorage.getItem('currentUserId')||sess.cloudUserId||sess.userId||sess.id||'').trim();
-      const tabRole=String(sessionStorage.getItem(TAB_ROLE_KEY)||sess.cloudRole||sess.role||'').trim();
-      // Never import a shared legacy token into an unbound tab.
-      if(!tabSchool||!tabUser||!legacySchool||!legacyUser)return '';
-      if(tabSchool!==legacySchool||tabUser!==legacyUser)return '';
-      if(tabRole&&legacyRole&&canonicalRole(tabRole)!==canonicalRole(legacyRole))return '';
-      sessionStorage.setItem(TAB_TOKEN_KEY,legacyToken);
-      sessionStorage.setItem(TAB_EXPIRES_KEY,legacyExp);
-      sessionStorage.setItem(TAB_USER_KEY,tabUser);
-      sessionStorage.setItem(TAB_SCHOOL_KEY,tabSchool);
-      sessionStorage.setItem(TAB_ROLE_KEY,tabRole||legacyRole);
-      sessionStorage.setItem(LEGACY_BRIDGE_MARK,JSON.stringify({schoolId:tabSchool,userId:tabUser,at:Date.now()}));
-      return legacyToken;
-    }catch(_){return ''}
-  }
-
   function sessionContexts() {
     return [parseJson(sessionStorage.getItem('smart_school_current_session')),parseJson(sessionStorage.getItem('administrative_employee_tab_session_v1'))].filter(Boolean);
   }
@@ -187,8 +146,6 @@
     const activeUser = directActiveUserId();
     const tabToken=String(sessionStorage.getItem(TAB_TOKEN_KEY)||'').trim();
     if(tabToken)return tabToken;
-    const bridged=migrateLegacyCloudSessionToTab();
-    if(bridged)return bridged;
     for (const ctx of sessionContexts()) {
       const candidate = contextToken(ctx);
       if (!candidate) continue;
@@ -317,27 +274,6 @@
     return tabFirst(TAB_ROLE_KEY,ROLE_KEY);
   }
 
-  // RL143 — Unified Independent School Identity Contract
-  // One source of truth for every school/tab: verified cloud session school + user + canonical role.
-  function canonicalRole(value) {
-    const v=String(value||'').trim().toLowerCase();
-    const groups={
-      manager:['manager','principal','school_manager','school-manager','leadership','مدير','مديرة','مدير المدرسة','مديرة المدرسة'],
-      agent:['agent','deputy','vice','wakil','agency','وكيل','وكيلة'],
-      teacher:['teacher','performance','معلم','معلمة'],
-      student_advisor:['student_advisor','student-advisor','advisor','counselor','مرشد','مرشدة','موجه','موجهة'],
-      health_advisor:['health_advisor','health-advisor','موجه صحي','موجهة صحية','الموجه الصحي'],
-      activity_leader:['activity_leader','activity-leader','activity','رائد النشاط','رائدة النشاط'],
-      kindergarten_teacher:['kindergarten_teacher','kindergarten-teacher','معلمة رياض الأطفال'],
-      administrative_employee:['administrative_employee','admin_employee','employee_admin','موظف إداري','موظفة إدارية']
-    };
-    for(const [k,a] of Object.entries(groups)) if(v===k||a.includes(v)) return k;
-    return v;
-  }
-  function verifiedContext(){
-    return {schoolId:String(schoolId()||'').trim(),userId:String(userId()||'').trim(),role:canonicalRole(role()||'')};
-  }
-
   function role() {
     if (isSystemAdminContext()) return 'system_admin';
     try {
@@ -402,74 +338,24 @@
     finally { recoveryPromise = null; }
   }
 
-  let ensurePromise = null;
   async function ensure() {
-    if (ensurePromise) return ensurePromise;
-    ensurePromise = (async () => {
-      if (isSystemAdminContext()) {
-        const error = new Error('جلسة مدير النظام منفصلة عن جلسات المدارس المستقلة.');
-        error.code = 'SYSTEM_ADMIN_SCHOOL_SESSION_BLOCKED';
-        throw error;
-      }
-      let currentToken = '';
-      if (valid()) currentToken = token();
-      else {
-        restoreFromKnownContext();
-        if (valid()) currentToken = token();
-        else currentToken = await recover();
-      }
-      // Delegated access is still revalidated server-side. Single-flight only prevents
-      // duplicate startup calls in the same page from repeating the same work concurrently.
-      await refreshDelegatedRoleContext().catch(()=>null);
-      return currentToken || token();
-    })();
-    try { return await ensurePromise; }
-    finally { ensurePromise = null; }
-  }
-
-
-  function recentlyVerified(requiredRoles = [], maxAgeMs = 5 * 60 * 1000) {
-    try {
-      const raw=parseJson(sessionStorage.getItem(VERIFIED_CONTEXT_KEY))||{};
-      const sid=String(schoolId()||'').trim(), uid=String(userId()||'').trim(), rr=canonicalRole(baseRole()||'');
-      const allowed=(requiredRoles||[]).map(canonicalRole).filter(Boolean);
-      if(!raw || !raw.verifiedAt || Date.now()-Number(raw.verifiedAt)>maxAgeMs) return null;
-      if(String(raw.schoolId||'')!==sid || String(raw.userId||'')!==uid || canonicalRole(raw.role||'')!==rr) return null;
-      if(allowed.length && !allowed.includes(rr)) return null;
-      return {schoolId:sid,userId:uid,role:rr,verified:true,verifiedAt:Number(raw.verifiedAt)};
-    } catch(_) { return null; }
-  }
-
-  function markVerifiedContext(ctx) {
-    try {
-      sessionStorage.setItem(VERIFIED_CONTEXT_KEY,JSON.stringify({
-        schoolId:String((ctx&&ctx.schoolId)||schoolId()||'').trim(),
-        userId:String((ctx&&ctx.userId)||userId()||'').trim(),
-        role:canonicalRole((ctx&&ctx.role)||baseRole()||''),
-        verifiedAt:Date.now()
-      }));
-    } catch(_) {}
-  }
-
-  async function ensureLive(requiredRoles = [], options = {}) {
     if (isSystemAdminContext()) {
       const error = new Error('جلسة مدير النظام منفصلة عن جلسات المدارس المستقلة.');
       error.code = 'SYSTEM_ADMIN_SCHOOL_SESSION_BLOCKED';
       throw error;
     }
-    const forceLive=options&&options.force===true;
-    const recent=forceLive?null:recentlyVerified(requiredRoles);
-    if(recent && valid()) return recent;
-    await ensure();
-    try {
-      return await verifyAccess(requiredRoles);
-    } catch (e) {
-      const code=String(e&&e.code||'').toUpperCase();
-      const recoverable=['SESSION_INVALID','SESSION_EXPIRED','SESSION_MISSING','SESSION_RENEW_NOT_FOUND','HTTP_401'].includes(code);
-      if(!recoverable) throw e;
-      await recover();
-      return await verifyAccess(requiredRoles);
+    let currentToken = '';
+    if (valid()) currentToken = token();
+    else {
+      restoreFromKnownContext();
+      if (valid()) currentToken = token();
+      else currentToken = await recover();
     }
+    // Full-role delegation is revalidated on every nested page that calls ensure().
+    // This makes legacy internal modules see the delegated role only after the
+    // server confirms the task, user and school again; stale/revoked contexts are cleared.
+    await refreshDelegatedRoleContext().catch(()=>null);
+    return currentToken || token();
   }
 
 
@@ -490,20 +376,29 @@
       throw error;
     }
     const membershipsList = Array.isArray(payload.memberships) ? payload.memberships : [];
-    // RL143: use the single module-level canonical role contract.
-    const allowed = (requiredRoles || []).map(canonicalRole).filter(Boolean);
-    const currentRole = canonicalRole(rr);
+    const normalizeRole = (v) => String(v || '').trim().toLowerCase();
+    const aliases = {
+      manager: ['manager','principal','school_manager','leadership','مدير','مديرة','مدير المدرسة','مديرة المدرسة'],
+      agent: ['agent','deputy','vice','wakil','agency','وكيل','وكيلة'],
+      teacher: ['teacher','performance','معلم','معلمة'],
+      student_advisor: ['student_advisor','advisor','counselor','مرشد','موجه'],
+      health_advisor: ['health_advisor','health-advisor','موجه صحي','الموجه الصحي'],
+      activity_leader: ['activity_leader','activity-leader','activity','رائد النشاط','رائدة النشاط'],
+      kindergarten_teacher: ['kindergarten_teacher','kindergarten-teacher','معلمة رياض الأطفال'],
+      administrative_employee: ['administrative_employee','admin_employee','employee_admin','موظف إداري','موظفة إدارية']
+    };
+    const allowed = (requiredRoles || []).flatMap((role) => aliases[normalizeRole(role)] || [normalizeRole(role)]);
     const member = membershipsList.find((m) =>
       String(m.schoolId || '') === sid &&
       String(m.userId || '') === uid &&
-      canonicalRole(m.role) === currentRole
+      normalizeRole(m.role) === normalizeRole(rr)
     );
     if (!member) {
       const error = new Error('المستخدم غير مرتبط بالمدرسة الحالية بعضوية فعالة.');
       error.code = 'VERIFIED_MEMBERSHIP_MISSING';
       throw error;
     }
-    if (allowed.length && !allowed.includes(currentRole)) {
+    if (allowed.length && !allowed.includes(normalizeRole(rr))) {
       const error = new Error('الدور الحالي غير مخول بفتح هذه الصفحة.');
       error.code = 'VERIFIED_ROLE_DENIED';
       throw error;
@@ -592,20 +487,7 @@
     return '';
   }
   function explicitFollowMode(){
-    try{
-      const q=new URLSearchParams(location.search||'');
-      const queryActive=q.get('mode')==='follow'||q.get('mode')==='supervisor_readonly'||q.get('follow')==='1'||q.get('readonly')==='1'||q.get('readOnly')==='1'||q.get('monitoring')==='true';
-      if(queryActive)return true;
-      const parse=(v)=>{try{return JSON.parse(v||'null')||{}}catch(_){return {}}};
-      const ctx=parse(sessionStorage.getItem('platform_follow_context_v4'));
-      const legacy=parse(sessionStorage.getItem('manager_follow_context_v2'));
-      const c=ctx&&ctx.readonly===true?ctx:(legacy&&legacy.readonly===true?legacy:{});
-      if(!c||c.readonly!==true)return false;
-      const sid=String(c.schoolId||'').trim(), current=String(schoolId()||sessionStorage.getItem(TAB_SCHOOL_KEY)||'').trim();
-      if(sid&&current&&sid!==current)return false;
-      const viewer=canonicalRole(c.viewerRole||c.viewer||'');
-      return viewer==='manager'||viewer==='agent';
-    }catch(_){return false}
+    try{const q=new URLSearchParams(location.search);return q.get('mode')==='follow'||q.get('follow')==='1'||q.get('readOnly')==='1'}catch(_){return false}
   }
 
   // RL76: full-role delegation is a temporary execution authorization, not a
@@ -630,8 +512,7 @@
       }
       const c=readDelegatedRoleContext();
       if(c && c.taskId && String(c.requiredRole||'').toLowerCase()===String(required||'').toLowerCase())
-        markVerifiedContext({schoolId:sid,userId:uid,role:rr});
-    return {taskId:String(c.taskId),requiredRole:String(required||'').trim().toLowerCase(),source:'tab'};
+        return {taskId:String(c.taskId),requiredRole:String(required||'').trim().toLowerCase(),source:'tab'};
     }catch(_){}
     return null;
   }
@@ -735,7 +616,7 @@
     }
   }
 
-  const SESSION_VERSION='2026.09.14-RL157-supervisor-follow-target-shell';
+  const SESSION_VERSION='2026.09.13-RL142-manager-entry-stability';
 
   window.PlatformCloudSession = {
     VERSION:SESSION_VERSION,
@@ -747,16 +628,12 @@
     userId,
     schoolId,
     role,
-    canonicalRole,
-    verifiedContext,
     baseRole,
     delegatedRole,
     delegatedTaskId,
     delegationHeaders,
     valid,
     ensure,
-    ensureLive,
-    recentlyVerified,
     recover,
     restoreFromKnownContext,
     verifyAccess,
@@ -772,52 +649,9 @@
     }),
   };
 
-  // RL145 — Unified session heartbeat for every independent-school page.
-  // A school tab may remain open for many hours. Previously the visual shell could
-  // stay usable after the 12-hour cloud session expired, so a later protected
-  // section appeared to lose the cloud connection. Keep the verified tab session
-  // warm without changing school/user/role and retry only through the canonical
-  // platform-session renew path.
-  let __heartbeatTimer = null;
-  let __heartbeatInFlight = false;
-  async function heartbeat(reason = 'interval') {
-    if (isSystemAdminContext() || __heartbeatInFlight) return false;
-    const known = Boolean(token() || restoreFromKnownContext());
-    if (!known) return false;
-    __heartbeatInFlight = true;
-    try {
-      await ensure();
-      window.dispatchEvent(new CustomEvent('platform-cloud-session-heartbeat',{detail:{ok:true,reason,schoolId:schoolId(),userId:userId(),role:role()}}));
-      return true;
-    } catch (err) {
-      // Never clear or redirect on a transient heartbeat failure. Individual
-      // protected pages may decide how to present a definitive authorization error.
-      console.warn('[platform-session] heartbeat failed', reason, err?.code || err?.message || err);
-      window.dispatchEvent(new CustomEvent('platform-cloud-session-heartbeat',{detail:{ok:false,reason,code:String(err?.code||''),message:String(err?.message||'')}}));
-      return false;
-    } finally {
-      __heartbeatInFlight = false;
-    }
-  }
-  function startHeartbeat(){
-    if(__heartbeatTimer || isSystemAdminContext()) return;
-    // Heartbeat must never compete with the initial page access check. The first
-    // automatic heartbeat is delayed; returning to a tab only checks after it has
-    // actually spent time in the background.
-    let hiddenAt=0;
-    __heartbeatTimer=setInterval(()=>heartbeat('interval'),5*60*1000);
-    document.addEventListener('visibilitychange',()=>{
-      if(document.visibilityState==='hidden'){hiddenAt=Date.now();return;}
-      if(document.visibilityState==='visible'&&hiddenAt&&Date.now()-hiddenAt>60*1000) heartbeat('visibility');
-      hiddenAt=0;
-    });
-    window.addEventListener('pageshow',(event)=>{if(event && event.persisted) setTimeout(()=>heartbeat('bfcache'),250);});
-  }
-
   // Same-tab navigation normally keeps sessionStorage, but restoring here also
   // covers pages opened after a browser/sessionStorage transition.
   restoreFromKnownContext();
-  startHeartbeat();
   const roleContract=routeRequiredRole();
   // Pages with their own verified access gate (manager.html) must not start a
   // second concurrent role check. The explicit gate still calls verifyAccess().
@@ -829,197 +663,6 @@
     const run=()=>enforceRouteRole().catch(()=>{});
     if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',run,{once:true});else queueMicrotask(run);
   }
-})();
-
-
-/* RL157 — Global supervisor follow mode with target-role presentation identity.
-   Viewer keeps the real manager/agent cloud session. The followed account is a
-   read-only presentation context only; it never replaces the server session. */
-(function(){
-  'use strict';
-  if(window.__PLATFORM_FOLLOW_READONLY_RL155__)return;
-  window.__PLATFORM_FOLLOW_READONLY_RL155__=1;
-  const KEY='platform_follow_context_v4', LEGACY='manager_follow_context_v2';
-  const parse=v=>{try{return JSON.parse(v||'null')||{}}catch(_){return {}}};
-  const norm=v=>String(v||'').trim().toLowerCase();
-  const same=(a,b)=>String(a||'').trim()===String(b||'').trim();
-  const canonical=v=>{
-    const r=norm(v);
-    if(['manager','principal','school_manager','leadership','مدير','مديرة'].includes(r))return'manager';
-    if(['agent','deputy','vice','wakil','agency','وكيل','وكيلة'].includes(r))return'agent';
-    if(['teacher','performance','معلم','معلمة'].includes(r))return'teacher';
-    if(['student_advisor','student-advisor','advisor','counselor','guide'].includes(r))return'student_advisor';
-    if(['activity_leader','activity-leader','activity'].includes(r))return'activity_leader';
-    if(['health_advisor','health-advisor','health'].includes(r))return'health_advisor';
-    if(['kindergarten_teacher','kindergarten-teacher','kindergarten'].includes(r))return'kindergarten_teacher';
-    if(['administrative_employee','administrative-employee','admin_employee'].includes(r))return'administrative_employee';
-    return r;
-  };
-  function fromQuery(){
-    try{
-      const q=new URLSearchParams(location.search||''), mode=norm(q.get('mode'));
-      const active=q.get('follow')==='1'||q.get('readonly')==='1'||q.get('readOnly')==='1'||q.get('monitoring')==='true'||mode.includes('follow')||mode.includes('supervisor')||mode.includes('monitor');
-      if(!active)return null;
-      const viewer=canonical(q.get('viewerRole')||q.get('viewer')||q.get('returnRole'));
-      const schoolId=String(q.get('schoolId')||q.get('school_id')||q.get('school')||'').trim();
-      const targetUserId=String(q.get('targetUser')||q.get('followUserId')||q.get('userId')||q.get('uid')||q.get('owner_uid')||'').trim();
-      const targetEmail=norm(q.get('followEmail')||q.get('targetEmail')||q.get('emp')||'');
-      const targetRole=canonical(q.get('targetRole')||q.get('role')||'');
-      if(!['manager','agent'].includes(viewer)||!schoolId||(!targetUserId&&!targetEmail))return null;
-      return {mode:'supervisor_follow',readonly:true,viewerRole:viewer,schoolId,targetUserId,targetEmail,targetRole,returnUrl:viewer==='agent'?'agent.html':'manager.html',createdAt:new Date().toISOString()};
-    }catch(_){return null}
-  }
-  function context(){
-    const q=fromQuery();
-    if(q){try{sessionStorage.setItem(KEY,JSON.stringify(q));if(q.viewerRole==='manager')sessionStorage.setItem(LEGACY,JSON.stringify({...q,mode:'manager_follow',managerReturn:'manager.html?sectionReturn=1'}));}catch(_){}return q;}
-    // RL157: the supervisor root itself is never the followed user's shell.  If a
-    // legacy/custom guard returns the browser to manager.html/agent.html, do not
-    // keep painting that root as "follow mode".  The actual follow shell is the
-    // target role page (teacher/advisor/activity/etc.).
-    try{
-      const file=(location.pathname.split('/').pop()||'').toLowerCase();
-      const qs=new URLSearchParams(location.search||'');
-      const explicit=qs.get('follow')==='1'||qs.get('readonly')==='1'||qs.get('monitoring')==='true'||norm(qs.get('mode')).includes('follow')||norm(qs.get('mode')).includes('supervisor');
-      if((file==='manager.html'||file==='agent.html')&&!explicit)return null;
-    }catch(_){}
-    const c=parse(sessionStorage.getItem(KEY));
-    if(c&&c.readonly===true&&['manager','agent'].includes(canonical(c.viewerRole)))return {...c,viewerRole:canonical(c.viewerRole),targetRole:canonical(c.targetRole)};
-    const l=parse(sessionStorage.getItem(LEGACY));
-    if(l&&l.readonly===true)return {...l,mode:'supervisor_follow',viewerRole:'manager',targetRole:canonical(l.targetRole),returnUrl:'manager.html'};
-    return null;
-  }
-  let ctx=context();
-  if(!ctx)return;
-  const pcs=window.PlatformCloudSession;
-  const real={
-    role:pcs&&typeof pcs.role==='function'?pcs.role.bind(pcs):()=>'',
-    userId:pcs&&typeof pcs.userId==='function'?pcs.userId.bind(pcs):()=>'',
-    schoolId:pcs&&typeof pcs.schoolId==='function'?pcs.schoolId.bind(pcs):()=>'',
-    memberships:pcs&&typeof pcs.memberships==='function'?pcs.memberships.bind(pcs):null,
-    ensure:pcs&&typeof pcs.ensure==='function'?pcs.ensure.bind(pcs):null
-  };
-  function active(){
-    ctx=context()||ctx;
-    const sid=String(ctx&&ctx.schoolId||'').trim(), rsid=String(real.schoolId()||sessionStorage.getItem('platform_tab_session_school_id_v1')||sessionStorage.getItem('smart_school_tab_school_v1')||'').trim();
-    return !!(ctx&&ctx.readonly===true&&['manager','agent'].includes(canonical(ctx.viewerRole))&&(!sid||!rsid||sid===rsid));
-  }
-  function view(){return active()?{schoolId:String(ctx.schoolId||real.schoolId()||''),userId:String(ctx.targetUserId||''),role:canonical(ctx.targetRole||''),email:ctx.targetEmail||'',viewerRole:canonical(ctx.viewerRole),readonly:true}:null}
-  function decorate(raw){
-    if(!active()||!raw)return raw;
-    try{
-      const u=new URL(raw,location.href); if(u.origin!==location.origin||!/\.html$/i.test(u.pathname))return raw;
-      const v=view();
-      [['follow','1'],['readonly','1'],['mode','supervisor_readonly'],['viewer',v.viewerRole],['viewerRole',v.viewerRole],['returnRole',v.viewerRole],['targetRole',v.role],['followEmail',v.email],['targetEmail',v.email],['targetUser',v.userId],['followUserId',v.userId],['userId',v.userId],['uid',v.userId],['schoolId',v.schoolId],['blockNewReport','true'],['archiveReadOnly','true']].forEach(([k,val])=>{if(val)u.searchParams.set(k,val)});
-      return u.pathname.split('/').pop()+u.search+u.hash;
-    }catch(_){return raw}
-  }
-  window.PlatformFollowReadonly={active,context:()=>view(),decorate,clear:function(){try{sessionStorage.removeItem(KEY);sessionStorage.removeItem(LEGACY);sessionStorage.removeItem('manager_follow_active_v2');sessionStorage.removeItem('smartSchoolUnifiedOpsV2_follow_context')}catch(_){}ctx=null;},returnToViewer:function(){const v=view();this.clear();location.href=(v&&v.viewerRole==='agent'?'agent.html':'manager.html')+'?sectionReturn=1&returnedFromFollow=1';}};
-
-  // Generalize the legacy landing-page bridge so both manager and deputy can follow.
-  window.ManagerFollowAccessBridge={
-    request:function(){const v=view();return v?{active:true,schoolId:v.schoolId,targetUserId:v.userId,targetEmail:v.email,targetRole:v.role,viewer:v.viewerRole}: {active:false}},
-    verify:async function(expectedRoles){
-      if(!active())return null;
-      if(real.ensure)await real.ensure();
-      const rr=canonical(real.role()), expected=(expectedRoles||[]).map(canonical).filter(Boolean), v=view();
-      if(!['manager','agent'].includes(rr))throw new Error('FOLLOW_VIEWER_NOT_SUPERVISOR');
-      if(!same(real.schoolId(),v.schoolId))throw new Error('FOLLOW_SCHOOL_MISMATCH');
-      if(expected.length&&v.role&&!expected.includes(v.role))throw new Error('FOLLOW_TARGET_ROLE_MISMATCH');
-      window.__MANAGER_FOLLOW_VERIFIED__={schoolId:v.schoolId,targetUserId:v.userId,targetEmail:v.email,targetRole:v.role,viewerRole:v.viewerRole,readonly:true};
-      document.documentElement.setAttribute('data-manager-follow-verified','1');
-      return window.__MANAGER_FOLLOW_VERIFIED__;
-    },
-    returnToManager:function(){window.PlatformFollowReadonly.returnToViewer()}
-  };
-
-  // RL157 — presentation identity for the followed shell.
-  // The cloud token/session always remains the real supervisor session, but role/userId
-  // exposed to page-level UI guards must represent the followed account; otherwise old
-  // teacher/advisor guards see `manager` and bounce the browser back to manager.html.
-  if(pcs){
-    const realVerifyAccess=typeof pcs.verifyAccess==='function'?pcs.verifyAccess.bind(pcs):null;
-    const realMemberships=real.memberships;
-    pcs.viewerRole=()=>canonical(ctx.viewerRole);
-    pcs.monitoringContext=()=>view();
-    pcs.isReadOnlyFollow=()=>active();
-    pcs.realRole=()=>canonical(real.role());
-    pcs.realUserId=()=>String(real.userId()||'');
-    pcs.role=()=>{const v=view();return v&&v.role?v.role:real.role()};
-    pcs.userId=()=>{const v=view();return v&&v.userId?v.userId:real.userId()};
-    pcs.schoolId=()=>{const v=view();return v&&v.schoolId?v.schoolId:real.schoolId()};
-    if(realMemberships)pcs.memberships=async function(){
-      const payload=await realMemberships();
-      if(!active())return payload;
-      const v=view(), copy=(payload&&typeof payload==='object')?{...payload}:{};
-      const list=Array.isArray(copy.memberships)?copy.memberships.slice():[];
-      const exists=list.some(m=>same(m?.schoolId||m?.school_id,v.schoolId)&&same(m?.userId||m?.user_id,v.userId));
-      if(!exists)list.push({schoolId:v.schoolId,userId:v.userId,email:v.email,role:v.role,status:'active',readOnlyFollow:true,syntheticView:true});
-      copy.memberships=list;
-      copy.current={schoolId:v.schoolId,userId:v.userId,email:v.email,role:v.role,status:'active',readOnlyFollow:true,viewerRole:v.viewerRole,syntheticView:true};
-      copy.followViewer={schoolId:String(real.schoolId()||''),userId:String(real.userId()||''),role:canonical(real.role())};
-      return copy;
-    };
-    if(realVerifyAccess)pcs.verifyAccess=async function(expectedRoles){
-      if(!active())return realVerifyAccess(expectedRoles);
-      if(real.ensure)await real.ensure();
-      const v=view(), rr=canonical(real.role()), allowed=(expectedRoles||[]).map(canonical).filter(Boolean);
-      if(!['manager','agent'].includes(rr))throw Object.assign(new Error('FOLLOW_VIEWER_NOT_SUPERVISOR'),{code:'FOLLOW_VIEWER_NOT_SUPERVISOR'});
-      if(!same(real.schoolId(),v.schoolId))throw Object.assign(new Error('FOLLOW_SCHOOL_MISMATCH'),{code:'FOLLOW_SCHOOL_MISMATCH'});
-      if(allowed.length&&v.role&&!allowed.includes(v.role))throw Object.assign(new Error('FOLLOW_TARGET_ROLE_MISMATCH'),{code:'FOLLOW_TARGET_ROLE_MISMATCH'});
-      return {schoolId:v.schoolId,userId:v.userId,role:v.role,membership:{schoolId:v.schoolId,userId:v.userId,email:v.email,role:v.role,status:'active',readOnlyFollow:true,syntheticView:true},viewerRole:v.viewerRole,readonly:true};
-    };
-  }
-
-  const mutationWords=/(حفظ|إضافة|انشاء|إنشاء|تعديل|تحرير|حذف|رفع|إرسال|اعتماد|رفض|إرجاع|ارجاع|تنفيذ|إغلاق|اغلاق|تفعيل|تعطيل|استيراد|ربط|مزامنة|تحديث البيانات|save|add|create|edit|update|delete|remove|upload|submit|approve|reject|return|execute|close|activate|disable|import|sync)/i;
-  const safeWords=/(بحث|تصفية|فلتر|معاينة|عرض|فتح|تفاصيل|رجوع|عودة|التالي|السابق|طباعة|تصدير|تنزيل|download|print|export|preview|view|open|details|search|filter|back|next|previous)/i;
-  function text(el){return String(el?.innerText||el?.textContent||el?.value||el?.getAttribute?.('aria-label')||el?.title||'').trim()}
-  function isMutationControl(el){const t=text(el);return !!(mutationWords.test(t)&&!safeWords.test(t));}
-  function applyReadonly(root=document){
-    if(!active())return;
-    const de=document.documentElement;de.dataset.platformReadOnlyFollow='1';de.dataset.supervisorReadonly='true';
-    root.querySelectorAll?.('button,[role="button"],a,input[type="submit"],input[type="button"]').forEach(el=>{if(isMutationControl(el)){el.setAttribute('data-follow-write-blocked','1');el.setAttribute('aria-disabled','true');}});
-    root.querySelectorAll?.('textarea,[contenteditable="true"],input:not([type="search"]):not([type="button"]):not([type="submit"]):not([type="checkbox"]):not([type="radio"])').forEach(el=>{
-      const ph=String(el.getAttribute?.('placeholder')||''); if(/بحث|search|filter|تصفية/i.test(ph))return;
-      el.setAttribute('readonly','readonly');el.setAttribute('data-follow-readonly-field','1');
-    });
-  }
-  function addStyle(){if(document.getElementById('platform-follow-readonly-rl155-style'))return;const s=document.createElement('style');s.id='platform-follow-readonly-rl155-style';s.textContent=`
-html[data-platform-read-only-follow="1"] [data-follow-write-blocked="1"]{opacity:.45!important;filter:grayscale(.6)!important;cursor:not-allowed!important;pointer-events:none!important}
-html[data-platform-read-only-follow="1"] [data-follow-readonly-field="1"]{background:#f8fafc!important;cursor:default!important}
-#platform-follow-readonly-rl155-banner{position:fixed;z-index:2147483646;top:10px;right:50%;transform:translateX(50%);background:#0f766e;color:#fff;border:1px solid rgba(255,255,255,.25);box-shadow:0 8px 24px rgba(15,23,42,.18);border-radius:999px;padding:8px 14px;font:800 12px Tajawal,Arial;display:flex;gap:10px;align-items:center;max-width:calc(100vw - 24px)}
-#platform-follow-readonly-rl155-banner button{border:0;background:#fff;color:#0f766e;border-radius:999px;padding:5px 10px;font:800 11px Tajawal,Arial;cursor:pointer}
-`; (document.head||document.documentElement).appendChild(s)}
-  function addBanner(){if(document.getElementById('platform-follow-readonly-rl155-banner')||!document.body)return;const v=view(),b=document.createElement('div');b.id='platform-follow-readonly-rl155-banner';b.innerHTML='<span>وضع المتابعة — قراءة فقط'+(v?.email?' — '+v.email:'')+'</span><button type="button">إنهاء المتابعة</button>';b.querySelector('button').onclick=()=>window.PlatformFollowReadonly.returnToViewer();document.body.appendChild(b)}
-  function internalUrlFromEvent(ev){
-    let el=ev.target; while(el&&el!==document){
-      if(el.getAttribute){const href=el.getAttribute('href');if(href&&/\.html(?:[?#]|$)/i.test(href))return {el,url:href};const oc=el.getAttribute('onclick')||'';const m=oc.match(/(?:location(?:\.href)?\s*=|location\.assign\(|location\.replace\(|window\.location\.href\s*=)\s*[('\"]+([^'\")]+\.html(?:\?[^'\")]+)?)/i);if(m)return {el,url:m[1]};}
-      el=el.parentElement;
-    } return null;
-  }
-  document.addEventListener('click',function(ev){
-    if(!active())return;
-    const hit=internalUrlFromEvent(ev); if(hit){const next=decorate(hit.url);if(next!==hit.url){ev.preventDefault();ev.stopImmediatePropagation();location.href=next;return;}}
-    let el=ev.target;while(el&&el!==document){if(el.getAttribute&&el.getAttribute('data-follow-write-blocked')==='1'){ev.preventDefault();ev.stopImmediatePropagation();return}el=el.parentElement}
-  },true);
-  document.addEventListener('submit',function(ev){if(!active())return;const f=ev.target;const ft=String(f?.innerText||f?.textContent||'')+' '+Array.from(f?.querySelectorAll?.('input')||[]).map(x=>x.placeholder||'').join(' ');if(/بحث|search|filter|تصفية/i.test(ft)&&!mutationWords.test(ft))return;ev.preventDefault();ev.stopImmediatePropagation();},true);
-  document.addEventListener('beforeinput',function(ev){if(!active())return;const el=ev.target;if(el&&el.getAttribute&&el.getAttribute('data-follow-readonly-field')==='1'){ev.preventDefault();}},true);
-
-  // Network guard: reject explicit mutations while following. Read-only POSTs remain allowed.
-  const rawFetch=window.fetch?.bind(window);
-  if(rawFetch)window.fetch=async function(input,init={}){
-    if(active()){
-      const method=String(init?.method||'GET').toUpperCase();
-      let body='';try{body=typeof init?.body==='string'?init.body:''}catch(_){}
-      const hard=['PUT','PATCH','DELETE'].includes(method);
-      const bodyMutation=method==='POST'&&/(\"action\"\s*:\s*\"(?:set|save|create|insert|upsert|update|delete|remove|upload|submit|approve|reject|return|close|activate|disable|bulk-upsert|bulk_upsert)\"|\"deleted\"\s*:\s*true)/i.test(body);
-      if(hard||bodyMutation){const e=new Error('FOLLOW_READONLY_WRITE_BLOCKED');e.code='FOLLOW_READONLY_WRITE_BLOCKED';throw e;}
-      const h=new Headers(init.headers||{});h.set('x-platform-follow-mode','readonly');h.set('x-platform-follow-viewer',canonical(ctx.viewerRole));init={...init,headers:h};
-    }
-    return rawFetch(input,init);
-  };
-
-  function boot(){if(!active())return;addStyle();applyReadonly(document);addBanner();const mo=new MutationObserver(ms=>{for(const m of ms)for(const n of m.addedNodes||[])if(n.nodeType===1)applyReadonly(n)});mo.observe(document.documentElement,{childList:true,subtree:true});}
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })();
 
 /* iOS/WebKit compatibility layer — presentation only; no auth/storage semantics changed. */

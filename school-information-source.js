@@ -1,7 +1,7 @@
 (function(){
 'use strict';
-if(window.SchoolInformationSource&&String(window.SchoolInformationSource.VERSION||'')==='13.0.0-RL156-directory-binding')return;
-const VERSION='13.0.0-RL156-directory-binding';
+if(window.SchoolInformationSource&&String(window.SchoolInformationSource.VERSION||'')==='12.0.0-RL23-cloud-students-single-source')return;
+const VERSION='12.0.0-RL23-cloud-students-single-source';
 const SUPABASE_URL=(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'');
 const DEFAULT_SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
 const API_KEY=localStorage.getItem('smartSchoolSupabaseAnonKey')||DEFAULT_SUPABASE_KEY;
@@ -264,101 +264,6 @@ function notifyUpdated(){
  publishCrossPageUpdate(detail);
 }
 
-
-
-// RL156 — مركز المعلومات هو المصدر الموحد للأسماء والبيانات الأساسية في النماذج والسجلات.
-function staffRoleText(u){return [u?.role,u?.role_label,u?.job_title,u?.position,u?.type].map(safe).filter(Boolean).join(' ')}
-function managerFromSnapshot(snap){
- const school=snap?.school||{};
- const direct=safe(school.manager_name||school.manager||school.principal_name||school.director_name||'');
- if(direct)return direct;
- const row=(snap?.staff||[]).find(u=>/manager|school_manager|principal|مدير|مديرة/i.test(staffRoleText(u)));
- return safe(row?.name||row?.full_name||row?.display_name||'');
-}
-function schoolNameFromSnapshot(snap){const s=snap?.school||{};return safe(s.school_name||s.name||s.display_name||'')}
-function educationFromSnapshot(snap){const s=snap?.school||{};return safe(s.education_department||s.education||s.directorate||s.edu_department||'')}
-function displayPersonName(r){return safe(r?.student_name||r?.name||r?.full_name||r?.display_name||r?.username||r?.email||'')}
-function uniqueNames(rows){const seen=new Set(),out=[];(rows||[]).forEach(r=>{const n=displayPersonName(r);const k=n.replace(/\s+/g,' ').trim();if(!k||seen.has(k))return;seen.add(k);out.push(k)});return out}
-function directoryFromSnapshot(snap){
- const staff=Array.isArray(snap?.staff)?snap.staff:[];
- const students=Array.isArray(snap?.students)?snap.students:[];
- const teachers=staff.filter(isTeacher);
- const admins=staff.filter(isAdminEmployee);
- return {students:uniqueNames(students),teachers:uniqueNames(teachers),admins:uniqueNames(admins),staff:uniqueNames(staff),manager:managerFromSnapshot(snap),school:schoolNameFromSnapshot(snap),education:educationFromSnapshot(snap)};
-}
-function ensureDirectoryLists(doc,dir){
- if(!doc?.body)return {};
- const defs={students:dir.students,teachers:dir.teachers,admins:dir.admins,staff:dir.staff};
- const ids={students:'school-info-students-list',teachers:'school-info-teachers-list',admins:'school-info-admins-list',staff:'school-info-staff-list'};
- Object.keys(defs).forEach(kind=>{
-   let dl=doc.getElementById(ids[kind]);
-   if(!dl){dl=doc.createElement('datalist');dl.id=ids[kind];dl.className='school-info-directory-datalist';doc.body.appendChild(dl)}
-   const sig=(defs[kind]||[]).join('\u0001');
-   if(dl.dataset.signature!==sig){dl.innerHTML='';(defs[kind]||[]).forEach(n=>{const o=doc.createElement('option');o.value=n;dl.appendChild(o)});dl.dataset.signature=sig}
- });
- return ids;
-}
-function fieldContext(el){
- const bits=[];const push=v=>{v=safe(v);if(v)bits.push(v)};
- push(el.getAttribute?.('aria-label'));push(el.getAttribute?.('placeholder'));push(el.getAttribute?.('name'));push(el.getAttribute?.('data-field'));push(el.getAttribute?.('data-label'));
- const id=el.id;if(id){try{const lab=el.ownerDocument.querySelector('label[for="'+CSS.escape(id)+'"]');push(lab?.textContent)}catch(_){}}
- let p=el.parentElement,depth=0;while(p&&depth<3){push(p.querySelector?.(':scope > label')?.textContent);if(p.matches?.('td,th,tr,.field,.form-group,.recordFormGrid>div,.grid>div'))push(p.textContent);p=p.parentElement;depth++}
- return bits.join(' ').replace(/\s+/g,' ').trim();
-}
-function classifyPersonField(el){
- const c=fieldContext(el);
- if(!c)return '';
- if(/اسم\s*(الطالب|الطالبة|الطالب\/الطالبة)|الطالب\s*\/\s*الطالبة|اسم\s*المتعلم|المتعلم|المتعلمة/.test(c))return 'students';
- if(/اسم\s*(المعلم|المعلمة)|المعلم\/ة|معلم|معلمة/.test(c))return 'teachers';
- if(/اسم\s*(الموظف|الموظفة|الإداري|الإدارية)|موظف|موظفة|إداري|إدارية/.test(c))return 'admins';
- if(/عضو|عضوة|أعضاء|منفذ|منفذة|المسؤول|المسؤولة|الرئيس|الرئيسة|المقرر|المقررة|المكلف|المكلفة|الحضور|اسم\s*الشخص|اسم\s*المنسوب/.test(c))return 'staff';
- return '';
-}
-function isTextLike(el){if(!el||el.tagName!=='INPUT')return false;const t=lower(el.type||'text');return !['date','datetime-local','time','number','file','checkbox','radio','hidden','button','submit','reset','color','range'].includes(t)}
-function looksPlaceholderValue(v){v=safe(v);return !v||/^(?:-+|\.+|اختر|اكتب|اسم\s*(?:المدرسة|المدير|المديرة)|مدير\s*المدرسة)$/i.test(v)}
-function bindInformationFields(root=document,snapshot=null){
- try{
-  const doc=root?.nodeType===9?root:(root?.ownerDocument||document),scope=root?.querySelectorAll?root:doc;
-  const snap=snapshot||getSnapshotSync(),dir=directoryFromSnapshot(snap),ids=ensureDirectoryLists(doc,dir);
-  scope.querySelectorAll('input,textarea,select').forEach(el=>{
-    if(el.closest?.('.school-info-directory-datalist'))return;
-    const c=fieldContext(el);
-    if(!c)return;
-    // البيانات الأساسية: نعكسها فقط على الخانات الفارغة/الافتراضية ولا نمحو إدخال المستخدم.
-    if(isTextLike(el)&&/اسم\s*(المدرسة|المنشأة)/.test(c)&&dir.school&&looksPlaceholderValue(el.value)){el.value=dir.school;el.dispatchEvent(new Event('input',{bubbles:true}));el.dataset.schoolInfoBound='school'}
-    if(isTextLike(el)&&/اسم\s*(مدير|مديرة)|مدير\/مديرة/.test(c)&&dir.manager&&looksPlaceholderValue(el.value)){el.value=dir.manager;el.dispatchEvent(new Event('input',{bubbles:true}));el.dataset.schoolInfoBound='manager'}
-    if(isTextLike(el)&&/إدارة\s*التعليم/.test(c)&&dir.education&&looksPlaceholderValue(el.value)){el.value=dir.education;el.dispatchEvent(new Event('input',{bubbles:true}));el.dataset.schoolInfoBound='education'}
-    const kind=classifyPersonField(el);
-    if(kind&&isTextLike(el)&&ids[kind]){el.setAttribute('list',ids[kind]);el.dataset.schoolInfoDirectory=kind;el.autocomplete='off'}
-  });
-  ensureInformationPrintStyle(doc);
-  return {ok:true,directory:dir};
- }catch(e){console.warn('[school-information bind fields]',e);return {ok:false,error:String(e?.message||e)}}
-}
-function ensureInformationPrintStyle(doc=document){
- try{
-  if(!doc?.head||doc.getElementById('school-information-print-normalizer-rl156'))return;
-  const st=doc.createElement('style');st.id='school-information-print-normalizer-rl156';st.textContent=`
-  @media print{
-    .school-info-directory-datalist,.noPrint,.no-print,.print-hidden,button,[role="dialog"].fixed,.modal-backdrop{display:none!important}
-    input[data-school-info-directory],input[data-school-info-bound],select[data-school-info-directory],textarea[data-school-info-directory],
-    input[list^="school-info-"]{border:0!important;outline:0!important;box-shadow:none!important;background:transparent!important;padding:0!important;color:#111!important;-webkit-text-fill-color:#111!important;appearance:none!important;-webkit-appearance:none!important}
-    select{background-image:none!important;-webkit-appearance:none!important;appearance:none!important}
-    input,textarea,select{box-shadow:none!important}
-  }`;
-  doc.head.appendChild(st);
- }catch(e){console.warn('[school-information print style]',e)}
-}
-let bindTimer=0;
-function scheduleAutoBind(doc=document){clearTimeout(bindTimer);bindTimer=setTimeout(async()=>{try{const snap=await getSnapshot(false);bindInformationFields(doc,snap)}catch(e){console.warn('[school-information auto bind]',e)}},80)}
-function autoBindDirectory(){
- const run=()=>scheduleAutoBind(document);
- if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',run,{once:true});else run();
- try{const mo=new MutationObserver(()=>run());mo.observe(document.documentElement,{childList:true,subtree:true})}catch(_e){}
- window.addEventListener('school-information-updated',run);window.addEventListener('school-information-source-invalidated',run);
-}
-
-window.SchoolInformationSource={VERSION,refresh,load:getSnapshot,getSnapshot,getStudents,getStudentsByScope,getStaff,getTeachers,getAdministrativeEmployees,directoryFromSnapshot,bindInformationFields,ensureInformationPrintStyle,request:call,notifyUpdated,notifyStudentsUpdated,hydratePersistentCache,revalidateInBackground,
+window.SchoolInformationSource={VERSION,refresh,load:getSnapshot,getSnapshot,getStudents,getStudentsByScope,getStaff,getTeachers,getAdministrativeEmployees,request:call,notifyUpdated,notifyStudentsUpdated,hydratePersistentCache,revalidateInBackground,
  context:()=>({systemAdmin:systemAdminRequested(),schoolId:targetSchoolId(),accessMode:systemAdminRequested()?'system_admin':'school_manager'})};
-autoBindDirectory();
 })();

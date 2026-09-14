@@ -592,7 +592,20 @@
     return '';
   }
   function explicitFollowMode(){
-    try{const q=new URLSearchParams(location.search);return q.get('mode')==='follow'||q.get('follow')==='1'||q.get('readOnly')==='1'}catch(_){return false}
+    try{
+      const q=new URLSearchParams(location.search||'');
+      const queryActive=q.get('mode')==='follow'||q.get('mode')==='supervisor_readonly'||q.get('follow')==='1'||q.get('readonly')==='1'||q.get('readOnly')==='1'||q.get('monitoring')==='true';
+      if(queryActive)return true;
+      const parse=(v)=>{try{return JSON.parse(v||'null')||{}}catch(_){return {}}};
+      const ctx=parse(sessionStorage.getItem('platform_follow_context_v4'));
+      const legacy=parse(sessionStorage.getItem('manager_follow_context_v2'));
+      const c=ctx&&ctx.readonly===true?ctx:(legacy&&legacy.readonly===true?legacy:{});
+      if(!c||c.readonly!==true)return false;
+      const sid=String(c.schoolId||'').trim(), current=String(schoolId()||sessionStorage.getItem(TAB_SCHOOL_KEY)||'').trim();
+      if(sid&&current&&sid!==current)return false;
+      const viewer=canonicalRole(c.viewerRole||c.viewer||'');
+      return viewer==='manager'||viewer==='agent';
+    }catch(_){return false}
   }
 
   // RL76: full-role delegation is a temporary execution authorization, not a
@@ -722,7 +735,7 @@
     }
   }
 
-  const SESSION_VERSION='2026.09.14-RL150-nonblocking-verified-session';
+  const SESSION_VERSION='2026.09.14-RL155-global-readonly-follow';
 
   window.PlatformCloudSession = {
     VERSION:SESSION_VERSION,
@@ -816,6 +829,156 @@
     const run=()=>enforceRouteRole().catch(()=>{});
     if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',run,{once:true});else queueMicrotask(run);
   }
+})();
+
+
+/* RL155 — Global supervisor follow mode.
+   Viewer keeps the real manager/agent cloud session. The followed account is a
+   read-only presentation context only; it never replaces the server session. */
+(function(){
+  'use strict';
+  if(window.__PLATFORM_FOLLOW_READONLY_RL155__)return;
+  window.__PLATFORM_FOLLOW_READONLY_RL155__=1;
+  const KEY='platform_follow_context_v4', LEGACY='manager_follow_context_v2';
+  const parse=v=>{try{return JSON.parse(v||'null')||{}}catch(_){return {}}};
+  const norm=v=>String(v||'').trim().toLowerCase();
+  const same=(a,b)=>String(a||'').trim()===String(b||'').trim();
+  const canonical=v=>{
+    const r=norm(v);
+    if(['manager','principal','school_manager','leadership','مدير','مديرة'].includes(r))return'manager';
+    if(['agent','deputy','vice','wakil','agency','وكيل','وكيلة'].includes(r))return'agent';
+    if(['teacher','performance','معلم','معلمة'].includes(r))return'teacher';
+    if(['student_advisor','student-advisor','advisor','counselor','guide'].includes(r))return'student_advisor';
+    if(['activity_leader','activity-leader','activity'].includes(r))return'activity_leader';
+    if(['health_advisor','health-advisor','health'].includes(r))return'health_advisor';
+    if(['kindergarten_teacher','kindergarten-teacher','kindergarten'].includes(r))return'kindergarten_teacher';
+    if(['administrative_employee','administrative-employee','admin_employee'].includes(r))return'administrative_employee';
+    return r;
+  };
+  function fromQuery(){
+    try{
+      const q=new URLSearchParams(location.search||''), mode=norm(q.get('mode'));
+      const active=q.get('follow')==='1'||q.get('readonly')==='1'||q.get('readOnly')==='1'||q.get('monitoring')==='true'||mode.includes('follow')||mode.includes('supervisor')||mode.includes('monitor');
+      if(!active)return null;
+      const viewer=canonical(q.get('viewerRole')||q.get('viewer')||q.get('returnRole'));
+      const schoolId=String(q.get('schoolId')||q.get('school_id')||q.get('school')||'').trim();
+      const targetUserId=String(q.get('targetUser')||q.get('followUserId')||q.get('userId')||q.get('uid')||q.get('owner_uid')||'').trim();
+      const targetEmail=norm(q.get('followEmail')||q.get('targetEmail')||q.get('emp')||'');
+      const targetRole=canonical(q.get('targetRole')||q.get('role')||'');
+      if(!['manager','agent'].includes(viewer)||!schoolId||(!targetUserId&&!targetEmail))return null;
+      return {mode:'supervisor_follow',readonly:true,viewerRole:viewer,schoolId,targetUserId,targetEmail,targetRole,returnUrl:viewer==='agent'?'agent.html':'manager.html',createdAt:new Date().toISOString()};
+    }catch(_){return null}
+  }
+  function context(){
+    const q=fromQuery();
+    if(q){try{sessionStorage.setItem(KEY,JSON.stringify(q));if(q.viewerRole==='manager')sessionStorage.setItem(LEGACY,JSON.stringify({...q,mode:'manager_follow',managerReturn:'manager.html?sectionReturn=1'}));}catch(_){}return q;}
+    const c=parse(sessionStorage.getItem(KEY));
+    if(c&&c.readonly===true&&['manager','agent'].includes(canonical(c.viewerRole)))return {...c,viewerRole:canonical(c.viewerRole),targetRole:canonical(c.targetRole)};
+    const l=parse(sessionStorage.getItem(LEGACY));
+    if(l&&l.readonly===true)return {...l,mode:'supervisor_follow',viewerRole:'manager',targetRole:canonical(l.targetRole),returnUrl:'manager.html'};
+    return null;
+  }
+  let ctx=context();
+  if(!ctx)return;
+  const pcs=window.PlatformCloudSession;
+  const real={
+    role:pcs&&typeof pcs.role==='function'?pcs.role.bind(pcs):()=>'',
+    userId:pcs&&typeof pcs.userId==='function'?pcs.userId.bind(pcs):()=>'',
+    schoolId:pcs&&typeof pcs.schoolId==='function'?pcs.schoolId.bind(pcs):()=>'',
+    memberships:pcs&&typeof pcs.memberships==='function'?pcs.memberships.bind(pcs):null,
+    ensure:pcs&&typeof pcs.ensure==='function'?pcs.ensure.bind(pcs):null
+  };
+  function active(){
+    ctx=context()||ctx;
+    const sid=String(ctx&&ctx.schoolId||'').trim(), rsid=String(real.schoolId()||sessionStorage.getItem('platform_tab_session_school_id_v1')||sessionStorage.getItem('smart_school_tab_school_v1')||'').trim();
+    return !!(ctx&&ctx.readonly===true&&['manager','agent'].includes(canonical(ctx.viewerRole))&&(!sid||!rsid||sid===rsid));
+  }
+  function view(){return active()?{schoolId:String(ctx.schoolId||real.schoolId()||''),userId:String(ctx.targetUserId||''),role:canonical(ctx.targetRole||''),email:ctx.targetEmail||'',viewerRole:canonical(ctx.viewerRole),readonly:true}:null}
+  function decorate(raw){
+    if(!active()||!raw)return raw;
+    try{
+      const u=new URL(raw,location.href); if(u.origin!==location.origin||!/\.html$/i.test(u.pathname))return raw;
+      const v=view();
+      [['follow','1'],['readonly','1'],['mode','supervisor_readonly'],['viewer',v.viewerRole],['viewerRole',v.viewerRole],['returnRole',v.viewerRole],['targetRole',v.role],['followEmail',v.email],['targetEmail',v.email],['targetUser',v.userId],['followUserId',v.userId],['userId',v.userId],['uid',v.userId],['schoolId',v.schoolId],['blockNewReport','true'],['archiveReadOnly','true']].forEach(([k,val])=>{if(val)u.searchParams.set(k,val)});
+      return u.pathname.split('/').pop()+u.search+u.hash;
+    }catch(_){return raw}
+  }
+  window.PlatformFollowReadonly={active,context:()=>view(),decorate,clear:function(){try{sessionStorage.removeItem(KEY);sessionStorage.removeItem(LEGACY);sessionStorage.removeItem('manager_follow_active_v2');sessionStorage.removeItem('smartSchoolUnifiedOpsV2_follow_context')}catch(_){}ctx=null;},returnToViewer:function(){const v=view();this.clear();location.href=(v&&v.viewerRole==='agent'?'agent.html':'manager.html')+'?sectionReturn=1&returnedFromFollow=1';}};
+
+  // Generalize the legacy landing-page bridge so both manager and deputy can follow.
+  window.ManagerFollowAccessBridge={
+    request:function(){const v=view();return v?{active:true,schoolId:v.schoolId,targetUserId:v.userId,targetEmail:v.email,targetRole:v.role,viewer:v.viewerRole}: {active:false}},
+    verify:async function(expectedRoles){
+      if(!active())return null;
+      if(real.ensure)await real.ensure();
+      const rr=canonical(real.role()), expected=(expectedRoles||[]).map(canonical).filter(Boolean), v=view();
+      if(!['manager','agent'].includes(rr))throw new Error('FOLLOW_VIEWER_NOT_SUPERVISOR');
+      if(!same(real.schoolId(),v.schoolId))throw new Error('FOLLOW_SCHOOL_MISMATCH');
+      if(expected.length&&v.role&&!expected.includes(v.role))throw new Error('FOLLOW_TARGET_ROLE_MISMATCH');
+      window.__MANAGER_FOLLOW_VERIFIED__={schoolId:v.schoolId,targetUserId:v.userId,targetEmail:v.email,targetRole:v.role,viewerRole:v.viewerRole,readonly:true};
+      document.documentElement.setAttribute('data-manager-follow-verified','1');
+      return window.__MANAGER_FOLLOW_VERIFIED__;
+    },
+    returnToManager:function(){window.PlatformFollowReadonly.returnToViewer()}
+  };
+
+  // Client view identity only. The token and server session remain the supervisor's.
+  if(pcs){
+    pcs.viewerRole=()=>canonical(ctx.viewerRole);
+    pcs.monitoringContext=()=>view();
+    pcs.isReadOnlyFollow=()=>active();
+  }
+
+  const mutationWords=/(حفظ|إضافة|انشاء|إنشاء|تعديل|تحرير|حذف|رفع|إرسال|اعتماد|رفض|إرجاع|ارجاع|تنفيذ|إغلاق|اغلاق|تفعيل|تعطيل|استيراد|ربط|مزامنة|تحديث البيانات|save|add|create|edit|update|delete|remove|upload|submit|approve|reject|return|execute|close|activate|disable|import|sync)/i;
+  const safeWords=/(بحث|تصفية|فلتر|معاينة|عرض|فتح|تفاصيل|رجوع|عودة|التالي|السابق|طباعة|تصدير|تنزيل|download|print|export|preview|view|open|details|search|filter|back|next|previous)/i;
+  function text(el){return String(el?.innerText||el?.textContent||el?.value||el?.getAttribute?.('aria-label')||el?.title||'').trim()}
+  function isMutationControl(el){const t=text(el);return !!(mutationWords.test(t)&&!safeWords.test(t));}
+  function applyReadonly(root=document){
+    if(!active())return;
+    const de=document.documentElement;de.dataset.platformReadOnlyFollow='1';de.dataset.supervisorReadonly='true';
+    root.querySelectorAll?.('button,[role="button"],a,input[type="submit"],input[type="button"]').forEach(el=>{if(isMutationControl(el)){el.setAttribute('data-follow-write-blocked','1');el.setAttribute('aria-disabled','true');}});
+    root.querySelectorAll?.('textarea,[contenteditable="true"],input:not([type="search"]):not([type="button"]):not([type="submit"]):not([type="checkbox"]):not([type="radio"])').forEach(el=>{
+      const ph=String(el.getAttribute?.('placeholder')||''); if(/بحث|search|filter|تصفية/i.test(ph))return;
+      el.setAttribute('readonly','readonly');el.setAttribute('data-follow-readonly-field','1');
+    });
+  }
+  function addStyle(){if(document.getElementById('platform-follow-readonly-rl155-style'))return;const s=document.createElement('style');s.id='platform-follow-readonly-rl155-style';s.textContent=`
+html[data-platform-read-only-follow="1"] [data-follow-write-blocked="1"]{opacity:.45!important;filter:grayscale(.6)!important;cursor:not-allowed!important;pointer-events:none!important}
+html[data-platform-read-only-follow="1"] [data-follow-readonly-field="1"]{background:#f8fafc!important;cursor:default!important}
+#platform-follow-readonly-rl155-banner{position:fixed;z-index:2147483646;top:10px;right:50%;transform:translateX(50%);background:#0f766e;color:#fff;border:1px solid rgba(255,255,255,.25);box-shadow:0 8px 24px rgba(15,23,42,.18);border-radius:999px;padding:8px 14px;font:800 12px Tajawal,Arial;display:flex;gap:10px;align-items:center;max-width:calc(100vw - 24px)}
+#platform-follow-readonly-rl155-banner button{border:0;background:#fff;color:#0f766e;border-radius:999px;padding:5px 10px;font:800 11px Tajawal,Arial;cursor:pointer}
+`; (document.head||document.documentElement).appendChild(s)}
+  function addBanner(){if(document.getElementById('platform-follow-readonly-rl155-banner')||!document.body)return;const v=view(),b=document.createElement('div');b.id='platform-follow-readonly-rl155-banner';b.innerHTML='<span>وضع المتابعة — قراءة فقط'+(v?.email?' — '+v.email:'')+'</span><button type="button">إنهاء المتابعة</button>';b.querySelector('button').onclick=()=>window.PlatformFollowReadonly.returnToViewer();document.body.appendChild(b)}
+  function internalUrlFromEvent(ev){
+    let el=ev.target; while(el&&el!==document){
+      if(el.getAttribute){const href=el.getAttribute('href');if(href&&/\.html(?:[?#]|$)/i.test(href))return {el,url:href};const oc=el.getAttribute('onclick')||'';const m=oc.match(/(?:location(?:\.href)?\s*=|location\.assign\(|location\.replace\(|window\.location\.href\s*=)\s*[('\"]+([^'\")]+\.html(?:\?[^'\")]+)?)/i);if(m)return {el,url:m[1]};}
+      el=el.parentElement;
+    } return null;
+  }
+  document.addEventListener('click',function(ev){
+    if(!active())return;
+    const hit=internalUrlFromEvent(ev); if(hit){const next=decorate(hit.url);if(next!==hit.url){ev.preventDefault();ev.stopImmediatePropagation();location.href=next;return;}}
+    let el=ev.target;while(el&&el!==document){if(el.getAttribute&&el.getAttribute('data-follow-write-blocked')==='1'){ev.preventDefault();ev.stopImmediatePropagation();return}el=el.parentElement}
+  },true);
+  document.addEventListener('submit',function(ev){if(!active())return;const f=ev.target;const ft=String(f?.innerText||f?.textContent||'')+' '+Array.from(f?.querySelectorAll?.('input')||[]).map(x=>x.placeholder||'').join(' ');if(/بحث|search|filter|تصفية/i.test(ft)&&!mutationWords.test(ft))return;ev.preventDefault();ev.stopImmediatePropagation();},true);
+  document.addEventListener('beforeinput',function(ev){if(!active())return;const el=ev.target;if(el&&el.getAttribute&&el.getAttribute('data-follow-readonly-field')==='1'){ev.preventDefault();}},true);
+
+  // Network guard: reject explicit mutations while following. Read-only POSTs remain allowed.
+  const rawFetch=window.fetch?.bind(window);
+  if(rawFetch)window.fetch=async function(input,init={}){
+    if(active()){
+      const method=String(init?.method||'GET').toUpperCase();
+      let body='';try{body=typeof init?.body==='string'?init.body:''}catch(_){}
+      const hard=['PUT','PATCH','DELETE'].includes(method);
+      const bodyMutation=method==='POST'&&/(\"action\"\s*:\s*\"(?:set|save|create|insert|upsert|update|delete|remove|upload|submit|approve|reject|return|close|activate|disable|bulk-upsert|bulk_upsert)\"|\"deleted\"\s*:\s*true)/i.test(body);
+      if(hard||bodyMutation){const e=new Error('FOLLOW_READONLY_WRITE_BLOCKED');e.code='FOLLOW_READONLY_WRITE_BLOCKED';throw e;}
+      const h=new Headers(init.headers||{});h.set('x-platform-follow-mode','readonly');h.set('x-platform-follow-viewer',canonical(ctx.viewerRole));init={...init,headers:h};
+    }
+    return rawFetch(input,init);
+  };
+
+  function boot(){if(!active())return;addStyle();applyReadonly(document);addBanner();const mo=new MutationObserver(ms=>{for(const m of ms)for(const n of m.addedNodes||[])if(n.nodeType===1)applyReadonly(n)});mo.observe(document.documentElement,{childList:true,subtree:true});}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })();
 
 /* iOS/WebKit compatibility layer — presentation only; no auth/storage semantics changed. */

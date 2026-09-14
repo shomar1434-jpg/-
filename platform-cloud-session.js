@@ -25,6 +25,8 @@
     'activeSchoolId','active_school_id','current_school_id','school_id','smart_school_id',
     'current_school_name','school_name','active_school_name'
   ]);
+  let __rawLocalGet = null;
+
   const LEGACY_TO_TAB={
     platform_file_session_token:TAB_TOKEN_KEY,
     platform_file_session_expires_at:TAB_EXPIRES_KEY,
@@ -44,6 +46,7 @@
     if(window.__PLATFORM_TAB_IDENTITY_FIREWALL_RL33__)return;
     window.__PLATFORM_TAB_IDENTITY_FIREWALL_RL33__=true;
     const proto=Storage.prototype, originalGet=proto.getItem, originalSet=proto.setItem, originalRemove=proto.removeItem;
+    __rawLocalGet=(key)=>{try{return originalGet.call(window.localStorage,String(key))}catch(_){return null}};
     const isLocal=(store)=>{try{return store===window.localStorage}catch(_){return false}};
     const tabValue=(key)=>{
       const mapped=LEGACY_TO_TAB[key];
@@ -132,6 +135,44 @@
     } catch (_) { return false; }
   }
 
+  // RL148 — Safe legacy-session bridge for browsers upgraded from pre-RL33 builds.
+  // Older builds persisted the school cloud token in localStorage. RL33 correctly
+  // isolated identity per tab, but deliberately stopped reading those shared keys.
+  // A school that had not logged in again after that upgrade could therefore keep
+  // its visual manager shell while protected child pages saw SESSION_MISSING.
+  // Migrate the legacy token into this tab ONLY when school + user (+ role when known)
+  // exactly match the current tab identity. Nothing is deleted from localStorage.
+  const LEGACY_BRIDGE_MARK='platform_legacy_cloud_session_bridge_rl148';
+  function migrateLegacyCloudSessionToTab(){
+    if(isSystemAdminContext())return '';
+    const existing=String(sessionStorage.getItem(TAB_TOKEN_KEY)||'').trim();
+    if(existing)return existing;
+    if(typeof __rawLocalGet!=='function')return '';
+    try{
+      const legacyToken=String(__rawLocalGet(TOKEN_KEY)||'').trim();
+      if(!legacyToken)return '';
+      const legacySchool=String(__rawLocalGet(SCHOOL_KEY)||'').trim();
+      const legacyUser=String(__rawLocalGet(USER_KEY)||'').trim();
+      const legacyRole=String(__rawLocalGet(ROLE_KEY)||'').trim();
+      const legacyExp=String(__rawLocalGet(EXPIRES_KEY)||'').trim();
+      const sess=parseJson(sessionStorage.getItem('smart_school_current_session'))||{};
+      const tabSchool=String(sessionStorage.getItem(TAB_SCHOOL_KEY)||sessionStorage.getItem('smart_school_tab_school_v1')||sess.cloudSchoolId||sess.schoolId||sess.school_id||'').trim();
+      const tabUser=String(sessionStorage.getItem(TAB_USER_KEY)||sessionStorage.getItem('currentUserId')||sess.cloudUserId||sess.userId||sess.id||'').trim();
+      const tabRole=String(sessionStorage.getItem(TAB_ROLE_KEY)||sess.cloudRole||sess.role||'').trim();
+      // Never import a shared legacy token into an unbound tab.
+      if(!tabSchool||!tabUser||!legacySchool||!legacyUser)return '';
+      if(tabSchool!==legacySchool||tabUser!==legacyUser)return '';
+      if(tabRole&&legacyRole&&canonicalRole(tabRole)!==canonicalRole(legacyRole))return '';
+      sessionStorage.setItem(TAB_TOKEN_KEY,legacyToken);
+      sessionStorage.setItem(TAB_EXPIRES_KEY,legacyExp);
+      sessionStorage.setItem(TAB_USER_KEY,tabUser);
+      sessionStorage.setItem(TAB_SCHOOL_KEY,tabSchool);
+      sessionStorage.setItem(TAB_ROLE_KEY,tabRole||legacyRole);
+      sessionStorage.setItem(LEGACY_BRIDGE_MARK,JSON.stringify({schoolId:tabSchool,userId:tabUser,at:Date.now()}));
+      return legacyToken;
+    }catch(_){return ''}
+  }
+
   function sessionContexts() {
     return [parseJson(sessionStorage.getItem('smart_school_current_session')),parseJson(sessionStorage.getItem('administrative_employee_tab_session_v1'))].filter(Boolean);
   }
@@ -146,6 +187,8 @@
     const activeUser = directActiveUserId();
     const tabToken=String(sessionStorage.getItem(TAB_TOKEN_KEY)||'').trim();
     if(tabToken)return tabToken;
+    const bridged=migrateLegacyCloudSessionToTab();
+    if(bridged)return bridged;
     for (const ctx of sessionContexts()) {
       const candidate = contextToken(ctx);
       if (!candidate) continue;
@@ -274,6 +317,27 @@
     return tabFirst(TAB_ROLE_KEY,ROLE_KEY);
   }
 
+  // RL143 — Unified Independent School Identity Contract
+  // One source of truth for every school/tab: verified cloud session school + user + canonical role.
+  function canonicalRole(value) {
+    const v=String(value||'').trim().toLowerCase();
+    const groups={
+      manager:['manager','principal','school_manager','school-manager','leadership','مدير','مديرة','مدير المدرسة','مديرة المدرسة'],
+      agent:['agent','deputy','vice','wakil','agency','وكيل','وكيلة'],
+      teacher:['teacher','performance','معلم','معلمة'],
+      student_advisor:['student_advisor','student-advisor','advisor','counselor','مرشد','مرشدة','موجه','موجهة'],
+      health_advisor:['health_advisor','health-advisor','موجه صحي','موجهة صحية','الموجه الصحي'],
+      activity_leader:['activity_leader','activity-leader','activity','رائد النشاط','رائدة النشاط'],
+      kindergarten_teacher:['kindergarten_teacher','kindergarten-teacher','معلمة رياض الأطفال'],
+      administrative_employee:['administrative_employee','admin_employee','employee_admin','موظف إداري','موظفة إدارية']
+    };
+    for(const [k,a] of Object.entries(groups)) if(v===k||a.includes(v)) return k;
+    return v;
+  }
+  function verifiedContext(){
+    return {schoolId:String(schoolId()||'').trim(),userId:String(userId()||'').trim(),role:canonicalRole(role()||'')};
+  }
+
   function role() {
     if (isSystemAdminContext()) return 'system_admin';
     try {
@@ -338,24 +402,74 @@
     finally { recoveryPromise = null; }
   }
 
+  let ensurePromise = null;
   async function ensure() {
+    if (ensurePromise) return ensurePromise;
+    ensurePromise = (async () => {
+      if (isSystemAdminContext()) {
+        const error = new Error('جلسة مدير النظام منفصلة عن جلسات المدارس المستقلة.');
+        error.code = 'SYSTEM_ADMIN_SCHOOL_SESSION_BLOCKED';
+        throw error;
+      }
+      let currentToken = '';
+      if (valid()) currentToken = token();
+      else {
+        restoreFromKnownContext();
+        if (valid()) currentToken = token();
+        else currentToken = await recover();
+      }
+      // Delegated access is still revalidated server-side. Single-flight only prevents
+      // duplicate startup calls in the same page from repeating the same work concurrently.
+      await refreshDelegatedRoleContext().catch(()=>null);
+      return currentToken || token();
+    })();
+    try { return await ensurePromise; }
+    finally { ensurePromise = null; }
+  }
+
+
+  function recentlyVerified(requiredRoles = [], maxAgeMs = 5 * 60 * 1000) {
+    try {
+      const raw=parseJson(sessionStorage.getItem(VERIFIED_CONTEXT_KEY))||{};
+      const sid=String(schoolId()||'').trim(), uid=String(userId()||'').trim(), rr=canonicalRole(baseRole()||'');
+      const allowed=(requiredRoles||[]).map(canonicalRole).filter(Boolean);
+      if(!raw || !raw.verifiedAt || Date.now()-Number(raw.verifiedAt)>maxAgeMs) return null;
+      if(String(raw.schoolId||'')!==sid || String(raw.userId||'')!==uid || canonicalRole(raw.role||'')!==rr) return null;
+      if(allowed.length && !allowed.includes(rr)) return null;
+      return {schoolId:sid,userId:uid,role:rr,verified:true,verifiedAt:Number(raw.verifiedAt)};
+    } catch(_) { return null; }
+  }
+
+  function markVerifiedContext(ctx) {
+    try {
+      sessionStorage.setItem(VERIFIED_CONTEXT_KEY,JSON.stringify({
+        schoolId:String((ctx&&ctx.schoolId)||schoolId()||'').trim(),
+        userId:String((ctx&&ctx.userId)||userId()||'').trim(),
+        role:canonicalRole((ctx&&ctx.role)||baseRole()||''),
+        verifiedAt:Date.now()
+      }));
+    } catch(_) {}
+  }
+
+  async function ensureLive(requiredRoles = [], options = {}) {
     if (isSystemAdminContext()) {
       const error = new Error('جلسة مدير النظام منفصلة عن جلسات المدارس المستقلة.');
       error.code = 'SYSTEM_ADMIN_SCHOOL_SESSION_BLOCKED';
       throw error;
     }
-    let currentToken = '';
-    if (valid()) currentToken = token();
-    else {
-      restoreFromKnownContext();
-      if (valid()) currentToken = token();
-      else currentToken = await recover();
+    const forceLive=options&&options.force===true;
+    const recent=forceLive?null:recentlyVerified(requiredRoles);
+    if(recent && valid()) return recent;
+    await ensure();
+    try {
+      return await verifyAccess(requiredRoles);
+    } catch (e) {
+      const code=String(e&&e.code||'').toUpperCase();
+      const recoverable=['SESSION_INVALID','SESSION_EXPIRED','SESSION_MISSING','SESSION_RENEW_NOT_FOUND','HTTP_401'].includes(code);
+      if(!recoverable) throw e;
+      await recover();
+      return await verifyAccess(requiredRoles);
     }
-    // Full-role delegation is revalidated on every nested page that calls ensure().
-    // This makes legacy internal modules see the delegated role only after the
-    // server confirms the task, user and school again; stale/revoked contexts are cleared.
-    await refreshDelegatedRoleContext().catch(()=>null);
-    return currentToken || token();
   }
 
 
@@ -376,29 +490,20 @@
       throw error;
     }
     const membershipsList = Array.isArray(payload.memberships) ? payload.memberships : [];
-    const normalizeRole = (v) => String(v || '').trim().toLowerCase();
-    const aliases = {
-      manager: ['manager','principal','school_manager','leadership','مدير','مديرة','مدير المدرسة','مديرة المدرسة'],
-      agent: ['agent','deputy','vice','wakil','agency','وكيل','وكيلة'],
-      teacher: ['teacher','performance','معلم','معلمة'],
-      student_advisor: ['student_advisor','advisor','counselor','مرشد','موجه'],
-      health_advisor: ['health_advisor','health-advisor','موجه صحي','الموجه الصحي'],
-      activity_leader: ['activity_leader','activity-leader','activity','رائد النشاط','رائدة النشاط'],
-      kindergarten_teacher: ['kindergarten_teacher','kindergarten-teacher','معلمة رياض الأطفال'],
-      administrative_employee: ['administrative_employee','admin_employee','employee_admin','موظف إداري','موظفة إدارية']
-    };
-    const allowed = (requiredRoles || []).flatMap((role) => aliases[normalizeRole(role)] || [normalizeRole(role)]);
+    // RL143: use the single module-level canonical role contract.
+    const allowed = (requiredRoles || []).map(canonicalRole).filter(Boolean);
+    const currentRole = canonicalRole(rr);
     const member = membershipsList.find((m) =>
       String(m.schoolId || '') === sid &&
       String(m.userId || '') === uid &&
-      normalizeRole(m.role) === normalizeRole(rr)
+      canonicalRole(m.role) === currentRole
     );
     if (!member) {
       const error = new Error('المستخدم غير مرتبط بالمدرسة الحالية بعضوية فعالة.');
       error.code = 'VERIFIED_MEMBERSHIP_MISSING';
       throw error;
     }
-    if (allowed.length && !allowed.includes(normalizeRole(rr))) {
+    if (allowed.length && !allowed.includes(currentRole)) {
       const error = new Error('الدور الحالي غير مخول بفتح هذه الصفحة.');
       error.code = 'VERIFIED_ROLE_DENIED';
       throw error;
@@ -512,7 +617,8 @@
       }
       const c=readDelegatedRoleContext();
       if(c && c.taskId && String(c.requiredRole||'').toLowerCase()===String(required||'').toLowerCase())
-        return {taskId:String(c.taskId),requiredRole:String(required||'').trim().toLowerCase(),source:'tab'};
+        markVerifiedContext({schoolId:sid,userId:uid,role:rr});
+    return {taskId:String(c.taskId),requiredRole:String(required||'').trim().toLowerCase(),source:'tab'};
     }catch(_){}
     return null;
   }
@@ -616,7 +722,7 @@
     }
   }
 
-  const SESSION_VERSION='2026.09.13-RL142-manager-entry-stability';
+  const SESSION_VERSION='2026.09.14-RL150-nonblocking-verified-session';
 
   window.PlatformCloudSession = {
     VERSION:SESSION_VERSION,
@@ -628,12 +734,16 @@
     userId,
     schoolId,
     role,
+    canonicalRole,
+    verifiedContext,
     baseRole,
     delegatedRole,
     delegatedTaskId,
     delegationHeaders,
     valid,
     ensure,
+    ensureLive,
+    recentlyVerified,
     recover,
     restoreFromKnownContext,
     verifyAccess,
@@ -649,9 +759,52 @@
     }),
   };
 
+  // RL145 — Unified session heartbeat for every independent-school page.
+  // A school tab may remain open for many hours. Previously the visual shell could
+  // stay usable after the 12-hour cloud session expired, so a later protected
+  // section appeared to lose the cloud connection. Keep the verified tab session
+  // warm without changing school/user/role and retry only through the canonical
+  // platform-session renew path.
+  let __heartbeatTimer = null;
+  let __heartbeatInFlight = false;
+  async function heartbeat(reason = 'interval') {
+    if (isSystemAdminContext() || __heartbeatInFlight) return false;
+    const known = Boolean(token() || restoreFromKnownContext());
+    if (!known) return false;
+    __heartbeatInFlight = true;
+    try {
+      await ensure();
+      window.dispatchEvent(new CustomEvent('platform-cloud-session-heartbeat',{detail:{ok:true,reason,schoolId:schoolId(),userId:userId(),role:role()}}));
+      return true;
+    } catch (err) {
+      // Never clear or redirect on a transient heartbeat failure. Individual
+      // protected pages may decide how to present a definitive authorization error.
+      console.warn('[platform-session] heartbeat failed', reason, err?.code || err?.message || err);
+      window.dispatchEvent(new CustomEvent('platform-cloud-session-heartbeat',{detail:{ok:false,reason,code:String(err?.code||''),message:String(err?.message||'')}}));
+      return false;
+    } finally {
+      __heartbeatInFlight = false;
+    }
+  }
+  function startHeartbeat(){
+    if(__heartbeatTimer || isSystemAdminContext()) return;
+    // Heartbeat must never compete with the initial page access check. The first
+    // automatic heartbeat is delayed; returning to a tab only checks after it has
+    // actually spent time in the background.
+    let hiddenAt=0;
+    __heartbeatTimer=setInterval(()=>heartbeat('interval'),5*60*1000);
+    document.addEventListener('visibilitychange',()=>{
+      if(document.visibilityState==='hidden'){hiddenAt=Date.now();return;}
+      if(document.visibilityState==='visible'&&hiddenAt&&Date.now()-hiddenAt>60*1000) heartbeat('visibility');
+      hiddenAt=0;
+    });
+    window.addEventListener('pageshow',(event)=>{if(event && event.persisted) setTimeout(()=>heartbeat('bfcache'),250);});
+  }
+
   // Same-tab navigation normally keeps sessionStorage, but restoring here also
   // covers pages opened after a browser/sessionStorage transition.
   restoreFromKnownContext();
+  startHeartbeat();
   const roleContract=routeRequiredRole();
   // Pages with their own verified access gate (manager.html) must not start a
   // second concurrent role check. The explicit gate still calls verifyAccess().

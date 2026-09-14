@@ -1,11 +1,6 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-<meta name="platform-runtime-cache-policy" content="versioned-non-destructive">
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<meta http-equiv="Pragma" content="no-cache">
-<meta http-equiv="Expires" content="0">
-
 <style id="platform-first-paint-guard">#elsPicker{display:none!important;visibility:hidden!important}html[data-system-admin-context="1"] #activeSchoolLabel{display:none!important;visibility:hidden!important}</style>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>مركز التكليفات المركزي</title>
@@ -144,7 +139,14 @@ async function ensureTaskDocumentWorkspace(){if(window.CloudDocumentWorkspace)re
 async function resolveDelegatedLibraryFileId(t){try{const r=await CloudFileEngine.listByLink({moduleKey:'central_tasks',recordType:'delegated_library_file',recordId:String(t.id||t.task_id||'')});const row=(r.links||[]).find(x=>x.platform_files?.status==='active');if(row?.platform_files?.id)return String(row.platform_files.id)}catch(e){console.warn('[library task link]',e)}return String(t.metadata?.libraryFileId||t.record_id||'')}
 async function openDelegatedLibraryFileFromTask(){try{if(!inlineWs?.task)throw new Error('التكليف غير محدد');const t=inlineWs.task,fileId=await resolveDelegatedLibraryFileId(t);if(!fileId)throw new Error('لم يتم العثور على السجل المرتبط بالتكليف');const cdw=await ensureTaskDocumentWorkspace();const ret=new URL(location.href);ret.searchParams.set('mode','assignee');ret.searchParams.set('task_id',String(t.id||t.task_id||''));ret.searchParams.set('library_work_return','1');ret.searchParams.delete('library_file_id');ret.searchParams.delete('library_file_name');ret.searchParams.delete('library_owner');ret.searchParams.delete('library_module');ret.searchParams.delete('library_folder');cdw.edit(fileId,ret.href)}catch(e){toast(e.message||'تعذر فتح السجل السحابي',false)}}
 async function recordLibraryWorkReturn(){if(qs('library_work_return')!=='1'||mode()!=='assignee')return;const taskId=qs('task_id');if(!taskId)return;try{await CloudTaskEngine.addUpdate({taskId,updateType:'execution',title:'العمل على السجل السحابي',notes:'تم فتح السجل المكلف به من مكتبة القسم والعمل عليه عبر محرر المستندات السحابي.',status:'draft'});toast('تم توثيق العمل على السجل السحابي');const u=new URL(location.href);u.searchParams.delete('library_work_return');history.replaceState(null,'',u.href)}catch(e){console.warn('[library work return]',e)}}
-function qs(k){return new URLSearchParams(location.search).get(k)||''}function esc(s){return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}function uid(){return 'task_'+Date.now()+'_'+Math.random().toString(36).slice(2,8)}function parse(v,d){try{return JSON.parse(v)}catch(e){return d}}function read(k,d){return parse(localStorage.getItem(k),d)}
+function qs(k){return new URLSearchParams(location.search).get(k)||''}function esc(s){return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}function uid(){return 'task_'+Date.now()+'_'+Math.random().toString(36).slice(2,8)}function parse(v,d){try{return JSON.parse(v)}catch(e){return d}}
+const CENTRAL_TASK_VOLATILE_CACHE=new Map();
+function read(k,d){if(CENTRAL_TASK_VOLATILE_CACHE.has(String(k)))return CENTRAL_TASK_VOLATILE_CACHE.get(String(k));return parse(localStorage.getItem(k),d)}
+const CENTRAL_TASK_QUOTA_REPAIR_SCHOOLS=new Set([
+  'ec9130d2-edbf-4d7d-a1c5-471a90eb24e1','SCH-B03813C1',
+  // الابتدائية السابعة عشر ببيشة — إصلاح موضعي لامتلاء Web Storage دون المساس بالسحابة.
+  '54772b3c-ede0-4d50-b31c-d873c17ceafb','SCH-RTYZ76'
+]);
 function isStorageQuotaError(e){
   return !!e && (e.name==='QuotaExceededError'||e.name==='NS_ERROR_DOM_QUOTA_REACHED'||e.code===22||e.code===1014);
 }
@@ -199,27 +201,36 @@ function write(k,v){
     return true;
   }catch(e){
     if(!isStorageQuotaError(e))throw e;
-    const sid=(typeof currentSchoolId==='function'?String(currentSchoolId()||'').trim():'');
+    const sid=(typeof currentSchoolId==='function'?String(currentSchoolId()||''):'');
+    const isTargetSchool=CENTRAL_TASK_QUOTA_REPAIR_SCHOOLS.has(sid);
     const isTaskCache=/^central_school_tasks_/.test(String(k||''));
-    // RL143 — سياسة موحدة لكل المدارس: معالجة امتلاء كاش مركز التكليفات
-    // لا تعتمد على school_id محدد. لا نمس البيانات السحابية أو مفاتيح مدرسة أخرى.
-    if(!isTaskCache)throw e;
+    if(!(isTargetSchool&&isTaskCache))throw e;
 
+    // إصلاح موضعي للمدارس المحددة فقط: localStorage كاش مساعد وليس مصدر الحقيقة.
+    // لا نحذف أو نعدل أي سجل في Supabase، ولا نمس مفاتيح مدارس أخرى.
+    CENTRAL_TASK_VOLATILE_CACHE.set(String(k),v);
     try{localStorage.removeItem(k);}catch(_){}
 
-    // المحاولة الأولى: كتابة النسخة السحابية الجديدة كاملة بعد تحرير المساحة.
+    // المحاولة الأولى: إعادة كتابة الكاش الكامل بعد تحرير مفتاح التكليفات نفسه.
     try{
       localStorage.setItem(k,payload);
-      try{localStorage.setItem('central_task_quota_repaired_'+(sid||'active_school'),new Date().toISOString());}catch(_){}
+      CENTRAL_TASK_VOLATILE_CACHE.delete(String(k));
+      try{localStorage.setItem('central_task_quota_repaired_'+sid,new Date().toISOString());}catch(_){}
       return true;
     }catch(e2){
       if(!isStorageQuotaError(e2))throw e2;
-      // إذا ظل نطاق المتصفح ممتلئًا، نحفظ كاشًا خفيفًا فقط.
-      // المصدر الكامل يبقى Supabase ويتم تحميله عند فتح المركز.
-      const compact=JSON.stringify(compactCentralTaskCache(v));
-      localStorage.removeItem(k);
-      localStorage.setItem(k,compact);
-      try{localStorage.setItem('central_task_quota_repaired_'+(sid||'active_school'),new Date().toISOString());}catch(_){}
+      // المحاولة الثانية: كاش خفيف. وإذا كان نطاق المتصفح كله ممتلئًا،
+      // نستمر بكاش الذاكرة لهذه الجلسة؛ الحفظ السحابي يظل هو المصدر الرسمي.
+      const compactValue=compactCentralTaskCache(v),compact=JSON.stringify(compactValue);
+      try{
+        localStorage.removeItem(k);
+        localStorage.setItem(k,compact);
+        CENTRAL_TASK_VOLATILE_CACHE.set(String(k),compactValue);
+        try{localStorage.setItem('central_task_quota_repaired_'+sid,new Date().toISOString());}catch(_){}
+      }catch(e3){
+        if(!isStorageQuotaError(e3))throw e3;
+        console.warn('[central-task-cache-quota] تم تجاوز localStorage واستمرار مركز التكليفات من السحابة/ذاكرة الجلسة للمدرسة:',sid);
+      }
       return true;
     }
   }
@@ -442,8 +453,7 @@ document.getElementById('delegationScope').addEventListener('change',populateRec
 </script>
 
 <!-- Unified Comprehensive Cloud Storage -->
-<script src="platform-runtime-guard.js?v=20260914-RL148-legacy-session-bridge"></script>
-<script src="platform-cloud-session.js?v=20260914-RL150-cloud-session-authoritative"></script>
+<script src="platform-cloud-session.js?v=20260905-RL33-complete-tab-role-isolation"></script>
 <script src="cloud-file-engine.js"></script>
 <script src="cloud-task-engine.js?v=20260818-root1"></script>
 <script src="platform-core-engine.js"></script>

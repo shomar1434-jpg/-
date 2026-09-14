@@ -58,6 +58,59 @@ body.portfolio-open .ai-center-trigger{
 }
 
 </style>
+<script id="rl154-cloud-cache-quota-guard">
+(function(){
+  if(window.__RL154CloudCacheQuotaGuard)return;
+  window.__RL154CloudCacheQuotaGuard=true;
+  var memory=window.__smartSchoolCloudBackedCache||(window.__smartSchoolCloudBackedCache=Object.create(null));
+  var proto=window.Storage&&Storage.prototype;
+  if(!proto||proto.__rl154QuotaGuard)return;
+  var nativeSet=proto.setItem, nativeGet=proto.getItem, nativeRemove=proto.removeItem;
+  function cloudBackedKey(k){
+    k=String(k||'');
+    return k==='smartSchoolUnifiedOpsV2_users' ||
+           k==='smartSchoolUnifiedOpsV2_users_session' ||
+           /^central_school_tasks_[0-9a-f-]{36}$/i.test(k);
+  }
+  function quotaError(e){
+    return !!e && (e.name==='QuotaExceededError' || e.code===22 || e.code===1014 || /quota/i.test(String(e.message||'')));
+  }
+  proto.setItem=function(key,value){
+    try{return nativeSet.call(this,key,value)}catch(e){
+      if(!cloudBackedKey(key)||!quotaError(e))throw e;
+      // RL154: هذه المفاتيح نسخ كاش لبيانات سحابية، لذلك امتلاء Local Storage لا يجب أن يعطل الواجهة.
+      memory[String(key)]=String(value);
+      try{
+        if(this===window.localStorage && window.sessionStorage){
+          nativeSet.call(window.sessionStorage,'__rl154_cloud_cache__'+String(key),String(value));
+        }
+      }catch(_){/* ذاكرة الصفحة تكفي حتى إعادة الجلب من السحابة */}
+      console.warn('[RL154] تجاهل تجاوز حصة التخزين لمفتاح سحابي مؤقت:',String(key));
+      return undefined;
+    }
+  };
+  proto.getItem=function(key){
+    var v=nativeGet.call(this,key);
+    if(v!==null)return v;
+    if(cloudBackedKey(key)){
+      if(Object.prototype.hasOwnProperty.call(memory,String(key)))return memory[String(key)];
+      try{
+        if(this===window.localStorage && window.sessionStorage){
+          var sv=nativeGet.call(window.sessionStorage,'__rl154_cloud_cache__'+String(key));
+          if(sv!==null)return sv;
+        }
+      }catch(_){}
+    }
+    return null;
+  };
+  proto.removeItem=function(key){
+    try{delete memory[String(key)]}catch(_){}
+    try{if(window.sessionStorage)nativeRemove.call(window.sessionStorage,'__rl154_cloud_cache__'+String(key))}catch(_){}
+    return nativeRemove.call(this,key);
+  };
+  try{Object.defineProperty(proto,'__rl154QuotaGuard',{value:true,configurable:false})}catch(_){proto.__rl154QuotaGuard=true}
+})();
+</script>
 <script id="safe-activation-bypass-head">
 (function(){try{
   localStorage.setItem('school_active','true');
@@ -3742,6 +3795,7 @@ async function legacyPerformanceSave_DISABLED() {
 (function(){
   if(window.__ssFinalActionsReady) return; window.__ssFinalActionsReady=true;
   var ROLE='manager', NS='smartSchoolUnifiedOpsV2', APP='منصة الإدارة المدرسية الذكية';
+  // Build 2026.09.14-RL154-global-cloud-cache-quota-safe
   function read(k,d){try{return JSON.parse(localStorage.getItem(k)||JSON.stringify(d||[]))}catch(e){return d||[]}}
   function write(k,v){localStorage.setItem(k,JSON.stringify(v));window.dispatchEvent(new Event('ssDataChanged'));}
   function uid(p){return (p||'id')+'_'+Date.now()+'_'+Math.random().toString(36).slice(2,7)}
@@ -3836,8 +3890,29 @@ async function legacyPerformanceSave_DISABLED() {
   function getTeacherExtraRolesForUser(user){var map=readTeacherExtraRoleMap(); var roles=[]; if(user){ roles=normalizeTeacherExtraRoles(user.teacher_extra_roles||user.additional_assignments||user.extra_roles||user.extraRoles); if(!roles.length && user.id) roles=normalizeTeacherExtraRoles(map['id:'+user.id]); if(!roles.length && user.email) roles=normalizeTeacherExtraRoles(map['email:'+String(user.email).trim().toLowerCase()]); } return roles; }
 
   function normalizeSchoolUser(u){var role=dbRoleToLocal(u.dbRole||u.role); var obj={id:u.id||uid('user'),name:u.name||u.fullName||u.full_name||'',email:u.email||'',password:u.password||'',role:role,status:u.status||((u.active||u.isActive)?'active':'pending'),active:u.active||u.isActive||u.status==='active',isActive:u.active||u.isActive||u.status==='active',schoolId:u.schoolId||u.school_id||currentSchoolId(),schoolName:u.schoolName||currentSchoolName(),isPrimaryManager:!!(u.isPrimaryManager||u.is_primary_manager),permissions:u.permissions||[]}; obj.agent_categories=role==='agent'?agencyListByUser(Object.assign({},u,obj)):[]; obj.agency_categories=obj.agent_categories; obj.agency_types=obj.agent_categories; obj.agency_type=obj.agent_categories.join(','); obj.agencyType=obj.agency_type; var teacherRoles=role==='teacher'?normalizeTeacherExtraRoles(u.teacher_extra_roles||u.additional_assignments||u.extra_roles||u.extraRoles):[]; if(role==='teacher' && !teacherRoles.length) teacherRoles=getTeacherExtraRolesForUser(Object.assign({},u,obj)); obj.teacher_extra_roles=role==='teacher'?teacherRoles:[]; obj.additional_assignments=role==='teacher'?teacherRoles:[]; obj.extra_roles=role==='teacher'?teacherRoles:[]; return obj}
-  function users(){var u=read(NS+'_users',[]).filter(function(x){return x&&x.status!=='deleted'}).map(normalizeSchoolUser); var sid=currentSchoolId(); if(sid) u=u.filter(function(x){return !x.schoolId || String(x.schoolId)===String(sid) || x.isPrimaryManager}); return u}
-  function saveUsers(u){write(NS+'_users',(u||[]).map(normalizeSchoolUser));try{window.dispatchEvent(new CustomEvent('school-information-updated',{detail:{source:'users'}}))}catch(e){}}
+  // RL153: الحسابات الفعلية مصدرها السحابة. لا يجوز أن يؤدي امتلاء localStorage إلى تعطيل إدارة المستخدمين.
+  // نحتفظ بنسخة ذاكرة للصفحة الحالية، ونستخدم التخزين المحلي ككاش اختياري فقط.
+  var __ssUsersMemoryCache=null;
+  function users(){
+    var source=Array.isArray(__ssUsersMemoryCache)?__ssUsersMemoryCache:(function(){try{var s=sessionStorage.getItem(NS+'_users_session');if(s){var a=JSON.parse(s);if(Array.isArray(a))return a}}catch(_){}return read(NS+'_users',[])})();
+    var u=(source||[]).filter(function(x){return x&&x.status!=='deleted'}).map(normalizeSchoolUser);
+    var sid=currentSchoolId();
+    if(sid) u=u.filter(function(x){return !x.schoolId || String(x.schoolId)===String(sid) || x.isPrimaryManager});
+    return u;
+  }
+  function saveUsers(u){
+    var normalized=(u||[]).map(normalizeSchoolUser);
+    __ssUsersMemoryCache=normalized;
+    try{
+      localStorage.setItem(NS+'_users',JSON.stringify(normalized));
+      window.dispatchEvent(new Event('ssDataChanged'));
+    }catch(e){
+      // QuotaExceededError لا يعني فشل الحفظ السحابي؛ لا نعيد رمي الخطأ ولا نحذف أي سجل.
+      console.warn('[RL153] تعذر تحديث كاش المستخدمين المحلي؛ الاستمرار من المصدر السحابي/ذاكرة الصفحة.',e);
+      try{sessionStorage.setItem(NS+'_users_session',JSON.stringify(normalized));}catch(_){/* الكاش اختياري */}
+    }
+    try{window.dispatchEvent(new CustomEvent('school-information-updated',{detail:{source:'users'}}))}catch(e){}
+  }
   function purgeLegacyUserCaches(authoritative){
     var sid=String(currentSchoolId()||''), ids=new Set((authoritative||[]).map(function(u){return String(u.id||u.user_id||'')}).filter(Boolean));
     ['offline_users_backup','smart_school_users','smartSchoolUnifiedOpsV2_users','school_users','smartSchoolUsers'].forEach(function(k){

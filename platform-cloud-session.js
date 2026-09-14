@@ -735,7 +735,7 @@
     }
   }
 
-  const SESSION_VERSION='2026.09.14-RL155-global-readonly-follow';
+  const SESSION_VERSION='2026.09.14-RL157-supervisor-follow-target-shell';
 
   window.PlatformCloudSession = {
     VERSION:SESSION_VERSION,
@@ -832,7 +832,7 @@
 })();
 
 
-/* RL155 — Global supervisor follow mode.
+/* RL157 — Global supervisor follow mode with target-role presentation identity.
    Viewer keeps the real manager/agent cloud session. The followed account is a
    read-only presentation context only; it never replaces the server session. */
 (function(){
@@ -872,6 +872,16 @@
   function context(){
     const q=fromQuery();
     if(q){try{sessionStorage.setItem(KEY,JSON.stringify(q));if(q.viewerRole==='manager')sessionStorage.setItem(LEGACY,JSON.stringify({...q,mode:'manager_follow',managerReturn:'manager.html?sectionReturn=1'}));}catch(_){}return q;}
+    // RL157: the supervisor root itself is never the followed user's shell.  If a
+    // legacy/custom guard returns the browser to manager.html/agent.html, do not
+    // keep painting that root as "follow mode".  The actual follow shell is the
+    // target role page (teacher/advisor/activity/etc.).
+    try{
+      const file=(location.pathname.split('/').pop()||'').toLowerCase();
+      const qs=new URLSearchParams(location.search||'');
+      const explicit=qs.get('follow')==='1'||qs.get('readonly')==='1'||qs.get('monitoring')==='true'||norm(qs.get('mode')).includes('follow')||norm(qs.get('mode')).includes('supervisor');
+      if((file==='manager.html'||file==='agent.html')&&!explicit)return null;
+    }catch(_){}
     const c=parse(sessionStorage.getItem(KEY));
     if(c&&c.readonly===true&&['manager','agent'].includes(canonical(c.viewerRole)))return {...c,viewerRole:canonical(c.viewerRole),targetRole:canonical(c.targetRole)};
     const l=parse(sessionStorage.getItem(LEGACY));
@@ -922,11 +932,42 @@
     returnToManager:function(){window.PlatformFollowReadonly.returnToViewer()}
   };
 
-  // Client view identity only. The token and server session remain the supervisor's.
+  // RL157 — presentation identity for the followed shell.
+  // The cloud token/session always remains the real supervisor session, but role/userId
+  // exposed to page-level UI guards must represent the followed account; otherwise old
+  // teacher/advisor guards see `manager` and bounce the browser back to manager.html.
   if(pcs){
+    const realVerifyAccess=typeof pcs.verifyAccess==='function'?pcs.verifyAccess.bind(pcs):null;
+    const realMemberships=real.memberships;
     pcs.viewerRole=()=>canonical(ctx.viewerRole);
     pcs.monitoringContext=()=>view();
     pcs.isReadOnlyFollow=()=>active();
+    pcs.realRole=()=>canonical(real.role());
+    pcs.realUserId=()=>String(real.userId()||'');
+    pcs.role=()=>{const v=view();return v&&v.role?v.role:real.role()};
+    pcs.userId=()=>{const v=view();return v&&v.userId?v.userId:real.userId()};
+    pcs.schoolId=()=>{const v=view();return v&&v.schoolId?v.schoolId:real.schoolId()};
+    if(realMemberships)pcs.memberships=async function(){
+      const payload=await realMemberships();
+      if(!active())return payload;
+      const v=view(), copy=(payload&&typeof payload==='object')?{...payload}:{};
+      const list=Array.isArray(copy.memberships)?copy.memberships.slice():[];
+      const exists=list.some(m=>same(m?.schoolId||m?.school_id,v.schoolId)&&same(m?.userId||m?.user_id,v.userId));
+      if(!exists)list.push({schoolId:v.schoolId,userId:v.userId,email:v.email,role:v.role,status:'active',readOnlyFollow:true,syntheticView:true});
+      copy.memberships=list;
+      copy.current={schoolId:v.schoolId,userId:v.userId,email:v.email,role:v.role,status:'active',readOnlyFollow:true,viewerRole:v.viewerRole,syntheticView:true};
+      copy.followViewer={schoolId:String(real.schoolId()||''),userId:String(real.userId()||''),role:canonical(real.role())};
+      return copy;
+    };
+    if(realVerifyAccess)pcs.verifyAccess=async function(expectedRoles){
+      if(!active())return realVerifyAccess(expectedRoles);
+      if(real.ensure)await real.ensure();
+      const v=view(), rr=canonical(real.role()), allowed=(expectedRoles||[]).map(canonical).filter(Boolean);
+      if(!['manager','agent'].includes(rr))throw Object.assign(new Error('FOLLOW_VIEWER_NOT_SUPERVISOR'),{code:'FOLLOW_VIEWER_NOT_SUPERVISOR'});
+      if(!same(real.schoolId(),v.schoolId))throw Object.assign(new Error('FOLLOW_SCHOOL_MISMATCH'),{code:'FOLLOW_SCHOOL_MISMATCH'});
+      if(allowed.length&&v.role&&!allowed.includes(v.role))throw Object.assign(new Error('FOLLOW_TARGET_ROLE_MISMATCH'),{code:'FOLLOW_TARGET_ROLE_MISMATCH'});
+      return {schoolId:v.schoolId,userId:v.userId,role:v.role,membership:{schoolId:v.schoolId,userId:v.userId,email:v.email,role:v.role,status:'active',readOnlyFollow:true,syntheticView:true},viewerRole:v.viewerRole,readonly:true};
+    };
   }
 
   const mutationWords=/(حفظ|إضافة|انشاء|إنشاء|تعديل|تحرير|حذف|رفع|إرسال|اعتماد|رفض|إرجاع|ارجاع|تنفيذ|إغلاق|اغلاق|تفعيل|تعطيل|استيراد|ربط|مزامنة|تحديث البيانات|save|add|create|edit|update|delete|remove|upload|submit|approve|reject|return|execute|close|activate|disable|import|sync)/i;

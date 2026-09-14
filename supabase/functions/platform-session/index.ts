@@ -345,6 +345,34 @@ Deno.serve(async (request) => {
       if (!authResult.error && authResult.data?.user) authUser = authResult.data.user;
     }
 
+    // RL143 — SCHOOL-FIRST MULTI-SCHOOL LOGIN:
+    // The login link fixes the school context first. For one identity that legitimately
+    // belongs to more than one independent school, prove the credential once, then
+    // authorize ONLY the active membership inside the school selected by this link.
+    // A stale users.active flag in one legacy row must not override an ACTIVE
+    // school_members authorization for the selected school.
+    let schoolBoundMembership: any = null;
+    if (normalizedLogin.includes('@')) {
+      try {
+        const mq = await admin.from('school_members').select('*')
+          .eq('school_id', school.id).eq('email', normalizedLogin).limit(1).maybeSingle();
+        if (!mq.error && mq.data && activeStatus(mq.data.status)) schoolBoundMembership = mq.data;
+      } catch (_) {}
+    }
+
+    let crossSchoolCredentialUser: any = null;
+    try {
+      const identityQ = await admin.from('users').select('*').limit(5000);
+      if (!identityQ.error) {
+        const identityRows = (identityQ.data || []).filter((row: Record<string, unknown>) => loginMatches(row, login));
+        crossSchoolCredentialUser = identityRows.find((row: Record<string, unknown>) =>
+          authUser ? (text(row.id) === text(authUser.id) || lower(row.email) === normalizedLogin) : passwordMatches(row, password)
+        ) || null;
+      }
+    } catch (_) {}
+
+    const schoolBoundCredentialVerified = Boolean(authUser || crossSchoolCredentialUser);
+
     const usersResult = await admin
       .from('users')
       .select('*')
@@ -394,6 +422,30 @@ Deno.serve(async (request) => {
       }) || null;
 
     let resolvedMembership: any = null;
+
+    // RL143: resolve the selected school's membership BEFORE any global identity
+    // fallback. This is the authoritative authorization edge for multi-school users.
+    if (schoolBoundMembership && schoolBoundCredentialVerified) {
+      resolvedMembership = schoolBoundMembership;
+      const canonicalIdentityId = authUser && isUuid(authUser.id)
+        ? authUser.id
+        : (schoolBoundMembership.user_id || crossSchoolCredentialUser?.id || user?.id);
+      if (isUuid(canonicalIdentityId)) {
+        user = {
+          ...(crossSchoolCredentialUser || user || {}),
+          id: canonicalIdentityId,
+          email: normalizedLogin || lower(crossSchoolCredentialUser?.email),
+          school_id: school.id,
+          role: schoolBoundMembership.role || crossSchoolCredentialUser?.role || user?.role,
+          status: 'active',
+          active: true,
+        };
+        diagnosticIdentityFound = true;
+        diagnosticCredentialValidated = true;
+        diagnosticMembershipFound = true;
+        diagnosticMembershipActive = true;
+      }
+    }
 
     // RL140: a legacy users row can match the verified e-mail while carrying an
     // obsolete/non-canonical id. Resolve the active membership with the verified

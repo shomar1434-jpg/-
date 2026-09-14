@@ -1,11 +1,6 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-<meta name="platform-runtime-cache-policy" content="versioned-non-destructive">
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<meta http-equiv="Pragma" content="no-cache">
-<meta http-equiv="Expires" content="0">
-
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>دخول المدرسة المستقلة</title>
@@ -574,8 +569,7 @@
 })();
 </script>
 
-<script src="platform-runtime-guard.js?v=20260914-RL148-legacy-session-bridge"></script>
-<script src="platform-cloud-session.js?v=20260914-RL160-rollback-pre-follow-records"></script>
+<script src="platform-cloud-session.js"></script>
 <!-- RL115: strict independent-school link binding; fail closed on school mismatch. -->
 <!-- RL136: legacy active-account school-bound login + cloud-session compatibility merge. -->
 <script id="independent-school-login-engine">
@@ -952,9 +946,10 @@
         }
       }
 
-      // إذا نجح الخادم ولم تستطع صفحة المتصفح قراءة users بسبب RLS/صلاحيات anon،
-      // نبني هوية واجهة دنيا من الجلسة الموقعة نفسها.
-      if(!user && platformSessionPayload){
+      // RL143 — الجلسة السحابية الموقعة هي المرجع النهائي بعد نجاح التحقق
+      // من school_id + العضوية + الدور. لا نسمح لسجل users قديم يحمل active=false
+      // أن يلغي عضوية school_members الفعالة أو يعيد مشكلة الدخول ثم الخروج.
+      if(platformSessionPayload){
         user = normalizeLocalUser({
           id: platformSessionPayload.userId || '',
           email: loginId,
@@ -968,18 +963,19 @@
         }, school);
       }
 
-      // RL151 — عقد موحد للمدارس المستقلة (مطابق لمسار المدرسة التجريبية):
-      // لا يجوز فتح أي واجهة مدرسة من تحقق محلي فقط. يجب أن تنشأ platform-session
-      // خادمية أولاً، وإلا ستظهر الواجهة بلا x-platform-session وتنفصل عن السحابة.
+      // التوافق القديم يبقى فقط عندما ثبت محليًا أن الحساب نفسه Active داخل المدرسة.
       if(!platformSessionPayload){
-        console.warn('RL151: cloud session issuance failed; local-only entry blocked', platformSessionError);
-        const code = String(platformSessionError && (platformSessionError.code || platformSessionError.details) || 'SESSION_CREATE_FAILED').trim();
-        const reqId = String(platformSessionError && platformSessionError.requestId || '').trim();
-        const suffix = ` — ${code}${reqId ? ` / ${reqId}` : ''}`;
-        setMsg('تعذر إنشاء جلسة المدرسة السحابية. لم يتم فتح الواجهة لحماية اتصال المدرسة بالسحابة' + suffix);
-        return;
+        if(!user){
+          console.warn('RL139: server and legacy login both failed', platformSessionError);
+          const diagCode = String(platformSessionError && platformSessionError.details || '').trim();
+          const reqId = String(platformSessionError && platformSessionError.requestId || '').trim();
+          const suffix = diagCode ? ` — رمز التشخيص: ${diagCode}${reqId ? ` / ${reqId}` : ''}` : '';
+          setMsg('بيانات الدخول غير صحيحة أو الحساب غير موجود في هذه المدرسة' + suffix);
+          return;
+        }
+        if(!isActiveAccount(user)){ setMsg('الحساب غير مفعل بعد'); return; }
+        sessionCompatFallback = true;
       }
-      sessionCompatFallback = false;
 
       if(!user){ setMsg('بيانات الدخول غير صحيحة أو الحساب غير موجود في هذه المدرسة'); return; }
       if(!isActiveAccount(user)){ setMsg('الحساب غير مفعل بعد'); return; }

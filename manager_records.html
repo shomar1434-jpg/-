@@ -360,10 +360,18 @@ td input,td textarea,td select{width:100%;border:0;border-radius:5px;padding:5px
 }
 
 
-/* تنسيق اليوم والتاريخ مثل الصورة: قيمة يسار، عنوان يمين، وخط سفلي منقط */
+/* RL161: عزل كل حقل في الترويسة حتى لا يقرأ محرك الإعدادات تسمية العام الدراسي لبقية الحقول */
 .metaBlock{
   direction:ltr;
 }
+.metaField{
+  display:contents;
+}
+.officialSettingsNote{
+  font-size:11px;line-height:1.7;color:#667085;background:#f8faf9;border:1px solid #d9e9e1;border-radius:8px;padding:7px 8px;margin-top:6px;
+}
+
+/* تنسيق اليوم والتاريخ مثل الصورة: قيمة يسار، عنوان يمين، وخط سفلي منقط */
 .metaBlock label{
   direction:rtl;
   text-align:right;
@@ -800,13 +808,8 @@ table.reference-table{width:100%;border-collapse:collapse;table-layout:fixed;mar
       <div class="settingsHead"><span>إعدادات التذييل والختم</span><span>✦</span></div>
       <div class="settingsBody">
         <label>اسم مدير/مديرة المدرسة</label>
-        <input type="text" id="footerLeaderName" placeholder="اكتب اسم مدير/مديرة المدرسة" oninput="updateFooterSettings()" />
-
-        <label>توقيع مدير/مديرة المدرسة</label>
-        <div class="filePick">اختيار توقيع مدير/مديرة المدرسة PNG / JPEG
-          <input type="file" id="footerLeaderSignFile" accept="image/png,image/jpeg" onchange="loadFooterImage(this,'leaderSign')" />
-        </div>
-        <button type="button" class="clearDigitalBtn" onclick="clearFooterImage('leaderSign')">حذف توقيع مدير/مديرة المدرسة</button>
+        <input type="text" id="footerLeaderName" placeholder="اسم مدير/مديرة المدرسة من إعدادات المدير" readonly />
+        <div class="officialSettingsNote">توقيع مدير/مديرة المدرسة ينعكس تلقائيًا من إعدادات المدير المخصصة.</div>
 
         <label>اسم المشرف المساند</label>
         <input type="text" id="footerManagerName" placeholder="اكتب اسم المشرف المساند" oninput="updateFooterSettings()" />
@@ -816,13 +819,8 @@ table.reference-table{width:100%;border-collapse:collapse;table-layout:fixed;mar
           <input type="file" id="footerManagerSignFile" accept="image/png,image/jpeg" onchange="loadFooterImage(this,'managerSign')" />
         </div>
         <button type="button" class="clearDigitalBtn" onclick="clearFooterImage('managerSign')">حذف توقيع المشرف المساند</button>
-
-        <label>ختم المدرسة</label>
-        <div class="filePick">اختيار ختم المدرسة PNG / JPEG
-          <input type="file" id="footerStampFile" accept="image/png,image/jpeg" onchange="loadFooterImage(this,'schoolStamp')" />
-        </div>
-        <button type="button" class="clearDigitalBtn" onclick="clearFooterImage('schoolStamp')">حذف ختم المدرسة</button>
-        <button type="button" class="clearAllDigitalBtn" onclick="clearAllFooterDigitalEntries()">حذف جميع إدخالات التوقيع والختم</button>
+        <div class="officialSettingsNote">ختم المدرسة ينعكس تلقائيًا من إعدادات المدير المخصصة.</div>
+        <button type="button" class="clearAllDigitalBtn" onclick="clearAllFooterDigitalEntries()">مسح بيانات المشرف المساند</button>
 
         <div class="hint">تظهر هذه البيانات تلقائيًا أسفل كل سجل، ويتم احتواء الصور داخل مربعات التوقيع والختم دون تمدد أو خروج أثناء الطباعة.</div>
       </div>
@@ -875,6 +873,7 @@ function renderNav(){
     nav.appendChild(h);
     items.forEach(r=>{
       const b=document.createElement('button');
+      b.type='button';
       b.textContent=r.title;
       b.className=r.id===current.id?"active":"";
       b.onclick=()=>{current=r;renderAll();};
@@ -898,7 +897,7 @@ return `<div class="officialHeader">
 
     
 <div class="metaBlock">
-      <label>العام الدراسي</label>
+      <div class="metaField"><label>العام الدراسي</label>
       <select data-k="year" id="academicYear">
         <option value="">اختر العام</option>
         <option>1445هـ</option>
@@ -934,17 +933,17 @@ return `<div class="officialHeader">
         <option>1475هـ</option>
         <option>1476هـ</option>
         <option>1477هـ</option>
-      </select>
+      </select></div>
 
-      <label>الفصل الدراسي</label>
+      <div class="metaField"><label>الفصل الدراسي</label>
       <select data-k="term" id="academicTerm">
         <option value="">اختر الفصل</option>
         <option>الأول</option>
         <option>الثاني</option>
         <option>الثالث</option>
-      </select>
+      </select></div>
 
-      <label>اليوم</label>
+      <div class="metaField"><label>اليوم</label>
       <select data-k="day" id="interactiveDay">
         <option value="">اختر اليوم</option>
         <option>الأحد</option>
@@ -954,10 +953,10 @@ return `<div class="officialHeader">
         <option>الخميس</option>
         <option>الجمعة</option>
         <option>السبت</option>
-      </select>
+      </select></div>
 
-      <label>التاريخ</label>
-      <input type="text" data-k="date" id="interactiveDateText" placeholder="يوم / شهر / سنة" inputmode="numeric" />
+      <div class="metaField"><label>التاريخ</label>
+      <input type="text" data-k="date" id="interactiveDateText" placeholder="يوم / شهر / سنة" inputmode="numeric" /></div>
     </div>
   </div>
   <div class="headerDivider"></div>
@@ -1053,6 +1052,36 @@ function formByType(t){
  return html;
 }
 
+function getOfficialManagerSettings(){
+ try{
+   const base=(window.SchoolBaseSettings&&typeof window.SchoolBaseSettings.read==='function')?window.SchoolBaseSettings.read():{};
+   return {
+     leaderName:String(base.manager||localStorage.getItem('def_m')||'').trim(),
+     leaderSign:base.signature||localStorage.getItem('setting_sig')||'',
+     schoolStamp:base.stamp||localStorage.getItem('setting_stamp')||''
+   };
+ }catch(_){
+   return {
+     leaderName:String(localStorage.getItem('def_m')||'').trim(),
+     leaderSign:localStorage.getItem('setting_sig')||'',
+     schoolStamp:localStorage.getItem('setting_stamp')||''
+   };
+ }
+}
+function getSupervisorSettings(){
+ try{
+   const s=JSON.parse(localStorage.getItem('managerRecordsFooterSettings')||'{}')||{};
+   let managerName=String(s.managerName||'').trim();
+   const officialName=String(getOfficialManagerSettings().leaderName||'').trim();
+   // RL161: لا نعرض اسم مدير المدرسة كمشرف مساند إذا كان قد تسرب سابقًا إلى التخزين المحلي.
+   // لا نحذف القيمة القديمة حفاظًا على البيانات، بل نتجاهلها في العرض فقط عند التطابق الصريح.
+   if(managerName && officialName && managerName===officialName) managerName='';
+   return {managerName,managerSign:s.managerSign||''};
+ }catch(_){return {managerName:'',managerSign:''}}
+}
+function getFooterSettings(){
+ return Object.assign({},getOfficialManagerSettings(),getSupervisorSettings());
+}
 function footerHtml(){
  const s = getFooterSettings();
  return `<div class="digitalFooter">
@@ -1060,67 +1089,68 @@ function footerHtml(){
   <div class="footerGrid">
     <div class="footerBox">
       <h4>مدير/مديرة المدرسة</h4>
-      <div class="nameLine">الاسم: <input data-k="footerLeaderNameInDoc" value="${s.leaderName||''}" /></div>
-      <div class="signArea">${s.leaderSign ? `<img src="${s.leaderSign}" alt="توقيع مدير/مديرة المدرسة">` : 'توقيع مدير/مديرة المدرسة'}</div>
+      <div class="nameLine">الاسم: <input data-k="footerLeaderNameInDoc" value="${escapeHtmlAttr(s.leaderName||'')}" readonly /></div>
+      <div class="signArea" data-signature-source>${s.leaderSign ? `<img src="${s.leaderSign}" alt="توقيع مدير/مديرة المدرسة">` : 'لم يضف توقيع المدير في إعدادات المدير'}</div>
     </div>
     <div class="footerBox">
       <h4>ختم المدرسة</h4>
-      <div class="stampArea">${s.schoolStamp ? `<img src="${s.schoolStamp}" alt="ختم المدرسة">` : 'ختم المدرسة'}</div>
-      <div class="small">يتم احتواء صورة الختم داخل المربع تلقائيًا</div>
+      <div class="stampArea" data-stamp-source>${s.schoolStamp ? `<img src="${s.schoolStamp}" alt="ختم المدرسة">` : 'لم يضف ختم المدرسة في إعدادات المدير'}</div>
+      <div class="small">مصدر الختم: إعدادات المدير</div>
     </div>
     <div class="footerBox">
       <h4>المشرف المساند</h4>
-      <div class="nameLine">الاسم: <input data-k="footerManagerNameInDoc" value="${s.managerName||''}" /></div>
+      <div class="nameLine">الاسم: <input data-k="footerManagerNameInDoc" value="${escapeHtmlAttr(s.managerName||'')}" /></div>
       <div class="signArea">${s.managerSign ? `<img src="${s.managerSign}" alt="توقيع المشرف المساند">` : 'توقيع المشرف المساند'}</div>
     </div>
   </div>
  </div>`;
 }
-function getFooterSettings(){
- return JSON.parse(localStorage.getItem("managerRecordsFooterSettings") || "{}");
-}
+function escapeHtmlAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 function updateFooterSettings(){
- const s = getFooterSettings();
- s.leaderName = document.getElementById('footerLeaderName')?.value || "";
- s.managerName = document.getElementById('footerManagerName')?.value || "";
- localStorage.setItem("managerRecordsFooterSettings", JSON.stringify(s));
+ const s = getSupervisorSettings();
+ s.managerName = document.getElementById('footerManagerName')?.value || '';
+ localStorage.setItem('managerRecordsFooterSettings', JSON.stringify(s));
  syncHeaderFooter();
 }
 function loadFooterPanel(){
- const s = getFooterSettings();
- if(document.getElementById('footerLeaderName')) document.getElementById('footerLeaderName').value = s.leaderName || "";
- if(document.getElementById('footerManagerName')) document.getElementById('footerManagerName').value = s.managerName || "";
+ const official=getOfficialManagerSettings();
+ const supervisor=getSupervisorSettings();
+ const leader=document.getElementById('footerLeaderName');
+ if(leader){leader.value=official.leaderName||'';leader.readOnly=true;}
+ if(document.getElementById('footerManagerName')) document.getElementById('footerManagerName').value = supervisor.managerName || '';
 }
 function loadFooterImage(input, keyName){
+ if(keyName!=='managerSign'){
+   alert('توقيع مدير/مديرة المدرسة وختم المدرسة يتمان من إعدادات المدير المخصصة.');
+   input.value=''; return;
+ }
  const file = input.files && input.files[0];
  if(!file) return;
- if(!/^image\/(png|jpeg)$/.test(file.type)){ alert("الرجاء اختيار صورة بصيغة PNG أو JPEG فقط"); input.value=""; return; }
+ if(!/^image\/(png|jpeg)$/.test(file.type)){ alert('الرجاء اختيار صورة بصيغة PNG أو JPEG فقط'); input.value=''; return; }
  const reader = new FileReader();
  reader.onload = () => {
-   const s = getFooterSettings();
-   s[keyName] = reader.result;
-   localStorage.setItem("managerRecordsFooterSettings", JSON.stringify(s));
+   const s = getSupervisorSettings();
+   s.managerSign = reader.result;
+   localStorage.setItem('managerRecordsFooterSettings', JSON.stringify(s));
    renderAll();
  };
  reader.readAsDataURL(file);
 }
-
 function clearFooterImage(keyName){
- const labels={leaderSign:'توقيع مدير/مديرة المدرسة',managerSign:'توقيع المشرف المساند',schoolStamp:'ختم المدرسة'};
- if(!confirm('هل تريد حذف '+(labels[keyName]||'هذا الإدخال')+' من جميع السجلات؟')) return;
- const s=getFooterSettings();
- delete s[keyName];
- localStorage.setItem("managerRecordsFooterSettings",JSON.stringify(s));
- const fileMap={leaderSign:'footerLeaderSignFile',managerSign:'footerManagerSignFile',schoolStamp:'footerStampFile'};
- const inp=document.getElementById(fileMap[keyName]); if(inp) inp.value='';
+ if(keyName!=='managerSign'){
+   alert('توقيع مدير/مديرة المدرسة وختم المدرسة يداران من إعدادات المدير المخصصة ولا يحذفان من السجلات.');
+   return;
+ }
+ if(!confirm('هل تريد حذف توقيع المشرف المساند من جميع السجلات؟')) return;
+ const s=getSupervisorSettings(); delete s.managerSign;
+ localStorage.setItem('managerRecordsFooterSettings',JSON.stringify(s));
+ const inp=document.getElementById('footerManagerSignFile'); if(inp) inp.value='';
  renderAll();
 }
 function clearAllFooterDigitalEntries(){
- if(!confirm('سيتم حذف جميع التوقيعات الرقمية والختم من كل السجلات، هل تريد المتابعة؟')) return;
- const s=getFooterSettings();
- delete s.leaderSign; delete s.managerSign; delete s.schoolStamp;
- localStorage.setItem("managerRecordsFooterSettings",JSON.stringify(s));
- ['footerLeaderSignFile','footerManagerSignFile','footerStampFile'].forEach(id=>{const el=document.getElementById(id); if(el) el.value='';});
+ if(!confirm('سيتم مسح اسم وتوقيع المشرف المساند فقط. توقيع المدير والختم سيبقيان محفوظين في إعدادات المدير. هل تريد المتابعة؟')) return;
+ localStorage.setItem('managerRecordsFooterSettings',JSON.stringify({}));
+ const inp=document.getElementById('footerManagerSignFile'); if(inp) inp.value='';
  renderAll();
 }
 
@@ -1128,15 +1158,19 @@ function syncHeaderFooter(){
  const s = getFooterSettings();
  const fLeader = document.querySelector('[data-k="footerLeaderNameInDoc"]');
  const fManager = document.querySelector('[data-k="footerManagerNameInDoc"]');
- if(fLeader && !fLeader.value) fLeader.value = s.leaderName || "";
+ if(fLeader){ fLeader.value = s.leaderName || ""; fLeader.readOnly=true; }
  if(fManager && !fManager.value) fManager.value = s.managerName || "";
 }
 
+let delegatedRecordApplied=false;
 function renderAll(){
- const delegatedRecordKey=new URLSearchParams(location.search).get('record');
- if(delegatedRecordKey){
-   const requested=records.find(r=>r.id===delegatedRecordKey);
-   if(requested) current=requested;
+ if(!delegatedRecordApplied){
+   delegatedRecordApplied=true;
+   const delegatedRecordKey=new URLSearchParams(location.search).get('record');
+   if(delegatedRecordKey){
+     const requested=records.find(r=>r.id===delegatedRecordKey);
+     if(requested) current=requested;
+   }
  }
  document.getElementById('pageTitle').textContent=current.title;
  document.getElementById('pageDesc').textContent=current.desc;
@@ -1155,9 +1189,28 @@ function collect(){
  document.querySelectorAll('[data-k]').forEach(el=>data.values[el.dataset.k]=el.value);
  return data;
 }
+function normalizeHeaderDraftValue(k,v){
+ v=String(v==null?'':v).trim();
+ if(k==='year'){
+   const m=v.match(/(14\d{2}|15\d{2})/); return m?m[1]:'';
+ }
+ if(k==='term') return ['الأول','الثاني','الثالث'].includes(v)?v:'';
+ if(k==='day') return ['الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'].includes(v)?v:'';
+ if(k==='date'){
+   if(/^\s*\d{4}\s*هـ?\s*$/.test(v)) return '';
+   return v;
+ }
+ return v;
+}
 function fill(data){
  if(!data||!data.values)return;
- document.querySelectorAll('[data-k]').forEach(el=>el.value=data.values[el.dataset.k]||"");
+ document.querySelectorAll('[data-k]').forEach(el=>{
+   const k=el.dataset.k;
+   let v=data.values[k]||'';
+   if(['year','term','day','date'].includes(k)) v=normalizeHeaderDraftValue(k,v);
+   if(k==='footerLeaderNameInDoc') return;
+   el.value=v;
+ });
 }
 function autoDraft(){localStorage.setItem(key()+"_draft",JSON.stringify(collect()))}
 function loadDraft(){fill(JSON.parse(localStorage.getItem(key()+"_draft")||"{}"))}
@@ -1516,5 +1569,9 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 </script>
 
 <script src="school-information-source.js?v=20260914-RL160-rollback-pre-records"></script>
+<script id="rl161-manager-records-settings-sync">
+window.addEventListener('schoolBaseSettingsUpdated',()=>{try{loadFooterPanel();syncHeaderFooter();renderAll();}catch(_){}});
+window.addEventListener('platformSettingsUpdated',()=>{try{loadFooterPanel();syncHeaderFooter();renderAll();}catch(_){}});
+</script>
 </body>
 </html>

@@ -963,17 +963,16 @@
         }, school);
       }
 
-      // RL161 — لا نفتح واجهة المدرسة بجلسة محلية ثم نترك بوابة manager.html
-      // تطردها لاحقًا. المدرسة المستقلة يجب أن تحصل على platform-session موقعة قبل
-      // الانتقال. هذا يلغي ظاهرة (فتح الواجهة ثم الخروج) ويُظهر رمز الخلل في صفحة
-      // الدخول نفسها إذا بقيت مشكلة بيانات حقيقية في مدرسة قديمة.
+      // RL161: لا نفتح واجهة المدير بسياق محلي بلا platform-session؛ فهذا هو
+      // المسار الذي كان يفتح الصفحة لحظيًا ثم يطرد مدير الحساب متعدد المدارس.
+      // بعد التصحيح الخادمي يجب أن تنجح الجلسة للمدير المشترك. وإذا بقي رفض
+      // خادمي مؤكد تبقى الصفحة هنا برسالة تشخيص بدل إنشاء حلقة دخول/خروج.
       if(!platformSessionPayload){
-        console.warn('RL161: cloud session was not issued; navigation blocked', platformSessionError);
-        const diagCode = String(platformSessionError && platformSessionError.details || '').trim();
+        console.warn('RL161: server school session was not issued; navigation blocked', platformSessionError);
+        const diagCode = String(platformSessionError && (platformSessionError.details || platformSessionError.code) || '').trim();
         const reqId = String(platformSessionError && platformSessionError.requestId || '').trim();
-        const code = String(platformSessionError && platformSessionError.code || '').trim();
-        const suffix = [code,diagCode,reqId].filter(Boolean).join(' / ');
-        setMsg('تعذر إنشاء جلسة المدرسة الموثقة' + (suffix ? ` — رمز التشخيص: ${suffix}` : '') + '. لم يتم فتح الواجهة حمايةً من الدخول ثم الخروج.');
+        const suffix = diagCode ? ` — رمز التشخيص: ${diagCode}${reqId ? ` / ${reqId}` : ''}` : '';
+        setMsg('تعذر إنشاء جلسة موثقة لهذه المدرسة. لم يتم فتح الواجهة لمنع الخروج المباشر.' + suffix);
         return;
       }
 

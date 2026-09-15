@@ -373,6 +373,22 @@ Deno.serve(async (request) => {
 
     const schoolBoundCredentialVerified = Boolean(authUser || crossSchoolCredentialUser);
 
+    // RL161 — SHARED MANAGER IDENTITY REPAIR:
+    // Some legacy multi-school managers have one verified login identity but old,
+    // per-school users/school_members rows with different user_id or role values.
+    // The selected active school's exact manager_email remains an authoritative,
+    // school-scoped manager binding after the credential for that SAME e-mail has
+    // been proved by Supabase Auth or by a password-bearing users row.  This does
+    // not mutate historical rows and never grants access to a school whose
+    // manager_email does not exactly match the authenticated login.
+    const selectedSchoolManagerEmail = lower(school.manager_email || school.managerEmail || '');
+    const verifiedSharedManager = Boolean(
+      normalizedLogin.includes('@') &&
+      selectedSchoolManagerEmail &&
+      selectedSchoolManagerEmail === normalizedLogin &&
+      schoolBoundCredentialVerified
+    );
+
     const usersResult = await admin
       .from('users')
       .select('*')
@@ -423,9 +439,44 @@ Deno.serve(async (request) => {
 
     let resolvedMembership: any = null;
 
+    // Prefer the selected school's explicit manager contract over a stale legacy
+    // membership role.  Use the single canonical identity UUID that proved the
+    // credential; the school link still fixes school.id before this point.
+    if (verifiedSharedManager) {
+      const canonicalManagerId = authUser && isUuid(authUser.id)
+        ? authUser.id
+        : crossSchoolCredentialUser?.id;
+      if (isUuid(canonicalManagerId)) {
+        resolvedMembership = {
+          id: `manager:${school.id}`,
+          school_id: school.id,
+          user_id: canonicalManagerId,
+          email: normalizedLogin,
+          role: 'manager',
+          status: 'active',
+          is_primary_manager: true,
+          __identityMatch: 'manager_email',
+        };
+        user = {
+          ...(crossSchoolCredentialUser || user || {}),
+          id: canonicalManagerId,
+          email: normalizedLogin,
+          school_id: school.id,
+          role: 'manager',
+          status: 'active',
+          active: true,
+          is_primary_manager: true,
+        };
+        diagnosticIdentityFound = true;
+        diagnosticCredentialValidated = true;
+        diagnosticMembershipFound = true;
+        diagnosticMembershipActive = true;
+      }
+    }
+
     // RL143: resolve the selected school's membership BEFORE any global identity
     // fallback. This is the authoritative authorization edge for multi-school users.
-    if (schoolBoundMembership && schoolBoundCredentialVerified) {
+    if (!resolvedMembership && schoolBoundMembership && schoolBoundCredentialVerified) {
       resolvedMembership = schoolBoundMembership;
       const canonicalIdentityId = authUser && isUuid(authUser.id)
         ? authUser.id
@@ -456,7 +507,9 @@ Deno.serve(async (request) => {
         if((!mq.data || mq.error) && normalizedLogin.includes('@')) {
           mq = await admin.from('school_members').select('*').eq('school_id', school.id).eq('email', normalizedLogin).limit(1).maybeSingle();
         }
-        if(!mq.error && mq.data && activeStatus(mq.data.status)) resolvedMembership = mq.data;
+        // Do not let an old school_members role replace the selected school's
+        // explicit manager_email contract established above.
+        if(!verifiedSharedManager && !mq.error && mq.data && activeStatus(mq.data.status)) resolvedMembership = mq.data;
       } catch(_) {}
       // RL141 — MULTI-SCHOOL IDENTITY LOCK:
       // Supabase Auth is the canonical identity whenever the credential was verified by Auth.

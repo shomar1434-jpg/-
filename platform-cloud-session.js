@@ -11,6 +11,7 @@
   const TAB_USER_KEY='platform_tab_session_user_v1';
   const TAB_SCHOOL_KEY='platform_tab_session_school_v1';
   const TAB_ROLE_KEY='smart_school_tab_role_v1';
+  const VERIFIED_CONTEXT_KEY='platform_verified_school_context_v1';
 
   /* RL33 — Tab Identity Firewall
      Identity/session compatibility keys are tab-scoped. Once a verified tab
@@ -261,6 +262,9 @@
     }
 
     applyPayload(payload, false);
+    // استجابة فتح الجلسة صادرة من البوابة الخادمية بعد التحقق من المدرسة
+    // والعضوية والدور؛ نحفظ بصمتها لتجنب إعادة الطلب نفسه عند فتح الواجهة.
+    markVerifiedContext({schoolId:payload.schoolId,userId:payload.userId,role:payload.role});
 
     return payload;
   }
@@ -289,6 +293,7 @@
     const payload = await sessionAction('switch', {schoolId:targetSchoolId, role:targetRole, membershipId});
     if (!payload.token) throw new Error('لم تُنشأ جلسة سحابية للمدرسة المختارة.');
     sessionStorage.setItem(TAB_TOKEN_KEY,payload.token);sessionStorage.setItem(TAB_EXPIRES_KEY,payload.expiresAt||'');sessionStorage.setItem(TAB_USER_KEY,payload.userId||'');sessionStorage.setItem(TAB_SCHOOL_KEY,payload.schoolId||'');sessionStorage.setItem(TAB_ROLE_KEY,payload.role||'');
+    markVerifiedContext({schoolId:payload.schoolId,userId:payload.userId,role:payload.role});
     window.dispatchEvent(new CustomEvent('platform-cloud-session-ready',{detail:{userId:payload.userId||'',schoolId:payload.schoolId||'',role:payload.role||'',expiresAt:payload.expiresAt||'',membershipId:payload.membershipId||''}}));
     return payload;
   }

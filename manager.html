@@ -1506,8 +1506,8 @@ body{overflow-x:hidden}
 <!-- INTERACTIVE_OPERATIONAL_PLAN_MANAGER_CARD -->
 <div class="w-full mb-6 no-print" id="interactiveOperationalPlanManagerEntry">
   <div class="school-readiness-manager-card"
-       onclick="window.location.href='interactive_operational_plan.html'"
-       onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window.location.href='interactive_operational_plan.html';}"
+       onclick="window.location.href='interactive_operational_plan.html?v=20260915-multistage-v2'"
+       onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window.location.href='interactive_operational_plan.html?v=20260915-multistage-v2';}"
        role="button" tabindex="0" aria-label="فتح قسم الخطة التشغيلية التفاعلية">
     <div class="readiness-icon" aria-hidden="true">
       <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
@@ -6203,7 +6203,7 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
   window.__PLATFORM_EXPLICIT_ACCESS_GATE__ = true;
 </script>
 <script src="platform-runtime-guard.js?v=20260914-RL151-single-cloud-session"></script>
-<script src="platform-cloud-session.js?v=20260914-RL160-rollback-pre-follow-records"></script>
+<script src="platform-cloud-session.js?v=20260915-RL163-verified-context-cache"></script>
 <script id="platform-manager-access-gate-clean-v6-bisha-stability">
 (function(){
   function requestedSystemAdminContext(){
@@ -6282,12 +6282,19 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
     if(!window.PlatformCloudSession||typeof window.PlatformCloudSession.verifyAccess!=='function'){
       var miss=new Error('SECURITY_GATE_MISSING');miss.code='SECURITY_GATE_MISSING';throw miss;
     }
-    // First ensure/renew the tab-scoped session. The previous gate called
-    // memberships immediately and could race a just-created or restored session.
-    if(typeof window.PlatformCloudSession.ensure==='function') await window.PlatformCloudSession.ensure();
+    // العودة من صفحة داخلية تستخدم التحقق الموثق حديثًا لنفس المدرسة والمستخدم
+    // بدل تكرار اتصال العضويات الكامل، مع بقاء أول دخول خاضعًا للتحقق الخادمي.
+    if(typeof window.PlatformCloudSession.recentlyVerified==='function'&&typeof window.PlatformCloudSession.valid==='function'){
+      var cached=window.PlatformCloudSession.recentlyVerified(['manager'],5*60*1000);
+      if(cached&&window.PlatformCloudSession.valid())return cached;
+    }
     var last=null;
     for(var i=0;i<3;i++){
-      try{return await window.PlatformCloudSession.verifyAccess(['manager']);}
+      try{
+        if(typeof window.PlatformCloudSession.ensureLive==='function')return await window.PlatformCloudSession.ensureLive(['manager']);
+        if(typeof window.PlatformCloudSession.ensure==='function')await window.PlatformCloudSession.ensure();
+        return await window.PlatformCloudSession.verifyAccess(['manager']);
+      }
       catch(e){last=e;if(isDefinitiveSchoolDenial(e))throw e;if(i<2)await sleep(220*(i+1));}
     }
     throw last||new Error('MANAGER_VERIFY_FAILED');

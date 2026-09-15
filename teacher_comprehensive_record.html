@@ -134,17 +134,27 @@
                 },
 
                 // خيارات الاستيراد المتسلسلة من مركز المعلومات: مرحلة ← صف ← شعبة ← (مسار للثانوي فقط)
+                canonicalCenterStage(value) {
+                    const raw = (value || '').toString().trim();
+                    return this.stagesMeta[raw] ? raw : this.stageLabelToKey(raw);
+                },
+                sameCenterScopeValue(left, right) {
+                    return this.normalizeArabicEducationText(left) === this.normalizeArabicEducationText(right);
+                },
                 get centerStageOptions() {
                     const order = ['kindergarten', 'early', 'primary', 'middle', 'high'];
-                    const used = new Set((this.centerDiscoveredClasses || []).map(g => g.stage).filter(Boolean));
+                    // قد يعيد مركز المعلومات المفتاح البرمجي أو اسم المرحلة العربي؛ نوحدهما قبل بناء القائمة.
+                    const used = new Set((this.centerDiscoveredClasses || [])
+                        .map(g => this.canonicalCenterStage(g.stage))
+                        .filter(Boolean));
                     return order.filter(key => used.has(key));
                 },
                 get centerGradeOptions() {
-                    const stage = this.centerImportForm.stage;
+                    const stage = this.canonicalCenterStage(this.centerImportForm.stage);
                     // لا نعرض أي صف قبل اختيار المرحلة صراحةً؛ المرحلة هي مفتاح التصفية الأول.
                     if (!stage) return [];
                     return [...new Set((this.centerDiscoveredClasses || [])
-                        .filter(g => g.stage === stage)
+                        .filter(g => this.canonicalCenterStage(g.stage) === stage)
                         .map(g => (g.grade || '').toString().trim())
                         .filter(Boolean))].sort((a,b) => a.localeCompare(b, 'ar'));
                 },
@@ -152,30 +162,33 @@
                     const form = this.centerImportForm;
                     if (!form.stage || !form.grade) return [];
                     return [...new Set((this.centerDiscoveredClasses || [])
-                        .filter(g => g.stage === form.stage && g.grade === form.grade)
+                        .filter(g => this.canonicalCenterStage(g.stage) === this.canonicalCenterStage(form.stage)
+                            && this.sameCenterScopeValue(g.grade, form.grade))
                         .map(g => (g.section || '').toString().trim())
                         .filter(Boolean))].sort((a,b) => a.localeCompare(b, 'ar'));
                 },
                 get centerTrackOptions() {
-                    if (this.centerImportForm.stage !== 'high') return [];
+                    if (this.canonicalCenterStage(this.centerImportForm.stage) !== 'high') return [];
                     const form = this.centerImportForm;
                     return [...new Set((this.centerDiscoveredClasses || [])
-                        .filter(g => (!form.stage || g.stage === form.stage)
-                            && (!form.grade || g.grade === form.grade)
-                            && (!form.section || g.section === form.section))
+                        .filter(g => (!form.stage || this.canonicalCenterStage(g.stage) === this.canonicalCenterStage(form.stage))
+                            && (!form.grade || this.sameCenterScopeValue(g.grade, form.grade))
+                            && (!form.section || this.sameCenterScopeValue(g.section, form.section)))
                         .map(g => (g.track || '').toString().trim())
                         .filter(Boolean))].sort((a,b) => a.localeCompare(b, 'ar'));
                 },
                 centerSelectionStudentCount({ includeTrack = true } = {}) {
                     const form = this.centerImportForm;
                     return (this.centerDiscoveredClasses || [])
-                        .filter(g => (!form.stage || g.stage === form.stage)
-                            && (!form.grade || g.grade === form.grade)
-                            && (!form.section || g.section === form.section)
-                            && (!includeTrack || !form.track || g.track === form.track))
+                        .filter(g => (!form.stage || this.canonicalCenterStage(g.stage) === this.canonicalCenterStage(form.stage))
+                            && (!form.grade || this.sameCenterScopeValue(g.grade, form.grade))
+                            && (!form.section || this.sameCenterScopeValue(g.section, form.section))
+                            && (!includeTrack || !form.track || this.sameCenterScopeValue(g.track, form.track)))
                         .reduce((sum, g) => sum + (Number(g.count) || 0), 0);
                 },
                 onCenterStageChange() {
+                    // ثبّت قيمة المرحلة على مفتاح واحد قبل حساب الطلاب وتصفية الصفوف.
+                    this.centerImportForm.stage = this.canonicalCenterStage(this.centerImportForm.stage);
                     this.centerImportForm.grade = '';
                     this.centerImportForm.section = '';
                     this.centerImportForm.track = '';
@@ -194,7 +207,7 @@
                     this.centerImportForm.track = '';
                     this.centerSelectedClassKey = '';
                     const count = this.centerSelectionStudentCount({ includeTrack: false });
-                    this.centerImportStatus = this.centerImportForm.stage === 'high'
+                    this.centerImportStatus = this.canonicalCenterStage(this.centerImportForm.stage) === 'high'
                         ? `الشعبة المحددة تحتوي على ${count} طالب/طالبة. اختر المسار إن كان مسجلاً، ثم اكتب المادة.`
                         : `الشعبة المحددة تحتوي على ${count} طالب/طالبة. اكتب اسم المادة ثم أنشئ السجل.`;
                 },
@@ -684,6 +697,7 @@
 
                 async importClassFromInformationCenter() {
                     const current = this.centerImportForm;
+                    current.stage = this.canonicalCenterStage(current.stage);
                     if (!current.stage) {
                         this.showAlert('يرجى اختيار المرحلة أولاً.');
                         return;
@@ -738,7 +752,7 @@
                         .map((s, idx) => this.normalizeCenterStudent(s, idx))
                         .filter(s => !s.student_status || ['نشط', 'active', 'فعال', ''].includes(String(s.student_status).trim()))
                         // المرحلة أولاً وبمفتاح معياري، ولا نستخدم الصف بديلاً عنها.
-                        .filter(s => !!form.stage && (s.stage_key || this.stageLabelToKey(s.stage || '')) === form.stage)
+                        .filter(s => !!form.stage && this.canonicalCenterStage(s.stage_key || s.stage) === this.canonicalCenterStage(form.stage))
                         .filter(s => !form.grade || includesMatch(s.grade, form.grade))
                         .filter(s => !form.track || includesMatch(s.track_name, form.track))
                         .filter(s => !form.section || includesMatch(s.section_name, form.section))
@@ -763,7 +777,13 @@
                         students: filtered
                     };
 
-                    this.classes = this.classes.filter(c => !(c.source === 'information_center' && c.grade === classObj.grade && c.track === classObj.track && c.section === classObj.section && c.subject === classObj.subject));
+                    // الاستبدال يخص السجل نفسه فقط. إدخال المرحلة في المقارنة يمنع حذف سجل لمرحلة أخرى لها صف/شعبة بالاسم نفسه.
+                    this.classes = this.classes.filter(c => !(c.source === 'information_center'
+                        && this.canonicalCenterStage(c.stage) === this.canonicalCenterStage(classObj.stage)
+                        && this.sameCenterScopeValue(c.grade, classObj.grade)
+                        && this.sameCenterScopeValue(c.track, classObj.track)
+                        && this.sameCenterScopeValue(c.section, classObj.section)
+                        && this.sameCenterScopeValue(c.subject, classObj.subject)));
                     this.classes.push(classObj);
                     this.currentClassId = classObj.id;
                     this.selectedStage = classObj.stage;

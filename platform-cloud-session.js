@@ -493,9 +493,16 @@
     // RL143: use the single module-level canonical role contract.
     const allowed = (requiredRoles || []).map(canonicalRole).filter(Boolean);
     const currentRole = canonicalRole(rr);
+    // RL144 — MULTI-SCHOOL VERIFIED MEMBERSHIP CONTRACT:
+    // `memberships` is returned only after the server validates the active
+    // x-platform-session token and resolves memberships for that identity.
+    // Legacy schools may still carry a historical per-school user_id. Requiring
+    // that legacy id to equal the canonical Auth/session UUID ejects legitimate
+    // multi-school managers immediately after the page opens. Authorization is
+    // therefore matched by the verified CURRENT school + canonical role. The
+    // server remains the authority for identity and school isolation.
     const member = membershipsList.find((m) =>
       String(m.schoolId || '') === sid &&
-      String(m.userId || '') === uid &&
       canonicalRole(m.role) === currentRole
     );
     if (!member) {

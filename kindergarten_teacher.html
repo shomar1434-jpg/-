@@ -5282,7 +5282,8 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
 
 <!-- Unified Comprehensive Cloud Storage -->
 <script src="platform-runtime-guard.js?v=20260914-RL148-legacy-session-bridge"></script>
-<script src="platform-cloud-session.js?v=20260914-RL160-rollback-pre-follow-records"></script>
+<script>window.__PLATFORM_EXPLICIT_ACCESS_GATE__=true;</script>
+<script src="platform-cloud-session.js?v=20260915-RL162-kindergarten-role"></script>
 <script id="kindergarten-teacher-school-access-gate-clean-v1">
 (function(){
 'use strict';
@@ -5319,16 +5320,10 @@ async function verify(){
   try{
     if(systemAdminRequested){const ctx=await verifySystemAdminAccess();reveal(ctx);return;}
     if(window.ManagerFollowAccessBridge && ManagerFollowAccessBridge.request().active){const ctx=await ManagerFollowAccessBridge.verify(['kindergarten_teacher','kindergarten']);reveal(ctx);return;}
-  if(!window.PlatformCloudSession||typeof PlatformCloudSession.ensure!=='function'||typeof PlatformCloudSession.memberships!=='function')throw new Error('SESSION_ENGINE_UNAVAILABLE');
-  await PlatformCloudSession.ensure();
-  const schoolId=String(PlatformCloudSession.schoolId?.()||'').trim(),userId=String(PlatformCloudSession.userId?.()||'').trim();
-  if(!schoolId||!userId)throw new Error('SESSION_CONTEXT_MISSING');
-  const payload=await PlatformCloudSession.memberships(), current=payload&&payload.current?payload.current:{};
-  if(!same(current.schoolId,schoolId)||!same(current.userId,userId))throw new Error('SESSION_CONTEXT_MISMATCH');
-  const list=Array.isArray(payload?.memberships)?payload.memberships:[];
-  const membership=list.find(m=>same(m.schoolId,schoolId)&&same(m.userId,userId));
-  if(!membership)throw new Error('SCHOOL_MEMBERSHIP_DENIED');
-  reveal({schoolId,userId,role:membership.role||current.role||'',membershipId:membership.membershipId||''});
+  if(!window.PlatformCloudSession||typeof PlatformCloudSession.ensureLive!=='function')throw new Error('SESSION_ENGINE_UNAVAILABLE');
+  const verified=await PlatformCloudSession.ensureLive(['kindergarten_teacher']);
+  if(!verified?.schoolId||!verified?.userId)throw new Error('SESSION_CONTEXT_MISSING');
+  reveal(verified);
  }catch(e){if(systemAdminRequested){try{sessionStorage.removeItem('system_admin_context');sessionStorage.removeItem('system_admin_verified')}catch(_){}const u='index.html?systemAdminReturn=1&reason=system_admin_access_denied';try{location.replace(u)}catch(_){location.href=u}}else deny(e&&e.message||String(e))}
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',verify,{once:true});else verify();

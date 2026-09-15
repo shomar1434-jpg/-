@@ -36,7 +36,7 @@ const canonicalRole = (value: unknown) => {
     student_advisor: ['student_advisor','student-advisor','advisor','counselor','مرشد','مرشدة','موجه','موجهة'],
     health_advisor: ['health_advisor','health-advisor','موجه صحي','موجهة صحية','الموجه الصحي'],
     activity_leader: ['activity_leader','activity-leader','activity','رائد النشاط','رائدة النشاط'],
-    kindergarten_teacher: ['kindergarten_teacher','kindergarten-teacher','معلمة رياض الأطفال'],
+    kindergarten_teacher: ['kindergarten_teacher','kindergarten-teacher','kindergarten','kindergarten teacher','kg','kg_teacher','kg-teacher','معلمة رياض الأطفال','معلمة رياض أطفال','معلم رياض الأطفال','قسم معلمة رياض الأطفال'],
     administrative_employee: ['administrative_employee','admin_employee','employee_admin','موظف إداري','موظفة إدارية'],
   };
   for (const [canonical, aliases] of Object.entries(groups)) {

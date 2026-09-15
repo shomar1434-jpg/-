@@ -328,7 +328,7 @@
       student_advisor:['student_advisor','student-advisor','advisor','counselor','مرشد','مرشدة','موجه','موجهة'],
       health_advisor:['health_advisor','health-advisor','موجه صحي','موجهة صحية','الموجه الصحي'],
       activity_leader:['activity_leader','activity-leader','activity','رائد النشاط','رائدة النشاط'],
-      kindergarten_teacher:['kindergarten_teacher','kindergarten-teacher','معلمة رياض الأطفال'],
+      kindergarten_teacher:['kindergarten_teacher','kindergarten-teacher','kindergarten','kindergarten teacher','kg','kg_teacher','kg-teacher','معلمة رياض الأطفال','معلمة رياض أطفال','معلم رياض الأطفال','قسم معلمة رياض الأطفال'],
       administrative_employee:['administrative_employee','admin_employee','employee_admin','موظف إداري','موظفة إدارية']
     };
     for(const [k,a] of Object.entries(groups)) if(v===k||a.includes(v)) return k;
@@ -493,12 +493,9 @@
     // RL143: use the single module-level canonical role contract.
     const allowed = (requiredRoles || []).map(canonicalRole).filter(Boolean);
     const currentRole = canonicalRole(rr);
-    // FINAL MULTI-SCHOOL CONTRACT: payload.current is produced by the server
-    // from the authenticated session. Old schools can retain a historical
-    // school_members.user_id, so that legacy id must not veto a valid current
-    // identity. Membership still has to prove the same school and role.
     const member = membershipsList.find((m) =>
       String(m.schoolId || '') === sid &&
+      String(m.userId || '') === uid &&
       canonicalRole(m.role) === currentRole
     );
     if (!member) {

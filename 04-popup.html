@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>مساعد الربط الموحد</title>
+  <style>
+    :root {
+      --navy: #15445A;
+      --navy-light: #eef4f6;
+      --navy-hover: #103547;
+      --teal: #0DA9A6;
+      --teal-hover: #0b8987;
+      --bg: #f4f7f9;
+      --text: #17324d;
+      --muted: #6a7a89;
+      --border: #e4eaf0;
+      --success: #155724;
+      --success-bg: #d4edda;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 16px;
+      direction: rtl;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    /* تخطيط منقسم للوحة الجانبية العريضة */
+    .layout-container {
+      display: flex;
+      gap: 16px;
+      flex: 1;
+      align-items: flex-start;
+    }
+    .sidebar {
+      width: 360px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .main-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-width: 0; /* يمنع تمدد الفليكس */
+      height: 100%;
+    }
+    .card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 16px;
+      box-shadow: 0 4px 14px rgba(28, 55, 90, 0.04);
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 10px;
+      margin-bottom: 4px;
+    }
+    .header-icon {
+      width: 42px;
+      height: 42px;
+      border-radius: 10px;
+      object-fit: cover;
+    }
+    .header-title h1 {
+      font-size: 14px;
+      font-weight: 800;
+      color: var(--navy);
+    }
+    .header-title p {
+      font-size: 10.5px;
+      color: var(--muted);
+    }
+    .status-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+    .badge {
+      padding: 4px 8px;
+      border-radius: 99px;
+      font-size: 11px;
+      font-weight: 700;
+      background: var(--navy-light);
+      color: var(--navy);
+    }
+    .badge.active {
+      background: var(--success-bg);
+      color: var(--success);
+    }
+    .badge.error {
+      background: #f8d7da;
+      color: #721c24;
+    }
+    .btn-main {
+      width: 100%;
+      background: var(--navy);
+      color: #fff;
+      border: 0;
+      border-radius: 14px;
+      padding: 14px;
+      font-size: 14px;
+      font-weight: 800;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 4px 14px rgba(21, 68, 90, 0.15);
+      transition: all 0.2s;
+    }
+    .btn-main:hover:not(:disabled) {
+      background: var(--navy-hover);
+    }
+    .btn-main:disabled {
+      background: var(--muted);
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+    .steps-container {
+      margin-top: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .step-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--muted);
+    }
+    .step-item.active {
+      color: var(--navy);
+    }
+    .step-item.done {
+      color: var(--teal);
+    }
+    .step-dot {
+      width: 18px;
+      height: 18px;
+      border-radius: 99px;
+      border: 2px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 700;
+    }
+    .step-item.active .step-dot {
+      border-color: var(--navy);
+      background: var(--navy);
+      color: #fff;
+      animation: pulse 1.5s infinite;
+    }
+    .step-item.done .step-dot {
+      border-color: var(--teal);
+      background: var(--teal);
+      color: #fff;
+    }
+    .log-panel {
+      background: #17324d;
+      color: #eef2f5;
+      padding: 10px;
+      border-radius: 12px;
+      font-family: monospace;
+      font-size: 10.5px;
+      max-height: 100px;
+      overflow-y: auto;
+      margin-top: 10px;
+      direction: ltr;
+      text-align: left;
+    }
+    .btn-schedule {
+      width: 100%;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    .btn-schedule.active {
+      background: #fff3cd;
+      color: #856404;
+      border-color: #ffeeba;
+    }
+    
+    /* تنسيقات جدول المعاينة */
+    .preview-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 12px;
+      margin-bottom: 12px;
+    }
+    .search-box {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 12.5px;
+      outline: none;
+      margin-bottom: 12px;
+    }
+    .search-box:focus {
+      border-color: var(--teal);
+    }
+    .table-container {
+      overflow-x: auto;
+      overflow-y: auto;
+      max-height: 480px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12.5px;
+      text-align: right;
+    }
+    th, td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      background: #f6f9fa;
+      color: var(--navy);
+      font-weight: 700;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    tr:hover {
+      background: #f8fafc;
+    }
+    button.primary {
+      background: var(--teal);
+      color: #fff;
+      border: 0;
+      border-radius: 12px;
+      padding: 10px 20px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    button.primary:hover:not(:disabled) {
+      background: var(--teal-hover);
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+      100% { transform: scale(1); }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="layout-container">
+    
+    <!-- القسم الأيمن: لوحة التحكم (Sidebar) -->
+    <div class="sidebar">
+      
+      <!-- الترويسة -->
+      <div class="card header">
+        <img src="icon.png" class="header-icon" alt="الشعار">
+        <div class="header-title">
+          <h1>مساعد المزامنة الموحد</h1>
+          <p>أتمتة جلب وتصدير الكشوفات تلقائياً</p>
+        </div>
+      </div>
+
+      <!-- الحالة والزر الرئيسي -->
+      <div class="card">
+        <div class="status-bar">
+          <span style="font-weight: 800;">موقع المتصفح الحالي:</span>
+          <span id="siteBadge" class="badge">جاري الفحص...</span>
+        </div>
+        
+        <button id="btnStartImport" class="btn-main" disabled onclick="startAutoImport()">
+          ⚡ ابدأ استيراد البيانات وتصديرها
+        </button>
+      </div>
+
+      <!-- خطوات التقدم والـ Logs -->
+      <div class="card" id="progressCard" style="display: none;">
+        <div style="font-weight: 800; font-size: 13px; margin-bottom: 10px;">📊 خطوات الاستيراد التلقائي:</div>
+        <div class="steps-container">
+          <div class="step-item" id="step1">
+            <span class="step-dot">1</span>
+            <span>التعرف على النظام المفتوح والصفحة</span>
+          </div>
+          <div class="step-item" id="step2">
+            <span class="step-dot">2</span>
+            <span>الانتقال وجلب كشوف البيانات الأساسية</span>
+          </div>
+          <div class="step-item" id="step3">
+            <span class="step-dot">3</span>
+            <span>الانتقال وجلب كشوف الغياب اليومي</span>
+          </div>
+          <div class="step-item" id="step4">
+            <span class="step-dot">4</span>
+            <span>بناء وتنزيل ملفات Excel المنسقة</span>
+          </div>
+        </div>
+        <div class="log-panel" id="logBox">// بانتظار بدء الاستيراد...</div>
+      </div>
+
+      <!-- خيارات التواريخ والجدولة -->
+      <div class="card">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <div style="flex: 1;">
+            <label style="font-size: 11px; font-weight: 700; color: var(--muted); display: block; margin-bottom: 4px;">تاريخ البداية</label>
+            <input type="date" id="dateFrom" style="width: 100%; padding: 6px; border: 1px solid var(--border); border-radius: 8px; font-size: 11px;">
+          </div>
+          <div style="flex: 1;">
+            <label style="font-size: 11px; font-weight: 700; color: var(--muted); display: block; margin-bottom: 4px;">تاريخ النهاية</label>
+            <input type="date" id="dateTo" style="width: 100%; padding: 6px; border: 1px solid var(--border); border-radius: 8px; font-size: 11px;">
+          </div>
+        </div>
+        <button id="btnSchedule" class="btn-schedule" onclick="toggleSchedule()">
+          ⏰ تفعيل المزامنة التلقائية اليومية
+        </button>
+      </div>
+
+    </div>
+
+    <!-- القسم الأيسر: معاينة وجداول البيانات (Main Panel) -->
+    <div class="main-panel">
+      <div class="card" style="flex: 1; display: flex; flex-direction: column; height: 100%;">
+        
+        <div class="preview-header">
+          <div>
+            <h2 style="font-size: 14px; font-weight: 800; color: var(--navy)">📊 معاينة كشوف البيانات المجلوبة</h2>
+            <p style="font-size: 11px; color: var(--muted); margin-top: 2px;">راجع الكشوفات وتأكد من اكتمالها قبل تحميلها كملفات إكسل</p>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <span id="previewCount" class="badge">0 سجل</span>
+            <button id="btnDownload" class="primary" disabled onclick="downloadExcel()">
+              📥 تنزيل كملف Excel
+            </button>
+          </div>
+        </div>
+
+        <!-- صندوق البحث -->
+        <input type="text" id="txtSearch" class="search-box" placeholder="البحث السريع في أي عمود بالجدول المعاين أدناه..." oninput="filterPreviewTable()">
+
+        <!-- حاوية الجدول -->
+        <div class="table-container" style="flex: 1;">
+          <table id="tblPreview">
+            <thead>
+              <tr id="tblHeaders">
+                <th>م</th>
+                <th style="color: var(--muted); font-weight: normal; text-align: center;">بانتظار جلب البيانات لعرض الكشف...</th>
+              </tr>
+            </thead>
+            <tbody id="tblBody">
+              <tr>
+                <td colspan="2" style="text-align: center; color: var(--muted); padding: 40px 0;">
+                  تظهر البيانات هنا تلقائياً بمجرد بدء الاستيراد
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- تضمين مكتبة SheetJS محلياً -->
+  <script src="xlsx.full.min.js"></script>
+  <!-- تضمين كود المنطق المطور -->
+  <script src="popup.js"></script>
+</body>
+</html>

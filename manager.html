@@ -6255,18 +6255,25 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
     return ctx;
   }
   async function verifyManagerWithRecovery(){
-    if(!window.PlatformCloudSession||typeof window.PlatformCloudSession.verifyAccess!=='function'){
+    if(!window.PlatformCloudSession||typeof window.PlatformCloudSession.ensure!=='function'){
       var miss=new Error('SECURITY_GATE_MISSING');miss.code='SECURITY_GATE_MISSING';throw miss;
     }
-    // First ensure/renew the tab-scoped session. The previous gate called
-    // memberships immediately and could race a just-created or restored session.
-    if(typeof window.PlatformCloudSession.ensure==='function') await window.PlatformCloudSession.ensure();
-    var last=null;
-    for(var i=0;i<3;i++){
-      try{return await window.PlatformCloudSession.verifyAccess(['manager']);}
-      catch(e){last=e;if(isDefinitiveSchoolDenial(e))throw e;if(i<2)await sleep(220*(i+1));}
-    }
-    throw last||new Error('MANAGER_VERIFY_FAILED');
+    // RL152 — Golden-reference contract used by the working demo/multi-school path:
+    // one server-issued cloud session is authoritative for the selected school.
+    // Do not add a second school_members identity equality gate after login; legacy
+    // multi-school managers may have historical user_id values per school.
+    await window.PlatformCloudSession.ensure();
+    var sid=String(window.PlatformCloudSession.schoolId&&window.PlatformCloudSession.schoolId()||'').trim();
+    var uid=String(window.PlatformCloudSession.userId&&window.PlatformCloudSession.userId()||'').trim();
+    var role=String((window.PlatformCloudSession.role&&window.PlatformCloudSession.role())||(window.PlatformCloudSession.baseRole&&window.PlatformCloudSession.baseRole())||'').trim().toLowerCase();
+    var canonical=(role==='principal'||role==='school_manager')?'manager':role;
+    if(!sid||!uid){var e=new Error('SESSION_MISSING');e.code='SESSION_MISSING';throw e;}
+    if(canonical!=='manager'){var denied=new Error('الدور الحالي غير مخول بفتح واجهة المدير.');denied.code='VERIFIED_ROLE_DENIED';throw denied;}
+    try{
+      sessionStorage.setItem('smart_school_tab_school_v1',sid);
+      sessionStorage.setItem('platform_tab_session_school_v1',sid);
+    }catch(_){}
+    return {schoolId:sid,userId:uid,role:'manager',verified:true,source:'cloud-session'};
   }
   window.__PLATFORM_ACCESS_READY__=(async function(){
     var systemAdminRequested=requestedSystemAdminContext();

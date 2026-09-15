@@ -85,6 +85,21 @@ const passwordMatches = (row: Record<string, unknown>, password: string) => {
   return candidates.length > 0 && candidates.includes(password);
 };
 
+const managerSchoolPasswordMatches = (row: Record<string, unknown>, password: string) => {
+  // School codes, registration codes and PIN-like fields are identifiers, not
+  // manager credentials. Only explicit password fields may prove this fallback.
+  const fields = [
+    'manager_password',
+    'password',
+    'school_password',
+    'login_password',
+    'temp_password',
+    'default_password',
+  ];
+  const candidates = fields.map((field) => text(row?.[field])).filter(Boolean);
+  return candidates.length > 0 && candidates.includes(password);
+};
+
 const loginMatches = (row: Record<string, unknown>, login: string) => {
   const wanted = lower(login);
   const fields = [
@@ -361,17 +376,44 @@ Deno.serve(async (request) => {
     }
 
     let crossSchoolCredentialUser: any = null;
+    let sameLoginIdentityUser: any = null;
     try {
       const identityQ = await admin.from('users').select('*').limit(5000);
       if (!identityQ.error) {
         const identityRows = (identityQ.data || []).filter((row: Record<string, unknown>) => loginMatches(row, login));
+        // Keep a UUID identity candidate separate from credential validation.
+        // It may be the selected school's legacy row whose password was stored
+        // on the linked school record instead of users.
+        sameLoginIdentityUser = identityRows.find((row: Record<string, unknown>) =>
+          isUuid(row.id) && activeStatus(row.status) && text(row.school_id) === text(school.id)
+        ) || identityRows.find((row: Record<string, unknown>) =>
+          isUuid(row.id) && activeStatus(row.status)
+        ) || identityRows.find((row: Record<string, unknown>) => isUuid(row.id)) || null;
         crossSchoolCredentialUser = identityRows.find((row: Record<string, unknown>) =>
           authUser ? (text(row.id) === text(authUser.id) || lower(row.email) === normalizedLogin) : passwordMatches(row, password)
         ) || null;
       }
     } catch (_) {}
 
-    const schoolBoundCredentialVerified = Boolean(authUser || crossSchoolCredentialUser);
+    // Some old shared-manager accounts stored their credential on a schools row
+    // while users contains only the identity/profile. Prove that legacy password
+    // only against an ACTIVE school carrying the exact same manager e-mail.
+    let sharedManagerSchoolCredential: any = null;
+    if (!authUser && !crossSchoolCredentialUser && normalizedLogin.includes('@')) {
+      try {
+        const managerSchoolsQ = await admin.from('schools').select('*')
+          .ilike('manager_email', normalizedLogin).limit(100);
+        if (!managerSchoolsQ.error) {
+          sharedManagerSchoolCredential = (managerSchoolsQ.data || []).find((row: Record<string, unknown>) =>
+            activeStatus(row.status) &&
+            lower(row.manager_email) === normalizedLogin &&
+            managerSchoolPasswordMatches(row, password)
+          ) || null;
+        }
+      } catch (_) {}
+    }
+
+    const schoolBoundCredentialVerified = Boolean(authUser || crossSchoolCredentialUser || sharedManagerSchoolCredential);
 
     // RL161 — SHARED MANAGER IDENTITY REPAIR:
     // Some legacy multi-school managers have one verified login identity but old,
@@ -445,7 +487,7 @@ Deno.serve(async (request) => {
     if (verifiedSharedManager) {
       const canonicalManagerId = authUser && isUuid(authUser.id)
         ? authUser.id
-        : crossSchoolCredentialUser?.id;
+        : (crossSchoolCredentialUser?.id || sameLoginIdentityUser?.id);
       if (isUuid(canonicalManagerId)) {
         resolvedMembership = {
           id: `manager:${school.id}`,
@@ -458,7 +500,7 @@ Deno.serve(async (request) => {
           __identityMatch: 'manager_email',
         };
         user = {
-          ...(crossSchoolCredentialUser || user || {}),
+          ...(crossSchoolCredentialUser || sameLoginIdentityUser || user || {}),
           id: canonicalManagerId,
           email: normalizedLogin,
           school_id: school.id,

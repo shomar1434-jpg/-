@@ -5434,7 +5434,7 @@ function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
 </script>
 <script src="performance-file-engine.js"></script>
 <script defer="" src="improvement_plan_follow.js"></script>
-<script defer="" src="active_school_scope.js"></script>
+<!-- active_school_scope.js is loaded after the verified manager gate (final multi-school contract). -->
 <script id="active-school-manager-view-guard">
 (function(){
   function run(){
@@ -6179,8 +6179,8 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
   window.__PLATFORM_EXPLICIT_ACCESS_GATE__ = true;
 </script>
 <script src="platform-runtime-guard.js?v=20260914-RL151-single-cloud-session"></script>
-<script src="platform-cloud-session.js?v=20260915-RL161-single-manager-gate"></script>
-<script id="platform-manager-access-gate-final-v7-single-cloud-session">
+<script src="platform-cloud-session.js?v=20260915-final-multischool"></script>
+<script id="platform-manager-access-gate-clean-v6-bisha-stability">
 (function(){
   function requestedSystemAdminContext(){
     try{
@@ -6255,24 +6255,18 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
     return ctx;
   }
   async function verifyManagerWithRecovery(){
-    if(!window.PlatformCloudSession||typeof window.PlatformCloudSession.ensure!=='function'){
+    if(!window.PlatformCloudSession||typeof window.PlatformCloudSession.verifyAccess!=='function'){
       var miss=new Error('SECURITY_GATE_MISSING');miss.code='SECURITY_GATE_MISSING';throw miss;
     }
-    // FINAL multi-school contract: exactly the same single-cloud-session principle
-    // used by the stable school-information path. Do NOT start a second membership
-    // verification after platform-session has already issued/restored this tab's
-    // canonical school/user/role session; legacy multi-school rows may carry a
-    // historical user_id and must not eject an otherwise valid manager session.
-    await window.PlatformCloudSession.ensure();
-    var sid=String(window.PlatformCloudSession.schoolId&&window.PlatformCloudSession.schoolId()||'').trim();
-    var uid=String(window.PlatformCloudSession.userId&&window.PlatformCloudSession.userId()||'').trim();
-    var role=String((window.PlatformCloudSession.role&&window.PlatformCloudSession.role())||(window.PlatformCloudSession.baseRole&&window.PlatformCloudSession.baseRole())||'').trim().toLowerCase();
-    var canonical=(typeof window.PlatformCloudSession.canonicalRole==='function')?window.PlatformCloudSession.canonicalRole(role):role;
-    if(!sid||!uid){var absent=new Error('SESSION_MISSING');absent.code='SESSION_MISSING';throw absent;}
-    if(canonical!=='manager'){
-      var denied=new Error('الدور الحالي غير مخول بفتح واجهة المدير.');denied.code='VERIFIED_ROLE_DENIED';throw denied;
+    // First ensure/renew the tab-scoped session. The previous gate called
+    // memberships immediately and could race a just-created or restored session.
+    if(typeof window.PlatformCloudSession.ensure==='function') await window.PlatformCloudSession.ensure();
+    var last=null;
+    for(var i=0;i<3;i++){
+      try{return await window.PlatformCloudSession.verifyAccess(['manager']);}
+      catch(e){last=e;if(isDefinitiveSchoolDenial(e))throw e;if(i<2)await sleep(220*(i+1));}
     }
-    return {schoolId:sid,userId:uid,role:'manager',verified:true};
+    throw last||new Error('MANAGER_VERIFY_FAILED');
   }
   window.__PLATFORM_ACCESS_READY__=(async function(){
     var systemAdminRequested=requestedSystemAdminContext();
@@ -6298,6 +6292,18 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
       throw e;
     }
   })();
+})();
+</script>
+<script>
+(function(){
+  function loadVerifiedSchoolScope(){
+    if(document.querySelector('script[data-verified-active-school-scope]')) return;
+    var sc=document.createElement('script');
+    sc.src='active_school_scope.js?v=20260915-final-multischool';
+    sc.defer=true;sc.setAttribute('data-verified-active-school-scope','1');
+    document.head.appendChild(sc);
+  }
+  Promise.resolve(window.__PLATFORM_ACCESS_READY__).then(loadVerifiedSchoolScope).catch(function(){});
 })();
 </script>
 <script src="cloud-task-engine.js?v=20260818-task-v9"></script>

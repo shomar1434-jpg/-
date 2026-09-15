@@ -43,7 +43,15 @@
     var user = getCurrentUser();
     var stored = getStoredSchool();
 
-    var id =
+    // FINAL MULTI-SCHOOL CONTRACT: once a tab-scoped cloud session exists, its
+    // school is authoritative. Shared localStorage may belong to another school
+    // opened by the same manager and must never override the current tab.
+    var tabId = norm(
+      sessionStorage.getItem('platform_tab_session_school_id_v1') ||
+      sessionStorage.getItem('smart_school_tab_school_v1') ||
+      sessionStorage.getItem('platform_file_session_school_id') || ''
+    );
+    var id = tabId ||
       q.get('schoolId') || q.get('school_id') ||
       localStorage.getItem('active_school_id') ||
       localStorage.getItem('current_school_id') ||
@@ -73,6 +81,9 @@
 
   function persistActiveSchool(s){
     if(!s || !s.schoolId) return;
+    var cloudTabSchool = norm(sessionStorage.getItem('platform_tab_session_school_id_v1') || sessionStorage.getItem('smart_school_tab_school_v1') || '');
+    if(cloudTabSchool && cloudTabSchool !== norm(s.schoolId)) return; // never cross-write another school's identity
+    // Keep compatibility mirrors only for the same verified tab school.
     localStorage.setItem('active_school_id', s.schoolId);
     localStorage.setItem('current_school_id', s.schoolId);
     localStorage.setItem('school_id', s.schoolId);

@@ -114,6 +114,7 @@
                 centerImportStatus: 'جاهز للاستيراد من مركز المعلومات المدرسية',
                 centerDiscoveredClasses: [],
                 centerSelectedClassKey: '',
+                centerUnmatchedStageCount: 0,
 
                 // Temp storage for new class (kept internally for backward compatibility, but UI now uses Center Import only)
                 newClassForm: {
@@ -546,29 +547,46 @@
                     if (!text) return '';
 
                     // مفاتيح برمجية وإنجليزية قديمة/حديثة.
-                    if (['kindergarten','kg','kg1','kg2','kg3'].includes(text)) return 'kindergarten';
-                    if (['early','early childhood','early_childhood'].includes(text)) return 'early';
-                    if (['primary','elementary'].includes(text)) return 'primary';
-                    if (['middle','intermediate'].includes(text)) return 'middle';
-                    if (['high','secondary','high school'].includes(text)) return 'high';
+                    const compact = text.replace(/\s+/g, '');
+                    if (['kindergarten','kg','kg1','kg2','kg3','kindergartenstage'].includes(compact)) return 'kindergarten';
+                    if (['early','earlychildhood','earlychildhoodstage'].includes(compact)) return 'early';
+                    if (['primary','elementary','primarystage','primaryschool','elementaryschool'].includes(compact)) return 'primary';
+                    if (['middle','intermediate','middlestage','middleschool','intermediatestage','intermediateschool'].includes(compact)) return 'middle';
+                    if (['high','secondary','highschool','highstage','secondaryschool','secondarystage'].includes(compact)) return 'high';
 
                     // اختلافات التسميات العربية في مركز المعلومات والمدارس المختلفة.
-                    // المطابقة هنا مقصودة لتوحيد (رياض أطفال / رياض الأطفال) وما شابهها
-                    // دون تغيير القيمة الأصلية المحفوظة في مركز المعلومات.
-                    if (/رياض\s*(ال)?اطفال|رياض الاطفال|رياض اطفال|روضة|روضه|مرحلة الروضة|مرحلة رياض|kindergarten/.test(text)) return 'kindergarten';
-                    if (/طفول[هة]\s*مبكر[هة]|الطفول[هة] المبكر[هة]|طفولة مبكرة|early childhood/.test(text)) return 'early';
-                    if (/ابتداي|ابتدائي|ابتدائية|المرحلة الابتدائية|تعليم ابتدائي/.test(text)) return 'primary';
-                    if (/متوسط|متوسطة|المرحلة المتوسطة|تعليم متوسط/.test(text)) return 'middle';
-                    if (/ثانو|ثانوي|ثانوية|المرحلة الثانوية|تعليم ثانوي|مسارات/.test(text)) return 'high';
+                    // تتم المطابقة على جذر اسم المرحلة حتى تعمل صيغ مثل:
+                    // "المرحلة الابتدائية" و"ابتدائي" و"تعليم عام - ابتدائية" بالقيمة نفسها.
+                    if (/رياض\s*(ال)?اطفال|روض[هة]|تمهيدي/.test(text)) return 'kindergarten';
+                    if (/طفول[هة]\s*(?:ال)?مبكر[هة]/.test(text)) return 'early';
+                    if (/ابتدا[يئ]/.test(text)) return 'primary';
+                    if (/متوسط/.test(text)) return 'middle';
+                    if (/ثانو|مسارات/.test(text)) return 'high';
                     return '';
+                },
+
+                centerStudentStageValue(raw) {
+                    if (!raw || typeof raw !== 'object') return '';
+                    const candidates = [
+                        raw.stage, raw.stage_name, raw.stageName, raw.stage_label, raw.stageLabel,
+                        raw.education_stage, raw.educationStage, raw.educational_stage, raw.educationalStage,
+                        raw.school_stage, raw.schoolStage, raw.school_level, raw.schoolLevel,
+                        raw.level, raw.phase, raw.phase_name, raw.stage_code,
+                        raw['المرحلة'], raw['المرحلة الدراسية'], raw['المرحله'], raw['المرحله الدراسيه'],
+                        raw['المرحلة التعليمية'], raw['اسم المرحلة'], raw['مرحلة التعليم']
+                    ];
+                    const nested = raw.scope || raw.academic_scope || raw.academicScope || raw.location || {};
+                    candidates.push(nested.stage, nested.stage_name, nested.stageName, nested.level, nested.phase,
+                        nested['المرحلة'], nested['المرحلة الدراسية']);
+                    return candidates.find(value => value !== undefined && value !== null && String(value).trim()) || '';
                 },
 
                 normalizeCenterStudent(raw, idx = 0) {
                     const name = raw.student_name || raw.studentName || raw.name || raw.full_name || raw['اسم الطالب'] || raw['الطالب'] || raw['الاسم'] || '';
                     const studentNumber = raw.student_number || raw.studentNumber || raw.national_id || raw.nationalId || raw.id_number || raw.identity || raw['السجل المدني'] || raw['رقم السجل المدني'] || raw['رقم الهوية'] || raw['رقم الطالب'] || raw['رقم نور'] || raw['الهوية'] || '';
                     // المرحلة تُقرأ من حقول المرحلة فقط، ولا يجوز استنتاجها من الصف إلا كحل أخير إذا كان الحقل المركب يحمل اسم المرحلة صراحةً.
-                    const explicitStageValue = raw.stage || raw.stage_name || raw['المرحلة'] || raw['المرحلة الدراسية'] || raw.level || raw.education_stage || raw.school_stage || '';
-                    const combinedStageGrade = raw['المرحلة/الصف'] || raw.stage_grade || '';
+                    const explicitStageValue = this.centerStudentStageValue(raw);
+                    const combinedStageGrade = raw['المرحلة/الصف'] || raw['المرحلة / الصف'] || raw.stage_grade || raw.stageGrade || '';
                     const stageKey = this.stageLabelToKey(explicitStageValue) || this.stageLabelToKey(combinedStageGrade);
                     const stageValue = explicitStageValue || combinedStageGrade || '';
                     // الصف لا يرث قيمة "المرحلة"؛ هذا كان سبب ظهور الصف مباشرة وكأنه مرحلة.
@@ -616,10 +634,11 @@
                 groupCenterStudentsForTeacher(rows) {
                     const normalized = (rows || []).map((s, idx) => this.normalizeCenterStudent(s, idx)).filter(s => s.name);
                     const groupsMap = new Map();
+                    let unmatchedStageCount = 0;
                     normalized.forEach(s => {
                         // لا نضع الطالب في مرحلة افتراضية. الطالب الذي لا تحمل بياناته مرحلة معروفة لا يدخل قوائم الصفوف حتى يتم تصحيح بياناته في مركز المعلومات.
                         const stage = s.stage_key || this.stageLabelToKey(s.stage || '');
-                        if (!stage) return;
+                        if (!stage) { unmatchedStageCount += 1; return; }
                         const grade = (s.grade || '').toString().trim();
                         if (!grade) return;
                         const track = (s.track_name || '').toString().trim();
@@ -630,6 +649,7 @@
                         }
                         groupsMap.get(key).count += 1;
                     });
+                    this.centerUnmatchedStageCount = unmatchedStageCount;
                     return Array.from(groupsMap.values()).sort((a, b) => `${a.stage} ${a.grade} ${a.section}`.localeCompare(`${b.stage} ${b.grade} ${b.section}`, 'ar'));
                 },
 
@@ -643,19 +663,14 @@
                         this.showAlert('لم يتم العثور على صفوف مستوردة من مركز المعلومات.');
                         return;
                     }
-                    // المرحلة والصفوف والشعب أصبحت مشتقة بالكامل من مركز المعلومات.
-                    // إذا كانت المدرسة ذات مرحلة واحدة نطابقها تلقائياً مع القائمة المنسدلة؛
-                    // أما المدارس متعددة المراحل فتبقى المراحل المستوردة متاحة للمعلم للاختيار بينها.
-                    const importedStages = this.centerStageOptions;
-                    this.centerImportForm.stage = importedStages.length === 1 ? importedStages[0] : '';
+                    // لا نختار مرحلة أو صفاً تلقائياً؛ يجب أن يحدد المعلم المرحلة أولاً صراحةً.
+                    this.centerImportForm.stage = '';
                     this.centerImportForm.grade = '';
                     this.centerImportForm.section = '';
                     this.centerImportForm.track = '';
                     this.centerSelectedClassKey = '';
-                    this.centerImportStatus = importedStages.length === 1
-                        ? `تم استيراد مرحلة المدرسة ومطابقتها (${this.stagesMeta[importedStages[0]]?.label || importedStages[0]}). اختر الصف ثم الشعبة، واكتب المادة فقط لإنشاء السجل.`
-                        : `تم استيراد مراحل المدرسة (${importedStages.length}) وربط الصفوف والطلاب بها. اختر المرحلة ثم الصف والشعبة، واكتب المادة فقط لإنشاء السجل.`;
-                    this.showNotification('تم استيراد هيكل المراحل والصفوف والطلاب من مركز المعلومات.', 'success');
+                    this.centerImportStatus = `تم تحميل بيانات مركز المعلومات (${this.centerDiscoveredClasses.length} صف/شعبة). اختر المرحلة ثم الصف ثم الشعبة، وسيظهر المسار للمرحلة الثانوية فقط.${this.centerUnmatchedStageCount ? ` يوجد ${this.centerUnmatchedStageCount} طالب/طالبة بلا اسم مرحلة معروف في المصدر.` : ''}`;
+                    this.showNotification('تم تحميل المراحل والصفوف والشعب من مركز المعلومات.', 'success');
                 },
 
                 applyCenterDiscoveredClass() {
@@ -748,14 +763,7 @@
                         students: filtered
                     };
 
-                    // يسمح بإنشاء سجلات مستقلة لعدة مراحل وصفوف ومواد.
-                    // إدراج المرحلة في مفتاح التطابق يمنع أن يستبدل صف في مرحلةٍ ما صفاً يحمل الاسم نفسه في مرحلة أخرى.
-                    this.classes = this.classes.filter(c => !(c.source === 'information_center'
-                        && c.stage === classObj.stage
-                        && c.grade === classObj.grade
-                        && c.track === classObj.track
-                        && c.section === classObj.section
-                        && c.subject === classObj.subject));
+                    this.classes = this.classes.filter(c => !(c.source === 'information_center' && c.grade === classObj.grade && c.track === classObj.track && c.section === classObj.section && c.subject === classObj.subject));
                     this.classes.push(classObj);
                     this.currentClassId = classObj.id;
                     this.selectedStage = classObj.stage;

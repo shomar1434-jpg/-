@@ -154,11 +154,33 @@ const membershipsForIdentity = async (admin: any, session: any) => {
   if(email){
     try {
       const q=await admin.from('users').select('*').eq('email',email).limit(1000);
-      if(!q.error)(q.data||[]).forEach((u:any)=>{
-        if(!activeStatus(u.status)||!u.school_id)return;
+      const sameIdentityUsers=(q.error?[]:(q.data||[])).filter((u:any)=>activeStatus(u.status));
+      sameIdentityUsers.forEach((u:any)=>{
+        if(!u.school_id)return;
         const k=`${u.school_id}|${canonicalRole(u.role)}`;
         if(!byKey.has(k))byKey.set(k,{id:`user:${u.id}`,school_id:u.school_id,user_id:session.user_id,email,role:u.role,status:u.status,__userRow:u,__identityMatch:'email'});
       });
+
+      // RL161 — SHARED MANAGER / EDUCATIONAL COMPLEX IDENTITY BRIDGE:
+      // Some older schools created a separate users UUID for the same manager in each
+      // school, while school_members kept only that legacy user_id and no e-mail.
+      // Login can still prove the manager by the verified e-mail, but a later
+      // memberships/verifyAccess call used to miss the second school's membership and
+      // immediately eject the manager.  Resolve memberships belonging to *active users
+      // with this exact verified e-mail*, then expose them under the canonical current
+      // session UUID.  Authorization remains school-scoped and no unrelated e-mail or
+      // school is enumerated.
+      const legacyIds=[...new Set(sameIdentityUsers.map((u:any)=>String(u.id||'')).filter(Boolean))];
+      if(legacyIds.length){
+        const mq=await admin.from('school_members').select('*').in('user_id',legacyIds);
+        if(!mq.error)(mq.data||[]).forEach((m:any)=>{
+          if(!m||!m.school_id||!activeStatus(m.status))return;
+          const owner=sameIdentityUsers.find((u:any)=>String(u.id||'')===String(m.user_id||''));
+          if(!owner)return;
+          const k=`${m.school_id}|${canonicalRole(m.role||owner.role)}`;
+          if(!byKey.has(k))byKey.set(k,{...m,user_id:session.user_id,email,role:m.role||owner.role,status:m.status||owner.status||'active',__legacyUserId:m.user_id,__identityMatch:'email'});
+        });
+      }
     } catch(_){}
   }
   // Legacy independent schools may predate school_members. A school whose manager

@@ -731,6 +731,14 @@ body::after{content:""!important;position:fixed;inset:0;z-index:-1;pointer-event
         <input id="sm-edit-manager-email" type="email" class="p-3 border rounded-xl text-sm" placeholder="البريد الظاهر في الواجهات" dir="ltr" data-email-field="true">
       </div>
       <div class="mt-4"><button type="button" onclick="saveSchoolLabelsEdit()" class="bg-amber-700 text-white px-5 py-2 rounded-xl text-xs font-extrabold shadow">حفظ التعديلات</button></div>
+      <div class="mt-5 pt-4 border-t border-amber-200">
+        <div class="mb-3"><h5 class="font-extrabold text-rose-900">تغيير الرقم السري لمدير المدرسة</h5><p class="text-[11px] text-rose-700 font-bold mt-1">يتم تحديث Supabase Auth وحساب المدير، وضبط عضويته مديرًا لهذه المدرسة، ثم إلغاء جلساته القديمة دون حذف أعماله.</p></div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <input id="sm-edit-manager-new-password" type="password" minlength="8" autocomplete="new-password" class="p-3 border border-rose-200 rounded-xl text-sm" placeholder="الرقم السري الجديد — 8 أحرف على الأقل" dir="ltr">
+          <input id="sm-edit-manager-confirm-password" type="password" minlength="8" autocomplete="new-password" class="p-3 border border-rose-200 rounded-xl text-sm" placeholder="تأكيد الرقم السري الجديد" dir="ltr">
+        </div>
+        <div class="mt-3"><button id="sm-reset-manager-password-btn" type="button" onclick="resetSchoolManagerPassword()" class="bg-rose-700 text-white px-5 py-2 rounded-xl text-xs font-extrabold shadow">تغيير الرقم السري وضبط دور المدير</button></div>
+      </div>
     </div>
 
     <div class="bg-white border border-slate-200 rounded-3xl overflow-hidden">
@@ -1614,7 +1622,7 @@ document.addEventListener("click", function(e){
   };
   window.cancelSchoolLabelsEdit = function(){
     document.getElementById('sm-edit-panel')?.classList.add('hidden');
-    ['sm-edit-school-id','sm-edit-school-name','sm-edit-manager-name','sm-edit-manager-email'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});
+    ['sm-edit-school-id','sm-edit-school-name','sm-edit-manager-name','sm-edit-manager-email','sm-edit-manager-new-password','sm-edit-manager-confirm-password'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});
   };
   window.saveSchoolLabelsEdit = async function(){
     const schoolIdValue=(document.getElementById('sm-edit-school-id')?.value||'').trim();
@@ -1631,6 +1639,27 @@ document.addEventListener("click", function(e){
       if(st)st.textContent='تم تعديل بيانات المدرسة مع الإبقاء على معرف المدرسة وروابط الدخول والتسجيل وحسابات المستخدمين كما هي.';
       if(typeof showToast==='function')showToast('تم تحديث بيانات المدرسة دون تغيير الروابط');
     }catch(e){if(st)st.textContent='تعذر تعديل بيانات المدرسة: '+(e.message||e);}
+  };
+
+  window.resetSchoolManagerPassword = async function(){
+    const schoolIdValue=(document.getElementById('sm-edit-school-id')?.value||'').trim();
+    const nextPassword=(document.getElementById('sm-edit-manager-new-password')?.value||'').trim();
+    const confirmPassword=(document.getElementById('sm-edit-manager-confirm-password')?.value||'').trim();
+    const st=document.getElementById('sm-status'),btn=document.getElementById('sm-reset-manager-password-btn');
+    if(!schoolIdValue)return alert('اختر المدرسة من زر تعديل البيانات أولًا.');
+    if(nextPassword.length<8)return alert('يجب أن يكون الرقم السري الجديد 8 أحرف على الأقل.');
+    if(nextPassword!==confirmPassword)return alert('تأكيد الرقم السري غير مطابق.');
+    if(!confirm('سيتم تغيير الرقم السري لمدير هذه المدرسة، وضبط دوره Manager، وإلغاء جلساته القديمة. هل تريد المتابعة؟'))return;
+    try{
+      if(btn){btn.disabled=true;btn.textContent='جارٍ تغيير الرقم السري...'}
+      if(st)st.textContent='جارٍ تحديث هوية مدير المدرسة وعضويته في Supabase...';
+      const result=await secureAdminCall('reset_school_manager_password',{schoolId:schoolIdValue,newPassword:nextPassword});
+      if(!result?.ok||result?.role!=='manager'||result?.passwordUpdated!==true)throw new Error('لم يؤكد الخادم اكتمال تغيير الرقم السري والدور.');
+      const p1=document.getElementById('sm-edit-manager-new-password'),p2=document.getElementById('sm-edit-manager-confirm-password');if(p1)p1.value='';if(p2)p2.value='';
+      if(st)st.textContent='تم تغيير الرقم السري وضبط دور المدير في Supabase. أُلغيت الجلسات القديمة ويمكن الدخول بالرقم الجديد.';
+      if(typeof showToast==='function')showToast('تم تغيير رقم المدير وضبط دوره بنجاح');
+    }catch(e){if(st)st.textContent='تعذر تغيير الرقم السري: '+(e.message||e);}
+    finally{if(btn){btn.disabled=false;btn.textContent='تغيير الرقم السري وضبط دور المدير'}}
   };
 
   window.deleteSupabaseSchool = async function(schoolId){

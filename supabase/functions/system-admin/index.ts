@@ -125,6 +125,78 @@ Deno.serve(async(req)=>{
    await audit(true,schoolId,{action:'update_school_labels',schoolName,managerName,managerEmailLabel,identityEmailUnchanged:current.data.manager_email,linksPreserved:true});
    return json({ok:true,school:r.data,preserved:{id:current.data.id,school_code:current.data.school_code,registration_code:current.data.registration_code,registration_link:current.data.registration_link,login_link:current.data.login_link,manager_email:current.data.manager_email}});
   }
+  if(action==='reset_school_manager_password'){
+   const schoolId=clean(body.schoolId),newPassword=clean(body.newPassword);
+   if(!schoolId||newPassword.length<8)return json({error:'معرف المدرسة وكلمة مرور جديدة من 8 أحرف على الأقل مطلوبان'},400);
+   const schoolQ=await admin.from('schools').select('id,school_name,manager_name,manager_email,status').eq('id',schoolId).maybeSingle();
+   if(schoolQ.error)throw schoolQ.error;
+   if(!schoolQ.data)return json({error:'المدرسة غير موجودة'},404);
+   const managerEmail=email(schoolQ.data.manager_email);
+   if(!managerEmail)return json({error:'لا يوجد بريد مدير موثق في سجل المدرسة'},409);
+
+   // Resolve the canonical Auth identity by exact e-mail. Password updates are
+   // performed only through the server-side admin API; service credentials never
+   // leave this Edge Function.
+   let authUser:any=null;
+   for(let page=1;page<=20&&!authUser;page++){
+    const listed=await admin.auth.admin.listUsers({page,perPage:1000});
+    if(listed.error)throw listed.error;
+    authUser=(listed.data?.users||[]).find((u:any)=>email(u.email)===managerEmail)||null;
+    if((listed.data?.users||[]).length<1000)break;
+   }
+   if(!authUser){
+    const created=await admin.auth.admin.createUser({email:managerEmail,password:newPassword,email_confirm:true});
+    if(created.error)return json({error:'تعذر إنشاء هوية دخول موثقة للمدير',details:created.error.message},409);
+    authUser=created.data.user;
+   }else{
+    const changed=await admin.auth.admin.updateUserById(authUser.id,{password:newPassword});
+    if(changed.error)throw changed.error;
+   }
+   const authUserId=clean(authUser?.id);
+   if(!authUserId)return json({error:'تعذر تحديد هوية مدير المدرسة بعد تغيير كلمة المرور'},409);
+
+   // One login identity may manage several schools, so the password is unified
+   // for all public.users rows carrying the exact e-mail. Role repair remains
+   // restricted to the selected school through school_members below.
+   const usersQ=await admin.from('users').select('id,school_id,role,status').ilike('email',managerEmail).limit(1000);
+   if(usersQ.error)throw usersQ.error;
+   const publicUsers=usersQ.data||[];
+   const passwordUpdate=await admin.from('users').update({password:newPassword,status:'active',must_change_password:false}).ilike('email',managerEmail);
+   if(passwordUpdate.error)throw passwordUpdate.error;
+   const selectedSchoolUsers=publicUsers.filter((u:any)=>clean(u.school_id)===schoolId);
+   if(selectedSchoolUsers.length){
+    const ids=selectedSchoolUsers.map((u:any)=>u.id).filter(Boolean);
+    const roleUpdate=await admin.from('users').update({role:'manager',status:'active',is_primary_manager:true}).in('id',ids);
+    if(roleUpdate.error)throw roleUpdate.error;
+   }
+
+   // Keep exactly one active manager authorization for this school/e-mail.
+   const membersQ=await admin.from('school_members').select('*').eq('school_id',schoolId).ilike('email',managerEmail).limit(1000);
+   if(membersQ.error)throw membersQ.error;
+   const members=membersQ.data||[];
+   let managerMember=members.find((m:any)=>clean(m.role).toLowerCase()==='manager')||null;
+   if(managerMember){
+    let up=await admin.from('school_members').update({user_id:authUserId,email:managerEmail,role:'manager',status:'active',is_primary_manager:true}).eq('id',managerMember.id);
+    if(up.error&&/is_primary_manager/i.test(up.error.message||''))up=await admin.from('school_members').update({user_id:authUserId,email:managerEmail,role:'manager',status:'active',is_primary:true}).eq('id',managerMember.id);
+    if(up.error)throw up.error;
+   }else{
+    const row:any={school_id:schoolId,user_id:authUserId,email:managerEmail,role:'manager',status:'active',is_primary_manager:true};
+    let ins=await admin.from('school_members').insert(row).select('id').single();
+    if(ins.error&&/is_primary_manager/i.test(ins.error.message||'')){delete row.is_primary_manager;row.is_primary=true;ins=await admin.from('school_members').insert(row).select('id').single()}
+    if(ins.error)throw ins.error;
+    managerMember={id:ins.data?.id};
+   }
+   const staleMemberIds=members.filter((m:any)=>clean(m.id)!==clean(managerMember?.id)&&clean(m.role).toLowerCase()!=='manager').map((m:any)=>m.id).filter(Boolean);
+   if(staleMemberIds.length){const disabled=await admin.from('school_members').update({status:'inactive'}).in('id',staleMemberIds);if(disabled.error)throw disabled.error}
+
+   // Revoke only this manager's platform sessions for the selected school.
+   const identityIds=[authUserId,...publicUsers.map((u:any)=>clean(u.id))].filter(Boolean);
+   const revoked=identityIds.length?await admin.from('platform_sessions').update({status:'revoked',revoked_at:new Date().toISOString()}).eq('school_id',schoolId).in('user_id',[...new Set(identityIds)]).eq('status','active'):null;
+   if(revoked?.error)throw revoked.error;
+
+   await audit(true,schoolId,{action:'reset_school_manager_password',managerEmail,authUserId,publicUserRows:publicUsers.length,selectedSchoolUserRows:selectedSchoolUsers.length,staleMembershipsDisabled:staleMemberIds.length,sessionsRevoked:true});
+   return json({ok:true,schoolId,managerEmail,role:'manager',passwordUpdated:true,membershipRepaired:true,sessionsRevoked:true});
+  }
   if(action==='set_school_status'){const schoolId=clean(body.schoolId),status=clean(body.status);if(!schoolId||!['active','disabled','inactive','suspended'].includes(status))return json({error:'طلب غير صالح'},400);const r=await admin.from('schools').update({status}).eq('id',schoolId).select('*').single();if(r.error)throw r.error;await audit(true,schoolId,{status});return json({ok:true,school:r.data})}
   if(action==='delete_school'){
    const schoolId=clean(body.schoolId); if(!schoolId)return json({error:'معرف المدرسة مطلوب'},400);

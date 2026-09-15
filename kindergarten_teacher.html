@@ -5313,7 +5313,31 @@ const same=(a,b)=>String(a||'').trim()===String(b||'').trim();
     try{sessionStorage.setItem('system_admin_context','1');sessionStorage.setItem('system_admin_verified','true');document.documentElement.setAttribute('data-system-admin-context','1');}catch(_){}
     return ctx;
   }
-function reveal(context){window.__VERIFIED_SCHOOL_CONTEXT__=context;document.documentElement.classList.remove('kindergarten-teacher-auth-pending');const s=document.getElementById('kindergarten-teacher-secure-entry-pending-style');if(s)s.remove();}
+function reveal(context){
+ window.__VERIFIED_SCHOOL_CONTEXT__=context;
+ document.documentElement.classList.remove('kindergarten-teacher-auth-pending');
+ const s=document.getElementById('kindergarten-teacher-secure-entry-pending-style');if(s)s.remove();
+ // لا ننتظر window.onload؛ الصور والخدمات الخارجية قد تؤخر الحدث وتترك
+ // المستخدم أمام الخلفية فقط رغم نجاح الجلسة. نفتح بوابة القسم فورًا.
+ requestAnimationFrame(function(){
+  try{
+   const activation=document.getElementById('activation-overlay');
+   const gate=document.getElementById('welcome-gate');
+   const dash=document.getElementById('welcome-dashboard');
+   const main=document.getElementById('main-report-app');
+   const archive=document.getElementById('archive-view');
+   const stats=document.getElementById('stats-view');
+   if(activation)activation.style.display='none';
+   if(dash)dash.style.display='none';
+   if(main)main.classList.add('hidden');
+   if(archive)archive.style.display='none';
+   if(stats)stats.style.display='none';
+   if(typeof window.showWelcomeGate==='function')window.showWelcomeGate();
+   else if(gate)gate.style.display='flex';
+   window.__KINDERGARTEN_TEACHER_ENTRY_READY__=true;
+  }catch(entryError){console.error('[kindergarten teacher entry bootstrap]',entryError)}
+ });
+}
 function deny(reason){console.error('[kindergarten-teacher access gate]',reason);const u=(function(){try{var q=new URLSearchParams();q.set('reason','school_access_denied');var sid=String((window.PlatformCloudSession&&window.PlatformCloudSession.schoolId&&window.PlatformCloudSession.schoolId())||sessionStorage.getItem('smart_school_tab_school_v1')||sessionStorage.getItem('platform_tab_session_school_id_v1')||sessionStorage.getItem('current_school_id')||new URLSearchParams(location.search||'').get('schoolId')||new URLSearchParams(location.search||'').get('school_id')||'').trim();var sname=String(sessionStorage.getItem('current_school_name')||new URLSearchParams(location.search||'').get('school_name')||'').trim();if(sid)q.set('schoolId',sid);if(sname)q.set('school_name',sname);q.set('schoolMode','independent');q.set('scope','school');return 'school-login.html?'+q.toString()}catch(_){return 'school-login.html?reason=school_access_denied'}})();try{location.replace(u)}catch(_){location.href=u}}
 async function verify(){
  const systemAdminRequested=requestedSystemAdminContext();

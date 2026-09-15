@@ -578,6 +578,19 @@ linear-gradient(135deg,rgba(21,68,90,.98),rgba(13,169,166,.92));color:#fff;paddi
 .save-status.saving{background:#F1F7FB;color:#356982;border-color:#BED5E4}.save-status.saved{background:#EFFAF4;color:#247448;border-color:#B9E2CB}.save-status.error{background:#FFF4F2;color:#9A4940;border-color:#EDC7C2}
 @media(max-width:820px){.save-status{order:10}}
 
+/* ===== جداول الهيكل التنظيمي والمرافق ===== */
+.school-data-tables{grid-column:1/-1;display:grid;gap:14px;margin-top:4px}
+.school-data-table-card{border:1px solid var(--line);border-radius:14px;background:#fff;overflow:hidden}
+.school-data-table-title{padding:11px 14px;background:#F2F8F8;color:var(--navy);font-size:12px;font-weight:900;border-bottom:1px solid var(--line)}
+.school-data-table{width:100%;border-collapse:collapse;table-layout:fixed}
+.school-data-table th,.school-data-table td{border:1px solid #DCE7E9;padding:7px;vertical-align:middle}
+.school-data-table th{width:24%;background:#FAF1E9;color:var(--navy);font-size:10px;text-align:right}
+.school-data-table td{background:#fff}
+.school-data-table input{width:100%;min-height:36px;border:1px solid #D5E2E5;border-radius:8px;padding:7px 9px;background:#FCFEFE}
+.school-data-table .wide-label{text-align:center;background:#EEF7F6}
+.school-data-table-note{padding:9px 12px;color:var(--muted);font-size:9px;line-height:1.7}
+@media(max-width:760px){.school-data-table{table-layout:auto}.school-data-table th,.school-data-table td{display:block;width:100%}.school-data-table tr{display:grid;grid-template-columns:1fr 1fr;margin:8px;border:1px solid var(--line);border-radius:10px;overflow:hidden}.school-data-table th,.school-data-table td{border:0;border-bottom:1px solid var(--line)}}
+
 </style>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
@@ -639,7 +652,8 @@ linear-gradient(135deg,rgba(21,68,90,.98),rgba(13,169,166,.92));color:#fff;paddi
   <div class="actions">
     <span id="saveStatus" class="save-status" aria-live="polite">لم يتم الحفظ بعد</span>
     <button class="btn secondary" type="button" onclick="returnToManager()">← العودة لواجهة المدير</button>
-    <button id="manualSaveBtn" class="btn secondary" onclick="savePlanToSelfEvaluationArchive()">حفظ في الأرشيف</button>
+    <button id="manualSaveBtn" class="btn secondary" type="button" onclick="savePlanModification()">حفظ التعديل</button>
+    <button id="resetPlanBtn" class="btn danger" type="button" onclick="resetCurrentPlanForSameYear()">تهيئة الخطة</button>
     <button class="btn plan-import-btn" type="button" onclick="openPlanDocumentImport()">استيراد خطة Word / PDF</button>
     <button class="btn secondary" onclick="exportJSON()">تصدير البيانات</button>
     <label class="btn secondary">استيراد نسخة JSON<input id="importFile" type="file" accept=".json" hidden></label>
@@ -731,8 +745,44 @@ linear-gradient(135deg,rgba(21,68,90,.98),rgba(13,169,166,.92));color:#fff;paddi
     <div class="field"><label>سنوات الخدمة — معلم/ة</label><input data-key="principalTeacherYears" type="number"></div>
     <div class="field"><label>سنوات الخدمة — وكيل/ة</label><input data-key="principalDeputyYears" type="number"></div>
     <div class="field"><label>سنوات الخدمة — مدير/ة</label><input data-key="principalManagerYears" type="number"></div>
-    <div class="field w6"><label>الهيكل التنظيمي واللجان والفرق المدرسية</label><textarea data-key="orgStructure"></textarea></div>
-    <div class="field w6"><label>المرافق التعليمية والخدمية</label><textarea data-key="facilities"></textarea></div>
+    <div class="school-data-tables">
+      <div class="school-data-table-card">
+        <div class="school-data-table-title">الهيكل التنظيمي للمدرسة — التشكيلات الإدارية والتعليمية (بالعدد)</div>
+        <div class="table-wrap"><table class="school-data-table"><tbody>
+          <tr><th>الإدارة المدرسية</th><td><input data-key="orgSchoolManagement" type="number" min="0" aria-label="عدد الإدارة المدرسية"></td><th>الوكلاء/الوكيلات</th><td><input data-key="orgDeputies" type="number" min="0" aria-label="عدد الوكلاء والوكيلات"></td></tr>
+          <tr><th>المساعدون/المساعدات الإداريون</th><td><input data-key="orgAdminAssistants" type="number" min="0"></td><th>الموجهون/الموجهات الطلابيون</th><td><input data-key="orgStudentCounselors" type="number" min="0"></td></tr>
+          <tr><th>مسجلو/مسجلات المعلومات</th><td><input data-key="orgInformationRegistrars" type="number" min="0"></td><th>رواد/رائدات النشاط</th><td><input data-key="orgActivityLeaders" type="number" min="0"></td></tr>
+          <tr><th>السكرتارية</th><td><input data-key="orgSecretariat" type="number" min="0"></td><th>محضرو/محضرات المختبر</th><td><input data-key="orgLabPreparers" type="number" min="0"></td></tr>
+          <tr><th>الموظفون/الموظفات الإداريون</th><td><input data-key="orgAdminEmployees" type="number" min="0"></td><th>المستخدمون/المستخدمات والحراس/الحارسات</th><td><input data-key="orgSupportStaff" type="number" min="0"></td></tr>
+          <tr><th class="wide-label" colspan="2">المعلمون/المعلمات</th><td colspan="2"><input data-key="orgTeachers" type="number" min="0" aria-label="عدد المعلمين والمعلمات"></td></tr>
+        </tbody></table></div>
+      </div>
+      <div class="school-data-table-card">
+        <div class="school-data-table-title">اللجان والفرق المدرسية (بالعدد)</div>
+        <div class="table-wrap"><table class="school-data-table"><tbody>
+          <tr><th>اللجنة الإدارية</th><td><input data-key="committeeAdministrative" type="number" min="0"></td><th>لجنة التميز</th><td><input data-key="committeeExcellence" type="number" min="0"></td></tr>
+          <tr><th>لجنة التوجيه والإرشاد</th><td><input data-key="committeeGuidance" type="number" min="0"></td><th>لجنة التحصيل الدراسي</th><td><input data-key="committeeAchievement" type="number" min="0"></td></tr>
+          <tr><th>فريق الأمن والسلامة</th><td><input data-key="teamSafety" type="number" min="0"></td><th>فريق الصندوق المدرسي</th><td><input data-key="teamSchoolFund" type="number" min="0"></td></tr>
+          <tr><th>فريق التربية الخاصة</th><td><input data-key="teamSpecialEducation" type="number" min="0"></td><th>فرق/لجان أخرى</th><td><input data-key="otherCommittees" placeholder="الاسم والعدد"></td></tr>
+          <tr><th class="wide-label" colspan="2">ملاحظات الهيكل واللجان</th><td colspan="2"><input data-key="orgStructure" placeholder="تفاصيل إضافية عند الحاجة"></td></tr>
+        </tbody></table></div>
+        <div class="school-data-table-note">تُسجل الأعداد في الخانات، ويمكن استخدام خانة «فرق/لجان أخرى» لإضافة أي تشكيل خاص بالمدرسة.</div>
+      </div>
+      <div class="school-data-table-card">
+        <div class="school-data-table-title">المرافق التعليمية المساندة والمرافق الخدمية (بالعدد)</div>
+        <div class="table-wrap"><table class="school-data-table"><tbody>
+          <tr><th>قاعات مصادر التعلم</th><td><input data-key="facilityLearningResources" type="number" min="0"></td><th>المختبرات</th><td><input data-key="facilityLabs" type="number" min="0"></td></tr>
+          <tr><th>غرف الموهوبين/الموهوبات</th><td><input data-key="facilityGiftedRooms" type="number" min="0"></td><th>غرف الإداريين/الإداريات</th><td><input data-key="facilityAdminRooms" type="number" min="0"></td></tr>
+          <tr><th>غرف التكبير</th><td><input data-key="facilityEnlargementRooms" type="number" min="0"></td><th>غرف المعلمين/المعلمات</th><td><input data-key="facilityTeacherRooms" type="number" min="0"></td></tr>
+          <tr><th>غرف التوجيه الطلابي</th><td><input data-key="facilityCounselingRooms" type="number" min="0"></td><th>المستودعات</th><td><input data-key="facilityWarehouses" type="number" min="0"></td></tr>
+          <tr><th>غرف التربية الخاصة</th><td><input data-key="facilitySpecialEducationRooms" type="number" min="0"></td><th>قاعات الاجتماعات</th><td><input data-key="facilityMeetingRooms" type="number" min="0"></td></tr>
+          <tr><th>غرف الحراس/الحارسات</th><td><input data-key="facilityGuardRooms" type="number" min="0"></td><th>المقاصف</th><td><input data-key="facilityCanteens" type="number" min="0"></td></tr>
+          <tr><th>الفصول الدراسية</th><td><input data-key="facilityClassrooms" type="number" min="0"></td><th>الساحات الداخلية</th><td><input data-key="facilityIndoorYards" type="number" min="0"></td></tr>
+          <tr><th>الساحات الخارجية</th><td><input data-key="facilityOutdoorYards" type="number" min="0"></td><th>غرف المبنى</th><td><input data-key="facilityBuildingRooms" type="number" min="0"></td></tr>
+          <tr><th class="wide-label" colspan="2">ملاحظات المرافق</th><td colspan="2"><input data-key="facilities" placeholder="تفاصيل إضافية عند الحاجة"></td></tr>
+        </tbody></table></div>
+      </div>
+    </div>
   </div></div>
 </section>
 
@@ -1246,6 +1296,7 @@ const OPERATIONAL_PLAN_SCHOOL_ID=operationalPlanSchoolId();
 const OPERATIONAL_PLAN_SCOPE=OPERATIONAL_PLAN_SCHOOL_ID||"unscoped-denied";
 const ACTIVE_PLAN_KEY=`operationalPlanIntegratedV14Annual:${OPERATIONAL_PLAN_SCOPE}`;
 const ARCHIVE_KEY=`operationalPlanArchivesV14:${OPERATIONAL_PLAN_SCOPE}`;
+const RESET_BACKUP_KEY=`operationalPlanResetBackupV14:${OPERATIONAL_PLAN_SCOPE}`;
 let currentRestoreSection="";
 
 function deepClone(v){return JSON.parse(JSON.stringify(v))}
@@ -1324,6 +1375,25 @@ function requestOpenAcademicYear(){
   }
   state=blankPlanState(y);saveAll(false);refreshWholePlanUI();
   alert(`تم فتح خطة نظيفة للعام الدراسي ${y}.`);
+}
+function resetCurrentPlanForSameYear(){
+  const year=activeYear();
+  if(!year)return alert("حدد العام الدراسي أولًا قبل تهيئة الخطة.");
+  if(!confirm(`سيتم مسح جميع بيانات الخطة النشطة للعام ${year} وإعادة فتحها فارغة للعام نفسه.\n\nلن تتأثر الخطط المؤرشفة. هل تريد المتابعة؟`))return;
+  try{
+    collectCurrentFormValues();
+    localStorage.setItem(RESET_BACKUP_KEY,JSON.stringify({savedAt:new Date().toISOString(),year,snapshot:deepClone(state)}));
+    const freshState=blankPlanState(year);
+    localStorage.setItem(ACTIVE_PLAN_KEY,JSON.stringify(freshState));
+    state=freshState;
+    refreshWholePlanUI();
+    nav("dashboard","لوحة التحكم");
+    setSaveStatus("saved",`تمت تهيئة خطة ${year}`);
+    alert(`تمت تهيئة الخطة للعام ${year} دون تغيير العام، ولم تتأثر الخطط المؤرشفة.`);
+  }catch(error){
+    console.error("PLAN_RESET_ERROR",error);
+    alert("تعذرت تهيئة الخطة، ولم يتم مسح البيانات.");
+  }
 }
 function archiveSummary(snapshot){
   const programs=snapshot.programs||[];
@@ -2506,7 +2576,37 @@ function preparePrint(options={}){
     `<tr><td>عدد الطلاب/الطالبات</td><td>${esc(state.fields.studentsCount)}</td><td>عدد المعلمين/المعلمات</td><td>${esc(state.fields.teachersCount)}</td></tr>`
   ]));
 
-  out+=page("التشكيلات المدرسية والمرافق",`<div class="two"><div class="box"><b>الهيكل التنظيمي واللجان والفرق</b><div class="textblock">${esc(state.fields.orgStructure).replace(/\n/g,"<br>")}</div></div><div class="box"><b>المرافق التعليمية والخدمية</b><div class="textblock">${esc(state.fields.facilities).replace(/\n/g,"<br>")}</div></div></div>`);
+  const planField=k=>esc(state.fields?.[k]||"");
+  out+=page("التشكيلات المدرسية والمرافق",`
+    <h3>الهيكل التنظيمي — التشكيلات الإدارية والتعليمية (بالعدد)</h3>
+    ${rowsTable(["البيان","العدد","البيان","العدد"],[
+      `<tr><td>الإدارة المدرسية</td><td>${planField("orgSchoolManagement")}</td><td>الوكلاء/الوكيلات</td><td>${planField("orgDeputies")}</td></tr>`,
+      `<tr><td>المساعدون/المساعدات الإداريون</td><td>${planField("orgAdminAssistants")}</td><td>الموجهون/الموجهات الطلابيون</td><td>${planField("orgStudentCounselors")}</td></tr>`,
+      `<tr><td>مسجلو/مسجلات المعلومات</td><td>${planField("orgInformationRegistrars")}</td><td>رواد/رائدات النشاط</td><td>${planField("orgActivityLeaders")}</td></tr>`,
+      `<tr><td>السكرتارية</td><td>${planField("orgSecretariat")}</td><td>محضرو/محضرات المختبر</td><td>${planField("orgLabPreparers")}</td></tr>`,
+      `<tr><td>الموظفون/الموظفات الإداريون</td><td>${planField("orgAdminEmployees")}</td><td>المستخدمون/المستخدمات والحراس/الحارسات</td><td>${planField("orgSupportStaff")}</td></tr>`,
+      `<tr><td colspan="2">المعلمون/المعلمات</td><td colspan="2">${planField("orgTeachers")}</td></tr>`
+    ])}
+    <h3>اللجان والفرق المدرسية (بالعدد)</h3>
+    ${rowsTable(["اللجنة أو الفريق","العدد","اللجنة أو الفريق","العدد"],[
+      `<tr><td>اللجنة الإدارية</td><td>${planField("committeeAdministrative")}</td><td>لجنة التميز</td><td>${planField("committeeExcellence")}</td></tr>`,
+      `<tr><td>لجنة التوجيه والإرشاد</td><td>${planField("committeeGuidance")}</td><td>لجنة التحصيل الدراسي</td><td>${planField("committeeAchievement")}</td></tr>`,
+      `<tr><td>فريق الأمن والسلامة</td><td>${planField("teamSafety")}</td><td>فريق الصندوق المدرسي</td><td>${planField("teamSchoolFund")}</td></tr>`,
+      `<tr><td>فريق التربية الخاصة</td><td>${planField("teamSpecialEducation")}</td><td>فرق/لجان أخرى</td><td>${planField("otherCommittees")}</td></tr>`
+    ])}
+    ${state.fields.orgStructure?`<div class="box"><b>ملاحظات الهيكل واللجان</b><p>${planField("orgStructure")}</p></div>`:""}
+    <h3>المرافق التعليمية المساندة والمرافق الخدمية (بالعدد)</h3>
+    ${rowsTable(["المرفق","العدد","المرفق","العدد"],[
+      `<tr><td>قاعات مصادر التعلم</td><td>${planField("facilityLearningResources")}</td><td>المختبرات</td><td>${planField("facilityLabs")}</td></tr>`,
+      `<tr><td>غرف الموهوبين/الموهوبات</td><td>${planField("facilityGiftedRooms")}</td><td>غرف الإداريين/الإداريات</td><td>${planField("facilityAdminRooms")}</td></tr>`,
+      `<tr><td>غرف التكبير</td><td>${planField("facilityEnlargementRooms")}</td><td>غرف المعلمين/المعلمات</td><td>${planField("facilityTeacherRooms")}</td></tr>`,
+      `<tr><td>غرف التوجيه الطلابي</td><td>${planField("facilityCounselingRooms")}</td><td>المستودعات</td><td>${planField("facilityWarehouses")}</td></tr>`,
+      `<tr><td>غرف التربية الخاصة</td><td>${planField("facilitySpecialEducationRooms")}</td><td>قاعات الاجتماعات</td><td>${planField("facilityMeetingRooms")}</td></tr>`,
+      `<tr><td>غرف الحراس/الحارسات</td><td>${planField("facilityGuardRooms")}</td><td>المقاصف</td><td>${planField("facilityCanteens")}</td></tr>`,
+      `<tr><td>الفصول الدراسية</td><td>${planField("facilityClassrooms")}</td><td>الساحات الداخلية</td><td>${planField("facilityIndoorYards")}</td></tr>`,
+      `<tr><td>الساحات الخارجية</td><td>${planField("facilityOutdoorYards")}</td><td>غرف المبنى</td><td>${planField("facilityBuildingRooms")}</td></tr>`
+    ])}
+    ${state.fields.facilities?`<div class="box"><b>ملاحظات المرافق</b><p>${planField("facilities")}</p></div>`:""}`);
   out+=page("موقع المدرسة",`<div class="separator-page"><div style="text-align:center"><h2>موقع المدرسة</h2><p>${esc(state.fields.schoolLocation||state.fields.address||"")}</p><p>${esc(state.fields.city||"")}</p></div></div>`);
   out+=page("بطاقة معلومات عن مدير/ة المدرسة",rowsTable(["اسم مدير/ة المدرسة رباعيًا","المؤهل العلمي","رقم الجوال","سنوات معلم/ة","سنوات وكيل/ة","سنوات مدير/ة"],[`<tr><td>${esc(state.fields.principalName)}</td><td>${esc(state.fields.principalQualification)}</td><td>${esc(state.fields.principalMobile)}</td><td>${esc(state.fields.principalTeacherYears)}</td><td>${esc(state.fields.principalDeputyYears)}</td><td>${esc(state.fields.principalManagerYears)}</td></tr>`]));
   out+=page("بيانات الهيئة الإدارية والتعليمية",rowsTable(["م","الاسم","المسمى الوظيفي","التخصص"],state.people.map((p,i)=>`<tr><td>${i+1}</td><td>${esc(p.name)}</td><td>${esc(p.role)}</td><td>${esc(p.spec)}</td></tr>`)));
@@ -2738,7 +2838,10 @@ async function savePlanToSelfEvaluationArchive(){
     if(!verified)throw new Error("لم يكتمل التحقق السحابي من مخرجات الخطة.");
     const time=new Date().toLocaleTimeString("ar-SA",{hour:"2-digit",minute:"2-digit"});setSaveStatus("saved",`تم الحفظ في الأرشيف — ${time}`);alert(`تم حفظ مخرجات الخطة والتحقق منها في:\nأرشيف التقويم الذاتي / ${INTERACTIVE_PLAN_ARCHIVE_FOLDER_NAME}`);
   }catch(error){console.error("INTERACTIVE_OPERATIONAL_PLAN_ARCHIVE_ERROR",error);setSaveStatus("error","تعذر الحفظ في الأرشيف");alert("تعذر حفظ الخطة في الأرشيف، ولم يتم اعتبار العملية ناجحة.\n"+(error?.message||"خطأ غير معروف"))}
-  finally{if(button){button.disabled=false;button.textContent="حفظ في الأرشيف"}}
+  finally{if(button){button.disabled=false;button.textContent="حفظ التعديل"}}
+}
+function savePlanModification(){
+  return savePlanToSelfEvaluationArchive();
 }
 
 function load(){

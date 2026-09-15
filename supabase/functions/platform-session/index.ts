@@ -333,8 +333,11 @@ Deno.serve(async (request) => {
     }
 
     let authUser: any = null;
+    let authAttempted = false;
+    let authErrorCode = '';
     const normalizedLogin = lower(login);
     if (anonKey && normalizedLogin.includes('@')) {
+      authAttempted = true;
       const authClient = createClient(supabaseUrl, anonKey, {
         auth: { persistSession: false, autoRefreshToken: false },
       });
@@ -343,6 +346,7 @@ Deno.serve(async (request) => {
         password,
       });
       if (!authResult.error && authResult.data?.user) authUser = authResult.data.user;
+      else if (authResult.error) authErrorCode = text((authResult.error as any)?.code || (authResult.error as any)?.status || 'AUTH_FAILED');
     }
 
     // RL143 — SCHOOL-FIRST MULTI-SCHOOL LOGIN:
@@ -359,19 +363,6 @@ Deno.serve(async (request) => {
         if (!mq.error && mq.data && activeStatus(mq.data.status)) schoolBoundMembership = mq.data;
       } catch (_) {}
     }
-
-    // RL162 — PRIMARY MANAGER BINDING (same contract as the working demo/individual-subscription path):
-    // Supabase Auth proves the identity. The selected school itself proves the primary-manager
-    // authorization only when its manager_email exactly matches that verified Auth e-mail.
-    // This is deliberately school-scoped and manager-only: it does not create cross-school
-    // memberships, does not change school_id, and does not relax any teacher/agent/member path.
-    const verifiedPrimaryManager = Boolean(
-      authUser &&
-      isUuid(authUser.id) &&
-      normalizedLogin.includes('@') &&
-      lower(authUser.email || '') === normalizedLogin &&
-      lower(school.manager_email || '') === normalizedLogin
-    );
 
     let crossSchoolCredentialUser: any = null;
     try {
@@ -435,23 +426,6 @@ Deno.serve(async (request) => {
       }) || null;
 
     let resolvedMembership: any = null;
-
-    // RL162: legacy independent schools can have a valid primary manager in Auth +
-    // schools.manager_email without a canonical users/school_members row for this school.
-    // Build only the canonical session identity for THIS selected school. Authorization is
-    // still anchored to the exact manager_email on this exact school record.
-    if (!user && verifiedPrimaryManager) {
-      user = {
-        id: authUser.id,
-        email: normalizedLogin,
-        school_id: school.id,
-        role: 'manager',
-        status: 'active',
-        active: true,
-      };
-      diagnosticIdentityFound = true;
-      diagnosticCredentialValidated = true;
-    }
 
     // RL143: resolve the selected school's membership BEFORE any global identity
     // fallback. This is the authoritative authorization edge for multi-school users.
@@ -569,10 +543,28 @@ Deno.serve(async (request) => {
         membershipFound: diagnosticMembershipFound,
         membershipActive: diagnosticMembershipActive,
       });
+      // RL163 — SAFE LOGIN DIAGNOSTICS ONLY. No e-mail, UUID, password or school data
+      // is returned. This lets us identify the exact failing gate without changing
+      // authorization behavior for any independent school.
+      const safeDiagnostic = [
+        diagnosticCode,
+        `AA${authAttempted ? 1 : 0}`,
+        `AU${authUser ? 1 : 0}`,
+        `AE${authErrorCode ? 1 : 0}`,
+        `MI${text(school.manager_email) ? 1 : 0}`,
+        `MM${lower(school.manager_email || '') === normalizedLogin ? 1 : 0}`,
+        `SI${sameSchoolLoginRows.length > 0 ? 1 : 0}`,
+        `SA${candidates.length > 0 ? 1 : 0}`,
+        `SC${sameSchoolCredentialMatch ? 1 : 0}`,
+        `CB${crossSchoolCredentialUser ? 1 : 0}`,
+        `BM${schoolBoundMembership ? 1 : 0}`,
+        `MF${diagnosticMembershipFound ? 1 : 0}`,
+        `MA${diagnosticMembershipActive ? 1 : 0}`,
+      ].join('-');
       return json({
         error:'بيانات الدخول غير صحيحة أو الحساب غير مرتبط بهذه المدرسة',
         code:'USER_NOT_RESOLVED',
-        details:diagnosticCode,
+        details:safeDiagnostic,
         requestId
       },401);
     }

@@ -963,18 +963,18 @@
         }, school);
       }
 
-      // التوافق القديم يبقى فقط عندما ثبت محليًا أن الحساب نفسه Active داخل المدرسة.
+      // RL161 — لا نفتح واجهة المدرسة بجلسة محلية ثم نترك بوابة manager.html
+      // تطردها لاحقًا. المدرسة المستقلة يجب أن تحصل على platform-session موقعة قبل
+      // الانتقال. هذا يلغي ظاهرة (فتح الواجهة ثم الخروج) ويُظهر رمز الخلل في صفحة
+      // الدخول نفسها إذا بقيت مشكلة بيانات حقيقية في مدرسة قديمة.
       if(!platformSessionPayload){
-        if(!user){
-          console.warn('RL139: server and legacy login both failed', platformSessionError);
-          const diagCode = String(platformSessionError && platformSessionError.details || '').trim();
-          const reqId = String(platformSessionError && platformSessionError.requestId || '').trim();
-          const suffix = diagCode ? ` — رمز التشخيص: ${diagCode}${reqId ? ` / ${reqId}` : ''}` : '';
-          setMsg('بيانات الدخول غير صحيحة أو الحساب غير موجود في هذه المدرسة' + suffix);
-          return;
-        }
-        if(!isActiveAccount(user)){ setMsg('الحساب غير مفعل بعد'); return; }
-        sessionCompatFallback = true;
+        console.warn('RL161: cloud session was not issued; navigation blocked', platformSessionError);
+        const diagCode = String(platformSessionError && platformSessionError.details || '').trim();
+        const reqId = String(platformSessionError && platformSessionError.requestId || '').trim();
+        const code = String(platformSessionError && platformSessionError.code || '').trim();
+        const suffix = [code,diagCode,reqId].filter(Boolean).join(' / ');
+        setMsg('تعذر إنشاء جلسة المدرسة الموثقة' + (suffix ? ` — رمز التشخيص: ${suffix}` : '') + '. لم يتم فتح الواجهة حمايةً من الدخول ثم الخروج.');
+        return;
       }
 
       if(!user){ setMsg('بيانات الدخول غير صحيحة أو الحساب غير موجود في هذه المدرسة'); return; }

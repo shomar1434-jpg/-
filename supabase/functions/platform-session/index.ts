@@ -521,44 +521,39 @@ Deno.serve(async (request) => {
       }
     }
 
-    // FINAL MULTI-SCHOOL MANAGER CONTRACT:
-    // Mirror the stable school-first login used by the experimental school.
-    // The selected school is fixed by the login link; credentials prove ONE identity;
-    // schools.manager_email is an authoritative manager binding for that SAME school.
-    // This is especially important for older educational-complex accounts where the
-    // manager has one Auth identity but one of the schools has no canonical users or
-    // school_members row yet. Never borrow a school_id from another school.
-    if (!user && schoolBoundCredentialVerified && normalizedLogin.includes('@') &&
+    // RL161 — PRIMARY MANAGER CANONICAL FALLBACK (multi-school safe):
+    // The legacy/demo login contract allows the same verified manager identity to
+    // administer more than one school through schools.manager_email. Previously,
+    // when a selected school had no users/school_members row for the canonical Auth
+    // UUID, we returned LD204 BEFORE reaching the later managerLegacy branch. That
+    // produced the exact symptom: school-login accepted the legacy account, manager
+    // opened briefly, then the cloud-session gate forced logout.
+    //
+    // Security contract: credentials MUST already be proven by Supabase Auth; the
+    // manager e-mail MUST match the selected school itself. We never infer another
+    // school and never accept a password from localStorage here.
+    if (!user && authUser && isUuid(authUser.id) && normalizedLogin.includes('@') &&
         lower(school.manager_email || '') === normalizedLogin) {
-      const canonicalIdentityId = authUser && isUuid(authUser.id)
-        ? authUser.id
-        : (crossSchoolCredentialUser && isUuid(crossSchoolCredentialUser.id)
-          ? crossSchoolCredentialUser.id
-          : '');
-      if (canonicalIdentityId) {
-        user = {
-          ...(crossSchoolCredentialUser || {}),
-          id: canonicalIdentityId,
-          email: normalizedLogin,
-          school_id: school.id,
-          role: 'manager',
-          status: 'active',
-          active: true,
-        };
-        resolvedMembership = {
-          id: `manager:${school.id}`,
-          school_id: school.id,
-          user_id: canonicalIdentityId,
-          email: normalizedLogin,
-          role: 'manager',
-          status: 'active',
-          is_primary_manager: true,
-        };
-        diagnosticIdentityFound = true;
-        diagnosticCredentialValidated = true;
-        diagnosticMembershipFound = true;
-        diagnosticMembershipActive = true;
-      }
+      user = {
+        id: authUser.id,
+        email: normalizedLogin,
+        school_id: school.id,
+        role: 'manager',
+        status: 'active',
+        active: true,
+        is_primary_manager: true,
+      };
+      resolvedMembership = {
+        role: 'manager',
+        status: 'active',
+        user_id: authUser.id,
+        school_id: school.id,
+        __manager_email_fallback: true,
+      };
+      diagnosticIdentityFound = true;
+      diagnosticCredentialValidated = true;
+      diagnosticMembershipFound = true;
+      diagnosticMembershipActive = true;
     }
 
     if (!user) {

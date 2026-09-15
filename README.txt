@@ -1,16 +1,19 @@
-التصحيح النهائي لمسار الوميض والخروج للحساب متعدد المدارس
-المصدر: المرجعية.zip الأصلية مباشرة.
-الملف المعدل فقط: platform-cloud-session.js
+التصحيح الجذري لمسار دخول المدير متعدد المدارس — RL161
 
-سبب الخلل المثبت:
-manager.html يملك بوابة تحقق صريحة تستدعي verifyAccess(['manager']).
-verifyAccess كان يعيد رفض جلسة platform-session الموثقة إذا لم يجد في قائمة memberships
-سجلاً يطابق schoolId + userId + role حرفياً. الحسابات القديمة متعددة المدارس قد تحمل user_id
-تاريخياً مختلفاً بين المدرستين، فينجح تسجيل الدخول وتصدر الجلسة ثم تُرفض محلياً فتظهر الواجهة
-كومضة وتعود إلى صفحة الدخول.
+الملفات:
+1) supabase/functions/platform-session/index.ts
+2) school-login.html
 
-التصحيح:
-اعتبار payload.current القادم من endpoint memberships هو سياق الجلسة الخادمي الموثق.
-يبقى فحص الدور المطلوب إلزامياً، وتبقى schoolId/userId/role من platform_sessions على الخادم.
-قائمة memberships أصبحت بيانات مساعدة وليست طبقة طرد ثانية.
-لا حذف بيانات، لا دمج مدارس، لا استثناء بأسماء مدارس، ولا تعديل Edge Function أو workflow.
+سبب المشكلة المثبت:
+- school-login كان يسمح بالتوافق المحلي عند فشل platform-session ثم يفتح manager.html.
+- manager.html يشترط جلسة cloud موقعة، لذلك كانت الواجهة تظهر ثم تُطرد.
+- في المدير الأساسي متعدد المدارس، platform-session كان يصل إلى LD204 إذا لم توجد users/school_members مطابقة للمدرسة الثانية، قبل الوصول إلى manager_email fallback.
+
+الحل:
+- إذا أثبت Supabase Auth البريد وكلمة المرور وكان schools.manager_email لنفس المدرسة يطابق البريد، تُنشأ جلسة manager canonical بالـ Auth UUID لنفس school_id فقط.
+- school-login لا يفتح أي واجهة مدرسة إذا لم تصدر platform-session؛ يعرض رمز التشخيص بدل الوميض والخروج.
+
+النشر:
+- ارفع الملفين.
+- platform-session موجود مسبقًا في workflow المركزي، لذا لا تعديل على workflow.
+- انتظر نجاح Deploy platform-session ثم اختبر.

@@ -553,8 +553,10 @@
                     if (['high','secondary','high school'].includes(text)) return 'high';
 
                     // اختلافات التسميات العربية في مركز المعلومات والمدارس المختلفة.
-                    if (/رياض\s*(ال)?اطفال|رياض الاطفال|روضة|روضه|مرحلة الروضة|مرحلة رياض/.test(text)) return 'kindergarten';
-                    if (/طفول[هة]\s*مبكر[هة]|الطفول[هة] المبكر[هة]|طفولة مبكرة/.test(text)) return 'early';
+                    // المطابقة هنا مقصودة لتوحيد (رياض أطفال / رياض الأطفال) وما شابهها
+                    // دون تغيير القيمة الأصلية المحفوظة في مركز المعلومات.
+                    if (/رياض\s*(ال)?اطفال|رياض الاطفال|رياض اطفال|روضة|روضه|مرحلة الروضة|مرحلة رياض|kindergarten/.test(text)) return 'kindergarten';
+                    if (/طفول[هة]\s*مبكر[هة]|الطفول[هة] المبكر[هة]|طفولة مبكرة|early childhood/.test(text)) return 'early';
                     if (/ابتداي|ابتدائي|ابتدائية|المرحلة الابتدائية|تعليم ابتدائي/.test(text)) return 'primary';
                     if (/متوسط|متوسطة|المرحلة المتوسطة|تعليم متوسط/.test(text)) return 'middle';
                     if (/ثانو|ثانوي|ثانوية|المرحلة الثانوية|تعليم ثانوي|مسارات/.test(text)) return 'high';
@@ -641,14 +643,19 @@
                         this.showAlert('لم يتم العثور على صفوف مستوردة من مركز المعلومات.');
                         return;
                     }
-                    // لا نختار مرحلة أو صفاً تلقائياً؛ يجب أن يحدد المعلم المرحلة أولاً صراحةً.
-                    this.centerImportForm.stage = '';
+                    // المرحلة والصفوف والشعب أصبحت مشتقة بالكامل من مركز المعلومات.
+                    // إذا كانت المدرسة ذات مرحلة واحدة نطابقها تلقائياً مع القائمة المنسدلة؛
+                    // أما المدارس متعددة المراحل فتبقى المراحل المستوردة متاحة للمعلم للاختيار بينها.
+                    const importedStages = this.centerStageOptions;
+                    this.centerImportForm.stage = importedStages.length === 1 ? importedStages[0] : '';
                     this.centerImportForm.grade = '';
                     this.centerImportForm.section = '';
                     this.centerImportForm.track = '';
                     this.centerSelectedClassKey = '';
-                    this.centerImportStatus = `تم تحميل بيانات مركز المعلومات (${this.centerDiscoveredClasses.length} صف/شعبة). اختر المرحلة ثم الصف ثم الشعبة، وسيظهر المسار للمرحلة الثانوية فقط.`;
-                    this.showNotification('تم تحميل المراحل والصفوف والشعب من مركز المعلومات.', 'success');
+                    this.centerImportStatus = importedStages.length === 1
+                        ? `تم استيراد مرحلة المدرسة ومطابقتها (${this.stagesMeta[importedStages[0]]?.label || importedStages[0]}). اختر الصف ثم الشعبة، واكتب المادة فقط لإنشاء السجل.`
+                        : `تم استيراد مراحل المدرسة (${importedStages.length}) وربط الصفوف والطلاب بها. اختر المرحلة ثم الصف والشعبة، واكتب المادة فقط لإنشاء السجل.`;
+                    this.showNotification('تم استيراد هيكل المراحل والصفوف والطلاب من مركز المعلومات.', 'success');
                 },
 
                 applyCenterDiscoveredClass() {
@@ -741,7 +748,14 @@
                         students: filtered
                     };
 
-                    this.classes = this.classes.filter(c => !(c.source === 'information_center' && c.grade === classObj.grade && c.track === classObj.track && c.section === classObj.section && c.subject === classObj.subject));
+                    // يسمح بإنشاء سجلات مستقلة لعدة مراحل وصفوف ومواد.
+                    // إدراج المرحلة في مفتاح التطابق يمنع أن يستبدل صف في مرحلةٍ ما صفاً يحمل الاسم نفسه في مرحلة أخرى.
+                    this.classes = this.classes.filter(c => !(c.source === 'information_center'
+                        && c.stage === classObj.stage
+                        && c.grade === classObj.grade
+                        && c.track === classObj.track
+                        && c.section === classObj.section
+                        && c.subject === classObj.subject));
                     this.classes.push(classObj);
                     this.currentClassId = classObj.id;
                     this.selectedStage = classObj.stage;

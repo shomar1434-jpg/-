@@ -1,0 +1,46 @@
+--- "/mnt/data/refcheck/#U0646#U0633#U062e#U0629 #U0627#U0644#U0645#U0646#U0635#U0629 #U0644#U0644#U0631#U0641#U0639 #U0627#U0644#U0633#U062d#U0627#U0628#U064a/supabase/functions/platform-session/index.ts"	2026-09-14 08:43:38.000000000 +0000
++++ /mnt/data/rl162_final/supabase/functions/platform-session/index.ts	2026-09-15 08:12:32.630062811 +0000
+@@ -360,6 +360,19 @@
+       } catch (_) {}
+     }
+ 
++    // RL162 — PRIMARY MANAGER BINDING (same contract as the working demo/individual-subscription path):
++    // Supabase Auth proves the identity. The selected school itself proves the primary-manager
++    // authorization only when its manager_email exactly matches that verified Auth e-mail.
++    // This is deliberately school-scoped and manager-only: it does not create cross-school
++    // memberships, does not change school_id, and does not relax any teacher/agent/member path.
++    const verifiedPrimaryManager = Boolean(
++      authUser &&
++      isUuid(authUser.id) &&
++      normalizedLogin.includes('@') &&
++      lower(authUser.email || '') === normalizedLogin &&
++      lower(school.manager_email || '') === normalizedLogin
++    );
++
+     let crossSchoolCredentialUser: any = null;
+     try {
+       const identityQ = await admin.from('users').select('*').limit(5000);
+@@ -423,6 +436,23 @@
+ 
+     let resolvedMembership: any = null;
+ 
++    // RL162: legacy independent schools can have a valid primary manager in Auth +
++    // schools.manager_email without a canonical users/school_members row for this school.
++    // Build only the canonical session identity for THIS selected school. Authorization is
++    // still anchored to the exact manager_email on this exact school record.
++    if (!user && verifiedPrimaryManager) {
++      user = {
++        id: authUser.id,
++        email: normalizedLogin,
++        school_id: school.id,
++        role: 'manager',
++        status: 'active',
++        active: true,
++      };
++      diagnosticIdentityFound = true;
++      diagnosticCredentialValidated = true;
++    }
++
+     // RL143: resolve the selected school's membership BEFORE any global identity
+     // fallback. This is the authoritative authorization edge for multi-school users.
+     if (schoolBoundMembership && schoolBoundCredentialVerified) {

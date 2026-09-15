@@ -360,6 +360,19 @@ Deno.serve(async (request) => {
       } catch (_) {}
     }
 
+    // RL162 — PRIMARY MANAGER BINDING (same contract as the working demo/individual-subscription path):
+    // Supabase Auth proves the identity. The selected school itself proves the primary-manager
+    // authorization only when its manager_email exactly matches that verified Auth e-mail.
+    // This is deliberately school-scoped and manager-only: it does not create cross-school
+    // memberships, does not change school_id, and does not relax any teacher/agent/member path.
+    const verifiedPrimaryManager = Boolean(
+      authUser &&
+      isUuid(authUser.id) &&
+      normalizedLogin.includes('@') &&
+      lower(authUser.email || '') === normalizedLogin &&
+      lower(school.manager_email || '') === normalizedLogin
+    );
+
     let crossSchoolCredentialUser: any = null;
     try {
       const identityQ = await admin.from('users').select('*').limit(5000);
@@ -422,6 +435,23 @@ Deno.serve(async (request) => {
       }) || null;
 
     let resolvedMembership: any = null;
+
+    // RL162: legacy independent schools can have a valid primary manager in Auth +
+    // schools.manager_email without a canonical users/school_members row for this school.
+    // Build only the canonical session identity for THIS selected school. Authorization is
+    // still anchored to the exact manager_email on this exact school record.
+    if (!user && verifiedPrimaryManager) {
+      user = {
+        id: authUser.id,
+        email: normalizedLogin,
+        school_id: school.id,
+        role: 'manager',
+        status: 'active',
+        active: true,
+      };
+      diagnosticIdentityFound = true;
+      diagnosticCredentialValidated = true;
+    }
 
     // RL143: resolve the selected school's membership BEFORE any global identity
     // fallback. This is the authoritative authorization edge for multi-school users.
@@ -519,41 +549,6 @@ Deno.serve(async (request) => {
           } catch (_) {}
         }
       }
-    }
-
-    // RL161 — PRIMARY MANAGER CANONICAL FALLBACK (multi-school safe):
-    // The legacy/demo login contract allows the same verified manager identity to
-    // administer more than one school through schools.manager_email. Previously,
-    // when a selected school had no users/school_members row for the canonical Auth
-    // UUID, we returned LD204 BEFORE reaching the later managerLegacy branch. That
-    // produced the exact symptom: school-login accepted the legacy account, manager
-    // opened briefly, then the cloud-session gate forced logout.
-    //
-    // Security contract: credentials MUST already be proven by Supabase Auth; the
-    // manager e-mail MUST match the selected school itself. We never infer another
-    // school and never accept a password from localStorage here.
-    if (!user && authUser && isUuid(authUser.id) && normalizedLogin.includes('@') &&
-        lower(school.manager_email || '') === normalizedLogin) {
-      user = {
-        id: authUser.id,
-        email: normalizedLogin,
-        school_id: school.id,
-        role: 'manager',
-        status: 'active',
-        active: true,
-        is_primary_manager: true,
-      };
-      resolvedMembership = {
-        role: 'manager',
-        status: 'active',
-        user_id: authUser.id,
-        school_id: school.id,
-        __manager_email_fallback: true,
-      };
-      diagnosticIdentityFound = true;
-      diagnosticCredentialValidated = true;
-      diagnosticMembershipFound = true;
-      diagnosticMembershipActive = true;
     }
 
     if (!user) {

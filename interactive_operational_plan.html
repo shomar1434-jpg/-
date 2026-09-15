@@ -490,6 +490,15 @@ linear-gradient(135deg,rgba(21,68,90,.98),rgba(13,169,166,.92));color:#fff;paddi
 
 /* ===== محرك تحليل استجابات الاستبانات من Excel ===== */
 .survey-import-card{border-top:4px solid var(--teal)}
+.stakeholder-survey{border-top:4px solid var(--blue)}
+.stakeholder-audiences{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:12px 0}
+.stakeholder-audience{padding:10px 12px;border:1px solid #D9E7EB;border-radius:12px;background:#FAFCFD;font-size:11px;font-weight:800}
+.survey-share-box{padding:14px;border:1px solid #BFE1DF;border-radius:14px;background:#F1FAFA;margin-top:14px}
+.survey-share-link{direction:ltr;text-align:left;overflow-wrap:anywhere;padding:10px;background:#fff;border:1px solid #D7E5E9;border-radius:10px;margin:9px 0;font:11px monospace}
+.cloud-survey-list{display:grid;gap:10px;margin-top:12px}.cloud-survey-card{border:1px solid #D9E6EA;border-radius:14px;padding:13px;background:#fff}
+.cloud-survey-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.cloud-analysis-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:10px}
+.cloud-analysis-box{padding:10px;border:1px solid #E0EAED;border-radius:11px;background:#FAFCFD}.cloud-analysis-box small{display:block;color:var(--muted);font-size:9px}.cloud-analysis-box b{display:block;color:var(--navy);font-size:17px;margin-top:3px}
+@media(max-width:700px){.stakeholder-audiences,.cloud-analysis-grid{grid-template-columns:1fr 1fr}}
 .survey-upload-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .survey-import-status{margin-top:12px;padding:10px 12px;border:1px dashed #B9D1D8;border-radius:12px;background:#F8FBFC;font-size:11px;color:var(--muted);font-weight:700}
 .survey-import-status.ok{background:#EFFAF4;border-color:#B9E2CB;color:#247448}
@@ -572,6 +581,8 @@ linear-gradient(135deg,rgba(21,68,90,.98),rgba(13,169,166,.92));color:#fff;paddi
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-bridge.js"></script>
 <script src="active_school_scope.js?v=20260915-interactive-plan"></script>
 <script src="school_isolation_guard.js?v=20260915-interactive-plan"></script>
 <script src="platform-runtime-guard.js?v=20260914-RL151-single-cloud-session"></script>
@@ -763,7 +774,19 @@ linear-gradient(135deg,rgba(21,68,90,.98),rgba(13,169,166,.92));color:#fff;paddi
       <h3>الاستبانات وتشخيص الواقع</h3>
       <span class="pill">مرحلة ما قبل SWOT</span>
     </div>
-    <div class="note">المسار المعتمد: استبانة خارجية ← ملف استجابات Excel ← مطابقة الأسئلة ← تحليل داخلي ← اعتماد النتائج ← SWOT / برنامج / خطة تحسين.</div>
+    <div class="note">المسار المعتمد: استبانة تفاعلية أو ملف استجابات Excel ← تحليل داخلي ← اعتماد النتائج ← SWOT / برنامج / خطة تحسين.</div>
+  </div>
+
+  <div class="card stakeholder-survey">
+    <div class="card-head"><h3>استبانة مشاركة أصحاب المصلحة في إعداد الخطة التشغيلية للمدرسة</h3><span class="pill">رابط تفاعلي وتحليل مباشر</span></div>
+    <p class="mini" style="line-height:1.9">تهدف الاستبانة إلى تعزيز الشراكة الفاعلة مع أصحاب المصلحة واستثمار آرائهم ومقترحاتهم في تطوير الأداء المدرسي وإعداد الخطة التشغيلية. صيغت جميع الفئات والأسئلة لتناسب مدارس البنين والبنات.</p>
+    <div class="stakeholder-audiences" id="stakeholderAudienceList"></div>
+    <div class="grid">
+      <div class="field w4"><label>عدد المستهدفين والمستهدفات</label><input id="stakeholderTargetCount" type="number" min="0" placeholder="اختياري — لحساب نسبة المشاركة"></div>
+      <div class="field w8"><label>عنوان الاستبانة</label><input id="stakeholderSurveyTitle" value="استبانة مشاركة أصحاب المصلحة في إعداد الخطة التشغيلية للمدرسة"></div>
+    </div>
+    <div class="survey-upload-actions"><button class="btn primary" id="createStakeholderSurveyBtn" type="button" onclick="createStakeholderSurveyLink()">إنشاء رابط الاستبانة</button><button class="btn secondary" type="button" onclick="refreshStakeholderSurveyAnalytics(true)">تحديث الردود والتحليل</button></div>
+    <div id="stakeholderSurveyShare"></div>
   </div>
 
   <div class="card survey-import-card">
@@ -777,14 +800,14 @@ linear-gradient(135deg,rgba(21,68,90,.98),rgba(13,169,166,.92));color:#fff;paddi
         <label>نوع الاستبانة</label>
         <select id="svImportType">
           <option value="">اختر نوع الاستبانة</option>
-          <option>استبانة المعلمات</option>
-          <option>استبانة الطالبات</option>
+          <option>استبانة المعلمين والمعلمات</option>
+          <option>استبانة الطلاب والطالبات</option>
           <option>استبانة أولياء الأمور</option>
-          <option>استبانة فريق التخطيط</option>
-          <option>استبانة لجنة التحصيل</option>
-          <option>استبانة فريق الأمن والسلامة</option>
-          <option>استبانة التوجيه الطلابي</option>
-          <option>استبانة النشاط الطلابي</option>
+          <option>استبانة أعضاء وعضوات فريق التخطيط</option>
+          <option>استبانة أعضاء وعضوات لجنة التحصيل</option>
+          <option>استبانة أعضاء وعضوات فريق الأمن والسلامة</option>
+          <option>استبانة الموجهين والموجهات الطلابيين</option>
+          <option>استبانة رواد ورائدات النشاط الطلابي</option>
         </select>
       </div>
 
@@ -841,6 +864,7 @@ linear-gradient(135deg,rgba(21,68,90,.98),rgba(13,169,166,.92));color:#fff;paddi
       <span id="surveyEvidenceCount" class="pill">0 نتيجة</span>
     </div>
     <div id="surveyDashboard"></div>
+    <div id="stakeholderCloudDashboard" class="cloud-survey-list"></div>
   </div>
 
   <div class="card">
@@ -852,7 +876,7 @@ linear-gradient(135deg,rgba(21,68,90,.98),rgba(13,169,166,.92));color:#fff;paddi
     <summary><b>إدخال نتيجة يدويًا — خيار احتياطي</b></summary>
     <div style="height:10px"></div>
     <div class="grid">
-      <div class="field w3"><label>نوع الاستبانة</label><select id="svType"><option value=""></option><option>استبانة المعلمات</option><option>استبانة الطالبات</option><option>استبانة أولياء الأمور</option><option>استبانة فريق التخطيط</option><option>استبانة لجنة التحصيل</option><option>استبانة فريق الأمن والسلامة</option><option>استبانة التوجيه الطلابي</option><option>استبانة النشاط الطلابي</option></select></div>
+      <div class="field w3"><label>نوع الاستبانة</label><select id="svType"><option value=""></option><option>استبانة المعلمين والمعلمات</option><option>استبانة الطلاب والطالبات</option><option>استبانة أولياء الأمور</option><option>استبانة أعضاء وعضوات فريق التخطيط</option><option>استبانة أعضاء وعضوات لجنة التحصيل</option><option>استبانة أعضاء وعضوات فريق الأمن والسلامة</option><option>استبانة الموجهين والموجهات الطلابيين</option><option>استبانة رواد ورائدات النشاط الطلابي</option></select></div>
       <div class="field w3"><label>عنوان المحور / القضية</label><input id="svTopic"></div>
       <div class="field w2"><label>عدد المستهدفين</label><input id="svTargetCount" type="number" min="0"></div>
       <div class="field w2"><label>عدد الاستجابات</label><input id="svResponses" type="number" min="0"></div>
@@ -965,18 +989,18 @@ linear-gradient(135deg,rgba(21,68,90,.98),rgba(13,169,166,.92));color:#fff;paddi
     <div class="note">يقرأ هذا القسم أعضاء فريق التخطيط ويجهز لكل عضو خطاب تكليف بالمهمة المسجلة له.</div>
     <div id="teamAssignments"></div>
   </div>
-  <div class="card"><div class="card-head"><h3>تكليفات منفذي برامج الخطة</h3></div><div id="programAssignments"></div></div>
+  <div class="card"><div class="card-head"><h3>تكليفات القائمين والقائمات على تنفيذ برامج الخطة</h3></div><div id="programAssignments"></div></div>
 </section>
 
 <section id="tracking" class="section">
-  <div class="card"><div class="card-head"><h3>جدول أساليب التحفيز لمنفذي برامج الخطة</h3></div><div id="motivationTable"></div></div>
+  <div class="card"><div class="card-head"><h3>جدول أساليب التحفيز للقائمين والقائمات على تنفيذ برامج الخطة</h3></div><div id="motivationTable"></div></div>
   <div class="card"><div class="card-head"><h3>جدول متابعة مؤشرات تحقق البرامج</h3></div><div id="indicatorTable"></div></div>
   <div class="card"><div class="card-head"><h3>نظام المتابعة</h3></div><div id="followTable"></div></div>
 </section>
 
 <section id="difficulties" class="section">
   <div class="card"><div class="card-head"><h3>حصر صعوبات التنفيذ</h3><button class="btn primary" onclick="addDifficulty()">إضافة صعوبة</button></div>
-    <div class="table-wrap"><table><thead><tr><th>م</th><th>البرنامج</th><th>الصعوبة</th><th>سببها</th><th>الإجراء المتخذ</th><th>المسؤول</th><th>الحالة</th><th>إجراء</th></tr></thead><tbody id="difficultyRows"></tbody></table></div>
+    <div class="table-wrap"><table><thead><tr><th>م</th><th>البرنامج</th><th>الصعوبة</th><th>سببها</th><th>الإجراء المتخذ</th><th>المسؤول/المسؤولة</th><th>الحالة</th><th>إجراء</th></tr></thead><tbody id="difficultyRows"></tbody></table></div>
   </div>
 </section>
 
@@ -1007,7 +1031,7 @@ linear-gradient(135deg,rgba(21,68,90,.98),rgba(13,169,166,.92));color:#fff;paddi
 
 <section id="thanks" class="section">
   <div class="card">
-    <div class="card-head"><h3>شهادات الشكر للمنفذين</h3></div>
+    <div class="card-head"><h3>شهادات الشكر للقائمين والقائمات على التنفيذ</h3></div>
     <div class="note">تُنشأ الشهادة تلقائيًا لكل منفذ برنامج حالته «نفذ»، مع سحب اسم المنفذ واسم البرنامج والعام الدراسي من بيانات الخطة.</div>
     <div id="thanksList"></div>
   </div>
@@ -1209,7 +1233,7 @@ function blankPlanState(year=""){
     people:[],team:[],meetings:[],
     occasions:DEFAULT_OCCASIONS.map(x=>({name:x[0],date:x[1],status:""})),
     programs:[],difficulties:[],classStats:[],results:[],
-    accountabilities:[],improvements:[],surveys:[],surveyImports:[],
+    accountabilities:[],improvements:[],surveys:[],surveyImports:[],stakeholderSurvey:{},
     meta:{academicYear:year||"",status:"open",createdAt:new Date().toISOString(),archivedAt:null}
   };
 }
@@ -1315,8 +1339,10 @@ function refreshWholePlanUI(){
   state.programs=state.programs||[];state.difficulties=state.difficulties||[];state.classStats=state.classStats||[];
   state.results=state.results||[];state.accountabilities=state.accountabilities||[];state.improvements=state.improvements||[];
   state.surveys=state.surveys||[];state.surveyImports=state.surveyImports||[];
+  state.stakeholderSurvey=state.stakeholderSurvey||{};
   state.meta=state.meta||{academicYear:normalizeAcademicYear(state.fields.year),status:"open",createdAt:new Date().toISOString()};
-  renderClassStats();renderResults();initGuide();buildIndexItems();renderPeople();renderTeam();renderMeetings();renderOccasions();renderPrograms();renderAssignments();renderTracking();renderDifficulties();renderAccountabilities();renderThanks();renderProgramTimeline();renderVisualPreviews();initImprovement();initSurveyDiagnostics();updateStats();updateAcademicYearUI();installArchiveRestoreButtons();
+  renderClassStats();renderResults();initGuide();buildIndexItems();renderPeople();renderTeam();renderMeetings();renderOccasions();renderPrograms();renderAssignments();renderTracking();renderDifficulties();renderAccountabilities();renderThanks();renderProgramTimeline();renderVisualPreviews();initImprovement();initSurveyDiagnostics();renderStakeholderAudienceList();renderStakeholderShare();renderStakeholderCloudDashboard();updateStats();updateAcademicYearUI();installArchiveRestoreButtons();
+  if(state.stakeholderSurvey?.id)setTimeout(()=>refreshStakeholderSurveyAnalytics(false),250);
 }
 function renderArchiveSection(){
   const box=document.getElementById("currentPlanArchiveSummary"),list=document.getElementById("archiveYearsList");
@@ -1546,7 +1572,7 @@ function renderProgramTimeline(){
 
 function renderAssignments(){teamAssignments.innerHTML=state.team.length?state.team.map((t,i)=>`<div class="program-card"><div class="program-head"><div><small>المكلف</small><b>${esc(personName(t.personId))}</b></div><div><small>الدور</small><b>${esc(personRole(t.personId))}</b></div><div><small>صفة الفريق</small><b>${esc(t.teamRole)}</b></div><div><small>المهمة</small><b>${esc(t.task)}</b></div><div><span class="pill">خطاب تكليف</span></div></div></div>`).join(''):'<div class="empty">أضف أعضاء فريق التخطيط أولًا.</div>';
 programAssignments.innerHTML=state.programs.length?`<div class="table-wrap"><table><thead><tr><th>م</th><th>اسم البرنامج</th><th>من</th><th>إلى</th><th>مسؤول التنفيذ</th><th>المسمى الوظيفي</th><th>التوقيع</th></tr></thead><tbody>${state.programs.map((p,i)=>`<tr><td>${i+1}</td><td>${esc(p.name)}</td><td>${esc(p.from)}</td><td>${esc(p.to)}</td><td>${esc(personName(p.ownerId))}</td><td>${esc(personRole(p.ownerId))}</td><td></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">لا توجد برامج.</div>'}
-function renderTracking(){motivationTable.innerHTML=state.programs.length?`<div class="table-wrap"><table><thead><tr><th>م</th><th>اسم البرنامج</th><th>المسؤول المنفذ</th><th>أساليب التحفيز</th><th>ملاحظات</th></tr></thead><tbody>${state.programs.map((p,i)=>`<tr><td>${i+1}</td><td>${esc(p.name)}</td><td>${esc(personName(p.ownerId))}</td><td><input value="${esc(p.motivation||"")}" oninput="state.programs[${i}].motivation=this.value"></td><td><input value="${esc(p.motivationNote||"")}" oninput="state.programs[${i}].motivationNote=this.value"></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">أضف برامج لتظهر تلقائيًا.</div>';
+function renderTracking(){motivationTable.innerHTML=state.programs.length?`<div class="table-wrap"><table><thead><tr><th>م</th><th>اسم البرنامج</th><th>المسؤول/المسؤولة عن التنفيذ</th><th>أساليب التحفيز</th><th>ملاحظات</th></tr></thead><tbody>${state.programs.map((p,i)=>`<tr><td>${i+1}</td><td>${esc(p.name)}</td><td>${esc(personName(p.ownerId))}</td><td><input value="${esc(p.motivation||"")}" oninput="state.programs[${i}].motivation=this.value"></td><td><input value="${esc(p.motivationNote||"")}" oninput="state.programs[${i}].motivationNote=this.value"></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">أضف برامج لتظهر تلقائيًا.</div>';
 indicatorTable.innerHTML=state.programs.length?`<div class="table-wrap"><table><thead><tr><th>م</th><th>اسم البرنامج</th><th>تاريخ التفعيل</th><th>مؤشر تحقق البرنامج</th><th>نوع التحقق</th></tr></thead><tbody>${state.programs.map((p,i)=>`<tr><td>${i+1}</td><td>${esc(p.name)}</td><td>${esc(p.from)} إلى ${esc(p.to)}</td><td>${esc(p.indicator)}</td><td><select onchange="state.programs[${i}].verification=this.value"><option></option><option ${p.verification==='عالي'?'selected':''}>عالي</option><option ${p.verification==='متوسط'?'selected':''}>متوسط</option><option ${p.verification==='منخفض'?'selected':''}>منخفض</option></select></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">أضف برامج لتظهر تلقائيًا.</div>';
 followTable.innerHTML=state.programs.length?`<div class="table-wrap"><table><thead><tr><th>م</th><th>اسم البرنامج</th><th>من</th><th>إلى</th><th>مسؤول التنفيذ</th><th>مستوى التنفيذ</th><th>مسؤول المتابعة</th><th>الصفة الإدارية</th><th>التوقيع</th></tr></thead><tbody>${state.programs.map((p,i)=>`<tr><td>${i+1}</td><td>${esc(p.name)}</td><td>${esc(p.from)}</td><td>${esc(p.to)}</td><td>${esc(personName(p.ownerId))}</td><td><select onchange="state.programs[${i}].status=this.value;updateStats();renderAccountabilities();renderThanks();renderProgramTimeline()"><option></option><option ${p.status==='نفذ'?'selected':''}>نفذ</option><option ${p.status==='متأخر'?'selected':''}>متأخر</option><option ${p.status==='لم ينفذ'?'selected':''}>لم ينفذ</option></select></td><td><select onchange="state.programs[${i}].followId=this.value">${personOptions(p.followId||"")}</select></td><td>${esc(personRole(p.followId))}</td><td></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">أضف برامج لتظهر تلقائيًا.</div>'}
 function addDifficulty(d={programId:"",difficulty:"",reason:"",action:"",ownerId:"",status:""}){state.difficulties.push(d);renderDifficulties()}
@@ -1575,7 +1601,7 @@ function resetGuide(){gDomain.value="";setGuideOptions(gStandard,[],"اختر ا
 function createProgramFromGuide(){let x=selectedGuide();if(!x)return alert("اختر المؤشر المرجعي أولًا.");nav("programs","بطاقات البرامج");openProgram();pDomain.value=x.domain;pStandard.innerHTML=options([...new Set(REFERENCE_INDICATORS.filter(r=>r.domain===x.domain).map(r=>r.standard))],x.standard);pStandard.value=x.standard;pSupervision.value=x.supervision;pRefCode.value=x.code;pRefIndicator.value=x.indicator;programForm.scrollIntoView({behavior:"smooth"})}
 
 function buildIndexItems(){
-  let items=["الغلاف","البسملة","الفهرس","المقدمة","كلمة مدير/ة المدرسة","أهداف المرحلة","اجتماعات فريق التخطيط","قرار تكليف فريق التخطيط","كشف توقيع أعضاء الفريق","اعتماد الخطة","بيانات المدرسة والهيكل التنظيمي","التشكيلات المدرسية والمرافق","موقع المدرسة","بطاقة معلومات مدير/ة المدرسة","بيانات الهيئة الإدارية والتعليمية","منسوبو المدرسة","أعداد الطلاب والفصول","تحليل نتائج المرحلة","الرؤية والرسالة والقيم","تحليل واقع المدرسة SWOT","أوجه الاستثمار والمعالجة","القضايا الرئيسية","مصادر الخطة","مجالات الخطة","أساليب التنفيذ","الأهداف الاستراتيجية لوزارة التعليم","المناسبات المحلية والعالمية","الأهداف العامة والتفصيلية لبرامج الخطة","برامج الخطة","متابعة الجدول الزمني لتنفيذ البرامج","تطوير الخطة التشغيلية","استمارات متابعة تنفيذ الخطة","البرنامج الزمني","تكليفات منفذي البرامج","جدول أساليب تنفيذ البرامج","جدول متابعة مؤشرات تحقق البرامج","جدول أساليب التحفيز","نظام المتابعة","استمارة تقييم الخطة","تقرير تنفيذ البرامج","استمارة مساءلة عدم التنفيذ","شهادة شكر وتقدير للمنفذين","الاجتماع الختامي","التقرير النهائي","كشف التوقيع","المخرجات البصرية"];
+  let items=["الغلاف","البسملة","الفهرس","المقدمة","كلمة مدير/ة المدرسة","أهداف المرحلة","اجتماعات فريق التخطيط","قرار تكليف فريق التخطيط","كشف توقيع أعضاء وعضوات الفريق","اعتماد الخطة","بيانات المدرسة والهيكل التنظيمي","التشكيلات المدرسية والمرافق","موقع المدرسة","بطاقة معلومات مدير/ة المدرسة","بيانات الهيئة الإدارية والتعليمية","منسوبو ومنسوبات المدرسة","أعداد الطلاب والطالبات والفصول","تحليل نتائج المرحلة","الرؤية والرسالة والقيم","تحليل واقع المدرسة SWOT","أوجه الاستثمار والمعالجة","القضايا الرئيسية","مصادر الخطة","مجالات الخطة","أساليب التنفيذ","الأهداف الاستراتيجية لوزارة التعليم","المناسبات المحلية والعالمية","الأهداف العامة والتفصيلية لبرامج الخطة","برامج الخطة","متابعة الجدول الزمني لتنفيذ البرامج","تطوير الخطة التشغيلية","استمارات متابعة تنفيذ الخطة","البرنامج الزمني","تكليفات القائمين والقائمات على التنفيذ","جدول أساليب تنفيذ البرامج","جدول متابعة مؤشرات تحقق البرامج","جدول أساليب التحفيز","نظام المتابعة","استمارة تقييم الخطة","تقرير تنفيذ البرامج","استمارة مساءلة عدم التنفيذ","شهادة شكر وتقدير للقائمين والقائمات على التنفيذ","الاجتماع الختامي","التقرير النهائي","كشف التوقيع","المخرجات البصرية"];
   indexPreview.innerHTML=items.map((x,i)=>`<div class="index-item"><span>${i+1}. ${esc(x)}</span><b>${i+1}</b></div>`).join("");
   coverSchool.textContent=state.fields.schoolName||"اسم المدرسة";coverYear.textContent=state.fields.year||"العام الدراسي";
 }
@@ -1608,7 +1634,7 @@ function renderAccountabilities(){
   if(window.accProgram){
     accProgram.onchange=fillAccountabilityFromProgram;
   }
-  accountabilityTable.innerHTML=state.accountabilities.length?`<div class="table-wrap"><table><thead><tr><th>م</th><th>البرنامج</th><th>المسؤول</th><th>سبب عدم التنفيذ</th><th>رأي المدير/ة</th><th>الموعد البديل</th><th>إجراء</th></tr></thead><tbody>${state.accountabilities.map((a,i)=>{let p=state.programs.find(x=>x.id===a.programId);return `<tr><td>${i+1}</td><td>${esc(p?.name||"")}</td><td>${esc(personName(a.ownerId))}</td><td>${esc(a.reason)}</td><td>${esc(a.decision)}</td><td>${esc(a.reschedule)}</td><td><button class="btn danger" onclick="state.accountabilities.splice(${i},1);renderAccountabilities();saveAll(false)">حذف</button></td></tr>`}).join("")}</tbody></table></div>`:'<div class="empty">لا توجد استمارات مساءلة محفوظة.</div>';
+  accountabilityTable.innerHTML=state.accountabilities.length?`<div class="table-wrap"><table><thead><tr><th>م</th><th>البرنامج</th><th>المسؤول/المسؤولة</th><th>سبب عدم التنفيذ</th><th>رأي المدير/ة</th><th>الموعد البديل</th><th>إجراء</th></tr></thead><tbody>${state.accountabilities.map((a,i)=>{let p=state.programs.find(x=>x.id===a.programId);return `<tr><td>${i+1}</td><td>${esc(p?.name||"")}</td><td>${esc(personName(a.ownerId))}</td><td>${esc(a.reason)}</td><td>${esc(a.decision)}</td><td>${esc(a.reschedule)}</td><td><button class="btn danger" onclick="state.accountabilities.splice(${i},1);renderAccountabilities();saveAll(false)">حذف</button></td></tr>`}).join("")}</tbody></table></div>`:'<div class="empty">لا توجد استمارات مساءلة محفوظة.</div>';
 }
 function renderThanks(){
   let done=state.programs.filter(p=>p.status==="نفذ");
@@ -1780,6 +1806,40 @@ let surveyExcelRows=[];
 let surveyExcelHeaders=[];
 let surveyQuestionCols=[];
 let surveyAnalysisResult=null;
+const STAKEHOLDER_SURVEY_AUDIENCES=["الطلاب والطالبات","أولياء ووليات الأمور","المعلمون والمعلمات","الإداريون والإداريات","المتطوعون والمتطوعات","أعضاء وعضوات فريق التخطيط","أعضاء وعضوات لجنة التحصيل","أعضاء وعضوات فريق الأمن والسلامة","الموجهون والموجهات الطلابيون","رواد ورائدات النشاط الطلابي"];
+const STAKEHOLDER_SURVEY_QUESTIONS=[
+ {text:"فئة المستجيب أو المستجيبة",type:"choice",required:true,options:["طالب/طالبة","ولي/ولية أمر","معلم/معلمة","موظف إداري/موظفة إدارية","متطوع/متطوعة","عضو/عضوة في فريق أو لجنة مدرسية","غير ذلك"]},
+ {text:"المرحلة الدراسية للطالب أو الطالبة في حال كنت طالبًا/طالبة أو ولي/ولية أمر",type:"choice",required:true,options:["لا ينطبق","الصفوف الأولية (1/2/3)","الصفوف العليا (4/5/6)","المرحلة المتوسطة","المرحلة الثانوية","رياض الأطفال"]},
+ {text:"كيف تقيّم/تقيّمين تواصل المدرسة مع أولياء ووليات الأمور؟",type:"choice",required:true,options:["ممتاز","جيد جدًا","جيد","يحتاج إلى تحسين"],scores:[5,4,3,1],domain:"الإدارة المدرسية"},
+ {text:"ما مدى رضاك/رضاكِ عن مستوى البيئة التعليمية؟",type:"choice",required:true,options:["راضٍ/راضية جدًا","راضٍ/راضية","راضٍ/راضية إلى حد ما","غير راضٍ/غير راضية"],scores:[5,4,3,1],domain:"البيئة المدرسية"},
+ {text:"ما أبرز نقاط القوة التي تراها في البيئة المدرسية؟",type:"text",required:true},
+ {text:"ما الجوانب التي ترى أنها بحاجة إلى تحسين وتطوير؟",type:"text",required:true},
+ {text:"ما المجالات التي ترى أهمية التركيز عليها في الخطة التشغيلية؟",type:"multi",required:true,options:["التحصيل الدراسي ورفع مستوى التحصيل","تعزيز الانضباط","قيم المواطنة","الأنشطة والبرامج الطلابية","الصحة والسلامة المدرسية","الدعم النفسي والاجتماعي للطلاب والطالبات","تعزيز القيم والسلوك الإيجابي","استخدام التقنية في التعليم","التواصل والشراكة مع الأسرة","الموهبة والإبداع","غير ذلك"]},
+ {text:"ما البرامج أو المبادرات التي تقترح تنفيذها لخدمة الطلاب والطالبات؟ اذكر اسم المبادرة وفكرتها.",type:"text",required:true},
+ {text:"ما البرامج أو الأنشطة التي تقترح تنفيذها لتعزيز الشراكة بين المدرسة والأسرة؟",type:"text",required:true},
+ {text:"ما المقترحات التي ترى أنها تسهم في تحسين التحصيل الدراسي لأبنائنا وبناتنا؟",type:"text",required:true},
+ {text:"كيف يمكن للمدرسة تعزيز مشاركة أولياء ووليات الأمور في الأنشطة والبرامج المدرسية؟",type:"text",required:true},
+ {text:"هل لديك مهارات أو خبرات يمكن أن تسهم بها في برامج المدرسة؟",type:"yesno",required:true,options:["نعم","لا"],scores:[5,1]},
+ {text:"اذكر/اذكري المهارات أو الخبرات التي يمكن أن تسهم بها في برامج المدرسة",type:"text",required:false},
+ {text:"ما المبادرات التي تقترح لتعزيز الشراكة بين المدرسة والأسرة والمجتمع؟",type:"text",required:true},
+ {text:"من وجهة نظرك، ما أهم أولوية ينبغي أن تركز عليها المدرسة خلال العام الدراسي القادم؟",type:"text",required:true},
+ {text:"ما أهم تحدٍ ترى أن المدرسة بحاجة إلى معالجته؟",type:"text",required:true},
+ {text:"ما المقترحات أو الأفكار التي يمكن أن تسهم في تطوير أداء المدرسة وتحسين الخدمات المقدمة للطلاب والطالبات؟",type:"text",required:true},
+ {text:"هل لديك فكرة برنامج أو مبادرة أو مشروع يمكن أن يخدم المدرسة والطلاب والطالبات؟ اذكر الاسم والفكرة والفئة المستهدفة.",type:"text",required:true},
+ {text:"ختامًا: هل لديك أي ملاحظات أو مقترحات إضافية تود/تودين مشاركتها مع المدرسة؟",type:"text",required:true}
+];
+let stakeholderCloudSurveys=[],stakeholderCloudResponses=[];
+function secureStakeholderToken(){const b=new Uint8Array(20);crypto.getRandomValues(b);return "ops_"+[...b].map(x=>x.toString(16).padStart(2,"0")).join("")}
+function operationalSurveyPublicUrl(token){if(location.protocol==="file:")return "";const u=new URL("operational_plan_survey.html",location.href);u.searchParams.set("survey",token);return u.toString()}
+async function operationalImpactCall(action,payload={}){if(!window.PlatformCloudSession)throw new Error("تعذر تحميل جلسة المنصة");await window.PlatformCloudSession.ensure();const school=String(window.PlatformCloudSession.schoolId?.()||"");if(!school||school!==OPERATIONAL_PLAN_SCHOOL_ID)throw new Error("جلسة المدرسة غير مكتملة أو لا تطابق المدرسة الحالية");const anon=localStorage.getItem("smartSchoolSupabaseAnonKey")||"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaWpoZ3ZidHJ2bW1sY3NzZ3hodCIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM";const r=await fetch("https://cijhgvbtrvmmlcssgxht.supabase.co/functions/v1/impact-measurement",{method:"POST",headers:{"content-type":"application/json",apikey:anon,"x-platform-session":window.PlatformCloudSession.token()},body:JSON.stringify({action,...payload})});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||"تعذر تنفيذ عملية الاستبانة");return d}
+function renderStakeholderAudienceList(){const el=document.getElementById("stakeholderAudienceList");if(el)el.innerHTML=STAKEHOLDER_SURVEY_AUDIENCES.map(x=>`<div class="stakeholder-audience">✓ ${esc(x)}</div>`).join("")}
+function renderStakeholderShare(){const box=document.getElementById("stakeholderSurveyShare"),cfg=state.stakeholderSurvey||{};if(!box)return;if(document.getElementById("stakeholderTargetCount")&&cfg.targetCount)document.getElementById("stakeholderTargetCount").value=cfg.targetCount;if(document.getElementById("stakeholderSurveyTitle")&&cfg.title)document.getElementById("stakeholderSurveyTitle").value=cfg.title;if(!cfg.publicToken){box.innerHTML='<div class="survey-import-status">لم يتم إنشاء رابط الاستبانة بعد.</div>';return}const link=operationalSurveyPublicUrl(cfg.publicToken);box.innerHTML=`<div class="survey-share-box"><b>رابط الاستبانة الجاهز للنشر</b><div class="survey-share-link" id="stakeholderPublicLink">${esc(link)}</div><div class="survey-actions"><button class="btn secondary" type="button" onclick="copyStakeholderSurveyLink()">نسخ الرابط</button><button class="btn secondary" type="button" onclick="window.open('${esc(link)}','_blank','noopener')">فتح الاستبانة</button></div><span class="mini">الردود محفوظة سحابيًا في المدرسة الحالية فقط، وتظهر في لوحة التشخيص أدناه.</span></div>`}
+async function copyStakeholderSurveyLink(){const link=document.getElementById("stakeholderPublicLink")?.textContent||"";if(!link)return;try{await navigator.clipboard.writeText(link);alert("تم نسخ رابط الاستبانة.")}catch(_){prompt("انسخ الرابط:",link)}}
+async function createStakeholderSurveyLink(){const btn=document.getElementById("createStakeholderSurveyBtn");try{if(location.protocol==="file:")throw new Error("يجب فتح المنصة عبر الرابط السحابي لإنشاء رابط عام صالح");if(btn){btn.disabled=true;btn.textContent="جارٍ إنشاء الرابط..."}state.stakeholderSurvey=state.stakeholderSurvey||{};if(state.stakeholderSurvey.id&&state.stakeholderSurvey.publicToken){renderStakeholderShare();await refreshStakeholderSurveyAnalytics(true);return}const id="ops_stakeholder_"+Date.now()+"_"+uid(),token=secureStakeholderToken(),title=String(document.getElementById("stakeholderSurveyTitle")?.value||"").trim()||"استبانة مشاركة أصحاب المصلحة في إعداد الخطة التشغيلية للمدرسة",target=Math.max(0,Number(document.getElementById("stakeholderTargetCount")?.value)||0);const row={id,public_token:token,source_section:"interactive_operational_plan",source_record_id:activeYear()||"current",survey_type:"operational_plan_stakeholders",program_name:"إعداد الخطة التشغيلية للمدرسة",title,audience:STAKEHOLDER_SURVEY_AUDIENCES.join("، "),role_label:"مدير/مديرة المدرسة",template:"operational_plan_stakeholders",questions:STAKEHOLDER_SURVEY_QUESTIONS,measure_date:new Date().toISOString().slice(0,10)};const d=await operationalImpactCall("create-survey",{survey:row});if(!d?.survey)throw new Error("لم يتم التحقق من إنشاء الاستبانة");state.stakeholderSurvey={id,publicToken:token,title,targetCount:target,createdAt:new Date().toISOString()};saveAll(false);renderStakeholderShare();await refreshStakeholderSurveyAnalytics(true);alert("تم إنشاء رابط الاستبانة وحفظه للمدرسة الحالية.")}catch(e){console.error(e);alert(e.message||"تعذر إنشاء رابط الاستبانة")}finally{if(btn){btn.disabled=false;btn.textContent="إنشاء رابط الاستبانة"}}}
+function stakeholderAnswerScore(answer,q){if(!q||!Array.isArray(q.scores))return null;const value=answer?.value;const idx=q.options?.indexOf(value);return idx>=0?Number(q.scores[idx]):null}
+function stakeholderCategoryCounts(responses){const m={};responses.forEach(r=>{const v=String(r.answers?.[0]?.value||r.respondent_category||"غير محدد");m[v]=(m[v]||0)+1});return Object.entries(m).sort((a,b)=>b[1]-a[1])}
+function renderStakeholderCloudDashboard(){const root=document.getElementById("stakeholderCloudDashboard");if(!root)return;const cfg=state.stakeholderSurvey||{},survey=stakeholderCloudSurveys.find(x=>String(x.id)===String(cfg.id));if(!survey){root.innerHTML=cfg.id?'<div class="survey-warning">لم يتم العثور على الاستبانة السحابية المرتبطة. لن تُدمج بيانات استبانة أخرى تلقائيًا.</div>':'';return}const rr=stakeholderCloudResponses.filter(x=>String(x.survey_id)===String(survey.id)),target=Math.max(0,Number(cfg.targetCount)||0),participation=target?Math.min(100,Math.round(rr.length/target*1000)/10):null;const scored=[];rr.forEach(r=>(r.answers||[]).forEach((a,i)=>{const s=stakeholderAnswerScore(a,STAKEHOLDER_SURVEY_QUESTIONS[i]);if(s!=null)scored.push(s)}));const avg=scored.length?Math.round(scored.reduce((a,b)=>a+b,0)/scored.length*20):0,categories=stakeholderCategoryCounts(rr);root.innerHTML=`<div class="cloud-survey-card"><div class="cloud-survey-card-head"><div><b>${esc(survey.title||cfg.title)}</b><div class="mini">تحليل مباشر للردود المحفوظة في Supabase — آخر تحديث ${new Date().toLocaleTimeString("ar-SA",{hour:"2-digit",minute:"2-digit"})}</div></div><span class="survey-badge ${avg>=80?"strength":avg&&avg<60?"priority":"improve"}">${avg?avg+"%":"بانتظار الردود"}</span></div><div class="cloud-analysis-grid"><div class="cloud-analysis-box"><small>الردود</small><b>${rr.length}</b></div><div class="cloud-analysis-box"><small>المستهدفون والمستهدفات</small><b>${target||"—"}</b></div><div class="cloud-analysis-box"><small>نسبة المشاركة</small><b>${participation==null?"—":participation+"%"}</b></div><div class="cloud-analysis-box"><small>متوسط البنود الكمية</small><b>${avg?avg+"%":"—"}</b></div></div>${categories.length?`<p class="mini"><b>توزيع المشاركين والمشاركات:</b> ${categories.map(([k,v])=>esc(k)+" ("+v+")").join("، ")}</p>`:'<div class="empty" style="margin-top:10px">لم تصل ردود بعد.</div>'}</div>`}
+async function refreshStakeholderSurveyAnalytics(showMessage=false){try{if(state.stakeholderSurvey){const target=Math.max(0,Number(document.getElementById("stakeholderTargetCount")?.value)||0);if(target!==Number(state.stakeholderSurvey.targetCount||0)){state.stakeholderSurvey.targetCount=target;saveAll(false)}}if(!state.stakeholderSurvey?.id){renderStakeholderCloudDashboard();return}const d=await operationalImpactCall("list",{});stakeholderCloudSurveys=Array.isArray(d.surveys)?d.surveys:[];stakeholderCloudResponses=Array.isArray(d.responses)?d.responses:[];renderStakeholderCloudDashboard();if(showMessage)alert("تم تحديث الردود والتحليل.")}catch(e){console.error(e);const root=document.getElementById("stakeholderCloudDashboard");if(root)root.innerHTML=`<div class="survey-warning">تعذر تحديث الردود: ${esc(e.message||"خطأ غير معروف")}</div>`}}
 
 const SURVEY_META_PATTERNS=[
   /timestamp|الطابع|الوقت|التاريخ|تاريخ الإرسال/i,
@@ -2252,7 +2312,7 @@ function printVisualOutputs(){
 /* ===== محرك استيراد الخطة التشغيلية من Word / PDF ===== */
 let importedPlanDocument=null;
 const PLAN_IMPORT_FIELD_LABELS={
-schoolName:"اسم المدرسة",stage:"المرحلة",ministryNo:"الرقم الوزاري",eduAdmin:"إدارة التعليم",educationOffice:"مكتب التعليم",city:"المدينة/المحافظة",address:"العنوان",schoolPhone:"هاتف المدرسة",schoolEmail:"البريد الإلكتروني",buildingType:"نوع المبنى",year:"العام الدراسي",term:"الفصل الدراسي",studentsCount:"عدد الطلاب",teachersCount:"عدد المعلمين",adminsCount:"عدد الإداريين",schoolLocation:"موقع المدرسة",principalName:"مدير/ة المدرسة",principalQualification:"المؤهل",principalMobile:"جوال المدير/ة",stageGoals:"أهداف المرحلة",intro:"المقدمة",principalWord:"كلمة مدير/ة المدرسة",vision:"الرؤية",mission:"الرسالة",values:"القيم",strengths:"نقاط القوة",weaknesses:"نقاط الضعف",opportunities:"الفرص",threats:"التهديدات/التحديات",issues:"القضايا الملحة",sources:"مصادر بناء الخطة",finalAgenda:"محاور الاجتماع الختامي",finalRecommendations:"التوصيات"};
+schoolName:"اسم المدرسة",stage:"المرحلة",ministryNo:"الرقم الوزاري",eduAdmin:"إدارة التعليم",educationOffice:"مكتب التعليم",city:"المدينة/المحافظة",address:"العنوان",schoolPhone:"هاتف المدرسة",schoolEmail:"البريد الإلكتروني",buildingType:"نوع المبنى",year:"العام الدراسي",term:"الفصل الدراسي",studentsCount:"عدد الطلاب/الطالبات",teachersCount:"عدد المعلمين/المعلمات",adminsCount:"عدد الإداريين/الإداريات",schoolLocation:"موقع المدرسة",principalName:"مدير/ة المدرسة",principalQualification:"المؤهل",principalMobile:"جوال المدير/ة",stageGoals:"أهداف المرحلة",intro:"المقدمة",principalWord:"كلمة مدير/ة المدرسة",vision:"الرؤية",mission:"الرسالة",values:"القيم",strengths:"نقاط القوة",weaknesses:"نقاط الضعف",opportunities:"الفرص",threats:"التهديدات/التحديات",issues:"القضايا الملحة",sources:"مصادر بناء الخطة",finalAgenda:"محاور الاجتماع الختامي",finalRecommendations:"التوصيات"};
 
 function openPlanDocumentImport(){
   const modal=document.getElementById("planDocumentImportModal"); if(!modal)return;
@@ -2411,14 +2471,14 @@ function preparePrint(options={}){
   saveAll(false);let out="";
   out+=`<div class="a4-page print-cover">${ph()}<div class="cover-center"><h1>الخطة التشغيلية</h1><h2>${esc(state.fields.schoolName||"اسم المدرسة")}</h2><p>${esc(state.fields.year||"العام الدراسي")}</p><p>${esc(state.fields.principalName||"مدير/ة المدرسة")}</p></div></div>`;
   out+=page("البسملة",`<div class="basmala">بسم الله الرحمن الرحيم</div>`);
-  let printIndex=["الغلاف","البسملة","الفهرس","المقدمة","كلمة مدير/ة المدرسة","أهداف المرحلة","اجتماعات فريق التخطيط","قرار تكليف فريق التخطيط","كشف توقيع أعضاء الفريق","اعتماد الخطة","بيانات المدرسة والهيكل التنظيمي","التشكيلات المدرسية والمرافق","موقع المدرسة","بطاقة معلومات مدير/ة المدرسة","بيانات الهيئة الإدارية والتعليمية","منسوبو المدرسة","أعداد الطلاب والفصول","تحليل نتائج المرحلة","الرؤية والرسالة والقيم","تحليل واقع المدرسة SWOT","أوجه الاستثمار والمعالجة","القضايا الرئيسية","مصادر الخطة","مجالات الخطة","أساليب التنفيذ","الأهداف الاستراتيجية لوزارة التعليم","المناسبات المحلية والعالمية","الأهداف العامة والتفصيلية لبرامج الخطة","برامج الخطة","متابعة الجدول الزمني لتنفيذ البرامج","تطوير الخطة التشغيلية","استمارات متابعة تنفيذ الخطة","تكليفات منفذي البرامج","متابعة المؤشرات","التحفيز","نظام المتابعة","استمارة تقييم الخطة","تقرير تنفيذ البرامج","استمارة مساءلة عدم التنفيذ","شهادة شكر وتقدير للمنفذين","الاجتماع الختامي","التقرير النهائي","كشف التوقيع","المخرجات البصرية"];
+  let printIndex=["الغلاف","البسملة","الفهرس","المقدمة","كلمة مدير/ة المدرسة","أهداف المرحلة","اجتماعات فريق التخطيط","قرار تكليف فريق التخطيط","كشف توقيع أعضاء وعضوات الفريق","اعتماد الخطة","بيانات المدرسة والهيكل التنظيمي","التشكيلات المدرسية والمرافق","موقع المدرسة","بطاقة معلومات مدير/ة المدرسة","بيانات الهيئة الإدارية والتعليمية","منسوبو ومنسوبات المدرسة","أعداد الطلاب والطالبات والفصول","تحليل نتائج المرحلة","الرؤية والرسالة والقيم","تحليل واقع المدرسة SWOT","أوجه الاستثمار والمعالجة","القضايا الرئيسية","مصادر الخطة","مجالات الخطة","أساليب التنفيذ","الأهداف الاستراتيجية لوزارة التعليم","المناسبات المحلية والعالمية","الأهداف العامة والتفصيلية لبرامج الخطة","برامج الخطة","متابعة الجدول الزمني لتنفيذ البرامج","تطوير الخطة التشغيلية","استمارات متابعة تنفيذ الخطة","تكليفات القائمين والقائمات على التنفيذ","متابعة المؤشرات","التحفيز","نظام المتابعة","استمارة تقييم الخطة","تقرير تنفيذ البرامج","استمارة مساءلة عدم التنفيذ","شهادة شكر وتقدير للقائمين والقائمات على التنفيذ","الاجتماع الختامي","التقرير النهائي","كشف التوقيع","المخرجات البصرية"];
   out+=page("الفهرس",`<div class="index-preview">${printIndex.map((x,i)=>`<div class="index-item"><span>${i+1}. ${esc(x)}</span><b>${i+1}</b></div>`).join("")}</div>`);
   out+=page("بيانات المدرسة والهيكل التنظيمي",rowsTable(["البيان","القيمة","البيان","القيمة"],[
     `<tr><td>اسم المدرسة</td><td>${esc(state.fields.schoolName)}</td><td>المرحلة</td><td>${esc(state.fields.stage)}</td></tr>`,
     `<tr><td>الرقم الوزاري</td><td>${esc(state.fields.ministryNo)}</td><td>المدينة</td><td>${esc(state.fields.city)}</td></tr>`,
     `<tr><td>هاتف المدرسة</td><td>${esc(state.fields.schoolPhone)}</td><td>البريد الإلكتروني</td><td>${esc(state.fields.schoolEmail)}</td></tr>`,
     `<tr><td>نوع المبنى</td><td>${esc(state.fields.buildingType)}</td><td>العام الدراسي</td><td>${esc(state.fields.year)}</td></tr>`,
-    `<tr><td>عدد الطلاب</td><td>${esc(state.fields.studentsCount)}</td><td>عدد المعلمين</td><td>${esc(state.fields.teachersCount)}</td></tr>`
+    `<tr><td>عدد الطلاب/الطالبات</td><td>${esc(state.fields.studentsCount)}</td><td>عدد المعلمين/المعلمات</td><td>${esc(state.fields.teachersCount)}</td></tr>`
   ]));
 
   out+=page("التشكيلات المدرسية والمرافق",`<div class="two"><div class="box"><b>الهيكل التنظيمي واللجان والفرق</b><div class="textblock">${esc(state.fields.orgStructure).replace(/\n/g,"<br>")}</div></div><div class="box"><b>المرافق التعليمية والخدمية</b><div class="textblock">${esc(state.fields.facilities).replace(/\n/g,"<br>")}</div></div></div>`);
@@ -2450,12 +2510,12 @@ function preparePrint(options={}){
   out+=page("متابعة الجدول الزمني لتنفيذ البرامج",rowsTable(["م","اسم البرنامج","المجال","من","إلى","مسؤول التنفيذ","الحالة","ملاحظات"],state.programs.map((p,i)=>`<tr><td>${i+1}</td><td>${esc(p.name)}</td><td>${esc(p.domain)}</td><td>${esc(p.from)}</td><td>${esc(p.to)}</td><td>${esc(personName(p.ownerId))}</td><td>${esc(p.status||"مخطط")}</td><td>${esc(p.timelineNote||"")}</td></tr>`)));
   out+=page("تطوير الخطة التشغيلية",`<div class="separator-page"><h2>تطوير الخطة التشغيلية</h2></div>`);
   out+=page("استمارات متابعة تنفيذ الخطة",`<div class="separator-page"><h2>استمارات متابعة تنفيذ الخطة</h2></div>`);
-  out+=page("تكليفات منفذي برامج الخطة التشغيلية",rowsTable(["م","اسم البرنامج","من","إلى","مسؤول التنفيذ","المسمى الوظيفي","التوقيع"],state.programs.map((p,i)=>`<tr><td>${i+1}</td><td>${esc(p.name)}</td><td>${esc(p.from)}</td><td>${esc(p.to)}</td><td>${esc(personName(p.ownerId))}</td><td>${esc(personRole(p.ownerId))}</td><td></td></tr>`)));
+  out+=page("تكليفات القائمين والقائمات على تنفيذ برامج الخطة التشغيلية",rowsTable(["م","اسم البرنامج","من","إلى","المسؤول/المسؤولة عن التنفيذ","المسمى الوظيفي","التوقيع"],state.programs.map((p,i)=>`<tr><td>${i+1}</td><td>${esc(p.name)}</td><td>${esc(p.from)}</td><td>${esc(p.to)}</td><td>${esc(personName(p.ownerId))}</td><td>${esc(personRole(p.ownerId))}</td><td></td></tr>`)));
   state.team.forEach((t,i)=>out+=page(`خطاب تكليف — ${esc(personName(t.personId))}`,`<div class="textblock"><p>المكرم/ة <b>${esc(personName(t.personId))}</b> — ${esc(personRole(t.personId))}</p><p>بناءً على تشكيل فريق التخطيط للعام الدراسي ${esc(state.fields.year)}، فقد تم تكليفكم بالمهمة التالية:</p><div class="box" style="text-align:center;font-size:14px;font-weight:900">${esc(t.task)}</div><p>نأمل تنفيذ المهمة وفق الخطة الزمنية المعتمدة ورفع ما يلزم من تقارير وشواهد، مع الالتزام بمتطلبات المتابعة والتقويم.</p></div><div style="height:5mm"></div>${rowsTable(["المكلف","الدور","المهمة","التوقيع"],[`<tr><td>${esc(personName(t.personId))}</td><td>${esc(personRole(t.personId))}</td><td>${esc(t.task)}</td><td></td></tr>`])}`));
-  out+=page("جدول أساليب التحفيز لمنفذي برامج الخطة",rowsTable(["م","اسم البرنامج","المسؤول المنفذ","أساليب التحفيز","ملاحظات"],state.programs.map((p,i)=>`<tr><td>${i+1}</td><td>${esc(p.name)}</td><td>${esc(personName(p.ownerId))}</td><td>${esc(p.motivation)}</td><td>${esc(p.motivationNote)}</td></tr>`)));
+  out+=page("جدول أساليب التحفيز للقائمين والقائمات على تنفيذ برامج الخطة",rowsTable(["م","اسم البرنامج","المسؤول/المسؤولة عن التنفيذ","أساليب التحفيز","ملاحظات"],state.programs.map((p,i)=>`<tr><td>${i+1}</td><td>${esc(p.name)}</td><td>${esc(personName(p.ownerId))}</td><td>${esc(p.motivation)}</td><td>${esc(p.motivationNote)}</td></tr>`)));
   out+=page("جدول متابعة مؤشرات تحقق البرامج",rowsTable(["م","اسم البرنامج","تاريخ التفعيل","مؤشر تحقق البرنامج","نوع التحقق"],state.programs.map((p,i)=>`<tr><td>${i+1}</td><td>${esc(p.name)}</td><td>${esc(p.from)} إلى ${esc(p.to)}</td><td>${esc(p.indicator)}</td><td>${esc(p.verification)}</td></tr>`)));
   out+=page("نظام المتابعة",rowsTable(["م","اسم البرنامج","من","إلى","مسؤول التنفيذ","مستوى التنفيذ","مسؤول المتابعة","الصفة الإدارية","التوقيع"],state.programs.map((p,i)=>`<tr><td>${i+1}</td><td>${esc(p.name)}</td><td>${esc(p.from)}</td><td>${esc(p.to)}</td><td>${esc(personName(p.ownerId))}</td><td>${esc(p.status)}</td><td>${esc(personName(p.followId))}</td><td>${esc(personRole(p.followId))}</td><td></td></tr>`)));
-  out+=page("حصر صعوبات التنفيذ",rowsTable(["م","البرنامج","الصعوبة","السبب","الإجراء المتخذ","المسؤول","الحالة"],state.difficulties.map((d,i)=>{let p=state.programs.find(x=>x.id===d.programId);return `<tr><td>${i+1}</td><td>${esc(p?.name||"")}</td><td>${esc(d.difficulty)}</td><td>${esc(d.reason)}</td><td>${esc(d.action)}</td><td>${esc(personName(d.ownerId))}</td><td>${esc(d.status)}</td></tr>`})));
+  out+=page("حصر صعوبات التنفيذ",rowsTable(["م","البرنامج","الصعوبة","السبب","الإجراء المتخذ","المسؤول/المسؤولة","الحالة"],state.difficulties.map((d,i)=>{let p=state.programs.find(x=>x.id===d.programId);return `<tr><td>${i+1}</td><td>${esc(p?.name||"")}</td><td>${esc(d.difficulty)}</td><td>${esc(d.reason)}</td><td>${esc(d.action)}</td><td>${esc(personName(d.ownerId))}</td><td>${esc(d.status)}</td></tr>`})));
   out+=page("استمارة تقييم الخطة التشغيلية",rowsTable(["م","المعيار","الدرجة الكلية","الدرجة المستحقة","المبررات"],[
     ["بنيت الخطة على تحليل الواقع وتشخيصه وعلى مصادر كافية",10],["توازن الرؤية بين الطموح والواقع",10],["صيغت الرسالة بأسلوب علمي متكامل مع الرؤية",10],["زمن التنفيذ محدد بالأسبوع واليوم في معظم الخطة",10],["حددت الخطة أساليب تنفيذ البرامج والمشروعات",10],["حددت الخطة مسؤول التنفيذ لكل برنامج بالصفة الإدارية والاسم",10],["شملت الخطة جميع الفئات المستهدفة",10],["حددت الخطة مؤشرات الأداء بدقة مع ارتباطها بالأهداف",10],["وضعت الخطة برنامجًا زمنيًا لمتابعة تنفيذها",10],["اشتملت الخطة على المجالات الرئيسة",10]
   ].map((e,i)=>`<tr><td>${i+1}</td><td>${esc(e[0])}</td><td>${e[1]}</td><td></td><td></td></tr>`)));
@@ -2593,7 +2653,7 @@ function preparePrint(options={}){
   out+=page("المخرجات البصرية 3/10 — الرؤية والرسالة والقيم",`<div class="three"><div class="box"><h3>الرؤية</h3><div class="textblock">${esc(state.fields.vision)}</div></div><div class="box"><h3>الرسالة</h3><div class="textblock">${esc(state.fields.mission)}</div></div><div class="box"><h3>القيم</h3><div class="textblock">${esc(state.fields.values).replace(/\n/g,"<br>")}</div></div></div>`,"visual-page");
   out+=page("المخرجات البصرية 4/10 — تحليل الواقع",`<div class="two"><div class="box"><b>القوة</b><div class="textblock">${esc(state.fields.strengths).replace(/\n/g,"<br>")}</div></div><div class="box"><b>الضعف</b><div class="textblock">${esc(state.fields.weaknesses).replace(/\n/g,"<br>")}</div></div><div class="box"><b>الفرص</b><div class="textblock">${esc(state.fields.opportunities).replace(/\n/g,"<br>")}</div></div><div class="box"><b>التحديات</b><div class="textblock">${esc(state.fields.threats).replace(/\n/g,"<br>")}</div></div></div>`,"visual-page");
   out+=page("المخرجات البصرية 5/10 — الأهداف والمجالات",rowsTable(["المجال","عدد البرامج"],Object.keys(DOMAINS).map(d=>`<tr><td>${esc(d)}</td><td>${state.programs.filter(p=>p.domain===d).length}</td></tr>`)),"visual-page");
-  out+=page("المخرجات البصرية 6/10 — خارطة البرامج",rowsTable(["م","البرنامج","المجال","المسؤول","المؤشر"],state.programs.map((p,i)=>`<tr><td>${i+1}</td><td>${esc(p.name)}</td><td>${esc(p.domain)}</td><td>${esc(personName(p.ownerId))}</td><td>${esc(p.indicator)}</td></tr>`)),"visual-page");
+  out+=page("المخرجات البصرية 6/10 — خارطة البرامج",rowsTable(["م","البرنامج","المجال","المسؤول/المسؤولة","المؤشر"],state.programs.map((p,i)=>`<tr><td>${i+1}</td><td>${esc(p.name)}</td><td>${esc(p.domain)}</td><td>${esc(personName(p.ownerId))}</td><td>${esc(p.indicator)}</td></tr>`)),"visual-page");
   out+=page("المخرجات البصرية 7/10 — الخارطة الزمنية",rowsTable(["م","البرنامج","من","إلى","الحالة"],state.programs.map((p,i)=>`<tr><td>${i+1}</td><td>${esc(p.name)}</td><td>${esc(p.from)}</td><td>${esc(p.to)}</td><td>${esc(p.status)}</td></tr>`)),"visual-page");
   out+=page("المخرجات البصرية 8/10 — مؤشرات التحقق",rowsTable(["البرنامج","المؤشر","نوع التحقق"],state.programs.map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.indicator)}</td><td>${esc(p.verification)}</td></tr>`)),"visual-page");
   out+=page("المخرجات البصرية 9/10 — التنفيذ والتحديات",`${rowsTable(["البرنامج","الحالة","المتابع"],state.programs.map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.status)}</td><td>${esc(personName(p.followId))}</td></tr>`))}<div style="height:4mm"></div>${rowsTable(["الصعوبة","الإجراء","الحالة"],state.difficulties.map(d=>`<tr><td>${esc(d.difficulty)}</td><td>${esc(d.action)}</td><td>${esc(d.status)}</td></tr>`))}`,"visual-page");
@@ -2660,6 +2720,7 @@ function load(){
   state.programs=state.programs||[];state.difficulties=state.difficulties||[];state.classStats=state.classStats||[];
   state.results=state.results||[];state.accountabilities=state.accountabilities||[];state.improvements=state.improvements||[];
   state.surveys=state.surveys||[];state.surveyImports=state.surveyImports||[];
+  state.stakeholderSurvey=state.stakeholderSurvey||{};
   state.meta=state.meta||{academicYear:normalizeAcademicYear(state.fields.year||""),status:"open",createdAt:new Date().toISOString(),archivedAt:null};
   const base=window.SchoolBaseSettings?.read?.()||{};
   if(!String(state.fields.schoolName||"").trim()&&base.school)state.fields.schoolName=base.school;

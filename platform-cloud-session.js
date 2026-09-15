@@ -490,36 +490,37 @@
       throw error;
     }
     const membershipsList = Array.isArray(payload.memberships) ? payload.memberships : [];
-    // RL143: use the single module-level canonical role contract.
+    // FINAL MULTI-SCHOOL CONTRACT (2026-09-15): payload.current is returned by
+    // platform-session only after the x-platform-session token has been validated
+    // server-side. Do not re-deny that signed school context because a legacy
+    // school_members row uses another historical user_id (or is absent for an
+    // old primary-manager school). That duplicate client-side membership gate was
+    // the source of the manager-page flash then redirect for shared managers.
+    // School isolation remains server-authoritative: sid/uid/role come only from
+    // the active platform_sessions row, and every cloud API validates that token.
     const allowed = (requiredRoles || []).map(canonicalRole).filter(Boolean);
     const currentRole = canonicalRole(rr);
-    // RL144 — MULTI-SCHOOL VERIFIED MEMBERSHIP CONTRACT:
-    // `memberships` is returned only after the server validates the active
-    // x-platform-session token and resolves memberships for that identity.
-    // Legacy schools may still carry a historical per-school user_id. Requiring
-    // that legacy id to equal the canonical Auth/session UUID ejects legitimate
-    // multi-school managers immediately after the page opens. Authorization is
-    // therefore matched by the verified CURRENT school + canonical role. The
-    // server remains the authority for identity and school isolation.
-    const member = membershipsList.find((m) =>
-      String(m.schoolId || '') === sid &&
-      canonicalRole(m.role) === currentRole
-    );
-    if (!member) {
-      const error = new Error('المستخدم غير مرتبط بالمدرسة الحالية بعضوية فعالة.');
-      error.code = 'VERIFIED_MEMBERSHIP_MISSING';
-      throw error;
-    }
     if (allowed.length && !allowed.includes(currentRole)) {
       const error = new Error('الدور الحالي غير مخول بفتح هذه الصفحة.');
       error.code = 'VERIFIED_ROLE_DENIED';
       throw error;
     }
+    // Membership is supplementary UI metadata only. Prefer an exact canonical
+    // match, then same-school/same-role. Never use a historical user_id mismatch
+    // to invalidate an already verified server session.
+    const member = membershipsList.find((m) =>
+      String(m.schoolId || '') === sid &&
+      String(m.userId || '') === uid &&
+      canonicalRole(m.role) === currentRole
+    ) || membershipsList.find((m) =>
+      String(m.schoolId || '') === sid && canonicalRole(m.role) === currentRole
+    ) || null;
     // RL33: verified identity remains tab-scoped. Never rewrite shared localStorage identity keys.
     sessionStorage.setItem(TAB_SCHOOL_KEY, sid);
     sessionStorage.setItem(TAB_USER_KEY, uid);
-    sessionStorage.setItem(TAB_ROLE_KEY, rr || String(member.role || ''));
-    return { schoolId: sid, userId: uid, role: rr || String(member.role || ''), membership: member };
+    sessionStorage.setItem(TAB_ROLE_KEY, rr);
+    markVerifiedContext({schoolId:sid,userId:uid,role:rr});
+    return { schoolId: sid, userId: uid, role: rr, membership: member, verified: true };
   }
 
   function clear() {

@@ -333,11 +333,8 @@ Deno.serve(async (request) => {
     }
 
     let authUser: any = null;
-    let authAttempted = false;
-    let authErrorCode = '';
     const normalizedLogin = lower(login);
     if (anonKey && normalizedLogin.includes('@')) {
-      authAttempted = true;
       const authClient = createClient(supabaseUrl, anonKey, {
         auth: { persistSession: false, autoRefreshToken: false },
       });
@@ -346,7 +343,6 @@ Deno.serve(async (request) => {
         password,
       });
       if (!authResult.error && authResult.data?.user) authUser = authResult.data.user;
-      else if (authResult.error) authErrorCode = text((authResult.error as any)?.code || (authResult.error as any)?.status || 'AUTH_FAILED');
     }
 
     // RL143 — SCHOOL-FIRST MULTI-SCHOOL LOGIN:
@@ -543,28 +539,10 @@ Deno.serve(async (request) => {
         membershipFound: diagnosticMembershipFound,
         membershipActive: diagnosticMembershipActive,
       });
-      // RL163 — SAFE LOGIN DIAGNOSTICS ONLY. No e-mail, UUID, password or school data
-      // is returned. This lets us identify the exact failing gate without changing
-      // authorization behavior for any independent school.
-      const safeDiagnostic = [
-        diagnosticCode,
-        `AA${authAttempted ? 1 : 0}`,
-        `AU${authUser ? 1 : 0}`,
-        `AE${authErrorCode ? 1 : 0}`,
-        `MI${text(school.manager_email) ? 1 : 0}`,
-        `MM${lower(school.manager_email || '') === normalizedLogin ? 1 : 0}`,
-        `SI${sameSchoolLoginRows.length > 0 ? 1 : 0}`,
-        `SA${candidates.length > 0 ? 1 : 0}`,
-        `SC${sameSchoolCredentialMatch ? 1 : 0}`,
-        `CB${crossSchoolCredentialUser ? 1 : 0}`,
-        `BM${schoolBoundMembership ? 1 : 0}`,
-        `MF${diagnosticMembershipFound ? 1 : 0}`,
-        `MA${diagnosticMembershipActive ? 1 : 0}`,
-      ].join('-');
       return json({
         error:'بيانات الدخول غير صحيحة أو الحساب غير مرتبط بهذه المدرسة',
         code:'USER_NOT_RESOLVED',
-        details:safeDiagnostic,
+        details:diagnosticCode,
         requestId
       },401);
     }

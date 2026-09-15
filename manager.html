@@ -6179,8 +6179,8 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
   window.__PLATFORM_EXPLICIT_ACCESS_GATE__ = true;
 </script>
 <script src="platform-runtime-guard.js?v=20260914-RL151-single-cloud-session"></script>
-<script src="platform-cloud-session.js?v=20260914-RL160-rollback-pre-follow-records"></script>
-<script id="platform-manager-access-gate-clean-v6-bisha-stability">
+<script src="platform-cloud-session.js?v=20260915-RL161-single-manager-gate"></script>
+<script id="platform-manager-access-gate-final-v7-single-cloud-session">
 (function(){
   function requestedSystemAdminContext(){
     try{
@@ -6258,22 +6258,21 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
     if(!window.PlatformCloudSession||typeof window.PlatformCloudSession.ensure!=='function'){
       var miss=new Error('SECURITY_GATE_MISSING');miss.code='SECURITY_GATE_MISSING';throw miss;
     }
-    // RL152 — Golden-reference contract used by the working demo/multi-school path:
-    // one server-issued cloud session is authoritative for the selected school.
-    // Do not add a second school_members identity equality gate after login; legacy
-    // multi-school managers may have historical user_id values per school.
+    // FINAL multi-school contract: exactly the same single-cloud-session principle
+    // used by the stable school-information path. Do NOT start a second membership
+    // verification after platform-session has already issued/restored this tab's
+    // canonical school/user/role session; legacy multi-school rows may carry a
+    // historical user_id and must not eject an otherwise valid manager session.
     await window.PlatformCloudSession.ensure();
     var sid=String(window.PlatformCloudSession.schoolId&&window.PlatformCloudSession.schoolId()||'').trim();
     var uid=String(window.PlatformCloudSession.userId&&window.PlatformCloudSession.userId()||'').trim();
     var role=String((window.PlatformCloudSession.role&&window.PlatformCloudSession.role())||(window.PlatformCloudSession.baseRole&&window.PlatformCloudSession.baseRole())||'').trim().toLowerCase();
-    var canonical=(role==='principal'||role==='school_manager')?'manager':role;
-    if(!sid||!uid){var e=new Error('SESSION_MISSING');e.code='SESSION_MISSING';throw e;}
-    if(canonical!=='manager'){var denied=new Error('الدور الحالي غير مخول بفتح واجهة المدير.');denied.code='VERIFIED_ROLE_DENIED';throw denied;}
-    try{
-      sessionStorage.setItem('smart_school_tab_school_v1',sid);
-      sessionStorage.setItem('platform_tab_session_school_v1',sid);
-    }catch(_){}
-    return {schoolId:sid,userId:uid,role:'manager',verified:true,source:'cloud-session'};
+    var canonical=(typeof window.PlatformCloudSession.canonicalRole==='function')?window.PlatformCloudSession.canonicalRole(role):role;
+    if(!sid||!uid){var absent=new Error('SESSION_MISSING');absent.code='SESSION_MISSING';throw absent;}
+    if(canonical!=='manager'){
+      var denied=new Error('الدور الحالي غير مخول بفتح واجهة المدير.');denied.code='VERIFIED_ROLE_DENIED';throw denied;
+    }
+    return {schoolId:sid,userId:uid,role:'manager',verified:true};
   }
   window.__PLATFORM_ACCESS_READY__=(async function(){
     var systemAdminRequested=requestedSystemAdminContext();

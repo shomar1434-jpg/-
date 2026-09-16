@@ -91,14 +91,50 @@ Deno.serve(async(req)=>{
       return [...byId.values()].sort((a:any,b:any)=>text(a.stage).localeCompare(text(b.stage),'ar')||text(a.grade).localeCompare(text(b.grade),'ar')||text(a.track_name).localeCompare(text(b.track_name),'ar')||text(a.section_name).localeCompare(text(b.section_name),'ar')||text(a.student_name).localeCompare(text(b.student_name),'ar'));
     };
     const listStaff=async()=>{
-      const mq=await sb.from('school_members').select('*').eq('school_id',schoolId).neq('status','deleted').limit(5000);if(mq.error)throw mq.error;
-      const members:any[]=mq.data||[],ids=[...new Set(members.map((m:any)=>text(m.user_id)).filter(Boolean))],identities:any[]=[];
-      for(let i=0;i<ids.length;i+=200){const uq=await sb.from('users').select('*').in('id',ids.slice(i,i+200)).limit(500);if(!uq.error)identities.push(...(uq.data||[]));}
-      const by=new Map(identities.map((u:any)=>[String(u.id),u]));
-      return members.map((m:any)=>{const u:any=by.get(String(m.user_id))||{};return {...u,id:m.user_id||u.id,user_id:m.user_id||u.id,email:m.email||u.email||'',school_id:schoolId,role:m.role||u.role||'',role_label:m.role_label||u.role_label||'',status:m.status||u.status||'active'};});
+      // Membership is authoritative, while users.school_id remains a supported legacy
+      // source so enabled accounts created before school_members are not lost.
+      const mq=await sb.from('school_members').select('*').eq('school_id',schoolId).limit(5000);
+      if(mq.error)throw mq.error;
+      const lq=await sb.from('users').select('*').eq('school_id',schoolId).limit(5000);
+      if(lq.error)throw lq.error;
+      const members:any[]=mq.data||[],legacy:any[]=lq.data||[];
+      const ids=[...new Set(members.map((m:any)=>text(m.user_id)).filter(Boolean))],identities:any[]=[];
+      for(let i=0;i<ids.length;i+=200){
+        const uq=await sb.from('users').select('*').in('id',ids.slice(i,i+200)).limit(500);
+        if(uq.error)throw uq.error;
+        identities.push(...(uq.data||[]));
+      }
+      const usersById=new Map([...legacy,...identities].map((u:any)=>[String(u.id),u]));
+      const result=new Map<string,any>();
+      const isActive=(row:any)=>{
+        const status=norm(row?.status||row?.member_status||row?.user_status||'active');
+        return !['deleted','inactive','disabled','suspended','محذوف','غير نشط','موقوف'].includes(status)&&
+          row?.active!==false&&row?.is_active!==false&&row?.enabled!==false;
+      };
+      for(const m of members){
+        if(!isActive(m))continue;
+        const u:any=usersById.get(String(m.user_id))||{};
+        // An active membership grants visibility in this school even when the old
+        // users.school_id value still points elsewhere (shared/migrated accounts).
+        const id=text(m.user_id||u.id),email=text(m.email||u.email);
+        if(!id&&!email)continue;
+        result.set(id||norm(email),{...u,...m,id:id||u.id,user_id:id||u.id,email,school_id:schoolId,
+          role:m.role||u.role||'',role_label:m.role_label||u.role_label||'',member_status:text(m.status||'active'),
+          user_status:text(u.status||''),status:'active',active:true});
+      }
+      for(const u of legacy){
+        if(!isActive(u))continue;
+        const id=text(u.id||u.user_id),email=text(u.email);
+        if(!id&&!email)continue;
+        const key=id||norm(email);
+        if(result.has(key))continue;
+        result.set(key,{...u,id:id||u.id,user_id:id||u.user_id,email,school_id:schoolId,
+          member_status:'',user_status:text(u.status||'active'),status:'active',active:true});
+      }
+      return [...result.values()].sort((a:any,b:any)=>text(a.name||a.full_name||a.email).localeCompare(text(b.name||b.full_name||b.email),'ar'));
     };
 
-    if(action==='health') return json({ok:true,service:'school-information',version:'2.1.0-RL21-authoritative-structure-only',schoolId,userId,role,accessMode,requestId});
+    if(action==='health') return json({ok:true,service:'school-information',version:'3.0.0-RL165-directory-bindings',schoolId,userId,role,accessMode,requestId});
     if(action==='bootstrap') return json({school:await schoolQ(),students:await listStudents(),staff:await listStaff(),schoolId,accessMode,requestId});
     if(action==='school') return json({school:await schoolQ(),schoolId,accessMode,requestId});
     if(action==='students-list') return json({students:await listStudents(),schoolId,accessMode,requestId});

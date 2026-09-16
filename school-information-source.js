@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 if(window.SchoolInformationSource&&String(window.SchoolInformationSource.VERSION||'')==='13.0.0-RL165-directory-bindings')return;
-const VERSION='14.0.0-RL166-complete-directory-bindings';
+const VERSION='14.1.0-RL167-stable-directory-dropdowns';
 const SUPABASE_URL=(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'');
 const DEFAULT_SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
 const API_KEY=localStorage.getItem('smartSchoolSupabaseAnonKey')||DEFAULT_SUPABASE_KEY;
@@ -222,7 +222,10 @@ function valuesForType(dir,type){
 function ensureDatalist(type,items,doc=document){
  let list=doc.getElementById(LIST_IDS[type]);if(!list){list=doc.createElement('datalist');list.id=LIST_IDS[type];doc.body?.appendChild(list)}
  if(!list)return;
+ const signature=items.map(item=>safe(item.id)+'\u001f'+safe(item.value)).join('\u001e');
+ if(list.dataset.sisSignature===signature)return;
  list.replaceChildren(...items.map(item=>{const o=doc.createElement('option');o.value=item.value;if(item.id)o.dataset.entityId=item.id;return o}));
+ list.dataset.sisSignature=signature;
 }
 function findRelatedField(el,type){
  const scope=el.closest('tr,.row,.form-row,.grid,.card,.form-group')||el.parentElement;
@@ -254,7 +257,19 @@ function observeBindingRoot(doc){
  if(!doc?.body||observedDocuments.has(doc))return;
  observedDocuments.add(doc);
  const view=doc.defaultView||window;
- const observer=new view.MutationObserver(m=>{if(!m.some(x=>x.addedNodes.length))return;clearTimeout(bindingTimer);bindingTimer=setTimeout(()=>bindInformationFields(doc),120)});
+ const observer=new view.MutationObserver(m=>{
+  const meaningful=m.some(change=>{
+   if(!change.addedNodes.length)return false;
+   if(change.target?.closest?.('datalist[id^="sis-"]'))return false;
+   return [...change.addedNodes].some(node=>{
+    if(node.nodeType!==1)return false;
+    if(node.matches?.('datalist[id^="sis-"],datalist[id^="sis-"] *'))return false;
+    return true;
+   });
+  });
+  if(!meaningful)return;
+  clearTimeout(bindingTimer);bindingTimer=setTimeout(()=>bindInformationFields(doc),120);
+ });
  observer.observe(doc.body,{childList:true,subtree:true});
 }
 function bindChildFrames(root){

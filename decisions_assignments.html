@@ -120,7 +120,7 @@ button{border:0;border-radius:9px;padding:10px 13px;font:700 12px 'Alyamama';cur
 @media(max-width:1000px){.manager-return-btn{top:8px;left:8px;width:38px;height:38px;font-size:22px}}
 </style>
 <script src="school-base-settings-source.js?v=20260904-decisions-settings-v1"></script>
-<script src="school-information-source.js?v=20260914-RL160-rollback-pre-records"></script>
+<script src="school-information-source.js?v=20260916-RL169-stable-select-dropdowns"></script>
 <script src="platform-runtime-guard.js?v=20260914-RL148-legacy-session-bridge"></script>
 <script src="platform-cloud-session.js?v=20260914-RL160-rollback-pre-follow-records"></script>
 <script src="cloud-file-engine.js"></script>
@@ -153,7 +153,7 @@ button{border:0;border-radius:9px;padding:10px 13px;font:700 12px 'Alyamama';cur
    <select id="name">
      <option value="">جارٍ تحميل أسماء المعلمين/المعلمات من نظام المدرسة...</option>
    </select>
-   <div id="assigneeSourceHint" class="custom-help">المصدر: جميع الحسابات المفعلة في مركز المتابعة وإدارة المستخدمين للمدرسة الحالية.</div>
+   <div id="assigneeSourceHint" class="custom-help">المصدر: بيانات المعلمين المسجلين في المدرسة.</div>
  </div>
  <div class="field"><label>رقم الهوية / السجل المدني</label><input id="nid" placeholder="اختياري"></div>
  <div class="grid2">
@@ -649,62 +649,52 @@ async function loadAssigneeNames(selectedValue){
  if(!sel)return;
  let staff=[];
  try{
-   // المصدر المعتمد للتكليف: مركز المتابعة وإدارة المستخدمين، وليس مركز معلومات المعلمين.
-   // platform-directory/list-users يعزل النتائج تلقائيًا بالمدرسة الموجودة في الجلسة الموثقة.
-   if(window.PlatformCloudSession?.ensure)await window.PlatformCloudSession.ensure();
-   const token=window.PlatformCloudSession?.token?.()||sessionStorage.getItem('platform_tab_session_token_v1')||localStorage.getItem('platform_file_session_token')||'';
-   if(!token)throw new Error('تعذر استعادة جلسة المدرسة السحابية');
-   const base=(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'');
-   const anon=localStorage.getItem('smartSchoolSupabaseAnonKey')||'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
-   const r=await fetch(base+'/functions/v1/platform-directory?action=list-users',{method:'POST',headers:{'content-type':'application/json','apikey':anon,'x-platform-session':token},body:'{}'});
-   const j=await r.json().catch(()=>({}));
-   if(!r.ok||j.ok===false)throw new Error(j.error||('تعذر تحميل حسابات المدرسة ('+r.status+')'));
-   const usersById=new Map((Array.isArray(j.users)?j.users:[]).map(u=>[String(u?.id||''),u]));
-   staff=(Array.isArray(j.memberships)?j.memberships:[]).map(m=>{
-     const u=usersById.get(String(m?.user_id||''))||{};
-     return {...u,...m,id:m?.user_id||u.id,user_id:m?.user_id||u.id,name:u.full_name||m.full_name||'',full_name:u.full_name||m.full_name||'',email:m.email||u.email||'',user_status:u.status||'',user_active:u.active};
-   });
- }catch(e){console.warn('assignee active school accounts',e)}
+   if(!window.SchoolInformationSource||typeof SchoolInformationSource.getStaff!=='function')throw new Error('مصدر المنسوبين الحي غير متاح');
+   staff=await SchoolInformationSource.getStaff(false);
+ }catch(e){console.warn('assignee live staff',e)}
+ const allowedRoles=new Set(['teacher','kindergarten_teacher','administrative_employee','admin_employee']);
  const roleLabel=(r)=>{
    r=String(r||'').trim().toLowerCase();
-   const labels={manager:'مدير/ة المدرسة',school_manager:'مدير/ة المدرسة',principal:'مدير/ة المدرسة',agent:'وكيل/ة',deputy:'وكيل/ة',deputy_admin:'وكيل/ة',deputy_academic:'وكيل/ة',deputy_students:'وكيل/ة',teacher:'معلم/ة',kindergarten_teacher:'معلمة رياض أطفال',administrative_employee:'موظف/ة إداري/ة',admin_employee:'موظف/ة إداري/ة',student_advisor:'موجه/ة طلابي/ة',counselor:'موجه/ة طلابي/ة',health_advisor:'موجه/ة صحي/ة',activity_leader:'رائد/ة نشاط'};
-   return labels[r]||'منسوب/ة';
+   if(r==='teacher')return 'معلم/ة';
+   if(r==='kindergarten_teacher')return 'معلمة رياض أطفال';
+   if(r==='administrative_employee'||r==='admin_employee')return 'موظف/ة إداري/ة';
+   return 'منسوب/ة';
  };
  const seen=new Set();
  staff=(Array.isArray(staff)?staff:[]).filter(x=>{
-   const membershipStatus=String(x?.status||'').trim().toLowerCase();
-   const userStatus=String(x?.user_status||'').trim().toLowerCase();
-   const userActive=x?.user_active;
-   // الشرط الوحيد للأهلية: عضوية فعالة في المدرسة الحالية + حساب مستخدم مفعل.
-   if(membershipStatus!=='active')return false;
-   if(userStatus&&userStatus!=='active')return false;
-   if(userActive===false)return false;
+   const status=String(x?.status||x?.user_status||'').trim().toLowerCase();
+   const active=(x?.active===true||x?.isActive===true||x?.is_active===true);
+   if(status!=='active'||!active)return false;
+   const role=String(x?.role||x?.user_role||'').trim().toLowerCase();
+   if(!allowedRoles.has(role))return false;
    const uid=String(x?.id||x?.user_id||'').trim();
-   const name=normalizePersonName(x?.name||x?.full_name||x?.display_name);
-   if(!uid||!name||seen.has(uid))return false;
-   seen.add(uid);return true;
+   const name=normalizePersonName(x?.name||x?.full_name||x?.teacher_name||x?.display_name);
+   if(!uid||!name||seen.has(uid))return false;seen.add(uid);return true;
  }).sort((a,b)=>normalizePersonName(a.name||a.full_name||a.display_name).localeCompare(normalizePersonName(b.name||b.full_name||b.display_name),'ar'));
  const selected=normalizePersonName(selectedValue||'');
  sel.innerHTML='<option value="">اختر المكلف/ة</option>'+staff.map(t=>{
-   const n=normalizePersonName(t.name||t.full_name||t.display_name);
+   const n=normalizePersonName(t.name||t.full_name||t.teacher_name||t.display_name);
    const uid=String(t.id||t.user_id||'').trim();
-   const email=String(t.email||t.user_email||'').trim().toLowerCase();
+   const email=String(t.email||t.user_email||t.microsoft_email||'').trim().toLowerCase();
    const role=String(t.role||t.user_role||'').trim().toLowerCase();
    return '<option value="'+esc(n)+'" data-user-id="'+esc(uid)+'" data-email="'+esc(email)+'" data-role="'+esc(role)+'">'+esc(n)+' — '+esc(roleLabel(role))+'</option>';
  }).join('');
- // السجلات التاريخية تبقى قابلة للعرض فقط ولا تعاد كمستخدم حالي إذا لم يعد الحساب فعالًا.
+ // الاسم التاريخي لا يعاد إلى القائمة كمستخدم حالي.
  if(selected){
    const found=[...sel.options].find(o=>o.value===selected);
    if(found)sel.value=selected;
    else if(currentArchiveRecordId){
      const o=document.createElement('option');
-     o.value=selected;o.textContent=selected+' (محفوظ تاريخيًا — الحساب غير مفعل حاليًا)';o.disabled=true;o.dataset.historical='1';
-     sel.appendChild(o);sel.selectedIndex=sel.options.length-1;
+     o.value=selected;o.textContent=selected+' (محفوظ تاريخيًا — غير موجود حاليًا)';o.disabled=true;o.dataset.historical='1';
+     sel.appendChild(o);
+     sel.selectedIndex=sel.options.length-1;
    }
  }
+ const admins=staff.filter(x=>['administrative_employee','admin_employee'].includes(String(x?.role||x?.user_role||'').trim().toLowerCase())).length;
+ const teachers=staff.length-admins;
  if(hint)hint.textContent=staff.length
-   ? 'المصدر: مركز المتابعة وإدارة المستخدمين — '+staff.length+' حسابًا مفعلًا في المدرسة الحالية (جميع الأدوار).'
-   : 'لا توجد حسابات مفعلة متاحة للتكليف في المدرسة الحالية أو تعذر تحميل مركز إدارة المستخدمين.';
+   ? 'المصدر الحي: المنسوبون النشطون في المدرسة الحالية — '+teachers+' معلم/ة، '+admins+' إداري/ة.'
+   : 'لا توجد أسماء منسوبين نشطين متاحين للتكليف أو تعذر تحميل المصدر الحي.';
 }
 function selectedAssigneeIdentity(){
  const sel=$('name');

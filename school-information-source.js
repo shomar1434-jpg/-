@@ -1,7 +1,7 @@
 (function(){
 'use strict';
-if(window.SchoolInformationSource&&String(window.SchoolInformationSource.VERSION||'')==='13.0.0-RL165-directory-bindings')return;
-const VERSION='14.1.0-RL167-stable-directory-dropdowns';
+const VERSION='14.2.0-RL169-stable-select-dropdowns';
+if(window.SchoolInformationSource&&String(window.SchoolInformationSource.VERSION||'')===VERSION)return;
 const SUPABASE_URL=(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'');
 const DEFAULT_SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
 const API_KEY=localStorage.getItem('smartSchoolSupabaseAnonKey')||DEFAULT_SUPABASE_KEY;
@@ -227,6 +227,101 @@ function ensureDatalist(type,items,doc=document){
  list.replaceChildren(...items.map(item=>{const o=doc.createElement('option');o.value=item.value;if(item.id)o.dataset.entityId=item.id;return o}));
  list.dataset.sisSignature=signature;
 }
+const stableDropdownStates=new WeakMap();
+function ensureStableDropdownStyles(doc){
+ if(doc.getElementById('sis-stable-dropdown-styles'))return;
+ const style=doc.createElement('style');style.id='sis-stable-dropdown-styles';
+ style.textContent=`
+  .sis-stable-dropdown{position:fixed;display:none;box-sizing:border-box;z-index:2147483646;background:#fff;border:1px solid #0f9f98;border-radius:10px;box-shadow:0 12px 32px rgba(15,52,68,.22);max-height:280px;overflow:auto;overscroll-behavior:contain;padding:6px;text-align:right;direction:rtl;color:#153f53;font-family:inherit}
+  .sis-stable-dropdown[data-open="1"]{display:block}
+  .sis-stable-option{display:block;width:100%;border:0;background:transparent;color:inherit;text-align:right;direction:rtl;border-radius:7px;padding:9px 11px;cursor:pointer;font:inherit;line-height:1.35}
+  .sis-stable-option:hover,.sis-stable-option[data-active="1"]{background:#e8f8f6;color:#075f5a}
+  .sis-stable-option small{display:block;margin-top:2px;color:#67808c;font-size:.82em}
+  .sis-stable-empty{padding:12px;color:#71838c;text-align:center}
+ `;
+ (doc.head||doc.documentElement).appendChild(style);
+}
+function stableDropdownState(doc){
+ let state=stableDropdownStates.get(doc);if(state)return state;
+ ensureStableDropdownStyles(doc);
+ const menu=doc.createElement('div');menu.className='sis-stable-dropdown';menu.dataset.sisDropdownRoot='1';menu.setAttribute('role','listbox');
+ doc.body.appendChild(menu);
+ state={menu,input:null,type:'',items:[],active:-1};stableDropdownStates.set(doc,state);
+ const view=doc.defaultView||window;
+ doc.addEventListener('pointerdown',event=>{
+  if(!state.input)return;
+  if(event.target===state.input||menu.contains(event.target))return;
+  closeStableDropdown(doc);
+ },true);
+ view.addEventListener('resize',()=>positionStableDropdown(doc));
+ view.addEventListener('scroll',()=>positionStableDropdown(doc),true);
+ return state;
+}
+function closeStableDropdown(doc){
+ const state=stableDropdownStates.get(doc);if(!state)return;
+ if(state.input){state.input.setAttribute('aria-expanded','false');state.input.removeAttribute('aria-activedescendant')}
+ state.menu.dataset.open='0';state.menu.replaceChildren();state.input=null;state.items=[];state.active=-1;
+}
+function positionStableDropdown(doc){
+ const state=stableDropdownStates.get(doc);if(!state?.input||state.menu.dataset.open!=='1')return;
+ const view=doc.defaultView||window,rect=state.input.getBoundingClientRect();
+ const width=Math.max(rect.width,260),gap=4,below=view.innerHeight-rect.bottom-gap,above=rect.top-gap;
+ state.menu.style.width=Math.min(width,Math.max(180,view.innerWidth-16))+'px';
+ state.menu.style.left=Math.max(8,Math.min(rect.left,view.innerWidth-Math.min(width,view.innerWidth-16)-8))+'px';
+ state.menu.style.maxHeight=Math.max(120,Math.min(280,Math.max(below,above)-8))+'px';
+ if(below>=160||below>=above)state.menu.style.top=(rect.bottom+gap)+'px';
+ else state.menu.style.top=Math.max(8,rect.top-Math.min(280,above)-gap)+'px';
+}
+function stableOptionDetails(item,type){
+ const entity=item?.entity;if(!entity)return '';
+ if(type==='student')return [entity.stage,entity.grade,entity.section].filter(Boolean).join(' — ');
+ return safe(entity.jobTitle||entity.roleLabel||'');
+}
+function selectStableDropdownItem(doc,index){
+ const state=stableDropdownStates.get(doc),item=state?.items?.[index],input=state?.input;if(!item||!input)return;
+ input.dataset.sisSelectedValue=normalizedText(item.value);if(item.id)input.dataset.sisEntityId=item.id;
+ emitFieldValue(input,item.value);closeStableDropdown(doc);input.focus({preventScroll:true});
+}
+function setStableDropdownActive(doc,index){
+ const state=stableDropdownStates.get(doc);if(!state||!state.items.length)return;
+ state.active=Math.max(0,Math.min(index,state.items.length-1));
+ [...state.menu.querySelectorAll('.sis-stable-option')].forEach((button,i)=>button.dataset.active=i===state.active?'1':'0');
+ const active=state.menu.querySelector('.sis-stable-option[data-active="1"]');
+ if(active){state.input?.setAttribute('aria-activedescendant',active.id);active.scrollIntoView({block:'nearest'})}
+}
+function openStableDropdown(input,type,query=''){
+ const doc=input.ownerDocument||document,state=stableDropdownState(doc),needle=normalizedText(query);
+ const all=valuesForType(directorySync(),type),seen=new Set();
+ const items=all.filter(item=>{const key=normalizedText(item.value);if(!key||seen.has(key)||needle&&!key.includes(needle))return false;seen.add(key);return true}).slice(0,200);
+ state.input=input;state.type=type;state.items=items;state.active=-1;state.menu.replaceChildren();
+ if(!items.length){const empty=doc.createElement('div');empty.className='sis-stable-empty';empty.textContent='لا توجد نتائج مطابقة';state.menu.appendChild(empty)}
+ else items.forEach((item,index)=>{
+  const button=doc.createElement('button');button.type='button';button.className='sis-stable-option';button.id='sis-option-'+Date.now()+'-'+index;button.setAttribute('role','option');
+  const label=doc.createElement('span');label.textContent=item.value;button.appendChild(label);
+  const details=stableOptionDetails(item,type);if(details){const small=doc.createElement('small');small.textContent=details;button.appendChild(small)}
+  button.addEventListener('pointerdown',event=>{event.preventDefault();event.stopPropagation();selectStableDropdownItem(doc,index)});
+  state.menu.appendChild(button);
+ });
+ state.menu.dataset.open='1';input.setAttribute('aria-expanded','true');positionStableDropdown(doc);
+}
+function bindStableDropdown(input,type){
+ input.removeAttribute('list');input.setAttribute('autocomplete','off');input.setAttribute('role','combobox');input.setAttribute('aria-autocomplete','list');input.setAttribute('aria-haspopup','listbox');input.setAttribute('aria-expanded','false');
+ input.dataset.sisStableDropdownType=type;
+ if(input.dataset.sisStableDropdownBound==='1')return;
+ input.dataset.sisStableDropdownBound='1';
+ input.addEventListener('focus',()=>openStableDropdown(input,input.dataset.sisStableDropdownType,''));
+ input.addEventListener('click',()=>openStableDropdown(input,input.dataset.sisStableDropdownType,''));
+ input.addEventListener('input',()=>{delete input.dataset.sisSelectedValue;openStableDropdown(input,input.dataset.sisStableDropdownType,input.value)});
+ input.addEventListener('keydown',event=>{
+  const doc=input.ownerDocument||document,state=stableDropdownStates.get(doc);
+  if(event.key==='Escape'){closeStableDropdown(doc);return}
+  if(event.key==='ArrowDown'||event.key==='ArrowUp'){
+   event.preventDefault();if(!state||state.input!==input)openStableDropdown(input,input.dataset.sisStableDropdownType,input.value);
+   const next=stableDropdownStates.get(doc),step=event.key==='ArrowDown'?1:-1;setStableDropdownActive(doc,next.active<0?(step>0?0:next.items.length-1):next.active+step);return;
+  }
+  if(event.key==='Enter'&&state?.input===input&&state.active>=0){event.preventDefault();selectStableDropdownItem(doc,state.active)}
+ });
+}
 function findRelatedField(el,type){
  const scope=el.closest('tr,.row,.form-row,.grid,.card,.form-group')||el.parentElement;
  if(!scope)return null;
@@ -260,10 +355,10 @@ function observeBindingRoot(doc){
  const observer=new view.MutationObserver(m=>{
   const meaningful=m.some(change=>{
    if(!change.addedNodes.length)return false;
-   if(change.target?.closest?.('datalist[id^="sis-"]'))return false;
+   if(change.target?.closest?.('datalist[id^="sis-"],[data-sis-dropdown-root="1"]'))return false;
    return [...change.addedNodes].some(node=>{
     if(node.nodeType!==1)return false;
-    if(node.matches?.('datalist[id^="sis-"],datalist[id^="sis-"] *'))return false;
+    if(node.matches?.('datalist[id^="sis-"],datalist[id^="sis-"] *,[data-sis-dropdown-root="1"],[data-sis-dropdown-root="1"] *'))return false;
     return true;
    });
   });
@@ -284,7 +379,6 @@ async function bindInformationFields(root=document){
  try{
   let dir;try{dir=await getDirectory(false)}catch(e){console.warn('[school-information bindings unavailable]',e);return}
   const doc=root?.nodeType===9?root:(root?.ownerDocument||document);
-  Object.keys(LIST_IDS).forEach(type=>ensureDatalist(type,valuesForType(dir,type),doc));
   const fields=[];if(root?.matches?.('input,select,textarea'))fields.push(root);if(root?.querySelectorAll)fields.push(...root.querySelectorAll('input,select,textarea'));
   fields.forEach(el=>{
    if(el.disabled||['hidden','password','email','date','number','file','checkbox','radio','button','submit'].includes(lower(el.type)))return;
@@ -292,9 +386,9 @@ async function bindInformationFields(root=document){
    if(el.tagName==='SELECT'){
     const selected=el.value;el.querySelectorAll('option[data-sis-generated="1"]').forEach(o=>o.remove());
     const existing=new Set([...el.options].map(o=>normalizedText(o.value)));
-    items.forEach(item=>{if(existing.has(normalizedText(item.value)))return;const o=document.createElement('option');o.value=item.value;o.textContent=item.value;o.dataset.sisGenerated='1';if(item.id)o.dataset.entityId=item.id;el.appendChild(o)});
+    items.forEach(item=>{if(existing.has(normalizedText(item.value)))return;const o=doc.createElement('option');o.value=item.value;o.textContent=item.value;o.dataset.sisGenerated='1';if(item.id)o.dataset.entityId=item.id;el.appendChild(o)});
     if([...el.options].some(o=>o.value===selected))el.value=selected;
-   }else if(el.tagName!=='TEXTAREA')el.setAttribute('list',LIST_IDS[type]);
+   }else if(el.tagName!=='TEXTAREA')bindStableDropdown(el,type);
    attachResolution(el,type,dir);
   });
   observeBindingRoot(doc);

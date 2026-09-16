@@ -1677,7 +1677,8 @@ body{overflow-x:hidden}
 </div>
 
 
-<div class="bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-teal-400 cursor-pointer transition-all flex flex-col items-center gap-4 group min-h-[220px]" onclick="window.location.href='deputy_weekly_teacher_followup.html'">
+<div id="weeklyTeacherFollowupCard" class="relative bg-white/90 p-8 rounded-[45px] shadow-lg border border-white hover:border-teal-400 cursor-pointer transition-all flex flex-col items-center gap-4 group min-h-[220px]" onclick="window.location.href='deputy_weekly_teacher_followup.html?tab=review'">
+<span id="weeklySubmissionsBadge" hidden class="absolute top-4 left-4 min-w-[30px] h-[30px] px-2 rounded-full bg-red-600 text-white text-xs font-black items-center justify-center shadow-lg" title="تسليمات جديدة بانتظار المراجعة">0</span>
 <div class="w-16 h-16 bg-gradient-to-br from-teal-600 to-sky-600 text-white rounded-[24px] flex items-center justify-center shadow-xl text-3xl">📋</div>
 <div class="text-center">
 <h3 class="font-black text-lg text-slate-800">متابعة أعمال المعلمين الأسبوعية</h3>
@@ -4780,7 +4781,7 @@ document.addEventListener("click", function(e){
 <script src="unified-assignment-ui.js"></script>
   <script src="evidence-library-source.js"></script>
 
-<script src="school-information-source.js?v=20260916-RL169-stable-select-dropdowns"></script>
+<script src="school-information-source.js?v=20260916-RL170-records-interactivity"></script>
 <script src="internal-messaging.js"></script>
 
 <script defer src="unified_workspace.js"></script>
@@ -5440,6 +5441,27 @@ window.__AGENT_PERFORMANCE_ARCHIVE_SAVE_V2__={verifiedBeforeSuccess:true,folderB
     ['ssBack','uwHomeHeader'].forEach(function(id){var el=document.getElementById(id);if(!el||el.dataset.managerFollowBack==='1')return;el.dataset.managerFollowBack='1';el.addEventListener('click',function(ev){ev.preventDefault();ev.stopImmediatePropagation();ManagerFollowAccessBridge.returnToManager()},true)});
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bind);else bind();setTimeout(bind,300);setTimeout(bind,1200);
+})();
+</script>
+<script id="weekly-submissions-agent-indicator-v1">
+(function(){
+  async function refreshWeeklySubmissionsBadge(){
+    const badge=document.getElementById('weeklySubmissionsBadge');if(!badge||!window.PlatformStateEngine?.pullSchoolUsers)return;
+    try{
+      const r=await PlatformStateEngine.pullSchoolUsers('weekly_teacher_work');let pending=0,target=null;
+      for(const row of (r?.items||[])){
+        if(row.deleted_at||!String(row.state_key||'').startsWith('weekly_submission_v1:'))continue;
+        let payload={};try{payload=JSON.parse(row.payload?.value||'{}')}catch(_){continue}
+        if(!payload.submitted_at)continue;
+        const items=Object.values(payload.items||{}),unreviewed=items.some(it=>!it.review_status);
+        if(unreviewed){pending++;if(!target||String(payload.submitted_at||'')>String(target.submitted_at||''))target=payload;}
+      }
+      badge.textContent=String(pending>99?'99+':pending);badge.hidden=!pending;badge.style.display=pending?'inline-flex':'none';
+      const card=document.getElementById('weeklyTeacherFollowupCard');if(card&&target){const url='deputy_weekly_teacher_followup.html?tab=review&week_id='+encodeURIComponent(String(target.week_id||''))+'&teacher_id='+encodeURIComponent(String(target.teacher_id||''));card.onclick=()=>{location.href=url};card.title='فتح أحدث تسليم بانتظار المراجعة';}
+    }catch(e){console.warn('[weekly submissions badge]',e)}
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',refreshWeeklySubmissionsBadge,{once:true});else refreshWeeklySubmissionsBadge();
+  window.addEventListener('focus',refreshWeeklySubmissionsBadge);setInterval(()=>{if(!document.hidden)refreshWeeklySubmissionsBadge()},30000);
 })();
 </script>
 

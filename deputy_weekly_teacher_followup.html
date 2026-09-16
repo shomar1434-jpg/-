@@ -44,6 +44,8 @@
   .weeklyEvidenceFileName{font-weight:700;color:#334155;word-break:break-word}
   .weeklyReviewActions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;padding-top:9px;border-top:1px solid #eef2f7}
   .weeklyReviewState{margin-top:8px;font-size:12px;color:#64748b}
+  .weeklySubmissionTarget{outline:3px solid #14b8a6;box-shadow:0 0 0 7px rgba(20,184,166,.14),0 12px 32px rgba(15,23,42,.12);animation:weeklyTargetPulse 1.2s ease 2}
+  @keyframes weeklyTargetPulse{50%{outline-color:#f59e0b;transform:translateY(-2px)}}
   @media (max-width:700px){.weeklyEvidenceFileRow{align-items:stretch}.weeklyEvidenceFileRow .btn{width:100%}}
 </style>
 <script id="gender-neutral-labels-safe">
@@ -914,8 +916,9 @@
     rows.forEach(t=>{const sub=w.teacherSubmissions?.[t.user_id]||{};for(const it of Object.values(sub.items||{}))if((it.cloud_file_ids?.length||String(it.evidence_value||'').trim())&&!it.review_status)pending++});
     weeks.forEach(x=>Object.values(x.teacherSubmissions||{}).forEach(sub=>{if(!submissionBelongsToCurrentReviewer(sub))return;Object.values(sub.items||{}).forEach(it=>{if(((it.cloud_file_ids||[]).length||String(it.evidence_value||'').trim())&&!it.review_status)totalPending++})}));
     if(badge){badge.textContent=String(totalPending);badge.title=totalPending===pending?'شواهد الأسبوع الحالي بانتظار المراجعة':`${pending} في الأسبوع الحالي و${totalPending-pending} في أسابيع أخرى`}
-    box.innerHTML=rows.map(t=>{const sub=w.teacherSubmissions[t.user_id]||{};const evidCount=Object.values(sub.items||{}).filter(it=>(it.cloud_file_ids||[]).length||String(it.evidence_value||'').trim()).length;const pendingCount=Object.values(sub.items||{}).filter(it=>((it.cloud_file_ids||[]).length||String(it.evidence_value||'').trim())&&!it.review_status).length;return '<div class="taskCard"><div class="panelHead" style="margin-bottom:8px"><div><h3>'+esc(t.name)+' '+(pendingCount?'<span class="badge red">🔔 '+pendingCount+' شاهد جديد</span>':'')+'</h3><div class="muted">'+esc(t.subject||'—')+' — أرسل: '+esc(sub.submitted_at?new Date(sub.submitted_at).toLocaleString('ar-SA'):'—')+' — إجمالي الشواهد: '+evidCount+'</div></div><button class="btn small secondary" onclick="openTeacherWeekDrawer(\''+esc(t.user_id)+'\')">فتح المتابعة الكاملة</button></div>'+renderTeacherSubmission(w,t)+'</div>'}).join('')||'<div class="empty">لا توجد تسليمات مرسلة إليك في هذا الأسبوع وفق البحث الحالي.</div>';
+    box.innerHTML=rows.map(t=>{const sub=w.teacherSubmissions[t.user_id]||{};const evidCount=Object.values(sub.items||{}).filter(it=>(it.cloud_file_ids||[]).length||String(it.evidence_value||'').trim()).length;const pendingCount=Object.values(sub.items||{}).filter(it=>((it.cloud_file_ids||[]).length||String(it.evidence_value||'').trim())&&!it.review_status).length;return '<div class="taskCard" id="weeklySubmission_'+encodeURIComponent(String(t.user_id))+'" data-weekly-teacher="'+esc(t.user_id)+'"><div class="panelHead" style="margin-bottom:8px"><div><h3>'+esc(t.name)+' '+(pendingCount?'<span class="badge red">🔔 '+pendingCount+' شاهد جديد</span>':'')+'</h3><div class="muted">'+esc(t.subject||'—')+' — أرسل: '+esc(sub.submitted_at?new Date(sub.submitted_at).toLocaleString('ar-SA'):'—')+' — إجمالي الشواهد: '+evidCount+'</div></div><button class="btn small secondary" onclick="openTeacherWeekDrawer(\''+esc(t.user_id)+'\')">فتح المتابعة الكاملة</button></div>'+renderTeacherSubmission(w,t)+'</div>'}).join('')||'<div class="empty">لا توجد تسليمات مرسلة إليك في هذا الأسبوع وفق البحث الحالي.</div>';
   }
+  function focusRequestedWeeklySubmission(){const q=new URLSearchParams(location.search),teacherId=q.get('teacher_id');if(!teacherId)return;const el=document.querySelector('[data-weekly-teacher="'+CSS.escape(teacherId)+'"]');if(!el)return;el.classList.add('weeklySubmissionTarget');setTimeout(()=>el.scrollIntoView({behavior:'smooth',block:'center'}),80);setTimeout(()=>el.classList.remove('weeklySubmissionTarget'),5000)}
   function renderSearchDependent(){renderTeachers();renderDailyFollowupList();renderWeeklyReviewInbox();renderC1WeeklyAnalysis();renderAnalytics()}
   function renderStats(){const w=currentWeek(), m=w?weekMetrics(w):{avg:0}; $('stTeachers').textContent=teachers.length; $('stComplete').textContent=teachers.filter(t=>t.profile_status==='complete').length; $('stWeeks').textContent=weeks.length; $('stTasks').textContent=w?((w.variableAssignments||[]).length+(w.extraTasks||[]).length):0; $('stScore').textContent=m.avg+'%'}
   function renderAll(){ensureWeekTeacherStatuses();renderWeekSelect();renderCalendar();renderTeachers();renderDailyFollowupList();renderWeeklyReviewInbox();renderC1WeeklyAnalysis();renderAssignments();renderExtra();renderReport();renderAnalytics();renderC3WednesdayAlerts();renderStats();renderWeekExecutionBanner()}
@@ -1057,13 +1060,15 @@
     openDrawer(`<div class="drawerHead"><h2>📊 مقارنة الأسبوع ${esc(a.week_number)} مع الأسبوع ${esc(prev.week_number)}</h2><button class="btn secondary" onclick="closeDrawer()">إغلاق</button></div><div class="tablewrap"><table><thead><tr><th>م</th><th>المعلم</th><th>المادة</th><th>الانضباط</th><th>الإنجاز التنفيذي</th><th>التصنيف الحالي</th></tr></thead><tbody>${rows}</tbody></table></div>`);
   }
   document.addEventListener('DOMContentLoaded',async()=>{
+    const query=new URLSearchParams(location.search),requestedWeek=query.get('week_id'),requestedTab=query.get('tab');
     loadWeeks();
     await restoreDeputyPeriodFromCloud();
     renderAll();
     await refreshTeachers({silent:true});
     await refreshWeeklyReviewInbox(false);
-    const requestedWeek=new URLSearchParams(location.search).get('week_id');if(requestedWeek&&weeks.some(x=>String(x.id)===String(requestedWeek)))activeWeekId=requestedWeek;
+    if(requestedWeek&&weeks.some(x=>String(x.id)===String(requestedWeek)))activeWeekId=requestedWeek;
     renderAll();
+    if(requestedTab==='review'||query.has('teacher_id')||query.has('submission_key')){switchTab('review');focusRequestedWeeklySubmission()}
     setInterval(()=>{if(!document.hidden)refreshWeeklyReviewInbox(false)},30000);
   });
   window.addEventListener('focus',()=>refreshWeeklyReviewInbox(false));
@@ -1084,7 +1089,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-bridge.js"></script>
-<script src="school-information-source.js?v=20260916-RL169-stable-select-dropdowns"></script>
+<script src="school-information-source.js?v=20260916-RL170-records-interactivity"></script>
 <script src="internal-messaging.js"></script>
 <script defer src="unified_workspace.js"></script>
 <script defer src="school_navigation_guard.js"></script>
@@ -1098,7 +1103,7 @@
 <script src="platform-page-navigation.js?v=20260818-nav1"></script>
 
 <script src="platform-event-bus.js"></script>
-<script src="platform-notification-center.js?v=20260910-responsible-v1"></script>
+<script src="platform-notification-center.js?v=20260916-weekly-review-v2"></script>
 <script src="platform-runtime-guard.js?v=20260914-RL148-legacy-session-bridge"></script>
 <script src="platform-cloud-session.js?v=20260914-RL160-rollback-pre-follow-records"></script>
 <script src="platform-record-save-engine.js?v=20260830-records-final-v3"></script>

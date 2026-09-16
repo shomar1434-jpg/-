@@ -7,23 +7,15 @@ on:
     branches:
       - main
     paths:
-      - "supabase/functions/platform-session/**"
-      - "supabase/functions/platform-files/**"
-      - "supabase/functions/platform-tasks/**"
-      - "supabase/functions/platform-core/**"
-      - "supabase/functions/platform-state/**"
-      - "supabase/functions/platform-directory/**"
-      - "supabase/functions/platform-notifications/**"
-      - "supabase/functions/platform-document-workspace/**"
-      - "supabase/functions/platform-evaluation-team/**"
-      - "supabase/functions/platform-absence-excuses/**"
-      - "supabase/functions/student-attendance-sync/**"
-      - "supabase/functions/impact-measurement/**"
-      - "supabase/functions/system-admin/**"
+      - "supabase/functions/**"
       - ".github/workflows/deploy-supabase-functions.yml"
 
 permissions:
   contents: read
+
+concurrency:
+  group: deploy-supabase-edge-functions-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -41,54 +33,24 @@ jobs:
         with:
           version: 2.116.0
 
-      - name: Verify Supabase CLI
-        run: supabase --version
-
-      - name: Deploy platform-session
+      - name: Verify deployment configuration
+        shell: bash
         run: |
-          supabase functions deploy platform-session \
-            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
-            --no-verify-jwt
+          set -euo pipefail
+          supabase --version
+          test -n "${SUPABASE_ACCESS_TOKEN}"
+          test -n "${{ secrets.SUPABASE_PROJECT_REF }}"
+          test -d supabase/functions
+          count="$(find supabase/functions -mindepth 1 -maxdepth 1 -type d ! -name '_*' | wc -l | tr -d ' ')"
+          if [ "${count}" -eq 0 ]; then
+            echo "::error::No Supabase Edge Functions were found."
+            exit 1
+          fi
+          echo "Functions found: ${count}"
 
-      - name: Deploy platform-files
+      - name: Deploy all Supabase Edge Functions
         run: |
-          supabase functions deploy platform-files \
-            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
-            --no-verify-jwt
-
-      - name: Deploy platform-tasks
-        run: |
-          supabase functions deploy platform-tasks \
-            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
-            --no-verify-jwt
-
-      - name: Deploy platform-core
-        run: |
-          supabase functions deploy platform-core \
-            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
-            --no-verify-jwt
-
-      - name: Deploy platform-state
-        run: |
-          supabase functions deploy platform-state \
-            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
-            --no-verify-jwt
-
-      - name: Deploy platform-directory
-        run: |
-          supabase functions deploy platform-directory \
-            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
-            --no-verify-jwt
-
-      - name: Deploy platform-notifications
-        run: |
-          supabase functions deploy platform-notifications \
-            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
-            --no-verify-jwt
-
-      - name: Deploy platform-document-workspace
-        run: |
-          supabase functions deploy platform-document-workspace \
+          supabase functions deploy \
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
             --no-verify-jwt
 
@@ -96,17 +58,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           URL="https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co/functions/v1/platform-document-workspace?action=probe"
-
-          echo "Checking platform-document-workspace..."
-          echo "URL: ${URL}"
-
           ok=0
 
           for attempt in 1 2 3 4 5; do
-            echo "Attempt ${attempt}/5"
-
+            echo "Workspace probe attempt ${attempt}/5"
             http_code="$(
               curl \
                 --silent \
@@ -120,23 +76,18 @@ jobs:
                 || true
             )"
 
-            echo "HTTP status: ${http_code}"
-
             if [ -f /tmp/cdw_probe.json ]; then
-              echo "Response:"
               cat /tmp/cdw_probe.json
               echo
             fi
 
             if [ "${http_code}" = "200" ] && \
-               grep -q '"service":"platform-document-workspace"' \
-               /tmp/cdw_probe.json 2>/dev/null; then
+               grep -q '"service":"platform-document-workspace"' /tmp/cdw_probe.json 2>/dev/null; then
               ok=1
               break
             fi
 
             if [ "${attempt}" -lt 5 ]; then
-              echo "Workspace not ready yet. Waiting 6 seconds..."
               sleep 6
             fi
           done
@@ -146,41 +97,4 @@ jobs:
             exit 1
           fi
 
-          echo "platform-document-workspace is reachable."
-
-          if grep -q '"configured":false' \
-             /tmp/cdw_probe.json 2>/dev/null; then
-            echo "::warning::Cloud Document Workspace is deployed, but ONLYOFFICE is not configured yet."
-          else
-            echo "Cloud Document Workspace is deployed and its configuration endpoint is responding."
-          fi
-
-      - name: Deploy platform-evaluation-team
-        run: |
-          supabase functions deploy platform-evaluation-team \
-            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
-            --no-verify-jwt
-
-      - name: Deploy platform-absence-excuses
-        run: |
-          supabase functions deploy platform-absence-excuses \
-            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
-            --no-verify-jwt
-
-      - name: Deploy student-attendance-sync
-        run: |
-          supabase functions deploy student-attendance-sync \
-            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
-            --no-verify-jwt
-
-      - name: Deploy impact-measurement
-        run: |
-          supabase functions deploy impact-measurement \
-            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
-            --no-verify-jwt
-
-      - name: Deploy system-admin
-        run: |
-          supabase functions deploy system-admin \
-            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
-            --no-verify-jwt
+          echo "All Edge Functions were deployed successfully."

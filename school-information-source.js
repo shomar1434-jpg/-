@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-const VERSION='14.2.0-RL169-stable-select-dropdowns';
+const VERSION='15.0.0-RL170-records-interactivity';
 if(window.SchoolInformationSource&&String(window.SchoolInformationSource.VERSION||'')===VERSION)return;
 const SUPABASE_URL=(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'');
 const DEFAULT_SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
@@ -173,6 +173,7 @@ function directorySync(){
 async function getDirectory(force=false){await ensureFresh(force);return directorySync()}
 
 const LIST_IDS={student:'sis-students',teacher:'sis-teachers',employee:'sis-employees',staff:'sis-staff',stage:'sis-stages',grade:'sis-grades',track:'sis-tracks',section:'sis-sections',jobTitle:'sis-job-titles'};
+const RELATED_ONLY_TYPES=new Set(['nationalId','studentNumber','email','phone','specialization']);
 let bindingObserver=null,bindingTimer=0,bindingBusy=false;
 function normalizedText(v){return safe(v).replace(/[\u064B-\u065F\u0670]/g,'').replace(/[أإآ]/g,'ا').replace(/ة/g,'ه').replace(/ى/g,'ي').replace(/\s+/g,' ').toLowerCase()}
 function tableHeaderContext(el){
@@ -192,7 +193,7 @@ function fieldContext(el){
 }
 function inferFieldType(el){
  const explicit=safe(el.getAttribute('data-info-type')||el.getAttribute('data-school-info'));
- if(LIST_IDS[explicit])return explicit;
+ if(LIST_IDS[explicit]||RELATED_ONLY_TYPES.has(explicit))return explicit;
  const c=fieldContext(el);
  const tableText=normalizedText(el.closest?.('table')?.textContent||'');
  if(!c||/(عدد|تاريخ|يوم|هاتف|جوال|بريد|رقم|اسم المدرسه|اسم البرنامج|اسم اللجنه|اسم الفريق)/.test(c))return '';
@@ -344,7 +345,13 @@ function attachResolution(el,type,dir){
   if(type==='student'){
    fillIfSafe(findRelatedField(el,'stage'),match.entity.stage);fillIfSafe(findRelatedField(el,'grade'),match.entity.grade);
    fillIfSafe(findRelatedField(el,'section'),match.entity.section);fillIfSafe(findRelatedField(el,'track'),match.entity.track);
-  }else fillIfSafe(findRelatedField(el,'jobTitle'),match.entity.jobTitle);
+   fillIfSafe(findRelatedField(el,'nationalId'),match.entity.nationalId);fillIfSafe(findRelatedField(el,'studentNumber'),match.entity.studentNumber);
+  }else{
+   fillIfSafe(findRelatedField(el,'jobTitle'),match.entity.jobTitle);
+   fillIfSafe(findRelatedField(el,'email'),safe(match.entity.email||match.entity.user_email));
+   fillIfSafe(findRelatedField(el,'phone'),safe(match.entity.phone||match.entity.mobile||match.entity.mobile_number));
+   fillIfSafe(findRelatedField(el,'specialization'),safe(match.entity.specialization||match.entity.specialty));
+  }
  });
 }
 const observedDocuments=new WeakSet();
@@ -382,7 +389,9 @@ async function bindInformationFields(root=document){
   const fields=[];if(root?.matches?.('input,select,textarea'))fields.push(root);if(root?.querySelectorAll)fields.push(...root.querySelectorAll('input,select,textarea'));
   fields.forEach(el=>{
    if(el.disabled||['hidden','password','email','date','number','file','checkbox','radio','button','submit'].includes(lower(el.type)))return;
-   const type=inferFieldType(el);if(!type)return;const items=valuesForType(dir,type);el.dataset.sisBinding=type;
+   const type=inferFieldType(el);if(!type)return;el.dataset.sisBinding=type;
+   if(RELATED_ONLY_TYPES.has(type))return;
+   const items=valuesForType(dir,type);
    if(el.tagName==='SELECT'){
     const selected=el.value;el.querySelectorAll('option[data-sis-generated="1"]').forEach(o=>o.remove());
     const existing=new Set([...el.options].map(o=>normalizedText(o.value)));

@@ -141,6 +141,41 @@
                 sameCenterScopeValue(left, right) {
                     return this.normalizeArabicEducationText(left) === this.normalizeArabicEducationText(right);
                 },
+                centerStudentMatchesClassScope(student, cls) {
+                    if (!student || !cls) return false;
+                    const studentStage = this.canonicalCenterStage(student.stage_key || student.stage);
+                    const classStage = this.canonicalCenterStage(cls.stage);
+                    // هوية الكشف إلزامياً: المرحلة + الصف + الفصل/الشعبة.
+                    // المسار يضاف إلى الهوية عند اختياره في المرحلة الثانوية.
+                    if (!studentStage || !classStage || studentStage !== classStage) return false;
+                    if (!this.sameCenterScopeValue(student.grade, cls.grade)) return false;
+                    if (!this.sameCenterScopeValue(student.section_name, cls.section)) return false;
+                    if (String(cls.track || '').trim() && !this.sameCenterScopeValue(student.track_name, cls.track)) return false;
+                    return true;
+                },
+                centerStudentIdentity(student) {
+                    const stableId = String(student?.centerStudentId || student?.student_number || '').trim();
+                    if (stableId) return stableId;
+                    // لا نعتمد المعرّف المحلي المولّد بالوقت؛ يتغير مع كل تحديث إذا غاب رقم الطالب.
+                    return [
+                        this.normalizeArabicEducationText(student?.name),
+                        this.canonicalCenterStage(student?.stage_key || student?.stage),
+                        this.normalizeArabicEducationText(student?.grade),
+                        this.normalizeArabicEducationText(student?.section_name)
+                    ].join('||');
+                },
+                backupScopeRepairRows(rows) {
+                    if (!Array.isArray(rows) || !rows.length) return;
+                    try {
+                        const schoolId = String(window.PlatformCloudSession?.schoolId?.() || localStorage.getItem('active_school_id') || localStorage.getItem('current_school_id') || 'school').trim();
+                        const key = `teacher_scope_repair_backup_v1:${schoolId}:${this.normalizeAcademicYear(this.globalMetadata.year)}:${this.semesterStorageKey(this.globalMetadata.semester)}`;
+                        const previous = JSON.parse(localStorage.getItem(key) || '[]');
+                        localStorage.setItem(key, JSON.stringify([...(Array.isArray(previous) ? previous : []), {
+                            repairedAt: new Date().toISOString(),
+                            rows: JSON.parse(JSON.stringify(rows))
+                        }].slice(-5)));
+                    } catch (error) { console.warn('[teacher scope repair backup]', error); }
+                },
                 get centerStageOptions() {
                     const order = ['kindergarten', 'early', 'primary', 'middle', 'high'];
                     // قد يعيد مركز المعلومات المفتاح البرمجي أو اسم المرحلة العربي؛ نوحدهما قبل بناء القائمة.
@@ -391,21 +426,30 @@
                     try{
                         const rows=await this.getInformationCenterStudents(forceRefresh);if(!Array.isArray(rows))return;
                         const all=rows.map((s,i)=>this.normalizeCenterStudent(s,i)).filter(s=>s.name);
+                        // فشل المصدر أو رجوع قائمة فارغة لا يُعامل كطلب حذف؛ نحمي السجلات المحفوظة من المسح العرضي.
+                        if(!all.length)return;
                         let changed=false;
-                        const norm=v=>(v||'').toString().replace(/\s+/g,' ').trim();
-                        const same=(a,b)=>!norm(b)||norm(a)===norm(b)||norm(a).includes(norm(b))||norm(b).includes(norm(a));
+                        const repaired=[];
                         this.classes=this.classes.map(cls=>{
                             if(cls.source!=='information_center')return cls;
-                            const candidates=all.filter(s=>same(s.grade||s.stage,cls.grade)&&same(s.track_name,cls.track)&&same(s.section_name,cls.section));
-                            const existing=new Map((cls.students||[]).map(s=>[String(s.centerStudentId||s.student_number||s.id||s.name),s]));
-                            const merged=(cls.students||[]).slice();
-                            candidates.forEach(s=>{
-                                const key=String(s.centerStudentId||s.student_number||s.id||s.name),old=existing.get(key);
-                                if(old){Object.assign(old,{name:s.name,student_number:s.student_number,stage:s.stage,grade:s.grade,track_name:s.track_name,section_name:s.section_name,centerStudentId:s.centerStudentId||old.centerStudentId});}
-                                else{merged.push(s);existing.set(key,s);changed=true;}
+                            const candidates=all.filter(s=>this.centerStudentMatchesClassScope(s,cls));
+                            // لا ننظف كشفاً كاملاً إذا لم يعد المصدر أي طالب لنطاقه؛ قد يكون التحميل جزئياً أو منقطعاً.
+                            if(!candidates.length)return cls;
+                            const oldStudents=Array.isArray(cls.students)?cls.students:[];
+                            const existing=new Map(oldStudents.map(s=>[this.centerStudentIdentity(s),s]));
+                            const candidateIds=new Set(candidates.map(s=>this.centerStudentIdentity(s)));
+                            const removed=oldStudents.filter(s=>!candidateIds.has(this.centerStudentIdentity(s)));
+                            if(removed.length)repaired.push({classId:cls.id,className:cls.name,stage:cls.stage,grade:cls.grade,section:cls.section,students:removed});
+                            const merged=candidates.map(s=>{
+                                const key=this.centerStudentIdentity(s),old=existing.get(key);
+                                return old?Object.assign({},old,{name:s.name,student_number:s.student_number,stage:s.stage,stage_key:s.stage_key,grade:s.grade,track_name:s.track_name,section_name:s.section_name,centerStudentId:s.centerStudentId||old.centerStudentId}):s;
                             });
+                            const oldIds=oldStudents.map(s=>this.centerStudentIdentity(s)).sort().join('||');
+                            const newIds=merged.map(s=>this.centerStudentIdentity(s)).sort().join('||');
+                            if(oldIds!==newIds)changed=true;
                             return Object.assign({},cls,{students:merged});
                         });
+                        if(repaired.length)this.backupScopeRepairRows(repaired);
                         if(changed)this.saveData();
                     }catch(e){console.warn('[teacher center live sync]',e)}
                 },
@@ -499,7 +543,11 @@
                         this.speedIndex=0;
                         this.saveData();
                     });
-                    setTimeout(()=>{this.restoreCurrentPeriodFromCloud();this.syncInformationCenterStudentsIntoClasses(false);},0);
+                    // ننتظر استعادة النسخة السحابية أولاً ثم ننفذ عزل النطاق؛ منعاً لأن تعيد السحابة كشفاً قديماً مختلطاً بعد إصلاحه محلياً.
+                    setTimeout(async()=>{
+                        await this.restoreCurrentPeriodFromCloud();
+                        await this.syncInformationCenterStudentsIntoClasses(false);
+                    },0);
                     window.addEventListener('school-information-change',()=>this.syncInformationCenterStudentsIntoClasses(false));
                     window.addEventListener('school-information-updated',()=>this.syncInformationCenterStudentsIntoClasses(true));
                 },
@@ -741,21 +789,12 @@
                         console.warn('[teacher comprehensive] scoped student import fallback', scopeError);
                     }
                     if (!sourceStudents.length) sourceStudents = await this.getInformationCenterStudents(true);
-                    const stageLabel = this.stagesMeta[form.stage]?.label || '';
-                    const normalizeText = value => (value || '').toString().replace(/\s+/g, ' ').trim();
-                    const includesMatch = (value, wanted) => {
-                        const a = normalizeText(value);
-                        const b = normalizeText(wanted);
-                        return !b || a === b || a.includes(b) || b.includes(a);
-                    };
+                    const selectedScope = { stage: form.stage, grade: form.grade, track: form.track, section: form.section };
                     const filtered = sourceStudents
                         .map((s, idx) => this.normalizeCenterStudent(s, idx))
                         .filter(s => !s.student_status || ['نشط', 'active', 'فعال', ''].includes(String(s.student_status).trim()))
-                        // المرحلة أولاً وبمفتاح معياري، ولا نستخدم الصف بديلاً عنها.
-                        .filter(s => !!form.stage && this.canonicalCenterStage(s.stage_key || s.stage) === this.canonicalCenterStage(form.stage))
-                        .filter(s => !form.grade || includesMatch(s.grade, form.grade))
-                        .filter(s => !form.track || includesMatch(s.track_name, form.track))
-                        .filter(s => !form.section || includesMatch(s.section_name, form.section))
+                        // نفس دالة النطاق تستخدم في الاستيراد والمزامنة لمنع اختلاف النتائج بينهما.
+                        .filter(s => this.centerStudentMatchesClassScope(s, selectedScope))
                         .filter(s => s.name);
 
                     if (!filtered.length) {

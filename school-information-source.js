@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 if(window.SchoolInformationSource&&String(window.SchoolInformationSource.VERSION||'')==='13.0.0-RL165-directory-bindings')return;
-const VERSION='13.0.0-RL165-directory-bindings';
+const VERSION='14.0.0-RL166-complete-directory-bindings';
 const SUPABASE_URL=(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'');
 const DEFAULT_SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
 const API_KEY=localStorage.getItem('smartSchoolSupabaseAnonKey')||DEFAULT_SUPABASE_KEY;
@@ -175,23 +175,36 @@ async function getDirectory(force=false){await ensureFresh(force);return directo
 const LIST_IDS={student:'sis-students',teacher:'sis-teachers',employee:'sis-employees',staff:'sis-staff',stage:'sis-stages',grade:'sis-grades',track:'sis-tracks',section:'sis-sections',jobTitle:'sis-job-titles'};
 let bindingObserver=null,bindingTimer=0,bindingBusy=false;
 function normalizedText(v){return safe(v).replace(/[\u064B-\u065F\u0670]/g,'').replace(/[أإآ]/g,'ا').replace(/ة/g,'ه').replace(/ى/g,'ي').replace(/\s+/g,' ').toLowerCase()}
+function tableHeaderContext(el){
+ const cell=el.closest?.('td,th');const table=cell?.closest?.('table');if(!cell||!table)return '';
+ const index=cell.cellIndex;
+ const rows=[...table.querySelectorAll('thead tr, tr')];
+ const header=rows.find(r=>r!==cell.parentElement&&r.cells&&r.cells.length>index);
+ return normalizedText(header?.cells?.[index]?.textContent||'');
+}
 function fieldContext(el){
  const direct=[el.getAttribute('data-info-type'),el.getAttribute('data-school-info'),el.getAttribute('aria-label'),el.getAttribute('placeholder'),el.name,el.id].filter(Boolean).join(' ');
  const escapedId=el.id&&window.CSS?.escape?window.CSS.escape(el.id):safe(el.id).replace(/["\\]/g,'\\$&');
- const label=el.id?document.querySelector('label[for="'+escapedId+'"]')?.textContent:'';
+ const doc=el.ownerDocument||document;
+ const label=el.id?doc.querySelector('label[for="'+escapedId+'"]')?.textContent:'';
  const cell=el.closest('td,th,.form-group,.field,.input-group,.card,.row');
- return normalizedText([direct,label,cell?.querySelector('label,th,.label,.field-label')?.textContent||''].join(' '));
+ return normalizedText([direct,label,tableHeaderContext(el),cell?.querySelector('label,th,.label,.field-label')?.textContent||''].join(' '));
 }
 function inferFieldType(el){
  const explicit=safe(el.getAttribute('data-info-type')||el.getAttribute('data-school-info'));
  if(LIST_IDS[explicit])return explicit;
  const c=fieldContext(el);
+ const tableText=normalizedText(el.closest?.('table')?.textContent||'');
  if(!c||/(عدد|تاريخ|يوم|هاتف|جوال|بريد|رقم|اسم المدرسه|اسم البرنامج|اسم اللجنه|اسم الفريق)/.test(c))return '';
- if(/(اسم الطالب|اسم الطالبه|الطالب\/ـه|الطالب والطالبه)/.test(c))return 'student';
- if(/(اسم المعلم|اسم المعلمه)/.test(c))return 'teacher';
+ if(/(اسم الطالب|اسم الطالبه|الطالب\/ـه|الطالب والطالبه|الطلاب\/الطالبات)/.test(c))return 'student';
+ if(/(اسم المعلم|اسم المعلمه|المعلم\/المعلمه|المعلم المنتظر|المعلمة المنتظرة)/.test(c))return 'teacher';
  if(/(اسم الموظف|اسم الموظفه)/.test(c))return 'employee';
  if(/(المسمي الوظيفي|المسمى الوظيفي|الوظيفه)/.test(c))return 'jobTitle';
  if(/(اسم العضو|الاعضاء|الأعضاء|المكلف|المنفذ|المسؤول|المساند|رئيس اللجنه|رئيس الفريق)/.test(c))return 'staff';
+ if(/(^|\s)(الاسم|اسم)(\s|$)/.test(c)){
+  if(/(السجل المدني|الهويه|الهوية|الصف|الشعبه|الشعبة|الطالب|الطالبه)/.test(tableText))return 'student';
+  if(/(الوظيفه|الوظيفة|المسمي|المسمى|اللجنه|اللجنة|الفريق|المعلم|الموظف)/.test(tableText))return 'staff';
+ }
  if(/(^|\s)(المرحله|مرحله)(\s|$)/.test(c))return 'stage';
  if(/(^|\s)(الصف|صف دراسي)(\s|$)/.test(c)&&!/الصفه/.test(c))return 'grade';
  if(/(^|\s)(الفصل|الشعبه)(\s|$)/.test(c))return 'section';
@@ -206,16 +219,23 @@ function valuesForType(dir,type){
  const key={stage:'stages',grade:'grades',track:'tracks',section:'sections',jobTitle:'jobTitles'}[type];
  return (dir[key]||[]).map(value=>({value,id:'',entity:null}));
 }
-function ensureDatalist(type,items){
- let list=document.getElementById(LIST_IDS[type]);if(!list){list=document.createElement('datalist');list.id=LIST_IDS[type];document.body.appendChild(list)}
- list.replaceChildren(...items.map(item=>{const o=document.createElement('option');o.value=item.value;if(item.id)o.dataset.entityId=item.id;return o}));
+function ensureDatalist(type,items,doc=document){
+ let list=doc.getElementById(LIST_IDS[type]);if(!list){list=doc.createElement('datalist');list.id=LIST_IDS[type];doc.body?.appendChild(list)}
+ if(!list)return;
+ list.replaceChildren(...items.map(item=>{const o=doc.createElement('option');o.value=item.value;if(item.id)o.dataset.entityId=item.id;return o}));
 }
 function findRelatedField(el,type){
  const scope=el.closest('tr,.row,.form-row,.grid,.card,.form-group')||el.parentElement;
  if(!scope)return null;
  return [...scope.querySelectorAll('input,select')].find(x=>x!==el&&inferFieldType(x)===type)||null;
 }
-function fillIfSafe(el,value){if(!el||!value)return;const old=safe(el.value);if(old&&!el.dataset.sisAutofilled)return;el.value=value;el.dataset.sisAutofilled='1';el.dispatchEvent(new Event('change',{bubbles:true}))}
+function emitFieldValue(el,value){
+ const view=el?.ownerDocument?.defaultView||window;
+ el.value=value;
+ el.dispatchEvent(new view.Event('input',{bubbles:true}));
+ el.dispatchEvent(new view.Event('change',{bubbles:true}));
+}
+function fillIfSafe(el,value){if(!el||!value)return;const old=safe(el.value);if(old&&!el.dataset.sisAutofilled)return;el.dataset.sisAutofilled='1';emitFieldValue(el,value)}
 function attachResolution(el,type,dir){
  if(el.dataset.sisResolutionBound==='1'||!['student','teacher','employee','staff'].includes(type))return;
  el.dataset.sisResolutionBound='1';
@@ -229,12 +249,28 @@ function attachResolution(el,type,dir){
   }else fillIfSafe(findRelatedField(el,'jobTitle'),match.entity.jobTitle);
  });
 }
+const observedDocuments=new WeakSet();
+function observeBindingRoot(doc){
+ if(!doc?.body||observedDocuments.has(doc))return;
+ observedDocuments.add(doc);
+ const view=doc.defaultView||window;
+ const observer=new view.MutationObserver(m=>{if(!m.some(x=>x.addedNodes.length))return;clearTimeout(bindingTimer);bindingTimer=setTimeout(()=>bindInformationFields(doc),120)});
+ observer.observe(doc.body,{childList:true,subtree:true});
+}
+function bindChildFrames(root){
+ const frames=[];if(root?.querySelectorAll)frames.push(...root.querySelectorAll('iframe'));
+ frames.forEach(frame=>{
+  if(frame.dataset.sisFrameBound!=='1'){frame.dataset.sisFrameBound='1';frame.addEventListener('load',()=>{try{bindInformationFields(frame.contentDocument)}catch(e){console.warn('[school-information iframe binding]',e)}})}
+  try{if(frame.contentDocument?.body)setTimeout(()=>bindInformationFields(frame.contentDocument),0)}catch(e){console.warn('[school-information iframe access]',e)}
+ });
+}
 async function bindInformationFields(root=document){
  if(bindingBusy)return;bindingBusy=true;
  try{
   let dir;try{dir=await getDirectory(false)}catch(e){console.warn('[school-information bindings unavailable]',e);return}
-  Object.keys(LIST_IDS).forEach(type=>ensureDatalist(type,valuesForType(dir,type)));
-  const fields=[];if(root?.matches?.('input,select'))fields.push(root);if(root?.querySelectorAll)fields.push(...root.querySelectorAll('input,select'));
+  const doc=root?.nodeType===9?root:(root?.ownerDocument||document);
+  Object.keys(LIST_IDS).forEach(type=>ensureDatalist(type,valuesForType(dir,type),doc));
+  const fields=[];if(root?.matches?.('input,select,textarea'))fields.push(root);if(root?.querySelectorAll)fields.push(...root.querySelectorAll('input,select,textarea'));
   fields.forEach(el=>{
    if(el.disabled||['hidden','password','email','date','number','file','checkbox','radio','button','submit'].includes(lower(el.type)))return;
    const type=inferFieldType(el);if(!type)return;const items=valuesForType(dir,type);el.dataset.sisBinding=type;
@@ -243,10 +279,11 @@ async function bindInformationFields(root=document){
     const existing=new Set([...el.options].map(o=>normalizedText(o.value)));
     items.forEach(item=>{if(existing.has(normalizedText(item.value)))return;const o=document.createElement('option');o.value=item.value;o.textContent=item.value;o.dataset.sisGenerated='1';if(item.id)o.dataset.entityId=item.id;el.appendChild(o)});
     if([...el.options].some(o=>o.value===selected))el.value=selected;
-   }else el.setAttribute('list',LIST_IDS[type]);
+   }else if(el.tagName!=='TEXTAREA')el.setAttribute('list',LIST_IDS[type]);
    attachResolution(el,type,dir);
   });
-  if(!bindingObserver&&document.body){bindingObserver=new MutationObserver(m=>{if(!m.some(x=>x.addedNodes.length))return;clearTimeout(bindingTimer);bindingTimer=setTimeout(()=>bindInformationFields(document),120)});bindingObserver.observe(document.body,{childList:true,subtree:true})}
+  observeBindingRoot(doc);
+  bindChildFrames(root);
  }finally{bindingBusy=false}
 }
 function refreshBindings(){return bindInformationFields(document)}

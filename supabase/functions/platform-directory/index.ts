@@ -95,7 +95,7 @@ Deno.serve(async(req)=>{
     const q=await sb.from('school_members').select('user_id').eq('school_id',schoolId).eq('role',kind).eq('status','active');if(q.error)throw q.error;const ids=[...new Set((q.data||[]).map((x:any)=>String(x.user_id||'')).filter(Boolean))];if(ids.length!==1||ids[0]!==userId)return false;
     const up=await sb.from('school_members').update({supervisor_user_id:userId,updated_at:now}).eq('id',target.id).is('supervisor_user_id',null);if(up.error)throw up.error;return true;
   };
-  if(action==='health')return json({ok:true,version:'1.6.0-RL141-school-password-recovery',schoolId,userId,role,requestId});
+  if(action==='health')return json({ok:true,version:'1.7.0-RL154-manager-profile-name',schoolId,userId,role,requestId});
   if(action==='school-registration-context'){
    if(!isManager&&!isAgent)return json({error:'SUPERVISOR_REQUIRED'},403);
    const full=await sb.from('schools').select('id,school_name,school_code,registration_code,status').eq('id',schoolId).maybeSingle();if(full.error)throw full.error;if(!full.data)return json({error:'SCHOOL_NOT_FOUND'},404);
@@ -103,6 +103,24 @@ Deno.serve(async(req)=>{
    return json({ok:true,school:full.data,registrationCode:full.data.registration_code||'',supervisorUserId:userId,supervisorRole:sr,adminRegistrationToken,adminRegistrationExpiresAt:new Date(exp).toISOString(),canCreateGeneralRegistration:isManager,requestId});
   }
   if(action==='me'){return json({ok:true,user:await ownUser(),school:schoolQ.data,membership:(membership.data||[]).find((x:any)=>low(x.role)===role)||membership.data?.[0]||null,requestId});}
+  if(action==='update-manager-profile'){
+   // تعديل آمن ومحدود للاسم فقط. لا يقبل هذا المسار بريدًا أو دورًا أو كلمة مرور أو معرّف مستخدم من العميل.
+   if(!isManager)return json({error:'MANAGER_REQUIRED',requestId},403);
+   const name=t(body.name||body.full_name,300);if(name.length<2)return json({error:'MANAGER_NAME_REQUIRED',requestId},400);
+   const beforeUser=await sb.from('users').select('id,full_name,email,role').eq('id',userId).maybeSingle();if(beforeUser.error)throw beforeUser.error;if(!beforeUser.data)return json({error:'MANAGER_USER_NOT_FOUND',requestId},404);
+   if(!managers.has(low(beforeUser.data.role))&&!roles.some((x:string)=>managers.has(x)))return json({error:'MANAGER_IDENTITY_MISMATCH',requestId},403);
+   const beforeSchool=await sb.from('schools').select('id,manager_name,manager_email').eq('id',schoolId).maybeSingle();if(beforeSchool.error)throw beforeSchool.error;if(!beforeSchool.data)return json({error:'SCHOOL_NOT_FOUND',requestId},404);
+   const userUpdate=await sb.from('users').update({full_name:name,updated_at:now}).eq('id',userId).select('id,full_name,email,role,status,active').maybeSingle();if(userUpdate.error)throw userUpdate.error;if(!userUpdate.data)return json({error:'MANAGER_NAME_UPDATE_NOT_CONFIRMED',requestId},500);
+   const isPrimaryManager=!low(beforeSchool.data.manager_email)||low(beforeSchool.data.manager_email)===low(beforeUser.data.email);
+   let school:any={...schoolQ.data,manager_name:beforeSchool.data.manager_name,manager_email:beforeSchool.data.manager_email};
+   if(isPrimaryManager){
+    const schoolUpdate=await sb.from('schools').update({manager_name:name,updated_at:now}).eq('id',schoolId).select('id,school_name,school_code,status,school_edition,manager_name,manager_email').maybeSingle();
+    if(schoolUpdate.error||!schoolUpdate.data){await sb.from('users').update({full_name:beforeUser.data.full_name,updated_at:now}).eq('id',userId);if(schoolUpdate.error)throw schoolUpdate.error;return json({error:'SCHOOL_MANAGER_NAME_UPDATE_NOT_CONFIRMED',requestId},500)}
+    school=schoolUpdate.data;
+   }
+   console.info('[platform-directory-manager-profile]',{requestId,schoolId,userId,isPrimaryManager});
+   return json({ok:true,user:userUpdate.data,school,isPrimaryManager,requestId});
+  }
   if(action==='list-admin-employees'){
    if(!isManager&&!isAgent)return json({error:'SUPERVISOR_REQUIRED'},403);const q=await sb.from('school_members').select('*').eq('school_id',schoolId).in('role',['administrative_employee','admin_employee']).neq('status','deleted').order('created_at');if(q.error)throw q.error;const allowed=[];for(const m of q.data||[])if(await supervisorOwns(m))allowed.push(m);
    const ids=allowed.map((x:any)=>x.user_id).filter(Boolean);let users:any[]=[];if(ids.length){const uq=await sb.from('users').select('id,full_name,email,status,active').in('id',ids);if(uq.error)throw uq.error;users=uq.data||[]}

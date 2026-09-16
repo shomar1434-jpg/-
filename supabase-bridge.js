@@ -674,6 +674,7 @@
   async function safeUpdateAdministrativeEmployeeStatus(payload,statusArg){const userId=typeof payload==='string'?payload:(payload.userId||payload.id||'');const status=statusArg||(typeof payload==='object'?payload.status:'');return platformDirectoryCall('set-admin-status',{userId,status});}
   async function safeUpdateUserStatus(userId,status){return platformDirectoryCall('set-user-status',{userId,status});}
   async function safeResetUserPassword(userId,newPassword){return platformDirectoryCall('reset-user-password',{userId,newPassword});}
+  async function safeUpdateManagerProfile(name){const d=await platformDirectoryCall('update-manager-profile',{name:String(name||'').trim()});return{user:normalizeUser(d.user,d.school||null),school:normalizeSchool(d.school||null),isPrimaryManager:Boolean(d.isPrimaryManager)};}
   async function safeUpsertSchoolUser(payload){const d=await platformDirectoryCall('upsert-user',{user:payload||{}});return normalizeUser(d.user,d.school||null);}
   async function safeDeleteUser(userId){return platformDirectoryCall('delete-user',{userId});}
   async function safeLoginSchoolUser(login,password,schoolId,role){
@@ -702,6 +703,7 @@
     updateAdministrativeEmployeeStatus: safeUpdateAdministrativeEmployeeStatus,
     updateUserStatus: safeUpdateUserStatus,
     resetUserPassword: safeResetUserPassword,
+    updateManagerProfile: safeUpdateManagerProfile,
     upsertSchoolUser: safeUpsertSchoolUser,
     loginSchoolUser: safeLoginSchoolUser,
     deleteSchool: safeDeleteSchool,

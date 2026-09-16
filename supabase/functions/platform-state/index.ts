@@ -80,7 +80,7 @@ Deno.serve(async(req)=>{
     const ownerKey=requestedOwnerKey;
     if(!moduleKey&&action!=='health') return json({error:'moduleKey مطلوب',code:'STATE_MODULE_REQUIRED',requestId},400);
 
-    if(action==='health') return json({ok:true,version:'1.5.0-RL33-private-user-state-isolation',schoolId:s.school_id,userId:s.user_id,role:s.role});
+    if(action==='health') return json({ok:true,version:'1.6.0-RL168-weekly-workflow-consistency',schoolId:s.school_id,userId:s.user_id,role:s.role});
 
     if(action==='pull'){
       const keys=Array.isArray(body.keys)&&body.keys.length?body.keys.slice(0,500).map((x:unknown)=>safeKey(x,220)).filter(Boolean):[];
@@ -200,7 +200,7 @@ Deno.serve(async(req)=>{
       if(String(plan.execution_state||'')!=='in_progress'||['مغلق','مؤرشف','إجازة'].includes(String(plan.status||'')))return json({error:'تم إغلاق هذا الأسبوع ولا يمكن رفع أو إرسال شواهد جديدة له',code:'STATE_WEEK_CLOSED',requestId},409);
       const reviewerId=String(plan.reviewer_id||'').trim();
       if(!reviewerId)return json({error:'لم يتم تحديد مسؤول مراجعة الأسبوع',code:'STATE_WEEK_REVIEWER_REQUIRED',requestId},409);
-      payload.school_id=s.school_id;payload.teacher_id=teacherId;payload.reviewer_id=reviewerId;payload.reviewer_email=String(plan.reviewer_email||payload.reviewer_email||'');payload.reviewer_role=String(plan.reviewer_role||payload.reviewer_role||'agent');payload.reviewer_name=String(plan.reviewer_name||payload.reviewer_name||'');payload.updated_at=now;
+      payload.school_id=s.school_id;payload.teacher_id=teacherId;payload.reviewer_id=reviewerId;payload.reviewer_email=String(plan.reviewer_email||payload.reviewer_email||'');payload.reviewer_role=String(plan.reviewer_role||payload.reviewer_role||'agent');payload.reviewer_name=String(plan.reviewer_name||payload.reviewer_name||'');payload.delivery_status='delivered';payload.delivered_at=payload.delivered_at||now;payload.updated_at=now;
       const stateKey='weekly_submission_v1:'+weekId+':'+teacherId;
       const value=JSON.stringify(payload);if(value.length>MAX_TOTAL_CHARS)return json({error:'حجم التسليم كبير جدًا',code:'STATE_PAYLOAD_TOO_LARGE',requestId},413);
       const up=await sb.from('platform_module_state').upsert({school_id:s.school_id,owner_key:teacherId,module_key:'weekly_teacher_work',state_key:stateKey,payload:{value},updated_by:teacherId,updated_at:now,deleted_at:null},{onConflict:'school_id,owner_key,module_key,state_key'});
@@ -260,6 +260,30 @@ Deno.serve(async(req)=>{
       if(items.length>MAX_ITEMS) return json({error:`الحد الأعلى ${MAX_ITEMS} عنصرًا في الدفعة`,code:'STATE_BATCH_TOO_LARGE',requestId},413);
       const rows:any[]=[];let totalChars=0;
       for(const item of items){const stateKey=safeKey(item?.key,220);if(!stateKey)continue;const deleted=!!item?.deleted;const value=deleted?null:String(item?.value??'');totalChars+=value?.length||0;rows.push({school_id:s.school_id,owner_key:targetUserId,module_key:moduleKey,state_key:stateKey,payload:deleted?null:{value},updated_by:s.user_id,updated_at:now,deleted_at:deleted?now:null});}
+      // Keep each teacher performance report and its archive index in the same database upsert.
+      // This repairs the failure mode where the report write succeeds but the following index request is aborted.
+      if(moduleKey==='teacher'&&!rows.some((r:any)=>r.state_key==='teacher_perf_index_v1')){
+        const reportRows=rows.filter((r:any)=>!r.deleted_at&&String(r.state_key||'').startsWith('teacher_perf_report_v1_')&&r.payload?.value);
+        if(reportRows.length){
+          const iq=await sb.from('platform_module_state').select('payload').eq('school_id',s.school_id).eq('owner_key',String(s.user_id)).eq('module_key','teacher').eq('state_key','teacher_perf_index_v1').is('deleted_at',null).maybeSingle();
+          if(iq.error)throw iq.error;
+          let index:any[]=[];
+          try{const parsed=JSON.parse(String(iq.data?.payload?.value||'[]'));if(Array.isArray(parsed))index=parsed;}catch(_){index=[];}
+          for(const rr of reportRows){
+            let full:any=null;try{full=JSON.parse(String(rr.payload?.value||''));}catch(_){full=null;}
+            if(!full||typeof full!=='object')continue;
+            const id=String(full.id||'').trim(),cat=String(full.category||full.archiveFolderId||'').trim();
+            if(!id||!cat)continue;
+            const sk=String(rr.state_key||'');
+            const meta={id,programName:String(full.programName||full.title||'تقرير'),title:String(full.title||full.programName||'تقرير'),category:cat,categoryName:String(full.categoryName||full.archiveFolderName||''),archiveFolderId:cat,archiveFolderName:String(full.archiveFolderName||full.categoryName||''),archiveRole:'teacher',archiveType:'performanceReport',createdAt:String(full.createdAt||''),updatedAt:String(full.updatedAt||''),stateKey:sk,storageEngine:'PerformanceArchiveCleanV5',__archiveSource:'clean',readOnly:false};
+            const pos=index.findIndex((x:any)=>String(x?.id||'')===id||String(x?.stateKey||'')===sk);
+            if(pos>=0)index[pos]={...index[pos],...meta};else index.push(meta);
+          }
+          const indexValue=JSON.stringify(index);
+          totalChars+=indexValue.length;
+          rows.push({school_id:s.school_id,owner_key:String(s.user_id),module_key:'teacher',state_key:'teacher_perf_index_v1',payload:{value:indexValue},updated_by:s.user_id,updated_at:now,deleted_at:null});
+        }
+      }
       if(totalChars>MAX_TOTAL_CHARS) return json({error:'حجم بيانات المزامنة في الدفعة كبير جدًا',code:'STATE_PAYLOAD_TOO_LARGE',requestId},413);
       if(rows.length){const {error}=await sb.from('platform_module_state').upsert(rows,{onConflict:'school_id,owner_key,module_key,state_key'});if(error)throw error;}
       return json({ok:true,upserted:rows.length,scope:'target-user',ownerKey:targetUserId});

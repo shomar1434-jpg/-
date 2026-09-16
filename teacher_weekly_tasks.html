@@ -114,13 +114,19 @@
     function $(id){return document.getElementById(id)}
     function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
     function read(k,d){try{return JSON.parse(localStorage.getItem(k)||sessionStorage.getItem(k)||JSON.stringify(d))}catch(e){return d}}
-    function schoolId(){try{let a=JSON.parse(localStorage.getItem('activeSchool')||localStorage.getItem('currentSchool')||'{}'); if(a&&(a.id||a.school_id))return a.id||a.school_id}catch(e){} try{let s=JSON.parse(localStorage.getItem('smart_school_current_session')||'{}'); if(s.schoolId)return s.schoolId}catch(e){} try{let keys=Object.keys(localStorage).filter(k=>k.startsWith('deputyWeeklyFollowupWeeks:')||k.startsWith('deputyWeeklyFollowupTeachers:')); if(keys[0])return keys[0].split(':')[1]}catch(e){} return 'DEV_SCHOOL'}
+    function schoolId(){
+      const direct=String(window.PlatformCloudSession?.schoolId?.()||sessionStorage.getItem('active_school_id')||localStorage.getItem('active_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||localStorage.getItem('smart_school_id')||localStorage.getItem('platform_file_session_school_id')||'').trim();
+      if(direct)return direct;
+      try{let a=JSON.parse(localStorage.getItem('smartSchool.currentSchool')||localStorage.getItem('activeSchool')||localStorage.getItem('currentSchool')||'{}');if(a&&(a.id||a.school_id))return String(a.id||a.school_id).trim()}catch(e){}
+      try{let s=JSON.parse(localStorage.getItem('smart_school_current_session')||'{}');if(s.schoolId||s.school_id)return String(s.schoolId||s.school_id).trim()}catch(e){}
+      return '';
+    }
     function weeksKey(){return 'deputyWeeklyFollowupWeeks:'+schoolId()} function activeKey(){return 'deputyWeeklyFollowupActiveWeek:'+schoolId()} function teacherKeys(){return ['deputyWeeklyFollowupTeachers:'+schoolId(),'deputyWeeklyFollowupTeachers:lastExport']}
     function normalizeTeacher(t){return {user_id:t.user_id||t.id||'',id:t.id||t.user_id||'',name:t.name||t.teacher_name||'معلم',email:t.email||'',subject:t.subject||'',weekly_lessons:t.weekly_lessons||'',assignments:Array.isArray(t.assignments)?t.assignments:[],extra_roles:Array.isArray(t.extra_roles)?t.extra_roles:[],profile_status:t.profile_status||''}}
     function loadTeacherPayload(){for(const k of teacherKeys()){const p=read(k,null); if(p&&Array.isArray(p.teachers))return p} try{const all=Object.keys(localStorage).filter(k=>k.startsWith('deputyWeeklyFollowupTeachers:')).map(k=>read(k,null)).filter(p=>p&&Array.isArray(p.teachers)); return all.sort((a,b)=>String(b.updated_at||'').localeCompare(String(a.updated_at||'')))[0]||null}catch(e){} return null}
-    function currentUser(){let q=new URLSearchParams(location.search); let obj={id:q.get('uid')||'',email:q.get('email')||'',name:''}; try{let u=JSON.parse(localStorage.getItem('currentUser')||'{}'); obj.id=obj.id||u.id||u.user_id||''; obj.email=obj.email||u.email||''; obj.name=u.name||''}catch(e){} try{let s=JSON.parse(localStorage.getItem('smart_school_current_session')||'{}'); obj.id=obj.id||s.id||''; obj.email=obj.email||s.email||''; obj.name=obj.name||s.name||''}catch(e){} obj.name=obj.name||localStorage.getItem('currentUserName')||''; obj.email=(obj.email||localStorage.getItem('currentUserEmail')||'').toLowerCase(); return obj}
+    function currentUser(){let q=new URLSearchParams(location.search);let obj={id:String(window.PlatformCloudSession?.userId?.()||sessionStorage.getItem('currentUserId')||q.get('uid')||''),email:q.get('email')||'',name:''};try{let u=JSON.parse(localStorage.getItem('currentUser')||'{}');obj.id=obj.id||u.id||u.user_id||'';obj.email=obj.email||u.email||'';obj.name=u.name||''}catch(e){}try{let s=JSON.parse(localStorage.getItem('smart_school_current_session')||'{}');obj.id=obj.id||s.id||s.user_id||'';obj.email=obj.email||s.email||'';obj.name=obj.name||s.name||''}catch(e){}obj.id=obj.id||localStorage.getItem('currentUserId')||localStorage.getItem('current_user_id')||'';obj.name=obj.name||localStorage.getItem('currentUserName')||'';obj.email=(obj.email||localStorage.getItem('currentUserEmail')||'').toLowerCase();return obj}
     function findMe(){const u=currentUser(); let found=teachers.find(t=>String(t.user_id||t.id||'')===String(u.id||'')); if(!found && u.email) found=teachers.find(t=>String(t.email||'').toLowerCase()===u.email); if(!found && u.name) found=teachers.find(t=>String(t.name||'').trim()===String(u.name).trim()); if(!found && teachers.length===1) found=teachers[0]; return found||null}
-    function fallbackTeacher(){const u=currentUser(); return normalizeTeacher({user_id:u.id||u.email||'teacher_preview',id:u.id||u.email||'teacher_preview',name:u.name||'المعلم الحالي',email:u.email||'',subject:'بانتظار استكمال المادة',profile_status:'بيانات غير مكتملة'});}
+    function fallbackTeacher(){const u=currentUser(); return normalizeTeacher({user_id:u.id||u.email||'teacher_session_pending',id:u.id||u.email||'teacher_session_pending',name:u.name||'المعلم الحالي',email:u.email||'',subject:'بانتظار استكمال المادة',profile_status:'بيانات غير مكتملة'});}
     function sundayOf(date){const d=new Date(date); const day=d.getDay(); const diff=(day===6?1:day)*-1; d.setDate(d.getDate()+diff); return d}
     function ymd(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
     function fallbackWeek(){const start=sundayOf(new Date()); const end=new Date(start); end.setDate(start.getDate()+4); return {id:'auto_preview_week',number:'الحالي',year:'غير محدد',term:'الفصل الحالي',start:ymd(start),end:ymd(end),status:'نشط',teacherStatuses:{},teacherSubmissions:{},variableAssignments:[],extraTasks:[],preview:true};}
@@ -224,7 +230,14 @@
 
 
     function mergePublishedWeeklyPlan(plan){
-      if(!plan||!plan.week_id||String(plan.school_id||schoolId())!==String(schoolId()))return false;
+      const sid=schoolId(),planSid=String(plan?.school_id||'').trim();
+      if(!plan||!plan.week_id||(sid&&planSid&&planSid!==sid))return false;
+      const cloudTeacherId=String(plan.teacher_id||window.PlatformCloudSession?.userId?.()||'').trim();
+      if(cloudTeacherId&&String(me?.user_id||'')!==cloudTeacherId){
+        const oldId=String(me?.user_id||'');
+        me=normalizeTeacher({...me,user_id:cloudTeacherId,id:cloudTeacherId,name:plan.teacher_name||me?.name,email:plan.teacher_email||me?.email});
+        weeks.forEach(x=>{if(oldId&&x.teacherSubmissions?.[oldId]&&!x.teacherSubmissions[cloudTeacherId])x.teacherSubmissions[cloudTeacherId]=x.teacherSubmissions[oldId];if(oldId&&x.teacherStatuses?.[oldId]&&!x.teacherStatuses[cloudTeacherId])x.teacherStatuses[cloudTeacherId]=x.teacherStatuses[oldId]});
+      }
       const existing=weeks.find(x=>String(x.id)===String(plan.week_id));
       const priorSub=existing?.teacherSubmissions||{};
       const base=existing||{id:plan.week_id,teacherStatuses:{},teacherSubmissions:{},variableAssignments:[],extraTasks:[]};
@@ -289,7 +302,11 @@
     function toast(msg){let t=document.createElement('div');t.textContent=msg;t.style.cssText='position:fixed;bottom:18px;left:18px;z-index:9999;background:#0f172a;color:#fff;border-radius:16px;padding:12px 16px;font-weight:900;box-shadow:0 18px 35px rgba(15,23,42,.25)';document.body.appendChild(t);setTimeout(()=>t.remove(),2600)}
 
     window.EvidenceReviewContext=function(){const w=currentWeek()||{},sub=(me&&w.teacherSubmissions&&w.teacherSubmissions[me.user_id])||{};return {school_id:schoolId(),reviewer_id:w.reviewer_id||sub.reviewer_id||'',reviewer_email:w.reviewer_email||sub.reviewer_email||'',reviewer_role:w.reviewer_role||sub.reviewer_role||'agent',reviewer_name:w.reviewer_name||''}};
-    document.addEventListener('DOMContentLoaded',async()=>{loadAll();await restorePublishedWeeklyPlan();await restoreWeeklyPeriodFromCloud();await restorePublishedWeeklyPlan();await restoreWeeklyReviewDecisionFromCloud();renderAll()});
+    let weeklyCloudRefreshRunning=false;
+    async function refreshTeacherWeeklyCloud(){if(weeklyCloudRefreshRunning)return;weeklyCloudRefreshRunning=true;try{await restorePublishedWeeklyPlan();await restoreWeeklyReviewDecisionFromCloud();renderAll()}finally{weeklyCloudRefreshRunning=false}}
+    document.addEventListener('DOMContentLoaded',async()=>{loadAll();await restorePublishedWeeklyPlan();await restoreWeeklyPeriodFromCloud();await refreshTeacherWeeklyCloud();renderAll();setInterval(()=>{if(!document.hidden)refreshTeacherWeeklyCloud()},30000)});
+    window.addEventListener('focus',refreshTeacherWeeklyCloud);
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshTeacherWeeklyCloud()});
   </script>
 
 <!-- Unified Comprehensive Cloud Storage -->

@@ -1,7 +1,7 @@
 (function(){
   'use strict';
   if(window.PlatformStateEngine) return;
-  const VERSION='1.4.0-school-isolation-v8';
+  const VERSION='1.8.0-RL164-large-save-recovery';
   const cfg={
     base:()=> (localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'')+'/functions/v1/platform-state',
     anon:()=>localStorage.getItem('smartSchoolSupabaseAnonKey')||'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM',
@@ -54,6 +54,9 @@
       if(res.r.status===401&&window.PlatformCloudSession?.recover){await window.PlatformCloudSession.recover();res=await send();}
       if(!res.r.ok) throw new Error(res.j.error||`فشلت مزامنة الحالة (${res.r.status})`);
       return res.j;
+    }catch(error){
+      if(error&&error.name==='AbortError')throw new Error('انتهت مهلة الحفظ السحابي قبل اكتمال رفع التقرير. احتفظ النظام بالمسودة؛ أعد المحاولة بعد استقرار الاتصال.');
+      throw error;
     }finally{clearTimeout(timer)}
   }
   const pull=(moduleKey,scope='user',keys)=>request('pull',{moduleKey,scope,keys});
@@ -68,5 +71,5 @@
   const updateAdministrativeEmployeeStatus=(ownerUserId,status)=>request('admin-employee-status',{moduleKey:'admin_performance',ownerUserId,status});
   const removeAdministrativeEmployee=(ownerUserId)=>request('admin-employee-delete',{moduleKey:'admin_performance',ownerUserId});
   const health=()=>request('health',{});
-  window.PlatformStateEngine={VERSION:'1.7.0-weekly-closed-lifecycle',request,pull,pullUser,pullSchoolUsers,bulkUpsert,managerUpsertUser,publishWeeklyPlan,closeWeeklyPlan,submitWeeklySubmission,reviewWeeklySubmission,updateAdministrativeEmployeeStatus,removeAdministrativeEmployee,health};
+  window.PlatformStateEngine={VERSION,request,pull,pullUser,pullSchoolUsers,bulkUpsert,managerUpsertUser,publishWeeklyPlan,closeWeeklyPlan,submitWeeklySubmission,reviewWeeklySubmission,updateAdministrativeEmployeeStatus,removeAdministrativeEmployee,health};
 })();

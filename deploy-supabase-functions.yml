@@ -7,17 +7,16 @@ on:
     branches:
       - main
     paths:
-      - "supabase/functions/platform-session/**"
-      - "supabase/functions/platform-files/**"
-      - "supabase/functions/platform-tasks/**"
-      - "supabase/functions/platform-core/**"
-      - "supabase/functions/platform-state/**"
-      - "supabase/functions/platform-directory/**"
-      - "supabase/functions/system-admin/**"
+      - "supabase/functions/**"
       - ".github/workflows/deploy-supabase-functions.yml"
 
 permissions:
   contents: read
+
+concurrency:
+  group: deploy-supabase-edge-functions-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -34,50 +33,68 @@ jobs:
         with:
           version: 2.116.0
 
-      - name: Verify Supabase CLI
-        run: supabase --version
+      - name: Verify deployment configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase --version
+          test -n "${SUPABASE_ACCESS_TOKEN}"
+          test -n "${{ secrets.SUPABASE_PROJECT_REF }}"
+          test -d supabase/functions
+          count="$(find supabase/functions -mindepth 1 -maxdepth 1 -type d ! -name '_*' | wc -l | tr -d ' ')"
+          if [ "${count}" -eq 0 ]; then
+            echo "::error::No Supabase Edge Functions were found."
+            exit 1
+          fi
+          echo "Functions found: ${count}"
 
-      - name: Verify platform-directory registration contract source
+      - name: Deploy all Supabase Edge Functions
         run: |
-          test -f supabase/functions/platform-directory/index.ts
-          grep -q "RL87-owner-manager-split-v1" supabase/functions/platform-directory/index.ts
-
-      - name: Deploy platform-directory
-        run: |
-          supabase functions deploy platform-directory \
-            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
-            --no-verify-jwt
-
-      - name: Deploy platform-session
-        run: |
-          supabase functions deploy platform-session \
-            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
-            --no-verify-jwt
-
-      - name: Deploy platform-files
-        run: |
-          supabase functions deploy platform-files \
-            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
-            --no-verify-jwt
-      - name: Deploy platform-tasks
-        run: |
-          supabase functions deploy platform-tasks \
+          supabase functions deploy \
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
             --no-verify-jwt
 
-      - name: Deploy platform-core
+      - name: Verify platform-document-workspace is reachable
+        shell: bash
         run: |
-          supabase functions deploy platform-core \
-            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
-            --no-verify-jwt
-      - name: Deploy platform-state
-        run: |
-          supabase functions deploy platform-state \
-            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
-            --no-verify-jwt
+          set -euo pipefail
+          URL="https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co/functions/v1/platform-document-workspace?action=probe"
+          ok=0
 
-      - name: Deploy system-admin
-        run: |
-          supabase functions deploy system-admin \
-            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
-            --no-verify-jwt
+          for attempt in 1 2 3 4 5; do
+            echo "Workspace probe attempt ${attempt}/5"
+            http_code="$(
+              curl \
+                --silent \
+                --show-error \
+                --location \
+                --output /tmp/cdw_probe.json \
+                --write-out '%{http_code}' \
+                --connect-timeout 15 \
+                --max-time 30 \
+                "${URL}" \
+                || true
+            )"
+
+            if [ -f /tmp/cdw_probe.json ]; then
+              cat /tmp/cdw_probe.json
+              echo
+            fi
+
+            if [ "${http_code}" = "200" ] && \
+               grep -q '"service":"platform-document-workspace"' /tmp/cdw_probe.json 2>/dev/null; then
+              ok=1
+              break
+            fi
+
+            if [ "${attempt}" -lt 5 ]; then
+              sleep 6
+            fi
+          done
+
+          if [ "${ok}" != "1" ]; then
+            echo "::error::platform-document-workspace was not reachable after deployment."
+            exit 1
+          fi
+
+          echo "All Edge Functions were deployed successfully."

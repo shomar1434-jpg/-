@@ -41,8 +41,10 @@
      });
      if(result.errors.length){const first=result.errors[0]&&result.errors[0].error&&result.errors[0].error.message?result.errors[0].error.message:'';toast(`تم حفظ ${result.results.length} ملف، وتعذر حفظ ${result.errors.length}${first?(' — '+first):''}.`,true)}else toast(`تم حفظ ${result.results.length} ملف في التخزين السحابي.`);
      input.dataset.cloudSyncedFileIds=result.results.map(x=>(x&&x.file)||x).map(x=>x&&x.id).filter(Boolean).join(',');
-     if(result.results.length)input.dispatchEvent(new CustomEvent('cloudfiles:input-synced',{bubbles:true,detail:result}));
-     if(result.errors.length)input.dispatchEvent(new CustomEvent('cloudfiles:input-sync-failed',{bubbles:true,detail:{result,error:result.errors[0]?.error||null}}));
-   }catch(error){toast(error.message||'تعذر الحفظ السحابي',true);input.dispatchEvent(new CustomEvent('cloudfiles:input-sync-failed',{bubbles:true,detail:{error}}))}finally{input.dataset.cloudSyncing='0'}
+     const fileIds=result.results.map(x=>(x&&x.file)||x).map(x=>x&&x.id).filter(Boolean);
+     const detail={...result,input,inputId:input.id||'',recordId:recordId(input),fileIds,syncId:crypto.randomUUID?.()||String(Date.now())+Math.random(),fileMeta:files.map(f=>({name:f.name||'',type:f.type||'',size:Number(f.size||0)}))};
+     if(result.results.length){input.dispatchEvent(new CustomEvent('cloudfiles:input-synced',{bubbles:true,detail}));window.dispatchEvent(new CustomEvent('cloudfiles:input-synced-global',{detail}));}
+     if(result.errors.length){const failure={...detail,error:result.errors[0]?.error||null};input.dispatchEvent(new CustomEvent('cloudfiles:input-sync-failed',{bubbles:true,detail:failure}));window.dispatchEvent(new CustomEvent('cloudfiles:input-sync-failed-global',{detail:failure}));}
+   }catch(error){toast(error.message||'تعذر الحفظ السحابي',true);const detail={error,input,inputId:input.id||'',recordId:recordId(input),syncId:crypto.randomUUID?.()||String(Date.now())+Math.random(),fileMeta:files.map(f=>({name:f.name||'',type:f.type||'',size:Number(f.size||0)}))};input.dispatchEvent(new CustomEvent('cloudfiles:input-sync-failed',{bubbles:true,detail}));window.dispatchEvent(new CustomEvent('cloudfiles:input-sync-failed-global',{detail}))}finally{input.dataset.cloudSyncing='0'}
  },true);
 })();

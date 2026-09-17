@@ -80,7 +80,7 @@ Deno.serve(async(req)=>{
     const ownerKey=requestedOwnerKey;
     if(!moduleKey&&action!=='health') return json({error:'moduleKey مطلوب',code:'STATE_MODULE_REQUIRED',requestId},400);
 
-    if(action==='health') return json({ok:true,version:'1.8.0-RL172-weekly-evidence-lock',schoolId:s.school_id,userId:s.user_id,role:s.role});
+    if(action==='health') return json({ok:true,version:'1.9.0-RL173-weekly-evidence-formats',schoolId:s.school_id,userId:s.user_id,role:s.role});
 
     if(action==='pull'){
       const keys=Array.isArray(body.keys)&&body.keys.length?body.keys.slice(0,500).map((x:unknown)=>safeKey(x,220)).filter(Boolean):[];
@@ -199,9 +199,10 @@ Deno.serve(async(req)=>{
       if(String(plan.execution_state||'')!=='in_progress'||['مغلق','مؤرشف','إجازة'].includes(String(plan.status||'')))return json({error:'تم إغلاق هذا الأسبوع ولا يمكن رفع شاهد جديد',code:'STATE_WEEK_CLOSED',requestId},409);
       const ids=[...new Set((Array.isArray(incoming.cloud_file_ids)?incoming.cloud_file_ids:[]).map((x:unknown)=>String(x||'').trim()).filter(Boolean))].slice(0,10);
       if(!ids.length)return json({error:'معرف الملف السحابي مطلوب',code:'STATE_WEEKLY_EVIDENCE_FILE_REQUIRED',requestId},400);
-      const files=await sb.from('platform_files').select('id,display_name,original_name,mime_type,file_size').eq('school_id',s.school_id).eq('owner_user_id',teacherId).in('id',ids).eq('status','active').is('deleted_at',null);
+      const files=await sb.from('platform_files').select('id,display_name,original_name,mime_type,file_size,owner_user_id,uploaded_by,ownership_scope').eq('school_id',s.school_id).in('id',ids).eq('status','active').is('deleted_at',null);
       if(files.error)throw files.error;
-      if((files.data||[]).length!==ids.length)return json({error:'تعذر التحقق من ملكية الشاهد',code:'STATE_WEEKLY_EVIDENCE_VERIFICATION_FAILED',requestId},403);
+      const ownedFiles=(files.data||[]).filter((x:any)=>String(x.owner_user_id||x.uploaded_by||'')===teacherId);
+      if(ownedFiles.length!==ids.length)return json({error:'تعذر التحقق من ملكية الشاهد',code:'STATE_WEEKLY_EVIDENCE_VERIFICATION_FAILED',requestId},403);
       const stateKey='weekly_evidence_draft_v1:'+weekId+':'+teacherId;
       const existing=await sb.from('platform_module_state').select('payload,deleted_at').eq('school_id',s.school_id).eq('owner_key',teacherId).eq('module_key','weekly_teacher_work').eq('state_key',stateKey).maybeSingle();
       if(existing.error)throw existing.error;
@@ -215,7 +216,7 @@ Deno.serve(async(req)=>{
         const previousSavedAt=String(previous.cloud_synced_at||previous.updated_at||'');
         if(!['returned','rejected'].includes(reviewStatus)||(reviewedAt&&previousSavedAt&&previousSavedAt>reviewedAt))return json({error:'يوجد شاهد محفوظ لهذه المهمة؛ لا يسمح برفع بديل إلا بعد إعادته أو رفضه من المسؤول',code:'STATE_WEEKLY_EVIDENCE_ALREADY_LOCKED',requestId},409);
       }
-      draft.items=draft.items&&typeof draft.items==='object'?draft.items:{};const primary:any=(files.data||[])[0]||{};
+      draft.items=draft.items&&typeof draft.items==='object'?draft.items:{};const primary:any=ownedFiles[0]||{};
       draft.items[itemKey]={...(draft.items[itemKey]||{}),cloud_file_ids:ids,file_name:String(incoming.file_name||primary.display_name||primary.original_name||''),file_type:String(incoming.file_type||primary.mime_type||''),file_size:Number(incoming.file_size||primary.file_size||0),cloud_synced_at:now,review_status:'',review_reason:'',updated_at:now};draft.week_id=weekId;draft.teacher_id=teacherId;draft.updated_at=now;
       const value=JSON.stringify(draft);if(value.length>MAX_TOTAL_CHARS)return json({error:'حجم مسودة الشواهد كبير جدًا',code:'STATE_PAYLOAD_TOO_LARGE',requestId},413);
       const up=await sb.from('platform_module_state').upsert({school_id:s.school_id,owner_key:teacherId,module_key:'weekly_teacher_work',state_key:stateKey,payload:{value},updated_by:teacherId,updated_at:now,deleted_at:null},{onConflict:'school_id,owner_key,module_key,state_key'});if(up.error)throw up.error;
@@ -244,7 +245,7 @@ Deno.serve(async(req)=>{
       }
       if(missingRequired.length)return json({error:'الشاهد المطلوب غير مرفق لـ: '+missingRequired.join('، '),code:'STATE_WEEKLY_REQUIRED_EVIDENCE_MISSING',requestId},409);
       const uniqueEvidenceIds=[...new Set(allEvidenceIds)];
-      if(uniqueEvidenceIds.length){const evidenceRows=await sb.from('platform_files').select('id').eq('school_id',s.school_id).eq('owner_user_id',teacherId).in('id',uniqueEvidenceIds).eq('status','active').is('deleted_at',null);if(evidenceRows.error)throw evidenceRows.error;const verified=new Set((evidenceRows.data||[]).map((x:any)=>String(x.id)));if(verified.size!==uniqueEvidenceIds.length)return json({error:'تعذر التحقق من ملكية أحد الشواهد قبل التسليم',code:'STATE_WEEKLY_EVIDENCE_VERIFICATION_FAILED',requestId},403)}
+      if(uniqueEvidenceIds.length){const evidenceRows=await sb.from('platform_files').select('id,owner_user_id,uploaded_by').eq('school_id',s.school_id).in('id',uniqueEvidenceIds).eq('status','active').is('deleted_at',null);if(evidenceRows.error)throw evidenceRows.error;const verified=new Set((evidenceRows.data||[]).filter((x:any)=>String(x.owner_user_id||x.uploaded_by||'')===teacherId).map((x:any)=>String(x.id)));if(verified.size!==uniqueEvidenceIds.length)return json({error:'تعذر التحقق من ملكية أحد الشواهد قبل التسليم',code:'STATE_WEEKLY_EVIDENCE_VERIFICATION_FAILED',requestId},403)}
       payload.items=submissionItems;payload.evidence_count=uniqueEvidenceIds.length;payload.evidence_verified_at=now;
       const stateKey='weekly_submission_v1:'+weekId+':'+teacherId;
       const value=JSON.stringify(payload);if(value.length>MAX_TOTAL_CHARS)return json({error:'حجم التسليم كبير جدًا',code:'STATE_PAYLOAD_TOO_LARGE',requestId},413);
@@ -271,11 +272,11 @@ Deno.serve(async(req)=>{
       const evidencePatch=body.evidencePatch&&typeof body.evidencePatch==='object'?body.evidencePatch:null;
       if(evidencePatch&&Array.isArray(evidencePatch.cloud_file_ids)&&evidencePatch.cloud_file_ids.length){
        const requestedIds=[...new Set(evidencePatch.cloud_file_ids.map((x:unknown)=>String(x||'').trim()).filter(Boolean))].slice(0,10);
-       const files=await sb.from('platform_files').select('id,school_id,owner_user_id,status,deleted_at,display_name,original_name,mime_type,file_size').eq('school_id',s.school_id).eq('owner_user_id',targetUserId).in('id',requestedIds).eq('status','active').is('deleted_at',null);
+       const files=await sb.from('platform_files').select('id,school_id,owner_user_id,uploaded_by,ownership_scope,status,deleted_at,display_name,original_name,mime_type,file_size').eq('school_id',s.school_id).in('id',requestedIds).eq('status','active').is('deleted_at',null);
        if(files.error)throw files.error;
-       const valid=(files.data||[]).map((x:any)=>String(x.id));
+       const owned=(files.data||[]).filter((x:any)=>String(x.owner_user_id||x.uploaded_by||'')===targetUserId);const valid=owned.map((x:any)=>String(x.id));
        if(valid.length!==requestedIds.length)return json({error:'تعذر التحقق من ملكية أحد الشواهد المرفقة',code:'STATE_WEEKLY_EVIDENCE_OWNERSHIP_MISMATCH',requestId},403);
-       const primary:any=(files.data||[])[0]||{};
+       const primary:any=owned[0]||{};
        item.cloud_file_ids=requestedIds;item.file_name=String(evidencePatch.file_name||primary.display_name||primary.original_name||item.file_name||'');item.file_type=String(evidencePatch.file_type||primary.mime_type||item.file_type||'');item.file_size=Number(evidencePatch.file_size||primary.file_size||item.file_size||0);item.cloud_synced_at=item.cloud_synced_at||now;
       }
       item.review_status=decision;item.reviewed_at=now;item.reviewed_by=String(s.user_id||'');item.review_reason=reason;

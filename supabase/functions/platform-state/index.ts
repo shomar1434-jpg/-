@@ -80,7 +80,7 @@ Deno.serve(async(req)=>{
     const ownerKey=requestedOwnerKey;
     if(!moduleKey&&action!=='health') return json({error:'moduleKey مطلوب',code:'STATE_MODULE_REQUIRED',requestId},400);
 
-    if(action==='health') return json({ok:true,version:'1.9.0-RL173-weekly-evidence-formats',schoolId:s.school_id,userId:s.user_id,role:s.role});
+    if(action==='health') return json({ok:true,version:'1.11.0-RL175-weekly-reset-lifecycle',schoolId:s.school_id,userId:s.user_id,role:s.role});
 
     if(action==='pull'){
       const keys=Array.isArray(body.keys)&&body.keys.length?body.keys.slice(0,500).map((x:unknown)=>safeKey(x,220)).filter(Boolean):[];
@@ -185,6 +185,26 @@ Deno.serve(async(req)=>{
       const up=await sb.from('platform_module_state').upsert({school_id:s.school_id,owner_key:targetUserId,module_key:'weekly_teacher_work',state_key:'weekly_active_plan_v1',payload:{value:JSON.stringify(payload)},updated_by:s.user_id,updated_at:now,deleted_at:null},{onConflict:'school_id,owner_key,module_key,state_key'});
       if(up.error)throw up.error;
       return json({ok:true,ownerKey:targetUserId,weekId,closedAt:payload.closed_at});
+    }
+
+    if(action==='reset-weekly-user-context'){
+      if(moduleKey!=='weekly_teacher_work')return json({error:'مصدر التهيئة غير صحيح',code:'STATE_TARGET_MODULE_FORBIDDEN',requestId},403);
+      const teacherId=String(s.user_id||'').trim(),weekId=String(body.weekId||'').trim();
+      if(!teacherId||!weekId)return json({error:'معرف الأسبوع مطلوب',code:'STATE_WEEK_RESET_INPUT_REQUIRED',requestId},400);
+      const submissionKey='weekly_submission_v1:'+weekId+':'+teacherId;
+      const draftKey='weekly_evidence_draft_v1:'+weekId+':'+teacherId;
+      const submission=await sb.from('platform_module_state').select('payload,deleted_at').eq('school_id',s.school_id).eq('owner_key',teacherId).eq('module_key','weekly_teacher_work').eq('state_key',submissionKey).maybeSingle();
+      if(submission.error)throw submission.error;
+      let delivered=false;if(submission.data&&!submission.data.deleted_at){try{const p=JSON.parse(String(submission.data.payload?.value||'{}'));delivered=Boolean(p.delivered_at||p.submitted_at||p.delivery_status==='delivered')}catch(_){delivered=true}}
+      if(delivered)return json({error:'لا يمكن تهيئة أعمال تم إرسالها للمسؤول؛ أغلق الأسبوع أو انتظر قرار المراجعة',code:'STATE_WEEK_RESET_SUBMITTED_LOCKED',requestId},409);
+      const keys=[draftKey,submissionKey];
+      const cleared=await sb.from('platform_module_state').update({deleted_at:now,updated_at:now,updated_by:teacherId}).eq('school_id',s.school_id).eq('owner_key',teacherId).eq('module_key','weekly_teacher_work').in('state_key',keys).is('deleted_at',null);
+      if(cleared.error)throw cleared.error;
+      const resetKey='weekly_reset_v1:'+weekId+':'+teacherId;
+      const marker={week_id:weekId,teacher_id:teacherId,reset_at:now,reset_generation:crypto.randomUUID()};
+      const mark=await sb.from('platform_module_state').upsert({school_id:s.school_id,owner_key:teacherId,module_key:'weekly_teacher_work',state_key:resetKey,payload:{value:JSON.stringify(marker)},updated_by:teacherId,updated_at:now,deleted_at:null},{onConflict:'school_id,owner_key,module_key,state_key'});
+      if(mark.error)throw mark.error;
+      return json({ok:true,weekId,teacherId,resetAt:now,resetGeneration:marker.reset_generation});
     }
 
     if(action==='save-weekly-evidence-draft'){

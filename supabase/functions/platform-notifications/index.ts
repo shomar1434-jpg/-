@@ -7,6 +7,7 @@ const text=(v:unknown,n=2000)=>String(v??'').trim().slice(0,n);
 const low=(v:unknown)=>text(v).toLowerCase();
 const sha256=async(v:string)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(v)))).map(x=>x.toString(16).padStart(2,'0')).join('');
 const managerRoles=new Set(['manager','owner','school_manager','principal','leadership','مدير','مديرة','مدير المدرسة','مديرة المدرسة']);
+const agentRoles=new Set(['agent','agency','wakil','vice','deputy','وكيل','وكيلة']);
 function severityFor(eventType:string,body:any){const x=low(body?.severity);if(['normal','important','critical'].includes(x))return x;if(/delete|security|unauthorized|failed|rejected|رفض|حذف|أمني/i.test(eventType))return 'critical';if(/evidence|submit|approval|review|task|weekly|plan|اعتماد|شاهد|تكليف|خطة/i.test(eventType))return 'important';return 'normal';}
 function labelFor(eventType:string){const map:Record<string,string>={'evidence.submitted':'وصول شاهد جديد','weekly_submission.submitted':'وصول أعمال أسبوعية للمراجعة','weekly_submission.approved':'اعتماد أعمال أسبوعية','weekly_submission.returned':'إعادة أعمال أسبوعية للاستكمال','weekly_submission.rejected':'عدم اعتماد أعمال أسبوعية','task.approval_requested':'تكليف بانتظار الاعتماد','task.approved':'اعتماد تكليف','task.returned':'إعادة تكليف للاستكمال','task.rejected':'عدم اعتماد تكليف','weekly_plan.started':'بدء تنفيذ أسبوع','weekly_plan.closed':'إغلاق أسبوع','task.completed':'إكمال مهمة','record_saved':'حفظ سجل','record_updated':'تحديث سجل'};return map[eventType]||eventType.replace(/[._-]+/g,' ');}
 
@@ -20,7 +21,7 @@ Deno.serve(async(req)=>{
   const raw=text(req.headers.get('x-platform-session'),700);if(!raw)return json({error:'SESSION_MISSING',requestId},401);
   const h=await sha256(raw),now=new Date().toISOString();
   const ss=await sb.from('platform_sessions').select('*').eq('session_token_hash',h).eq('status','active').gt('expires_at',now).maybeSingle();if(ss.error)throw ss.error;const session:any=ss.data;if(!session)return json({error:'SESSION_INVALID',requestId},401);
-  const schoolId=String(session.school_id||''),userId=String(session.user_id||''),role=low(session.role),isManager=managerRoles.has(role);
+  const schoolId=String(session.school_id||''),userId=String(session.user_id||''),role=low(session.role),isManager=managerRoles.has(role),isAgent=agentRoles.has(role),canManageSchool=isManager||isAgent;
   const mem=await sb.from('school_members').select('user_id,role,status').eq('school_id',schoolId).eq('user_id',userId).eq('status','active');if(mem.error)throw mem.error;
   if(!isManager&&!(mem.data||[]).some((m:any)=>low(m.role)===role))return json({error:'MEMBERSHIP_INVALID',requestId},403);
   const own=async()=>{const q=await sb.from('users').select('id,full_name,email,role,mobile_number,mobile_verified').eq('id',userId).maybeSingle();if(q.error)throw q.error;return q.data||{};};
@@ -38,7 +39,7 @@ Deno.serve(async(req)=>{
     return {sent,failed,configured:true};
   };
 
-  if(action==='config'){const s=await schoolSettings();return json({ok:true,vapidPublicKey:Deno.env.get('VAPID_PUBLIC_KEY')||'',pushConfigured:pushConfigured(),schoolPushEnabled:s.push_enabled!==false,importantOnly:s.important_only!==false,canManageSchool:isManager,role,requestId});}
+  if(action==='config'){const s=await schoolSettings();return json({ok:true,vapidPublicKey:Deno.env.get('VAPID_PUBLIC_KEY')||'',pushConfigured:pushConfigured(),schoolPushEnabled:s.push_enabled!==false,importantOnly:s.important_only!==false,canManageSchool,role,requestId});}
   if(action==='profile'){const u=await own();return json({ok:true,profile:{user_id:u.id,full_name:u.full_name,email:u.email,role:u.role||role,mobile_number:u.mobile_number||'',mobile_verified:!!u.mobile_verified,school_id:schoolId},requestId});}
   if(action==='save-mobile'){
     let mobile=text(body.mobileNumber,30).replace(/[\s()-]/g,'');if(/^05\d{8}$/.test(mobile))mobile='+966'+mobile.slice(1);if(/^9665\d{8}$/.test(mobile))mobile='+'+mobile;if(mobile&&!/^\+9665\d{8}$/.test(mobile))return json({error:'MOBILE_INVALID'},400);
@@ -50,10 +51,27 @@ Deno.serve(async(req)=>{
     const q=await sb.from('push_subscriptions').upsert({school_id:schoolId,user_id:userId,endpoint,p256dh,auth,device_name:text(body.deviceName,220),user_agent:text(req.headers.get('user-agent'),500),is_active:true,failure_count:0,last_error:null,last_seen_at:now,updated_at:now},{onConflict:'school_id,user_id,endpoint'}).select('id,school_id,user_id,device_name,is_active,last_seen_at').single();if(q.error)throw q.error;return json({ok:true,subscription:q.data,requestId});
   }
   if(action==='remove-subscription'){const endpoint=text(body.endpoint,3000);if(!endpoint)return json({error:'ENDPOINT_REQUIRED'},400);const q=await sb.from('push_subscriptions').update({is_active:false,updated_at:now}).eq('school_id',schoolId).eq('user_id',userId).eq('endpoint',endpoint);if(q.error)throw q.error;return json({ok:true,requestId});}
-  if(action==='list-notifications'){const limit=Math.min(Math.max(Number(body.limit||50),1),100);const q=await sb.from('platform_notifications').select('*').eq('school_id',schoolId).eq('recipient_user_id',userId).order('created_at',{ascending:false}).limit(limit);if(q.error)throw q.error;return json({ok:true,notifications:q.data||[],requestId});}
-  if(action==='list-events'){if(!isManager)return json({error:'MANAGER_REQUIRED'},403);const limit=Math.min(Math.max(Number(body.limit||60),1),120);const q=await sb.from('school_events').select('*').eq('school_id',schoolId).order('created_at',{ascending:false}).limit(limit);if(q.error)throw q.error;return json({ok:true,events:q.data||[],requestId});}
+  if(action==='list-notifications'){const limit=Math.min(Math.max(Number(body.limit||50),1),100);let q=sb.from('platform_notifications').select('*').eq('school_id',schoolId).eq('recipient_user_id',userId);if(body.activeOnly!==false)q=q.is('read_at',null);const out=await q.order('created_at',{ascending:false}).limit(limit);if(out.error)throw out.error;return json({ok:true,notifications:out.data||[],requestId});}
+  if(action==='list-events'){if(!canManageSchool)return json({error:'SUPERVISOR_REQUIRED'},403);const limit=Math.min(Math.max(Number(body.limit||60),1),120);const q=await sb.from('school_events').select('*').eq('school_id',schoolId).order('created_at',{ascending:false}).limit(limit);if(q.error)throw q.error;return json({ok:true,events:q.data||[],requestId});}
   if(action==='mark-read'||action==='mark-all-read'){
     let q;if(action==='mark-all-read')q=await sb.from('platform_notifications').update({read_at:now}).eq('school_id',schoolId).eq('recipient_user_id',userId).is('read_at',null);else q=await sb.from('platform_notifications').update({read_at:now}).eq('school_id',schoolId).eq('recipient_user_id',userId).eq('id',text(body.notificationId,100));if(q.error)throw q.error;return json({ok:true,requestId});
+  }
+  if(action==='dismiss-weekly'){
+    const periodId=text(body.periodId,220);if(!periodId)return json({error:'PERIOD_ID_REQUIRED',requestId},400);
+    let recipients=[userId];
+    if(Array.isArray(body.recipientUserIds)&&body.recipientUserIds.length){
+      if(!canManageSchool)return json({error:'SUPERVISOR_REQUIRED',requestId},403);
+      const requested=[...new Set(body.recipientUserIds.map((x:unknown)=>text(x,100)).filter(Boolean))].slice(0,500);
+      const members=await sb.from('school_members').select('user_id').eq('school_id',schoolId).in('user_id',requested).neq('status','deleted');if(members.error)throw members.error;
+      recipients=(members.data||[]).map((x:any)=>String(x.user_id));
+    }
+    if(!recipients.length)return json({ok:true,dismissed:0,requestId});
+    let candidates=sb.from('platform_notifications').select('id,metadata,source_key,action_url,actor_user_id').eq('school_id',schoolId).in('recipient_user_id',recipients).is('read_at',null).limit(2000);
+    if(recipients.some(x=>x!==userId))candidates=candidates.eq('actor_user_id',userId);
+    const found=await candidates;if(found.error)throw found.error;
+    const ids=(found.data||[]).filter((n:any)=>String(n.metadata?.period_id||n.metadata?.week_id||'')===periodId||String(n.metadata?.record_id||'').includes(periodId)||String(n.source_key||'').includes(periodId)||String(n.action_url||'').includes(encodeURIComponent(periodId))||String(n.action_url||'').includes(periodId)).map((n:any)=>String(n.id));
+    if(ids.length){const up=await sb.from('platform_notifications').update({read_at:now}).eq('school_id',schoolId).in('id',ids);if(up.error)throw up.error;}
+    return json({ok:true,dismissed:ids.length,periodId,requestId});
   }
   if(action==='test-push'){
     const me=await own();const ins=await sb.from('platform_notifications').insert({school_id:schoolId,recipient_user_id:userId,title:'تنبيه تجريبي من منصة القيادة المدرسية',body:'تم ربط هذا الجهاز بحسابك في المدرسة بنجاح.',severity:'important',action_url:'central_task_center.html',actor_user_id:userId,actor_name:me.full_name||'',source_key:'test:'+crypto.randomUUID()}).select('*').single();if(ins.error)throw ins.error;const r=await sendPush(userId,ins.data);return json({ok:true,...r,notification:ins.data,requestId});
@@ -67,7 +85,7 @@ Deno.serve(async(req)=>{
     // لا توجد نسخة تلقائية للمدير ولا توسعة لقائمة المستلمين حسب الدور.
     const recipients:string[]=recipient?[recipient]:[];
     const settings=await schoolSettings();const shouldNotify=Boolean(recipient)&&(severity!=='normal'||settings.important_only===false||body.notifyPush===true);let created:any[]=[];let push={sent:0,failed:0,configured:pushConfigured()};
-    if(shouldNotify){for(const rid of recipients){if(rid===userId&&body.notifySelf!==true)continue;const n=await sb.from('platform_notifications').insert({school_id:schoolId,recipient_user_id:rid,source_event_id:ev.data.id,title:text(body.title,300)||labelFor(eventType),body:summary,severity,action_url:actionUrl||null,actor_user_id:userId,actor_name:me.full_name||me.email||'',source_key:sourceKey?`${sourceKey}:${rid}`:null,metadata:{module_key:moduleKey,record_type:recordType,record_id:recordId}}).select('*').single();if(n.error){if(String(n.error.code)==='23505')continue;throw n.error;}created.push(n.data);if((severity==='important'||severity==='critical'||body.notifyPush===true)&&settings.push_enabled!==false){const r=await sendPush(rid,n.data);push.sent+=r.sent||0;push.failed+=r.failed||0;}}}
+    if(shouldNotify){for(const rid of recipients){if(rid===userId&&body.notifySelf!==true)continue;const periodId=text(body.periodId||body.data?.period_id||body.data?.week_id,220);const n=await sb.from('platform_notifications').insert({school_id:schoolId,recipient_user_id:rid,source_event_id:ev.data.id,title:text(body.title,300)||labelFor(eventType),body:summary,severity,action_url:actionUrl||null,actor_user_id:userId,actor_name:me.full_name||me.email||'',source_key:sourceKey?`${sourceKey}:${rid}`:null,metadata:{module_key:moduleKey,record_type:recordType,record_id:recordId,period_id:periodId||null}}).select('*').single();if(n.error){if(String(n.error.code)==='23505')continue;throw n.error;}created.push(n.data);if((severity==='important'||severity==='critical'||body.notifyPush===true)&&settings.push_enabled!==false){const r=await sendPush(rid,n.data);push.sent+=r.sent||0;push.failed+=r.failed||0;}}}
     return json({ok:true,event:ev.data,notifications:created,push,requestId});
   }
   return json({error:'ACTION_UNSUPPORTED',requestId},400);

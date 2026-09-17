@@ -1,7 +1,7 @@
 (function(){
   'use strict';
   if(window.PlatformStateEngine) return;
-  const VERSION='1.10.0-RL172-weekly-evidence-lock';
+  const VERSION='1.11.0-RL175-weekly-reset-lifecycle';
   const cfg={
     base:()=> (localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'')+'/functions/v1/platform-state',
     anon:()=>localStorage.getItem('smartSchoolSupabaseAnonKey')||'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM',
@@ -66,11 +66,12 @@
   const managerUpsertUser=(moduleKey,ownerUserId,items,opts)=>request('manager-upsert-user',{moduleKey,ownerUserId,items},opts);
   const publishWeeklyPlan=(ownerUserId,payload)=>request('publish-weekly-plan',{moduleKey:'weekly_teacher_work',ownerUserId,payload});
   const closeWeeklyPlan=(ownerUserId,weekId)=>request('close-weekly-plan',{moduleKey:'weekly_teacher_work',ownerUserId,weekId});
+  const resetWeeklyUserContext=(weekId)=>request('reset-weekly-user-context',{moduleKey:'weekly_teacher_work',weekId});
   const submitWeeklySubmission=(payload)=>request('submit-weekly-submission',{moduleKey:'weekly_teacher_work',payload});
   const saveWeeklyEvidenceDraft=(payload)=>request('save-weekly-evidence-draft',{moduleKey:'weekly_teacher_work',payload});
   const reviewWeeklySubmission=(ownerUserId,stateKey,itemKey,decision,reason,evidencePatch)=>request('review-weekly-submission',{moduleKey:'weekly_teacher_work',ownerUserId,stateKey,itemKey,decision,reason,evidencePatch:evidencePatch||null});
   const updateAdministrativeEmployeeStatus=(ownerUserId,status)=>request('admin-employee-status',{moduleKey:'admin_performance',ownerUserId,status});
   const removeAdministrativeEmployee=(ownerUserId)=>request('admin-employee-delete',{moduleKey:'admin_performance',ownerUserId});
   const health=()=>request('health',{});
-  window.PlatformStateEngine={VERSION,request,pull,pullUser,pullSchoolUsers,bulkUpsert,managerUpsertUser,publishWeeklyPlan,closeWeeklyPlan,submitWeeklySubmission,saveWeeklyEvidenceDraft,reviewWeeklySubmission,updateAdministrativeEmployeeStatus,removeAdministrativeEmployee,health};
+  window.PlatformStateEngine={VERSION,request,pull,pullUser,pullSchoolUsers,bulkUpsert,managerUpsertUser,publishWeeklyPlan,closeWeeklyPlan,resetWeeklyUserContext,submitWeeklySubmission,saveWeeklyEvidenceDraft,reviewWeeklySubmission,updateAdministrativeEmployeeStatus,removeAdministrativeEmployee,health};
 })();

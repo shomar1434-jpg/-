@@ -80,7 +80,7 @@ Deno.serve(async(req)=>{
     const ownerKey=requestedOwnerKey;
     if(!moduleKey&&action!=='health') return json({error:'moduleKey مطلوب',code:'STATE_MODULE_REQUIRED',requestId},400);
 
-    if(action==='health') return json({ok:true,version:'1.7.0-RL171-weekly-evidence-contract',schoolId:s.school_id,userId:s.user_id,role:s.role});
+    if(action==='health') return json({ok:true,version:'1.8.0-RL172-weekly-evidence-lock',schoolId:s.school_id,userId:s.user_id,role:s.role});
 
     if(action==='pull'){
       const keys=Array.isArray(body.keys)&&body.keys.length?body.keys.slice(0,500).map((x:unknown)=>safeKey(x,220)).filter(Boolean):[];
@@ -185,6 +185,41 @@ Deno.serve(async(req)=>{
       const up=await sb.from('platform_module_state').upsert({school_id:s.school_id,owner_key:targetUserId,module_key:'weekly_teacher_work',state_key:'weekly_active_plan_v1',payload:{value:JSON.stringify(payload)},updated_by:s.user_id,updated_at:now,deleted_at:null},{onConflict:'school_id,owner_key,module_key,state_key'});
       if(up.error)throw up.error;
       return json({ok:true,ownerKey:targetUserId,weekId,closedAt:payload.closed_at});
+    }
+
+    if(action==='save-weekly-evidence-draft'){
+      if(moduleKey!=='weekly_teacher_work')return json({error:'مصدر الشاهد غير صحيح',code:'STATE_TARGET_MODULE_FORBIDDEN',requestId},403);
+      const teacherId=String(s.user_id||'').trim(),incoming=body.payload&&typeof body.payload==='object'?body.payload:{},weekId=String(incoming.week_id||'').trim(),itemKey=safeKey(incoming.item_key,180);
+      if(!teacherId||!weekId||!itemKey)return json({error:'بيانات ربط الشاهد غير مكتملة',code:'STATE_WEEKLY_EVIDENCE_INPUT_REQUIRED',requestId},400);
+      const planRow=await sb.from('platform_module_state').select('payload,deleted_at').eq('school_id',s.school_id).eq('owner_key',teacherId).eq('module_key','weekly_teacher_work').eq('state_key','weekly_active_plan_v1').maybeSingle();
+      if(planRow.error)throw planRow.error;
+      if(!planRow.data||planRow.data.deleted_at)return json({error:'لا توجد خطة أسبوع مؤكدة ومنشورة لك',code:'STATE_WEEK_PLAN_NOT_FOUND',requestId},409);
+      let plan:any={};try{plan=JSON.parse(String(planRow.data.payload?.value||'{}'))}catch(_){return json({error:'بيانات خطة الأسبوع تالفة',code:'STATE_WEEK_PLAN_INVALID',requestId},409)}
+      if(String(plan.week_id||'')!==weekId)return json({error:'الشاهد لا يطابق الأسبوع المؤكد حاليًا',code:'STATE_WEEK_EVIDENCE_WEEK_MISMATCH',requestId},409);
+      if(String(plan.execution_state||'')!=='in_progress'||['مغلق','مؤرشف','إجازة'].includes(String(plan.status||'')))return json({error:'تم إغلاق هذا الأسبوع ولا يمكن رفع شاهد جديد',code:'STATE_WEEK_CLOSED',requestId},409);
+      const ids=[...new Set((Array.isArray(incoming.cloud_file_ids)?incoming.cloud_file_ids:[]).map((x:unknown)=>String(x||'').trim()).filter(Boolean))].slice(0,10);
+      if(!ids.length)return json({error:'معرف الملف السحابي مطلوب',code:'STATE_WEEKLY_EVIDENCE_FILE_REQUIRED',requestId},400);
+      const files=await sb.from('platform_files').select('id,display_name,original_name,mime_type,file_size').eq('school_id',s.school_id).eq('owner_user_id',teacherId).in('id',ids).eq('status','active').is('deleted_at',null);
+      if(files.error)throw files.error;
+      if((files.data||[]).length!==ids.length)return json({error:'تعذر التحقق من ملكية الشاهد',code:'STATE_WEEKLY_EVIDENCE_VERIFICATION_FAILED',requestId},403);
+      const stateKey='weekly_evidence_draft_v1:'+weekId+':'+teacherId;
+      const existing=await sb.from('platform_module_state').select('payload,deleted_at').eq('school_id',s.school_id).eq('owner_key',teacherId).eq('module_key','weekly_teacher_work').eq('state_key',stateKey).maybeSingle();
+      if(existing.error)throw existing.error;
+      let draft:any={week_id:weekId,teacher_id:teacherId,items:{}};if(existing.data&&!existing.data.deleted_at){try{draft=JSON.parse(String(existing.data.payload?.value||'{}'))||draft}catch(_){}}
+      const previous=draft.items&&typeof draft.items==='object'?draft.items[itemKey]:null;
+      if(previous&&Array.isArray(previous.cloud_file_ids)&&previous.cloud_file_ids.length){
+        const submissionKey='weekly_submission_v1:'+weekId+':'+teacherId;
+        const submissionRow=await sb.from('platform_module_state').select('payload,deleted_at').eq('school_id',s.school_id).eq('owner_key',teacherId).eq('module_key','weekly_teacher_work').eq('state_key',submissionKey).maybeSingle();
+        if(submissionRow.error)throw submissionRow.error;
+        let reviewStatus='',reviewedAt='';if(submissionRow.data&&!submissionRow.data.deleted_at){try{const submission=JSON.parse(String(submissionRow.data.payload?.value||'{}'));reviewStatus=String(submission.items?.[itemKey]?.review_status||'');reviewedAt=String(submission.items?.[itemKey]?.reviewed_at||'')}catch(_){}}
+        const previousSavedAt=String(previous.cloud_synced_at||previous.updated_at||'');
+        if(!['returned','rejected'].includes(reviewStatus)||(reviewedAt&&previousSavedAt&&previousSavedAt>reviewedAt))return json({error:'يوجد شاهد محفوظ لهذه المهمة؛ لا يسمح برفع بديل إلا بعد إعادته أو رفضه من المسؤول',code:'STATE_WEEKLY_EVIDENCE_ALREADY_LOCKED',requestId},409);
+      }
+      draft.items=draft.items&&typeof draft.items==='object'?draft.items:{};const primary:any=(files.data||[])[0]||{};
+      draft.items[itemKey]={...(draft.items[itemKey]||{}),cloud_file_ids:ids,file_name:String(incoming.file_name||primary.display_name||primary.original_name||''),file_type:String(incoming.file_type||primary.mime_type||''),file_size:Number(incoming.file_size||primary.file_size||0),cloud_synced_at:now,review_status:'',review_reason:'',updated_at:now};draft.week_id=weekId;draft.teacher_id=teacherId;draft.updated_at=now;
+      const value=JSON.stringify(draft);if(value.length>MAX_TOTAL_CHARS)return json({error:'حجم مسودة الشواهد كبير جدًا',code:'STATE_PAYLOAD_TOO_LARGE',requestId},413);
+      const up=await sb.from('platform_module_state').upsert({school_id:s.school_id,owner_key:teacherId,module_key:'weekly_teacher_work',state_key:stateKey,payload:{value},updated_by:teacherId,updated_at:now,deleted_at:null},{onConflict:'school_id,owner_key,module_key,state_key'});if(up.error)throw up.error;
+      return json({ok:true,stateKey,weekId,itemKey,cloud_file_ids:ids});
     }
 
     if(action==='submit-weekly-submission'){

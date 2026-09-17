@@ -23,6 +23,7 @@
  function recordId(input){return String(input.dataset.cloudRecordId||input.dataset.recordId||input.name||input.id||'page-root').replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,100)||'page-root'}
  document.addEventListener('change',async function(ev){
    const input=ev.target;if(shouldSkip(input))return;
+   if(input.disabled||input.dataset.cloudLocked==='1')return;
    const files=[...(input.files||[])];if(!files.length)return;
    if(input.dataset.cloudSyncing==='1')return;input.dataset.cloudSyncing='1';
    try{
@@ -33,6 +34,7 @@
        ownershipScope:ctx.ownershipScope||'user',
        recordType:ctx.recordType||'page_attachment',
        recordId:recordId(input),
+       replaceFileId:input.dataset.cloudReplaceFileId||undefined,
        relationType:'attachment',
        metadata:{source:'automatic_input_sync',page,inputId:input.id||null,inputName:input.name||null,label:labelFor(input)},
        continueOnError:true

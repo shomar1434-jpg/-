@@ -38,8 +38,9 @@
        continueOnError:true
      });
      if(result.errors.length){const first=result.errors[0]&&result.errors[0].error&&result.errors[0].error.message?result.errors[0].error.message:'';toast(`تم حفظ ${result.results.length} ملف، وتعذر حفظ ${result.errors.length}${first?(' — '+first):''}.`,true)}else toast(`تم حفظ ${result.results.length} ملف في التخزين السحابي.`);
-     input.dataset.cloudSyncedFileIds=result.results.map(x=>x.file&&x.file.id).filter(Boolean).join(',');
-     input.dispatchEvent(new CustomEvent('cloudfiles:input-synced',{bubbles:true,detail:result}));
-   }catch(error){toast(error.message||'تعذر الحفظ السحابي',true)}finally{input.dataset.cloudSyncing='0'}
+     input.dataset.cloudSyncedFileIds=result.results.map(x=>(x&&x.file)||x).map(x=>x&&x.id).filter(Boolean).join(',');
+     if(result.results.length)input.dispatchEvent(new CustomEvent('cloudfiles:input-synced',{bubbles:true,detail:result}));
+     if(result.errors.length)input.dispatchEvent(new CustomEvent('cloudfiles:input-sync-failed',{bubbles:true,detail:{result,error:result.errors[0]?.error||null}}));
+   }catch(error){toast(error.message||'تعذر الحفظ السحابي',true);input.dispatchEvent(new CustomEvent('cloudfiles:input-sync-failed',{bubbles:true,detail:{error}}))}finally{input.dataset.cloudSyncing='0'}
  },true);
 })();

@@ -80,7 +80,7 @@ Deno.serve(async(req)=>{
     const ownerKey=requestedOwnerKey;
     if(!moduleKey&&action!=='health') return json({error:'moduleKey مطلوب',code:'STATE_MODULE_REQUIRED',requestId},400);
 
-    if(action==='health') return json({ok:true,version:'1.6.0-RL168-weekly-workflow-consistency',schoolId:s.school_id,userId:s.user_id,role:s.role});
+    if(action==='health') return json({ok:true,version:'1.7.0-RL171-weekly-evidence-contract',schoolId:s.school_id,userId:s.user_id,role:s.role});
 
     if(action==='pull'){
       const keys=Array.isArray(body.keys)&&body.keys.length?body.keys.slice(0,500).map((x:unknown)=>safeKey(x,220)).filter(Boolean):[];
@@ -201,6 +201,16 @@ Deno.serve(async(req)=>{
       const reviewerId=String(plan.reviewer_id||'').trim();
       if(!reviewerId)return json({error:'لم يتم تحديد مسؤول مراجعة الأسبوع',code:'STATE_WEEK_REVIEWER_REQUIRED',requestId},409);
       payload.school_id=s.school_id;payload.teacher_id=teacherId;payload.reviewer_id=reviewerId;payload.reviewer_email=String(plan.reviewer_email||payload.reviewer_email||'');payload.reviewer_role=String(plan.reviewer_role||payload.reviewer_role||'agent');payload.reviewer_name=String(plan.reviewer_name||payload.reviewer_name||'');payload.delivery_status='delivered';payload.delivered_at=payload.delivered_at||now;payload.updated_at=now;
+      const submissionItems=payload.items&&typeof payload.items==='object'?payload.items:{};
+      const allEvidenceIds:string[]=[];const missingRequired:string[]=[];
+      for(const [itemKey,itemValue] of Object.entries(submissionItems)){
+       const item:any=itemValue&&typeof itemValue==='object'?itemValue:{};const ids=[...new Set((Array.isArray(item.cloud_file_ids)?item.cloud_file_ids:[]).map((x:unknown)=>String(x||'').trim()).filter(Boolean))].slice(0,10);item.cloud_file_ids=ids;allEvidenceIds.push(...ids);
+       const completed=['تم التنفيذ','مكتمل','مكلف وتم التنفيذ'].includes(String(item.status||''));const hasText=!!String(item.evidence_value||'').trim();if(item.evidence_required===true&&completed&&!ids.length&&!hasText)missingRequired.push(String(item.title||itemKey));
+      }
+      if(missingRequired.length)return json({error:'الشاهد المطلوب غير مرفق لـ: '+missingRequired.join('، '),code:'STATE_WEEKLY_REQUIRED_EVIDENCE_MISSING',requestId},409);
+      const uniqueEvidenceIds=[...new Set(allEvidenceIds)];
+      if(uniqueEvidenceIds.length){const evidenceRows=await sb.from('platform_files').select('id').eq('school_id',s.school_id).eq('owner_user_id',teacherId).in('id',uniqueEvidenceIds).eq('status','active').is('deleted_at',null);if(evidenceRows.error)throw evidenceRows.error;const verified=new Set((evidenceRows.data||[]).map((x:any)=>String(x.id)));if(verified.size!==uniqueEvidenceIds.length)return json({error:'تعذر التحقق من ملكية أحد الشواهد قبل التسليم',code:'STATE_WEEKLY_EVIDENCE_VERIFICATION_FAILED',requestId},403)}
+      payload.items=submissionItems;payload.evidence_count=uniqueEvidenceIds.length;payload.evidence_verified_at=now;
       const stateKey='weekly_submission_v1:'+weekId+':'+teacherId;
       const value=JSON.stringify(payload);if(value.length>MAX_TOTAL_CHARS)return json({error:'حجم التسليم كبير جدًا',code:'STATE_PAYLOAD_TOO_LARGE',requestId},413);
       const up=await sb.from('platform_module_state').upsert({school_id:s.school_id,owner_key:teacherId,module_key:'weekly_teacher_work',state_key:stateKey,payload:{value},updated_by:teacherId,updated_at:now,deleted_at:null},{onConflict:'school_id,owner_key,module_key,state_key'});
@@ -223,9 +233,20 @@ Deno.serve(async(req)=>{
       if(!rid||rid!==String(s.user_id||''))return json({error:'هذا التسليم مرتبط بمسؤول آخر',code:'STATE_WEEKLY_REVIEWER_MISMATCH',requestId},403);
       const items=payload.items&&typeof payload.items==='object'?payload.items:{};const item=items[itemKey];
       if(!item)return json({error:'المهمة غير موجودة داخل التسليم',code:'STATE_WEEKLY_ITEM_NOT_FOUND',requestId},404);
+      const evidencePatch=body.evidencePatch&&typeof body.evidencePatch==='object'?body.evidencePatch:null;
+      if(evidencePatch&&Array.isArray(evidencePatch.cloud_file_ids)&&evidencePatch.cloud_file_ids.length){
+       const requestedIds=[...new Set(evidencePatch.cloud_file_ids.map((x:unknown)=>String(x||'').trim()).filter(Boolean))].slice(0,10);
+       const files=await sb.from('platform_files').select('id,school_id,owner_user_id,status,deleted_at,display_name,original_name,mime_type,file_size').eq('school_id',s.school_id).eq('owner_user_id',targetUserId).in('id',requestedIds).eq('status','active').is('deleted_at',null);
+       if(files.error)throw files.error;
+       const valid=(files.data||[]).map((x:any)=>String(x.id));
+       if(valid.length!==requestedIds.length)return json({error:'تعذر التحقق من ملكية أحد الشواهد المرفقة',code:'STATE_WEEKLY_EVIDENCE_OWNERSHIP_MISMATCH',requestId},403);
+       const primary:any=(files.data||[])[0]||{};
+       item.cloud_file_ids=requestedIds;item.file_name=String(evidencePatch.file_name||primary.display_name||primary.original_name||item.file_name||'');item.file_type=String(evidencePatch.file_type||primary.mime_type||item.file_type||'');item.file_size=Number(evidencePatch.file_size||primary.file_size||item.file_size||0);item.cloud_synced_at=item.cloud_synced_at||now;
+      }
       item.review_status=decision;item.reviewed_at=now;item.reviewed_by=String(s.user_id||'');item.review_reason=reason;
       if(decision==='approved')item.status='مكتمل';else if(decision==='returned')item.status='ناقص';else item.status='غير منفذ';
-      payload.items=items;payload.updated_at=now;payload.last_review_at=now;payload.last_review_by=String(s.user_id||'');
+      const reviewedItems=Object.values(items);const approvedCount=reviewedItems.filter((x:any)=>x&&x.review_status==='approved').length;
+      payload.items=items;payload.approved_count=approvedCount;payload.approved_executive_score=Math.round(approvedCount*100/(reviewedItems.length||1));payload.updated_at=now;payload.last_review_at=now;payload.last_review_by=String(s.user_id||'');
       const up=await sb.from('platform_module_state').upsert({school_id:s.school_id,owner_key:targetUserId,module_key:'weekly_teacher_work',state_key:stateKey,payload:{value:JSON.stringify(payload)},updated_by:s.user_id,updated_at:now,deleted_at:null},{onConflict:'school_id,owner_key,module_key,state_key'});
       if(up.error)throw up.error;
       return json({ok:true,payload,ownerKey:targetUserId,stateKey});

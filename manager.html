@@ -6020,9 +6020,11 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
         }catch(e){migrationOk=false;console.error('[RL79 legacy self evaluation migration]',e);}
       }
       const fresh=await pull([INDEX_KEY]),clean=arr(fresh[INDEX_KEY]).map(x=>Object.assign({},x,{storageEngine:'SelfEvaluationArchiveV5',__archiveSource:'clean',readOnly:false}));
-      if(migrationOk){view=clean;}else{
-        var map=new Map(clean.map(x=>[idOf(x),x]));legacy.forEach(function(r){var id=stableLegacyIdRL79(r);if(!map.has(id))map.set(id,Object.assign({},r,{id:id,folderId:canonicalLegacyFolderRL79(r),storageEngine:'LegacySelfEvaluationRecovery',__archiveSource:'legacy-fallback',readOnly:true}));});view=Array.from(map.values());
-      }
+      // لا يجوز أن يخفي نجاح قراءة فهرس فارغ السجلات التاريخية الموجودة في مفاتيح التوافق.
+      // نعرض اتحاد المصدرين دائمًا، مع جعل غير المرحّل للقراءة فقط حتى ينجح ترحيله لاحقًا.
+      var map=new Map(clean.map(x=>[idOf(x),x]));
+      legacy.forEach(function(r){var id=stableLegacyIdRL79(r);if(!map.has(id))map.set(id,Object.assign({},r,{id:id,folderId:canonicalLegacyFolderRL79(r),storageEngine:'LegacySelfEvaluationRecovery',__archiveSource:'legacy-fallback',readOnly:true}));});
+      view=Array.from(map.values()).sort(function(a,b){return String(b.updatedAt||b.savedAt||b.createdAt||'').localeCompare(String(a.updatedAt||a.savedAt||a.createdAt||''));});
       window.__selfEvaluationArchiveV5View=view;return view.slice();
     }
     async function fetch(id){const metaRow=view.find(x=>idOf(x)===String(id));if(!metaRow)return null;if(metaRow.__archiveSource==='legacy-fallback')return metaRow;const k=metaRow.stateKey||keyOf(id),v=await pull([k]),row=obj(v[k]);if(!row)throw new Error('تعذر إعادة قراءة سجل التقويم الذاتي من السحابة');if(String(row.id||'')!==String(metaRow.id||'')||String(row.folderId||'')!==String(metaRow.folderId||''))throw new Error('هوية السجل السحابي لا تطابق الفهرس');return Object.assign({},row,{__archiveSource:'clean'});}
@@ -6358,7 +6360,7 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
 <script src="unified-assignment-ui.js"></script>
   <script src="evidence-library-source.js"></script>
 
-<script src="school-information-source.js?v=20260916-RL169-stable-select-dropdowns"></script>
+<script src="school-information-source.js?v=20260916-RL170-records-interactivity"></script>
 <script src="internal-messaging.js"></script>
 
 <script defer src="unified_workspace.js"></script>

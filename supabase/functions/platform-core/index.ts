@@ -13,6 +13,18 @@ const sha256 = async (value: string) => Array.from(new Uint8Array(await crypto.s
   .map((x) => x.toString(16).padStart(2, '0')).join('');
 const safeKey = (v: unknown, fallback = 'general') => String(v || fallback).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 100) || fallback;
 const ownerRoles = new Set(['manager','owner','school_manager','principal','agent','deputy','deputy_admin','deputy_academic','deputy_students','مدير','مديرة','وكيل']);
+const canonicalDynamicRecordModules:Record<string,{owner:'manager'|'agent',idPattern:RegExp,route:string}>={
+  manager_records:{owner:'manager',idPattern:/^mgr-[0-9a-f]{10}$/i,route:'manager_records.html'},
+  academic_affairs:{owner:'agent',idPattern:/^edu-[0-9a-f]{10}$/i,route:'wakil-records.html'},
+  school_operations:{owner:'agent',idPattern:/^sch-[0-9a-f]{10}$/i,route:'wakil-records.html'},
+  student_affairs:{owner:'agent',idPattern:/^stu-[0-9a-f]{10}$/i,route:'wakil-records.html'},
+  deputy_shared_records:{owner:'agent',idPattern:/^(?:shr|shared)-[0-9a-f]{10}$/i,route:'wakil-records.html'}
+};
+const canonicalDynamicRecord=(moduleKey:unknown,recordType:unknown,recordId:unknown)=>{
+  const mk=safeKey(moduleKey),rt=String(recordType||''),rid=String(recordId||'').trim(),spec=canonicalDynamicRecordModules[mk];
+  if(rt!=='canonical_record'||!spec||!rid||!spec.idPattern.test(rid))return null;
+  return {module_key:mk,record_type:rt,record_id:rid,route_url:`${spec.route}?record=${encodeURIComponent(rid)}`,owner_role:spec.owner,display_name:null};
+};
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
@@ -124,6 +136,12 @@ Deno.serve(async (req) => {
       }
       const out:any[]=[];
       for(const r of unique.values()){
+        const dynamic=canonicalDynamicRecord(r.module_key,r.record_type,r.record_id);
+        if(dynamic){
+          // السجل الديناميكي يثبت بمعرفه، ولا يعاد توجيهه عبر اسم أو رابط قديم.
+          out.push({...r,...dynamic,label:r.label||r.record_id,route_url:dynamic.route_url,canonical_source:'dynamic_exact_id'});
+          continue;
+        }
         const {data:reg,error:regErr}=await sb.from('platform_record_types')
           .select('module_key,record_type,display_name,route_url,is_active')
           .eq('module_key',r.module_key).eq('record_type',r.record_type).eq('is_active',true).maybeSingle();
@@ -154,7 +172,7 @@ Deno.serve(async (req) => {
       return {links,grants};
     };
 
-    if (action === 'health') return json({ ok: true, service: 'platform-core', version:'2.3.0-registry-group-repair', requestId, schoolId: session.school_id, userId: session.user_id });
+    if (action === 'health') return json({ ok: true, service: 'platform-core', version:'2.4.0-exact-dynamic-record-routing', requestId, schoolId: session.school_id, userId: session.user_id });
 
     if (action === 'bootstrap') {
       const [modules, records, assignments, dashboard, notifications] = await Promise.all([

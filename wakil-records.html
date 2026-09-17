@@ -2116,10 +2116,15 @@ aiComplete = async function(){
   await requestStructuredAI('', 'جاري توليد مقترحات مهيكلة للتعبئة...');
 };
 
-const delegatedRecordKey=new URLSearchParams(location.search).get('record');
+const delegatedRecordParams=new URLSearchParams(location.search);
+const delegatedRecordKey=delegatedRecordParams.get('record_id')||delegatedRecordParams.get('record');
 if(delegatedRecordKey){
   const requested=visibleForms().find(f=>f.id===delegatedRecordKey);
   if(requested) current=requested;
+  else if(delegatedRecordParams.get('delegated')==='1'){
+    const host=qs('#formPage');if(host)host.innerHTML='<div style="padding:32px;text-align:center;color:#991b1b;font-weight:800">تعذر مطابقة السجل المفوض بمعرّفه الثابت. لم يتم فتح سجل آخر بديلًا عنه.</div>';
+    throw new Error('DELEGATED_RECORD_ID_MISMATCH');
+  }
 }
 renderNav();renderForm();loadCurrent();bindAutoGrow(qs('#formPage'));autoGrowAll(qs('#formPage'));
 </script>

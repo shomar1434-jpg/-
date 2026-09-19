@@ -1,0 +1,21 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+const read=p=>fs.readFileSync(new URL(p,import.meta.url),'utf8');
+const center=read('./central_task_center.html');
+const runtime=read('./platform-runtime-guard.js');
+const delegated=read('./delegated-access-guard.js');
+const adapter=read('./central-task-cloud-adapter.js');
+const core=read('./supabase/functions/platform-core/index.ts');
+const workflow=read('./.github/workflows/deploy-supabase-functions.yml');
+
+assert.match(center,/searchParams\.set\('schoolId',schoolId\)/);
+assert.match(center,/platform_delegated_execution_v1/);
+assert.match(center,/searchParams\.set\('record_id',recordId\)/);
+assert.match(runtime,/isDelegatedExecution\(\)/);
+assert.match(runtime,/if\(isDelegatedExecution\(\)\)\{showUpdateNotice\(target\);return false;\}/);
+assert.match(delegated,/task\.school_id/);
+assert.match(delegated,/routeSchool!==sessionSchool/);
+assert.match(adapter,/workspacePreserved/);
+assert.match(core,/2\.4\.0-exact-dynamic-record-routing/);
+assert.match(workflow,/supabase\/functions\/\*\*/);
+console.log('RL177 static verification passed.');

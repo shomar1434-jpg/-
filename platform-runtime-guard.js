@@ -21,6 +21,12 @@
 
   function cleanBuild(v){return String(v||'').trim().replace(/[^0-9A-Za-z._-]/g,'').slice(0,96)}
   function currentTarget(){try{return new URL(location.href).searchParams.get(RELOAD_PARAM)||''}catch(_){return ''}}
+  function isDelegatedExecution(){
+    try{
+      const p=new URL(location.href).searchParams;
+      return p.get('delegated')==='1' && !!p.get('task_id') && !!(p.get('record_id')||p.get('record'));
+    }catch(_){return false}
+  }
 
   function showUpdateNotice(target){
     if(document.getElementById('platform-runtime-update-notice'))return;
@@ -55,6 +61,9 @@
       if(!res.ok)throw new Error('manifest_http_'+res.status);
       const data=await res.json(),target=cleanBuild(data&&data.build);
       if(!target||target===EMBEDDED_BUILD)return true;
+      // لا تقطع فتح سجل مفوض أو تعيد تحميله بعد ظهوره. داخل التنفيذ يعرض
+      // التحديث كخيار يدوي فقط، حتى تبقى هوية التكليف والمدرسة والسجل ثابتة.
+      if(isDelegatedExecution()){showUpdateNotice(target);return false;}
       // Never interrupt a user who has started working. Before interaction, a single
       // cache-busting reload is safe and updates stale HTML/JS without deleting state.
       if(!userInteracted&&currentTarget()!==target)return refreshTo(target,false);
@@ -69,7 +78,7 @@
     else setTimeout(run,700);
   }
 
-  window.PlatformRuntimeGuard=Object.freeze({BUILD:EMBEDDED_BUILD,check:checkBuild});
+  window.PlatformRuntimeGuard=Object.freeze({BUILD:EMBEDDED_BUILD,check:checkBuild,isDelegatedExecution});
   if(document.readyState==='complete')scheduleCheck();
   else addEventListener('load',scheduleCheck,{once:true});
 })();

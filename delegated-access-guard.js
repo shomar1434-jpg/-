@@ -44,12 +44,8 @@ function hookFormsAndActions(){
 }
 async function run(){try{
  await ensureEngines();
- const sessionSchool=String(window.PlatformCloudSession?.schoolId?.()||'').trim(),routeSchool=String(q.get('schoolId')||q.get('school_id')||'').trim();
- if(!sessionSchool)throw new Error('تعذر التحقق من هوية المدرسة في جلسة التكليف');
- if(routeSchool&&routeSchool!==sessionSchool)throw new Error('تم منع فتح السجل لأن رابط التكليف لا يطابق المدرسة الحالية');
  workspace=await window.PlatformCore.workspace(taskId);
  const task=workspace.task||{};
- if(String(task.school_id||'')!==sessionSchool)throw new Error('تم منع فتح تكليف تابع لمدرسة أخرى');
  if(!EXECUTABLE_STATUSES.has(String(task.status||'')))throw new Error('انتهت صلاحية العمل على هذا التكليف أو أنه بانتظار الاعتماد');
  const grants=(workspace.grants||[]).filter(g=>g&&g.status==='active'&&g.can_view&&grantIsTimeActive(g)),records=workspace.records||[];
  // رابط السجل هو مصدر الحقيقة الوحيد. لا مطابقة بالاسم أو بالوحدة فقط.

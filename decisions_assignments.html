@@ -28,6 +28,14 @@ textarea:focus,input:focus,select:focus{outline:none;border-color:var(--teal);bo
 
 label{display:block;font-size:12px;font-weight:700;margin-bottom:4px;color:#33484f}
 input,select{width:100%;border:1px solid #c8d4d7;border-radius:9px;padding:9px 10px;font:inherit;font-size:12.5px;background:#fcfdfd}
+.assignee-picker-button{width:100%;border:1px solid #c8d4d7;border-radius:9px;padding:10px;font:inherit;font-size:12.5px;background:#fcfdfd;color:#33484f;text-align:right;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.assignee-picker-button:focus,.assignee-picker-button[aria-expanded="true"]{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px rgba(10,121,120,.10)}
+.assignee-picker-menu{position:fixed;display:none;z-index:2147483646;background:#fff;border:1px solid var(--teal);border-radius:12px;box-shadow:0 16px 40px rgba(15,52,68,.24);max-height:min(420px,70vh);overflow:auto;overscroll-behavior:contain;padding:6px;direction:rtl;text-align:right}
+.assignee-picker-menu[data-open="1"]{display:block}
+.assignee-picker-option{display:block;width:100%;border:0;background:#fff;color:#24444b;text-align:right;border-radius:8px;padding:11px 12px;font:inherit;font-size:12.5px;cursor:pointer}
+.assignee-picker-option:hover,.assignee-picker-option:focus{outline:none;background:#e7f6f4;color:#075f5a}
+.assignee-picker-option small{display:block;color:#6b7e84;margin-top:2px;font-size:10px}
+.assignee-picker-empty{padding:14px;text-align:center;color:#71838c;font-size:12px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:14px}
 button{border:0;border-radius:9px;padding:10px 13px;font:700 12px 'Alyamama';cursor:pointer}
@@ -127,7 +135,7 @@ button{border:0;border-radius:9px;padding:10px 13px;font:700 12px 'Alyamama';cur
 <script src="cloud-file-engine.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js?v=20260830"></script>
 <script src="internal-messaging.js?v=20260904-RL23-badges-send-compatible"></script>
-<meta name="decisions-assignments-version" content="2026.09.04-RL25-cloud-commit-recovery-historical-reconcile">
+<meta name="decisions-assignments-version" content="2026.09.19-RL181-stable-assignee-picker">
 <script src="platform-page-navigation.js?v=20260830-nav2" defer></script>
 </head>
 <body>
@@ -151,9 +159,9 @@ button{border:0;border-radius:9px;padding:10px 13px;font:700 12px 'Alyamama';cur
  </div>
  <div class="field">
    <label>اسم المكلف</label>
-   <select id="name">
-     <option value="">جارٍ تحميل أسماء المعلمين/المعلمات من نظام المدرسة...</option>
-   </select>
+   <input id="name" type="hidden" value="">
+   <button id="assigneePickerButton" class="assignee-picker-button" type="button" aria-haspopup="listbox" aria-expanded="false"><span>جارٍ تحميل أسماء منسوبي المدرسة...</span><b aria-hidden="true">⌄</b></button>
+   <div id="assigneePickerMenu" class="assignee-picker-menu" role="listbox" aria-label="قائمة المكلفين"></div>
    <div id="assigneeSourceHint" class="custom-help">المصدر: بيانات المعلمين المسجلين في المدرسة.</div>
  </div>
  <div class="field"><label>رقم الهوية / السجل المدني</label><input id="nid" placeholder="اختياري"></div>
@@ -663,6 +671,48 @@ function archiveWrite(rows){
  }catch(e){console.error('decision archive save failed',e);return false}
 }
 function normalizePersonName(v){return String(v||'').replace(/\s+/g,' ').trim()}
+let assigneePickerRows=[];
+function assigneePickerRoleLabel(r){
+ r=String(r||'').trim().toLowerCase();
+ if(r==='teacher')return 'معلم/ة';
+ if(r==='kindergarten_teacher')return 'معلمة رياض أطفال';
+ if(r==='administrative_employee'||r==='admin_employee')return 'موظف/ة إداري/ة';
+ return 'منسوب/ة';
+}
+function positionAssigneePicker(){
+ const button=$('assigneePickerButton'),menu=$('assigneePickerMenu');
+ if(!button||!menu||menu.dataset.open!=='1')return;
+ const rect=button.getBoundingClientRect(),gap=5,width=Math.max(260,rect.width),below=innerHeight-rect.bottom-gap,above=rect.top-gap;
+ menu.style.width=Math.min(width,innerWidth-16)+'px';
+ menu.style.left=Math.max(8,Math.min(rect.left,innerWidth-Math.min(width,innerWidth-16)-8))+'px';
+ menu.style.maxHeight=Math.max(150,Math.min(420,Math.max(below,above)-10))+'px';
+ menu.style.top=(below>=190||below>=above)?(rect.bottom+gap)+'px':Math.max(8,rect.top-Math.min(420,above)-gap)+'px';
+}
+function closeAssigneePicker(){
+ const button=$('assigneePickerButton'),menu=$('assigneePickerMenu');
+ if(button)button.setAttribute('aria-expanded','false');
+ if(menu)menu.dataset.open='0';
+}
+function selectAssigneePickerRow(row){
+ const input=$('name'),button=$('assigneePickerButton');if(!input||!row)return;
+ input.value=normalizePersonName(row.name);input.dataset.userId=String(row.id||'');input.dataset.email=String(row.email||'').toLowerCase();input.dataset.role=String(row.role||'').toLowerCase();
+ if(button)button.querySelector('span').textContent=row.name+' — '+assigneePickerRoleLabel(row.role);
+ closeAssigneePicker();input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));
+}
+function openAssigneePicker(){
+ const button=$('assigneePickerButton'),menu=$('assigneePickerMenu');if(!button||!menu)return;
+ menu.replaceChildren();
+ if(!assigneePickerRows.length){const empty=document.createElement('div');empty.className='assignee-picker-empty';empty.textContent='لا توجد أسماء منسوبين نشطين متاحين للتكليف';menu.appendChild(empty)}
+ else assigneePickerRows.forEach(row=>{const option=document.createElement('button');option.type='button';option.className='assignee-picker-option';option.setAttribute('role','option');const title=document.createElement('span');title.textContent=row.name;const detail=document.createElement('small');detail.textContent=assigneePickerRoleLabel(row.role);option.append(title,detail);option.addEventListener('pointerdown',event=>{event.preventDefault();event.stopPropagation();selectAssigneePickerRow(row)});option.addEventListener('click',event=>{event.preventDefault();selectAssigneePickerRow(row)});menu.appendChild(option)});
+ menu.dataset.open='1';button.setAttribute('aria-expanded','true');positionAssigneePicker();
+}
+function bindAssigneePicker(){
+ const button=$('assigneePickerButton'),menu=$('assigneePickerMenu');if(!button||!menu||button.dataset.bound==='1')return;
+ button.dataset.bound='1';button.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();menu.dataset.open==='1'?closeAssigneePicker():openAssigneePicker()});
+ document.addEventListener('pointerdown',event=>{if(menu.dataset.open!=='1'||event.target===button||button.contains(event.target)||menu.contains(event.target))return;closeAssigneePicker()},true);
+ window.addEventListener('resize',positionAssigneePicker);window.addEventListener('scroll',positionAssigneePicker,true);
+ document.addEventListener('keydown',event=>{if(event.key==='Escape')closeAssigneePicker()});
+}
 function nextSequenceForAssignee(name,rows,excludeId){
  const n=normalizePersonName(name);
  const used=(rows||[]).filter(r=>r&&r.recordType==='decision_assignment'&&normalizePersonName(r.assigneeName)===n&&String(r.id)!==String(excludeId||''))
@@ -678,21 +728,14 @@ function buildArchivedOfficialHtml(){
    '<body><main class="workspace">'+pages+'</main></body></html>';
 }
 async function loadAssigneeNames(selectedValue){
- const sel=$('name'),hint=$('assigneeSourceHint');
- if(!sel)return;
+ const sel=$('name'),button=$('assigneePickerButton'),hint=$('assigneeSourceHint');
+ if(!sel||!button)return;
  let staff=[];
  try{
    if(!window.SchoolInformationSource||typeof SchoolInformationSource.getStaff!=='function')throw new Error('مصدر المنسوبين الحي غير متاح');
    staff=await SchoolInformationSource.getStaff(false);
  }catch(e){console.warn('assignee live staff',e)}
  const excludedRoles=new Set(['system_admin','system-admin','super_admin','platform_admin']);
- const roleLabel=(r)=>{
-   r=String(r||'').trim().toLowerCase();
-   if(r==='teacher')return 'معلم/ة';
-   if(r==='kindergarten_teacher')return 'معلمة رياض أطفال';
-   if(r==='administrative_employee'||r==='admin_employee')return 'موظف/ة إداري/ة';
-   return 'منسوب/ة';
- };
  const seen=new Set();
  staff=(Array.isArray(staff)?staff:[]).filter(x=>{
    const status=String(x?.status||x?.user_status||'').trim().toLowerCase();
@@ -705,22 +748,21 @@ async function loadAssigneeNames(selectedValue){
    if(!uid||!name||seen.has(uid))return false;seen.add(uid);return true;
  }).sort((a,b)=>normalizePersonName(a.name||a.full_name||a.display_name).localeCompare(normalizePersonName(b.name||b.full_name||b.display_name),'ar'));
  const selected=normalizePersonName(selectedValue||'');
- sel.innerHTML='<option value="">اختر المكلف/ة</option>'+staff.map(t=>{
+ assigneePickerRows=staff.map(t=>{
    const n=normalizePersonName(t.name||t.full_name||t.teacher_name||t.display_name);
    const uid=String(t.id||t.user_id||'').trim();
    const email=String(t.email||t.user_email||t.microsoft_email||'').trim().toLowerCase();
    const role=String(t.role||t.user_role||'').trim().toLowerCase();
-   return '<option value="'+esc(n)+'" data-user-id="'+esc(uid)+'" data-email="'+esc(email)+'" data-role="'+esc(role)+'">'+esc(n)+' — '+esc(roleLabel(role))+'</option>';
- }).join('');
+   return {name:n,id:uid,email,role};
+ });
+ sel.value='';delete sel.dataset.userId;delete sel.dataset.email;delete sel.dataset.role;delete sel.dataset.historical;
+ button.querySelector('span').textContent='اختر المكلف/ة';
  // الاسم التاريخي لا يعاد إلى القائمة كمستخدم حالي.
  if(selected){
-   const found=[...sel.options].find(o=>o.value===selected);
-   if(found)sel.value=selected;
+   const found=assigneePickerRows.find(o=>o.name===selected);
+   if(found){sel.value=found.name;sel.dataset.userId=found.id;sel.dataset.email=found.email;sel.dataset.role=found.role;button.querySelector('span').textContent=found.name+' — '+assigneePickerRoleLabel(found.role)}
    else if(currentArchiveRecordId){
-     const o=document.createElement('option');
-     o.value=selected;o.textContent=selected+' (محفوظ تاريخيًا — غير موجود حاليًا)';o.disabled=true;o.dataset.historical='1';
-     sel.appendChild(o);
-     sel.selectedIndex=sel.options.length-1;
+     sel.value=selected;sel.dataset.historical='1';button.querySelector('span').textContent=selected+' (محفوظ تاريخيًا — غير موجود حاليًا)';
    }
  }
  const admins=staff.filter(x=>['administrative_employee','admin_employee'].includes(String(x?.role||x?.user_role||'').trim().toLowerCase())).length;
@@ -731,10 +773,9 @@ async function loadAssigneeNames(selectedValue){
 }
 function selectedAssigneeIdentity(){
  const sel=$('name');
- const opt=sel&&sel.options&&sel.selectedIndex>=0?sel.options[sel.selectedIndex]:null;
  return {
-   userId:String(opt?.dataset?.userId||opt?.dataset?.entityId||'').trim(),
-   email:String(opt?.dataset?.email||'').trim().toLowerCase(),
+   userId:String(sel?.dataset?.userId||'').trim(),
+   email:String(sel?.dataset?.email||'').trim().toLowerCase(),
    name:normalizePersonName(sel?.value||'')
  };
 }
@@ -877,6 +918,7 @@ async function loadArchiveRecordForEdit(){
 }
 
 async function init(){
+ bindAssigneePicker();
  $('type').innerHTML=decisions.map((d,i)=>`<option value="${i}">${d.title}</option>`).join('');
  fields.forEach(id=>{$(id).addEventListener('input',render);$(id).addEventListener('change',render)});
  $('signatureFile').addEventListener('change',e=>readAsset(e,'signature'));
@@ -1240,6 +1282,9 @@ function startNewAssignment(){
  ['name','nid','decisionNo','day','date','greg','start','customTitle','customMission','customResponsibilities','customDuration'].forEach(id=>{
    const el=$(id); if(el)el.value='';
  });
+ if($('name')){delete $('name').dataset.userId;delete $('name').dataset.email;delete $('name').dataset.role;delete $('name').dataset.historical;}
+ if($('assigneePickerButton'))$('assigneePickerButton').querySelector('span').textContent='اختر المكلف/ة';
+ closeAssigneePicker();
  if($('decisionDatePicker'))$('decisionDatePicker').value='';
  if($('startDatePicker'))$('startDatePicker').value='';
  initializeDecisionDatePickers();
@@ -1257,6 +1302,9 @@ function clearData(){
  if(!confirm('هل تريد مسح حقول النموذج الحالي؟ لن يتم حذف أي قرار محفوظ من الأرشيف.')) return;
  currentArchiveRecordId=null;history.replaceState(null,'',location.pathname);
  fields.forEach(id=>$(id).value='');$('type').value='0';
+ if($('name')){delete $('name').dataset.userId;delete $('name').dataset.email;delete $('name').dataset.role;delete $('name').dataset.historical;}
+ if($('assigneePickerButton'))$('assigneePickerButton').querySelector('span').textContent='اختر المكلف/ة';
+ closeAssigneePicker();
  localStorage.removeItem('takleef1448_approved');
  localStorage.removeItem('takleef1448_assets');
  digitalAssets={signature:'',stamp:''};

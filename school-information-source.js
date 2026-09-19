@@ -108,6 +108,7 @@ function currentAcademicYear(){
  try{
   const q=new URLSearchParams(location.search||'');
   return safe(q.get('academicYear')||document.getElementById('academicYear')?.value||
+    window.SchoolBaseSettings?.read?.().year||localStorage.getItem('setting_academic_year')||
     localStorage.getItem('school_info_academic_year')||'1448');
  }catch(_){return '1448'}
 }

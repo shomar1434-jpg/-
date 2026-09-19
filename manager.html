@@ -2846,7 +2846,7 @@ body{overflow-x:hidden}
             if(sigData) document.getElementById('sig-display').innerHTML = `<img src="${sigData}">`;
             else document.getElementById('sig-display').innerHTML = "";
 
-            const stampData = localStorage.getItem('setting_stamp');
+            const stampData = (window.SchoolBaseSettings?.read?.().stamp)||localStorage.getItem('setting_stamp');
             if(stampData) document.getElementById('stamp-display').innerHTML = `<img src="${stampData}">`;
             else document.getElementById('stamp-display').innerHTML = "";
 
@@ -3246,8 +3246,8 @@ async function legacyPerformanceSave_DISABLED() {
               yearSel.innerHTML=years.map(y=>`<option value="${y}">${y}هـ</option>`).join('');
               yearSel.value=String(baseSettings.year || localStorage.getItem('setting_academic_year') || years[0]);
             }
-            const sig = localStorage.getItem('setting_sig'); if(sig) { document.getElementById('sigSettingPreview').src = sig; document.getElementById('sigSettingPreview').classList.remove('hidden'); }
-            const stamp = localStorage.getItem('setting_stamp'); if(stamp) { document.getElementById('stampSettingPreview').src = stamp; document.getElementById('stampSettingPreview').classList.remove('hidden'); }
+            const sig = baseSettings.signature || localStorage.getItem('setting_sig'); if(sig) { document.getElementById('sigSettingPreview').src = sig; document.getElementById('sigSettingPreview').classList.remove('hidden'); }
+            const stamp = baseSettings.stamp || localStorage.getItem('setting_stamp'); if(stamp) { document.getElementById('stampSettingPreview').src = stamp; document.getElementById('stampSettingPreview').classList.remove('hidden'); }
             document.getElementById('app-settings-modal').style.display='flex';
         }
 
@@ -3257,7 +3257,7 @@ async function legacyPerformanceSave_DISABLED() {
             reader.readAsDataURL(event.target.files[0]);
         }
 
-        function savePersistentSettings() {
+        async function savePersistentSettings() {
             const regionVal = document.getElementById('setting_region').value;
             const schoolVal = document.getElementById('setting_school').value;
             const managerVal = document.getElementById('setting_name_m').value;
@@ -3271,12 +3271,18 @@ async function legacyPerformanceSave_DISABLED() {
             if(stageVal) localStorage.setItem('setting_stage',stageVal);
             const sigImg = document.getElementById('sigSettingPreview').src; if(sigImg && sigImg.startsWith('data:')) localStorage.setItem('setting_sig', sigImg);
             const stampImg = document.getElementById('stampSettingPreview').src; if(stampImg && stampImg.startsWith('data:')) localStorage.setItem('setting_stamp', stampImg);
-            if(window.SchoolBaseSettings && window.SchoolBaseSettings.write){
-              window.SchoolBaseSettings.write({school:schoolVal,manager:managerVal,education:regionVal,year:yearVal,stage:stageVal,signature:(sigImg&&sigImg.startsWith('data:'))?sigImg:undefined,stamp:(stampImg&&stampImg.startsWith('data:'))?stampImg:undefined});
+            try{
+              const payload={school:schoolVal,manager:managerVal,education:regionVal,year:yearVal,stage:stageVal,signature:(sigImg&&sigImg.startsWith('data:'))?sigImg:undefined,stamp:(stampImg&&stampImg.startsWith('data:'))?stampImg:undefined};
+              if(window.SchoolBaseSettings?.writeCloud) await window.SchoolBaseSettings.writeCloud(payload);
+              else if(window.SchoolBaseSettings?.write) window.SchoolBaseSettings.write(payload);
+            }catch(error){
+              console.error('[custom settings cloud save]',error);
+              showToast('حُفظت الإعدادات على هذا الجهاز، وتعذر تأكيد مزامنتها سحابيًا. أعد المحاولة بعد استقرار الاتصال.');
+              return;
             }
             document.getElementById('app-settings-modal').style.display='none';
             window.dispatchEvent(new CustomEvent('platformSettingsUpdated'));
-            showToast("تم حفظ الإعدادات ✅");
+            showToast("تم حفظ الإعدادات ومزامنتها مع أجهزة المدرسة ✅");
         }
 
         function showToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3000); }
@@ -6020,11 +6026,9 @@ window.addEventListener('storage',function(e){if(String(e.key||'').match(/report
         }catch(e){migrationOk=false;console.error('[RL79 legacy self evaluation migration]',e);}
       }
       const fresh=await pull([INDEX_KEY]),clean=arr(fresh[INDEX_KEY]).map(x=>Object.assign({},x,{storageEngine:'SelfEvaluationArchiveV5',__archiveSource:'clean',readOnly:false}));
-      // لا يجوز أن يخفي نجاح قراءة فهرس فارغ السجلات التاريخية الموجودة في مفاتيح التوافق.
-      // نعرض اتحاد المصدرين دائمًا، مع جعل غير المرحّل للقراءة فقط حتى ينجح ترحيله لاحقًا.
-      var map=new Map(clean.map(x=>[idOf(x),x]));
-      legacy.forEach(function(r){var id=stableLegacyIdRL79(r);if(!map.has(id))map.set(id,Object.assign({},r,{id:id,folderId:canonicalLegacyFolderRL79(r),storageEngine:'LegacySelfEvaluationRecovery',__archiveSource:'legacy-fallback',readOnly:true}));});
-      view=Array.from(map.values()).sort(function(a,b){return String(b.updatedAt||b.savedAt||b.createdAt||'').localeCompare(String(a.updatedAt||a.savedAt||a.createdAt||''));});
+      if(migrationOk){view=clean;}else{
+        var map=new Map(clean.map(x=>[idOf(x),x]));legacy.forEach(function(r){var id=stableLegacyIdRL79(r);if(!map.has(id))map.set(id,Object.assign({},r,{id:id,folderId:canonicalLegacyFolderRL79(r),storageEngine:'LegacySelfEvaluationRecovery',__archiveSource:'legacy-fallback',readOnly:true}));});view=Array.from(map.values());
+      }
       window.__selfEvaluationArchiveV5View=view;return view.slice();
     }
     async function fetch(id){const metaRow=view.find(x=>idOf(x)===String(id));if(!metaRow)return null;if(metaRow.__archiveSource==='legacy-fallback')return metaRow;const k=metaRow.stateKey||keyOf(id),v=await pull([k]),row=obj(v[k]);if(!row)throw new Error('تعذر إعادة قراءة سجل التقويم الذاتي من السحابة');if(String(row.id||'')!==String(metaRow.id||'')||String(row.folderId||'')!==String(metaRow.folderId||''))throw new Error('هوية السجل السحابي لا تطابق الفهرس');return Object.assign({},row,{__archiveSource:'clean'});}

@@ -4,6 +4,9 @@
   window.__SSP_BASE_SETTINGS_SOURCE__=true;
 
   const STAGES=['رياض أطفال','طفولة مبكرة','ابتدائية','متوسطة','ثانوية'];
+  const CLOUD_MODULE='school_base_settings';
+  const CLOUD_KEY='official_settings_v2';
+  let cloudReadyPromise=null;
   function hijriYear(){
     try{
       const parts=new Intl.DateTimeFormat('en-US-u-ca-islamic-umalqura',{year:'numeric'}).formatToParts(new Date());
@@ -35,8 +38,34 @@
       stamp:scoped.stamp||localStorage.getItem('setting_stamp')||''
     };
   }
-  function write(data){
+  function cloudItemValue(result){
+    const rows=Array.isArray(result)?result:(result?.items||result?.rows||[]);
+    const item=rows.find(x=>String(x?.state_key||x?.key||'')===CLOUD_KEY&&!x?.deleted_at);
+    let value=item?.payload?.value??item?.value??null;
+    if(typeof value==='string'){try{value=JSON.parse(value)}catch(_){return null}}
+    return value&&typeof value==='object'?value:null;
+  }
+  async function hydrateCloud(force=false){
+    if(cloudReadyPromise&&!force)return cloudReadyPromise;
+    cloudReadyPromise=(async()=>{
+      if(!window.PlatformStateEngine?.pull)return read();
+      const result=await window.PlatformStateEngine.pull(CLOUD_MODULE,'school',[CLOUD_KEY]);
+      const remote=cloudItemValue(result);
+      if(!remote)return read();
+      const local=parse(localStorage.getItem(scopedKey()))||{};
+      const remoteTime=Date.parse(remote.updatedAt||'')||0;
+      const localTime=Date.parse(local.updatedAt||'')||0;
+      const merged=remoteTime>=localTime?Object.assign({},local,remote):Object.assign({},remote,local);
+      localStorage.setItem(scopedKey(),JSON.stringify(merged));
+      write(merged,{skipCloud:true});
+      window.dispatchEvent(new CustomEvent('schoolBaseSettingsCloudReady',{detail:merged}));
+      return merged;
+    })().catch(error=>{console.warn('[school base settings cloud hydrate]',error);return read()});
+    return cloudReadyPromise;
+  }
+  function write(data,options={}){
     const cur=read(); const d=Object.assign({},cur,data||{});
+    if(!d.updatedAt)d.updatedAt=new Date().toISOString();
     localStorage.setItem(scopedKey(),JSON.stringify(d));
     if(d.school!=null)localStorage.setItem('setting_school',d.school||'');
     if(d.manager!=null)localStorage.setItem('def_m',d.manager||'');
@@ -46,9 +75,20 @@
     if(d.signature)localStorage.setItem('setting_sig',d.signature);
     if(d.stamp)localStorage.setItem('setting_stamp',d.stamp);
     window.dispatchEvent(new CustomEvent('schoolBaseSettingsUpdated',{detail:d}));
+    if(!options.skipCloud)void writeCloud(d).catch(error=>console.warn('[school base settings cloud save]',error));
     return d;
   }
-  window.SchoolBaseSettings={read,write,years:YEARS.slice(),stages:STAGES.slice(),currentAcademicYear:START_YEAR};
+  async function writeCloud(data){
+    const d=Object.assign({},read(),data||{},{updatedAt:new Date().toISOString()});
+    localStorage.setItem(scopedKey(),JSON.stringify(d));
+    if(!window.PlatformStateEngine?.bulkUpsert)throw new Error('محرك الحفظ السحابي غير متاح');
+    await window.PlatformStateEngine.bulkUpsert(CLOUD_MODULE,'school',[{key:CLOUD_KEY,value:JSON.stringify(d),deleted:false}],{timeout:30000});
+    const verify=cloudItemValue(await window.PlatformStateEngine.pull(CLOUD_MODULE,'school',[CLOUD_KEY]));
+    if(!verify||String(verify.updatedAt||'')!==String(d.updatedAt||''))throw new Error('لم يكتمل التحقق من حفظ إعدادات المدرسة سحابيًا');
+    write(d,{skipCloud:true});
+    return d;
+  }
+  window.SchoolBaseSettings={read,write,writeCloud,hydrateCloud,ready:()=>hydrateCloud(false),years:YEARS.slice(),stages:STAGES.slice(),currentAcademicYear:START_YEAR};
 
   function textAround(el){
     let t='';
@@ -126,7 +166,7 @@
   function scan(root){root=root&&root.querySelectorAll?root:document;
     root.querySelectorAll('input,select,textarea').forEach(el=>{if(isStage(el))configureStage(el);if(isAcademicYear(el))configureYear(el);if(isJobTitle(el))configureJobTitle(el);fillBase(el)});fillImages(root);
   }
-  function init(){scan(document);let queued=false;new MutationObserver(ms=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;ms.forEach(m=>m.addedNodes.forEach(n=>{if(n.nodeType===1)scan(n)}))})}).observe(document.documentElement,{childList:true,subtree:true});}
+  function init(){scan(document);void hydrateCloud(false).then(()=>scan(document));let queued=false;new MutationObserver(ms=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;ms.forEach(m=>m.addedNodes.forEach(n=>{if(n.nodeType===1)scan(n)}))})}).observe(document.documentElement,{childList:true,subtree:true});}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{init();setTimeout(()=>scan(document),250);setTimeout(()=>scan(document),1000)});else{init();setTimeout(()=>scan(document),250);setTimeout(()=>scan(document),1000);}
   window.addEventListener('platformSettingsUpdated',()=>scan(document));
   window.addEventListener('schoolBaseSettingsUpdated',()=>scan(document));

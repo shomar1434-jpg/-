@@ -47,7 +47,7 @@
 <link rel="stylesheet" href="premium-ui.css">
 <script defer src="premium-ui.js"></script>
 <script>window.CLOUD_STATE_CONFIG={moduleKey:'weekly_teacher_work',scope:'school',keys:[],prefixes:['deputyWeeklyFollowupWeeks:','deputyWeeklyFollowupArchive:','deputyWeeklyFollowupActiveWeek:','deputyWeeklyFollowupTeachers:']};</script>
-<script src="platform-state-engine.js?v=20260917-weekly-reset-lifecycle-v1"></script>
+<script src="platform-state-engine.js?v=20260917-weekly-evidence-lock-v4"></script>
 <script src="platform-persistence-guard.js"></script>
 <script defer src="school-base-settings-source.js"></script>
 <link rel="stylesheet" href="responsive-layout.css?v=20260818-responsive-1">
@@ -163,16 +163,8 @@
       return {...payload,...delivered};
     }
 
-    async function resetTeacherWeeklySection(){
+    function resetTeacherWeeklySection(){
       if(!confirm('سيتم تهيئة قسم الأعمال الأسبوعية للمعلم وحذف بيانات المعاينة أو بيانات الإعداد التجريبية الخاصة بعرض هذا القسم فقط. هل تريد المتابعة؟'))return;
-      const targetWeek=currentWeek(),targetWeekId=String(targetWeek?.id||'');
-      try{
-        if(targetWeekId&&!targetWeek?.preview){
-          if(!window.PlatformStateEngine?.resetWeeklyUserContext)throw new Error('محرك التهيئة السحابية غير متاح');
-          await window.PlatformStateEngine.resetWeeklyUserContext(targetWeekId);
-          if(window.PlatformNotificationCenter?.dismissWeekly)await window.PlatformNotificationCenter.dismissWeekly(targetWeekId);
-        }
-      }catch(e){toast('تعذر تنفيذ التهيئة: '+String(e&&e.message||e));return;}
       try{
         const sid=schoolId();
         const uid=me?.user_id || me?.id || '';
@@ -183,7 +175,6 @@
         const data=read(wk,[]);
         if(Array.isArray(data) && uid){
           data.forEach(w=>{
-            if(targetWeekId&&String(w.id)!==targetWeekId)return;
             if(w.teacherSubmissions && w.teacherSubmissions[uid]) delete w.teacherSubmissions[uid];
             if(w.teacherStatuses && w.teacherStatuses[uid]){
               delete w.teacherStatuses[uid];
@@ -191,15 +182,11 @@
           });
           localStorage.setItem(wk,JSON.stringify(data));
         }
-        weeks.forEach(w=>{if(targetWeekId&&String(w.id)!==targetWeekId)return;if(w.teacherSubmissions)delete w.teacherSubmissions[uid];if(w.teacherStatuses)delete w.teacherStatuses[uid];});
-        if(targetWeekId)localStorage.removeItem('weeklyEvidenceBindings:'+sid+':'+targetWeekId+':'+uid);
-        saveTeacherSmartAlerts(readTeacherSmartAlerts().filter(a=>String(a.week_id||a.period_id||'')!==targetWeekId&&String(a.week_number||'')!==String(targetWeek?.number||'')));
       }catch(e){}
-      try{await saveWeeks();}catch(e){toast('تمت تهيئة السجل التشغيلي، وتعذر تحديث المرآة المحلية مؤقتًا');}
+      weeks=[]; activeWeekId=''; activeWeekSource='preview';
       loadAll();
       renderAll();
-      window.PlatformNotificationCenter?.refresh?.();
-      toast('تمت تهيئة مسودة الأسبوع وتنبيهاته سحابيًا. الأعمال المرسلة أو المعتمدة لا تُحذف.');
+      toast('تمت تهيئة قسم الأعمال الأسبوعية وإزالة بيانات الإعداد التجريبية');
     }
     function dateLabel(v){if(!v)return '—'; try{return new Date(v+'T00:00:00').toLocaleDateString('ar-SA',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}catch(e){return v}}
     function blankStatus(){let s={attendance:{},lineup:{},weeklyPlan:'مطلوب',madrasati:'مطلوب',weeklyStrategy:'مطلوب',classTime:'مطلوب',followupRecord:'مطلوب',periodTest:'مطلوب'}; DAYS.forEach(d=>{s.attendance[d]='—';s.lineup[d]='—'});return s}
@@ -231,7 +218,7 @@
       if(periodTestApplies(w,me?.user_id)) items.push({key:'periodTest',title:periodTestTitle(w),sub:'تكليف إلزامي مشروط يفعّله الوكيل لأسبوع الاختبارات الفترية',status:st.periodTest||w.periodTest?.defaultStatus||'مطلوب',type:'weekly',evidence:w.periodTest?.evidence_type||'نموذج الاختبار أو تحليل نتائج الفترة',evidenceRequired:w.periodTest?.evidence_required!==false,evidenceAvailable:w.periodTest?.evidence_required!==false});
       return items}
     function variableItems(w){return (w.variableAssignments||[]).map((a,i)=>({...a,idx:i,key:'var_'+i,title:a.title||a.type,sub:(a.day||'خلال الأسبوع')+(a.note?' — '+a.note:''),status:a.status||'مكلف وينتظر التنفيذ',type:'variable',evidence:a.evidence_type||'شاهد تنفيذ',evidenceRequired:a.evidence_required===true,evidenceAvailable:a.evidence_required===true})).filter(a=>a.teacher_id===me?.user_id)}
-    function extraItems(w){return (w.extraTasks||[]).map((a,i)=>({...a,idx:i,key:'extra_'+i,title:a.task,sub:(a.role||'تكليف إضافي')+' — '+(a.due||'خلال الأسبوع'),status:a.status||'مطلوب',type:'extra',evidence:a.evidence||'شاهد تنفيذ',evidenceRequired:a.evidence_required===true,evidenceAvailable:a.evidence_required===true})).filter(a=>a.teacher_id===me?.user_id)}
+    function extraItems(w){return (w.extraTasks||[]).map((a,i)=>({...a,idx:i,key:'extra_'+String(a.id||i).replace(/[^a-zA-Z0-9_-]/g,'_'),legacyKey:'extra_'+i,title:a.task,sub:(a.role||'تكليف إضافي')+' — '+(a.due||'خلال الأسبوع'),status:a.status||'مطلوب',type:'extra',evidence:a.evidence||'شاهد تنفيذ',evidenceRequired:a.evidence_required===true,evidenceAvailable:a.evidence_required===true})).filter(a=>a.teacher_id===me?.user_id)}
     function executiveItems(w, st){return [...baseItems(w,st),...variableItems(w),...extraItems(w)]}
     function allItems(w, st){return executiveItems(w,st)}
     function renderDailyFollowup(st){return `<div class="tablewrap" style="margin-top:10px"><table style="min-width:0"><thead><tr><th>اليوم</th><th>الحضور</th><th>الاصطفاف الصباحي</th></tr></thead><tbody>${dailyItems(null,st).map(x=>`<tr><td><b>${esc(x.day)}</b></td><td>${badge(x.attendance)}</td><td>${badge(x.lineup)}</td></tr>`).join('')}</tbody></table></div>`}
@@ -242,7 +229,7 @@
     function saveTeacherSmartAlerts(list){localStorage.setItem(teacherSmartAlertsKey(),JSON.stringify(list||[]));}
     function priorityLabel(p){return p==='critical'?'حرج':p==='medium'?'متوسط':'منخفض'}
     function priorityClass(p){return p==='critical'?'critical':p==='medium'?'medium':'low'}
-    function renderTeacherSmartAlerts(){const box=$('teacherSmartAlertsBox'); if(!box)return; const uid=String(me?.user_id||me?.id||''); const email=String(me?.email||'').toLowerCase(); const alerts=readTeacherSmartAlerts().filter(a=>!a.read&&!a.dismissed_at&&(String(a.teacher_id||'')===uid || (email && String(a.teacher_email||'').toLowerCase()===email))).sort((a,b)=>String(b.sent_at||b.created_at||'').localeCompare(String(a.sent_at||a.created_at||''))); if(!alerts.length){box.innerHTML='<div class="empty">لا توجد تنبيهات جديدة حاليًا.</div>'; return} box.innerHTML=alerts.map(a=>`<div class="teacherAlertCard ${priorityClass(a.priority)}"><h4>${priorityLabel(a.priority)} — تنبيه من الوكيل</h4><p>${esc(a.message||'لديك تنبيه متابعة من الوكيل.')}</p><div class="teacherAlertMeta"><span class="badge req">جديد</span><span class="badge none">الأسبوع ${esc(a.week_number||'—')}</span><span class="badge none">${esc(a.reason||'')}</span>${a.sent_at?'<span class="badge sent">'+new Date(a.sent_at).toLocaleString('ar-SA')+'</span>':''}</div><div class="noPrint" style="margin-top:8px"><button class="btn small green" onclick="markTeacherAlertRead('${esc(a.id)}')">تم الاطلاع</button></div></div>`).join('')}
+    function renderTeacherSmartAlerts(){const box=$('teacherSmartAlertsBox'); if(!box)return; const uid=String(me?.user_id||me?.id||''); const email=String(me?.email||'').toLowerCase(); const alerts=readTeacherSmartAlerts().filter(a=>String(a.teacher_id||'')===uid || (email && String(a.teacher_email||'').toLowerCase()===email)).sort((a,b)=>String(b.sent_at||b.created_at||'').localeCompare(String(a.sent_at||a.created_at||''))); if(!alerts.length){box.innerHTML='<div class="empty">لا توجد تنبيهات مرسلة من الوكيل حاليًا.</div>'; return} box.innerHTML=alerts.map(a=>`<div class="teacherAlertCard ${priorityClass(a.priority)}"><h4>${priorityLabel(a.priority)} — تنبيه من الوكيل</h4><p>${esc(a.message||'لديك تنبيه متابعة من الوكيل.')}</p><div class="teacherAlertMeta"><span class="badge ${a.read?'done':'req'}">${a.read?'تم الاطلاع':'جديد'}</span><span class="badge none">الأسبوع ${esc(a.week_number||'—')}</span><span class="badge none">${esc(a.reason||'')}</span>${a.sent_at?'<span class="badge sent">'+new Date(a.sent_at).toLocaleString('ar-SA')+'</span>':''}</div><div class="noPrint" style="margin-top:8px"><button class="btn small green" onclick="markTeacherAlertRead('${esc(a.id)}')">تم الاطلاع</button></div></div>`).join('')}
     function markTeacherAlertRead(id){const list=readTeacherSmartAlerts(); const a=list.find(x=>x.id===id); if(a){a.read=true; a.read_at=new Date().toISOString(); saveTeacherSmartAlerts(list); renderTeacherSmartAlerts(); toast('تم تسجيل الاطلاع على التنبيه')}}
 
 
@@ -264,6 +251,7 @@
       base.reviewer_id=plan.reviewer_id||'';base.reviewer_email=plan.reviewer_email||'';base.reviewer_role=plan.reviewer_role||'agent';base.reviewer_name=plan.reviewer_name||'المسؤول';
       base.teacherStatuses=base.teacherStatuses||{};base.teacherStatuses[me.user_id]=plan.teacherStatus||base.teacherStatuses[me.user_id]||blankStatus();
       base.teacherSubmissions=priorSub;base.variableAssignments=Array.isArray(plan.variableAssignments)?plan.variableAssignments:[];base.extraTasks=Array.isArray(plan.extraTasks)?plan.extraTasks:[];
+      const ownSub=base.teacherSubmissions?.[me.user_id];if(ownSub?.items){base.extraTasks.forEach((task,i)=>{const stable='extra_'+String(task?.id||i).replace(/[^a-zA-Z0-9_-]/g,'_'),legacy='extra_'+i;if(!ownSub.items[stable]&&ownSub.items[legacy])ownSub.items[stable]={...ownSub.items[legacy],migrated_from_key:legacy,task_id:task?.id||''}})}
       if(plan.periodTest)base.periodTest=plan.periodTest;
       if(!existing)weeks.push(base);
       activeWeekId=base.id;activeWeekSource='published';
@@ -384,7 +372,7 @@
 
 <!-- Unified Comprehensive Cloud Storage -->
 <script src="platform-event-bus.js"></script>
-<script src="platform-notification-center.js?v=20260917-weekly-reset-lifecycle-v1"></script>
+<script src="platform-notification-center.js?v=20260916-weekly-review-v2"></script>
 <script src="platform-runtime-guard.js?v=20260914-RL148-legacy-session-bridge"></script>
 <script src="platform-cloud-session.js?v=20260914-RL160-rollback-pre-follow-records"></script>
 <script src="cloud-file-engine.js?v=20260916-weekly-preview-v2"></script>

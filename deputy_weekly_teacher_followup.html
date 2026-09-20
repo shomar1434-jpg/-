@@ -69,7 +69,7 @@
 <link rel="stylesheet" href="premium-ui.css">
 <script defer src="premium-ui.js"></script>
 <script>window.CLOUD_STATE_CONFIG={moduleKey:'weekly_teacher_work',scope:'school',keys:[],prefixes:['deputyWeeklyFollowupWeeks:','deputyWeeklyFollowupArchive:','deputyWeeklyFollowupActiveWeek:','deputyWeeklyFollowupTeachers:','deputyWednesdayAlerts:','teacherSmartAlerts:','deputyWeeklyTeacherManualProfiles:']};</script>
-<script src="platform-state-engine.js?v=20260917-weekly-reset-lifecycle-v1"></script>
+<script src="platform-state-engine.js?v=20260917-weekly-inline-review-v6"></script>
 <script src="platform-persistence-guard.js"></script>
 <script defer src="school-base-settings-source.js"></script>
 <link rel="stylesheet" href="responsive-layout.css?v=20260818-responsive-1">
@@ -486,14 +486,8 @@
   function reviewerStamp(){const c=currentReviewerIdentity();return {reviewer_id:c.id,reviewer_email:c.email,reviewer_role:c.role,reviewer_name:c.name}}
 
 
-  async function resetDeputyFollowupSection(){
-    if(!confirm('سيتم تهيئة أسابيع المتابعة النشطة وحالات التنفيذ والتنبيهات السابقة لهذا القسم. سيبقى أرشيف الأسابيع والشواهد والقرارات محفوظًا. هل تريد المتابعة؟'))return;
-    const resetWeek=currentWeek(),periodId=String(resetWeek?.id||''),ay=resetWeek?.year||localStorage.getItem('school_info_academic_year')||'1448',sem=resetWeek?.term||'الفصل الدراسي الأول';
-    try{
-      if(periodId&&window.PlatformNotificationCenter?.dismissWeekly)await window.PlatformNotificationCenter.dismissWeekly(periodId,teachers.map(t=>t.user_id).filter(Boolean));
-      if(!window.PlatformRecordSaveEngine||PlatformRecordSaveEngine.isSystemAdminContext())throw new Error('محرك الحفظ السحابي غير متاح');
-      await PlatformRecordSaveEngine.save({moduleKey:'deputy_weekly_followup',recordType:'weekly_followup_period',recordId:'main',academicYear:ay,semester:sem,scope:'school',folderId:'weekly-teacher-followup',title:'متابعة المعلمين الأسبوعية',data:{weeks:[],archives:archives.filter(a=>String(a.year||ay)===String(ay)&&String(a.term||sem)===String(sem)),activeWeekId:'',reset_at:new Date().toISOString()}});
-    }catch(e){toast('تعذر تنفيذ التهيئة السحابية: '+String(e&&e.message||e));return;}
+  function resetDeputyFollowupSection(){
+    if(!confirm('سيتم تهيئة قسم متابعة أعمال المعلمين عند الوكيل وحذف أسابيع المتابعة، الحالات، الأرشيف، والتقارير التجريبية لهذا القسم فقط. لن يتم حذف بيانات المعلمين المصدّرة من مركز المعلومات. هل تريد المتابعة؟'))return;
     try{
       const sid=schoolId();
       localStorage.removeItem('deputyWeeklyFollowupWeeks:'+sid);
@@ -502,11 +496,10 @@
       localStorage.removeItem('teacherWeeklyTasksPreview:'+sid);
       Object.keys(localStorage).filter(k=>k.startsWith('teacherWeeklyTasksPreview:')).forEach(k=>localStorage.removeItem(k));
     }catch(e){}
-    weeks=[]; activeWeekId='';
-    await refreshTeachers({silent:true,skipSourceRefresh:true});
+    weeks=[]; archives=[]; activeWeekId='';
+    refreshTeachers({silent:true,skipSourceRefresh:true});
     renderAll();
-    window.PlatformNotificationCenter?.refresh?.();
-    toast('تمت تهيئة المتابعة وتنبيهات التنفيذ السابق سحابيًا مع بقاء الشواهد والقرارات في سجل التدقيق');
+    toast('تمت تهيئة متابعة أعمال المعلمين وإزالة بيانات الإعداد التجريبية');
   }
   function ymd(d){return d.toISOString().slice(0,10)} function dateLabel(s){if(!s)return '—'; try{return new Date(s+'T12:00:00').toLocaleDateString('ar-SA',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}catch(e){return s}}
   function weekEndThursday(d){let x=new Date(d); x.setHours(12,0,0,0); let diff=(4-x.getDay()+7)%7; x.setDate(x.getDate()+diff); return x}
@@ -669,7 +662,7 @@
     }
     $('assignmentsBody').innerHTML=(w.variableAssignments||[]).map((a,i)=>{let t=teachers.find(x=>x.user_id===a.teacher_id)||{};const ev=a.evidence_required?('مطلوب — '+(a.evidence_type||'شاهد تنفيذ')):'لا يتطلب شاهد';return `<tr><td>${i+1}</td><td><b>${esc(a.title||a.type)}</b><div class="muted">${esc(a.type||'')}</div></td><td><b>${esc(t.name||'—')}</b></td><td>${esc(a.day||'خلال الأسبوع')}</td><td><span class="badge ${a.evidence_required?'gold':'gray'}">${esc(ev)}</span></td><td><span class="badge">${esc(a.status||'مكلف وينتظر التنفيذ')}</span></td><td>${esc(a.note||'')}</td><td class="noPrint"><button class="btn small secondary" onclick="updateAssignmentStatus(${i})">تحديث</button><button class="btn small red" onclick="deleteAssignment(${i})">حذف</button></td></tr>`}).join('')||'<tr><td colspan="8"><div class="empty">لا توجد تكليفات متغيرة لهذا الأسبوع. غير المكلفين ستظهر لهم الحالة: لم يتم تكليفه.</div></td></tr>';
   }
-  function renderExtra(){const w=currentWeek(); if(!w){$('extraBody').innerHTML='<tr><td colspan="8"><div class="empty">أنشئ أو ولّد الأسابيع أولًا.</div></td></tr>';return} $('extraBody').innerHTML=(w.extraTasks||[]).map((a,i)=>{let t=teachers.find(x=>x.user_id===a.teacher_id)||{};return `<tr><td>${i+1}</td><td>${esc(a.role)}</td><td>${esc(a.task)}</td><td><b>${esc(t.name||'—')}</b></td><td>${esc(a.due||'خلال الأسبوع')}</td><td>${esc(a.evidence||'شاهد تنفيذ')}</td><td><span class="badge">${esc(a.status||'مطلوب')}</span></td><td class="noPrint"><button class="btn small secondary" onclick="updateExtraStatus(${i})">تحديث</button><button class="btn small red" onclick="deleteExtra(${i})">حذف</button></td></tr>`}).join('')||'<tr><td colspan="8"><div class="empty">لم يتم تفعيل مهام إضافية لهذا الأسبوع.</div></td></tr>'}
+  function renderExtra(){const w=currentWeek(); if(!w){$('extraBody').innerHTML='<tr><td colspan="8"><div class="empty">أنشئ أو ولّد الأسابيع أولًا.</div></td></tr>';return} $('extraBody').innerHTML=(w.extraTasks||[]).map((a,i)=>{let t=teachers.find(x=>x.user_id===a.teacher_id)||{};const sync=a.publication_state==='failed'?'<span class="badge red">تعذر الإرسال</span>':a.publication_state==='published'?'<span class="badge blue">مرسلة للمعلم</span>':w.execution_confirmed_at?'<span class="badge gold">بانتظار المزامنة</span>':'<span class="badge gray">تظهر بعد تأكيد الأسبوع</span>';return `<tr><td>${i+1}</td><td>${esc(a.role)}</td><td>${esc(a.task)}</td><td><b>${esc(t.name||'—')}</b></td><td>${esc(a.due||'خلال الأسبوع')}</td><td>${esc(a.evidence||'شاهد تنفيذ')}</td><td><span class="badge">${esc(a.status||'مطلوب')}</span> ${sync}</td><td class="noPrint"><button class="btn small secondary" onclick="updateExtraStatus(${i})">تحديث</button>${a.publication_state==='failed'?`<button class="btn small gold" onclick="retryExtraPublish(${i})">إعادة الإرسال</button>`:''}<button class="btn small red" onclick="deleteExtra(${i})">حذف</button></td></tr>`}).join('')||'<tr><td colspan="8"><div class="empty">لم يتم تفعيل مهام إضافية لهذا الأسبوع.</div></td></tr>'}
   function c4TeacherSnapshot(w,t){
     const discipline=disciplineScore(w,t), executive=executiveScore(w,t), state=c1TeacherState(discipline,executive);
     const st=(w.teacherStatuses||{})[t.user_id]||blankTeacherStatus();
@@ -892,6 +885,24 @@
       published_at:new Date().toISOString()
     };
   }
+  async function publishActiveWeekMutation(w,targetTeachers,eventType='weekly_plan.updated'){
+    const targets=(targetTeachers||[]).filter(t=>t&&t.user_id);
+    if(!w||!targets.length)return {published:0,failed:[]};
+    await saveWeeks();
+    if(!w.execution_confirmed_at)return {published:0,failed:[],pendingConfirmation:true};
+    if(!window.PlatformStateEngine?.publishWeeklyPlan)throw new Error('محرك نشر تحديثات الأسبوع غير متاح');
+    const failed=[];let published=0;
+    for(const t of targets){
+      try{
+        await window.PlatformStateEngine.publishWeeklyPlan(t.user_id,weeklyPlanPayloadForTeacher(w,t));
+        published++;
+        try{if(window.PlatformEventBus?.emit)await PlatformEventBus.emit(eventType,{recipient_user_id:String(t.user_id),summary:'أضيفت أو حُدثت مهمة في أعمال الأسبوع '+String(w.number||'')+'.',title:'تحديث أعمال الأسبوع',severity:'important',notifyPush:true,action_url:'teacher_weekly_tasks.html'},{moduleKey:'deputy_weekly_followup',recordType:'weekly_plan_update',recordId:String(w.id||''),cloud:false});}catch(e){console.warn('[weekly mutation notification]',e)}
+      }catch(e){failed.push({id:String(t.user_id),name:t.name||t.user_id,error:String(e&&e.message||e)})}
+    }
+    w.last_published_at=new Date().toISOString();w.published_teacher_count=published;w.publish_failed_teachers=failed.map(x=>x.name);
+    await saveWeeks();
+    return {published,failed,pendingConfirmation:false};
+  }
   async function confirmAndPublishActiveWeek(){
     const w=currentWeek(); if(!w)return toast('اختر الأسبوع المراد تنفيذه أولًا');
     if(['مغلق','مؤرشف','إجازة'].includes(w.status||''))return toast('لا يمكن بدء تنفيذ أسبوع مغلق أو مؤرشف أو إجازة');
@@ -1002,11 +1013,23 @@
     const targets=teacherId==='__ALL__'?teachers.slice():teachers.filter(t=>String(t.user_id)===teacherId);
     if(!targets.length)return toast('تعذر التحقق من المعلمين في قائمة مركز المعلومات');
     const stamp=Date.now();
-    targets.forEach((teacher,i)=>w.extraTasks.push({id:'EX'+stamp+'_'+i,role:'مهمة إضافية',task,teacher_id:String(teacher.user_id),teacher_name:teacher.name||'',due:$('exDue').value,evidence:ev==='none'?'':ev,evidence_required:ev!=='none',status:'مطلوب',created_at:new Date().toISOString(),bulk_assignment:teacherId==='__ALL__'}));
-    await saveWeeks();closeDrawer();renderAll();toast(teacherId==='__ALL__'?'تم تفعيل المهمة الإضافية لجميع المعلمين والتحقق سحابيًا':'تم تفعيل المهمة الإضافية للمعلم والتحقق سحابيًا');
+    const created=[];
+    targets.forEach((teacher,i)=>{const row={id:'EX'+stamp+'_'+i,role:'مهمة إضافية',task,teacher_id:String(teacher.user_id),teacher_name:teacher.name||'',due:$('exDue').value,evidence:ev==='none'?'':ev,evidence_required:ev!=='none',status:'مطلوب',created_at:new Date().toISOString(),bulk_assignment:teacherId==='__ALL__',publication_state:w.execution_confirmed_at?'publishing':'pending_confirmation'};w.extraTasks.push(row);created.push(row)});
+    closeDrawer();renderAll();toast('جاري حفظ المهمة وإرسالها للحساب المستهدف...');
+    try{
+      const result=await publishActiveWeekMutation(w,targets,'weekly_extra_task.assigned');
+      const failedIds=new Set((result.failed||[]).map(x=>String(x.id)));
+      created.forEach(x=>{x.publication_state=result.pendingConfirmation?'pending_confirmation':(failedIds.has(String(x.teacher_id))?'failed':'published');x.published_at=x.publication_state==='published'?new Date().toISOString():''});
+      await saveWeeks();renderAll();
+      if(result.pendingConfirmation)toast('تم حفظ المهمة لدى الوكيل وستظهر للمعلم بعد تأكيد بدء تنفيذ الأسبوع');
+      else if(result.failed.length)toast(`حُفظت المهمة لدى الوكيل، وتعذر إرسالها إلى ${result.failed.length} حساب؛ استخدم «إعادة الإرسال»`);
+      else toast(teacherId==='__ALL__'?`تم حفظ المهمة وإرسالها إلى جميع المعلمين (${result.published})`:'تم حفظ المهمة وإرسالها إلى حساب المعلم');
+    }catch(e){created.forEach(x=>x.publication_state='failed');await saveWeeks().catch(()=>{});renderAll();toast('حُفظت المهمة، لكن تعذر إرسالها للمعلم: '+String(e&&e.message||e));}
   }
-  function updateExtraStatus(i){const w=currentWeek(); const a=w.extraTasks[i]; openDrawer(`<div class="drawerHead"><h2>تحديث حالة المهمة الإضافية</h2><button class="btn secondary" onclick="closeDrawer()">إغلاق</button></div><div class="field"><label>الحالة</label><select id="exStatus"><option>مطلوب</option><option>تم التنفيذ</option><option>ناقص</option><option>لم ينفذ</option></select></div><button class="btn" onclick="currentWeek().extraTasks[${i}].status=document.getElementById('exStatus').value;saveWeeks();closeDrawer();renderAll();toast('تم تحديث الحالة')">حفظ</button>`); $('exStatus').value=a.status||'مطلوب'}
-  async function deleteExtra(i){const w=currentWeek();if(!w)return;w.extraTasks.splice(i,1);await saveWeeks();renderAll();toast('تم حذف المهمة والتحقق سحابيًا')}
+  function updateExtraStatus(i){const w=currentWeek(); const a=w.extraTasks[i]; openDrawer(`<div class="drawerHead"><h2>تحديث حالة المهمة الإضافية</h2><button class="btn secondary" onclick="closeDrawer()">إغلاق</button></div><div class="field"><label>الحالة</label><select id="exStatus"><option>مطلوب</option><option>تم التنفيذ</option><option>ناقص</option><option>لم ينفذ</option></select></div><button class="btn" onclick="saveExtraStatus(${i})">حفظ وإرسال التحديث</button>`); $('exStatus').value=a.status||'مطلوب'}
+  async function saveExtraStatus(i){const w=currentWeek(),a=w?.extraTasks?.[i];if(!w||!a)return;a.status=$('exStatus').value;a.publication_state=w.execution_confirmed_at?'publishing':'pending_confirmation';const t=teachers.find(x=>String(x.user_id)===String(a.teacher_id));closeDrawer();renderAll();try{const r=await publishActiveWeekMutation(w,t?[t]:[],'weekly_extra_task.updated');a.publication_state=r.pendingConfirmation?'pending_confirmation':(r.failed.length?'failed':'published');await saveWeeks();renderAll();toast(r.failed.length?'تم حفظ التحديث وتعذر إرساله؛ استخدم إعادة الإرسال':'تم حفظ حالة المهمة ومزامنتها مع حساب المعلم')}catch(e){a.publication_state='failed';await saveWeeks().catch(()=>{});renderAll();toast('تم حفظ الحالة وتعذر إرسال التحديث للمعلم')}}
+  async function retryExtraPublish(i){const w=currentWeek(),a=w?.extraTasks?.[i];if(!w||!a)return;const t=teachers.find(x=>String(x.user_id)===String(a.teacher_id));if(!t)return toast('تعذر العثور على حساب المعلم المستهدف');a.publication_state='publishing';renderAll();try{const r=await publishActiveWeekMutation(w,[t],'weekly_extra_task.assigned');a.publication_state=r.pendingConfirmation?'pending_confirmation':(r.failed.length?'failed':'published');a.published_at=a.publication_state==='published'?new Date().toISOString():a.published_at||'';await saveWeeks();renderAll();toast(a.publication_state==='published'?'تم إرسال المهمة إلى حساب المعلم':'تعذر الإرسال؛ تحقق من تفعيل الحساب ثم أعد المحاولة')}catch(e){a.publication_state='failed';await saveWeeks().catch(()=>{});renderAll();toast('تعذر إرسال المهمة: '+String(e&&e.message||e))}}
+  async function deleteExtra(i){const w=currentWeek();if(!w)return;const removed=w.extraTasks.splice(i,1)[0];const t=teachers.find(x=>String(x.user_id)===String(removed?.teacher_id));renderAll();try{const r=await publishActiveWeekMutation(w,t?[t]:[],'weekly_extra_task.removed');if(r.failed.length)throw new Error('تعذر تحديث خطة المعلم بعد حذف المهمة');renderAll();toast(r.pendingConfirmation?'تم حذف المهمة المحفوظة قبل نشر الأسبوع':'تم حذف المهمة من حساب الوكيل والمعلم والتحقق سحابيًا')}catch(e){w.extraTasks.splice(i,0,removed);await saveWeeks().catch(()=>{});renderAll();toast('لم يعتمد الحذف لحماية اتساق الحسابين: '+String(e&&e.message||e))}}
   function weeklyEvidenceViewKey(weekId,teacherId,itemKey){return ['weeklyEvidenceViewed',schoolId(),weekId,teacherId,itemKey].map(String).join(':')}
   function markWeeklyEvidenceViewed(weekId,teacherId,itemKey,data){try{sessionStorage.setItem(weeklyEvidenceViewKey(weekId,teacherId,itemKey),JSON.stringify({at:new Date().toISOString(),...(data||{})}))}catch(_){}}
   function wasWeeklyEvidenceViewed(weekId,teacherId,itemKey){try{return !!sessionStorage.getItem(weeklyEvidenceViewKey(weekId,teacherId,itemKey))}catch(_){return false}}
@@ -1033,7 +1056,7 @@
       w.teacherSubmissions[ownerKey]=rr?.payload?{...sub,...rr.payload,cloud_submission_key:found.stateKey}:sub;const live=w.teacherSubmissions[ownerKey]?.items?.[itemKey]||it;
       if(!rr?.payload){live.review_status=action;live.reviewed_at=new Date().toISOString();live.reviewed_by=cur.id||cur.email||'agent';live.review_reason=reason;}
       live.status=action==='approved'?'مكتمل':action==='returned'?'ناقص':'غير منفذ';
-      const m=String(itemKey||'').match(/^(var|extra)_(\d+)$/);if(m){const arr=m[1]==='var'?(w.variableAssignments||[]):(w.extraTasks||[]),row=arr[Number(m[2])];if(row&&String(row.teacher_id)===String(found.teacherId))row.status=action==='approved'?'تم التنفيذ':(action==='returned'?'مكلف ولم ينفذ':'غير منفذ')}
+      const m=String(itemKey||'').match(/^(var|extra)_(.+)$/);if(m){const arr=m[1]==='var'?(w.variableAssignments||[]):(w.extraTasks||[]),token=String(m[2]),row=arr.find(x=>String(x?.id||'')===token)||( /^\d+$/.test(token)?arr[Number(token)]:null);if(row&&String(row.teacher_id)===String(found.teacherId))row.status=action==='approved'?'تم التنفيذ':(action==='returned'?'مكلف ولم ينفذ':'غير منفذ')}
       renderWeeklyReviewInbox();renderStats();requestAnimationFrame(()=>window.scrollTo({top:scrollTop,behavior:'auto'}));
       toast(labels[action]||'تم تحديث حالة التنفيذ');
       Promise.resolve(saveWeeks()).catch(e=>console.warn('[weekly review local mirror]',e));
@@ -1087,7 +1110,6 @@
       let ok=0,failed=[];
       for(const t of teachers){try{await window.PlatformStateEngine.closeWeeklyPlan(t.user_id,w.id);ok++;}catch(e){failed.push(t.name||t.user_id)}}
       if(failed.length)throw new Error(`تعذر تثبيت الإغلاق لدى ${failed.length} معلم/ـة؛ لم يتم اعتماد الإغلاق لحماية اتساق الأسبوع`);
-      if(window.PlatformNotificationCenter?.dismissWeekly)await window.PlatformNotificationCenter.dismissWeekly(String(w.id||''),teachers.map(t=>t.user_id).filter(Boolean));
       archives=archives.filter(a=>a.week_id!==w.id);archives.unshift(snapshot);
       w.status='مغلق';w.execution_state='closed';w.closed_at=snapshot.closed_at;w.archive_id=snapshot.id;w.closed_teacher_count=ok;
       await saveWeeks();renderAll();switchTab('reports');toast(`تم إغلاق الأسبوع ومنع الرفع لدى جميع المعلمين (${ok}) وحفظ تقرير التنفيذ`);
@@ -1151,7 +1173,7 @@
 <script src="platform-page-navigation.js?v=20260818-nav1"></script>
 
 <script src="platform-event-bus.js"></script>
-<script src="platform-notification-center.js?v=20260917-weekly-reset-lifecycle-v1"></script>
+<script src="platform-notification-center.js?v=20260916-weekly-review-v2"></script>
 <script src="platform-runtime-guard.js?v=20260914-RL148-legacy-session-bridge"></script>
 <script src="platform-cloud-session.js?v=20260914-RL160-rollback-pre-follow-records"></script>
 <script src="platform-record-save-engine.js?v=20260830-records-final-v3"></script>

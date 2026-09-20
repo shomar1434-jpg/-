@@ -1,7 +1,7 @@
 (function(){'use strict';
 const q=new URLSearchParams(location.search),taskId=q.get('task_id'),delegated=q.get('delegated')==='1';
 if(!taskId||!delegated)return;
-const moduleKey=q.get('module_key')||'shared',recordType=q.get('record_type')||'record',recordId=q.get('record_id')||null;
+const moduleKey=q.get('module_key')||'shared',recordType=q.get('record_type')||'record',recordId=q.get('record_id')||q.get('record')||null;
 const returnTo=q.get('return_to')||('central_task_center.html?mode=assignee&task_id='+encodeURIComponent(taskId));
 function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function loadScript(src,test){return new Promise((resolve,reject)=>{if(test&&test())return resolve();const old=[...document.scripts].find(s=>String(s.src||'').endsWith('/'+src)||String(s.getAttribute('src')||'')===src);if(old){old.addEventListener('load',()=>resolve(),{once:true});setTimeout(()=>test&&test()?resolve():reject(new Error('تعذر تهيئة '+src)),8000);return}const s=document.createElement('script');s.src=src;s.async=false;s.onload=()=>resolve();s.onerror=()=>reject(new Error('تعذر تحميل '+src));document.head.appendChild(s)})}
@@ -59,5 +59,5 @@ async function run(){try{
  window.PlatformDelegatedAccess={task:workspace.task,grant,workspace,dirty:false,recordActivity:(title,completed=false)=>activity(title,completed?80:60,completed?'record_completed':'record_updated')};
  hookStorage();hookFormsAndActions();
  await emit('record_opened',{title:'فتح السجل المفوض',notes:'بدأ المكلف العمل داخل السجل.'},20);
- }catch(e){document.body.innerHTML=`<div dir="rtl" style="max-width:700px;margin:80px auto;padding:30px;border:1px solid #fecaca;border-radius:20px;background:#fff7f7;font-family:system-ui"><h2>تعذر فتح السجل</h2><p>${esc(e.message||e)}</p><button onclick="history.back()">رجوع</button></div>`}}
+ }catch(e){console.error('[delegated-access] رفض فتح السجل',e);const box=document.createElement('div');box.id='delegatedAccessError';box.dir='rtl';box.style.cssText='position:fixed;inset:0;z-index:2147483647;overflow:auto;background:#f8fafc;padding:32px 16px;font-family:system-ui';box.innerHTML=`<div style="max-width:700px;margin:40px auto;padding:30px;border:1px solid #fecaca;border-radius:20px;background:#fff7f7"><h2>تعذر فتح السجل</h2><p>${esc(e.message||e)}</p><button id="delegatedAccessErrorBack" style="border:0;border-radius:10px;padding:9px 16px;font-weight:900;cursor:pointer">العودة إلى التكليف</button></div>`;document.body.appendChild(box);box.querySelector('#delegatedAccessErrorBack').onclick=()=>location.href=returnTo;try{window.scrollTo(0,0)}catch(_){}}}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',run);else run();})();

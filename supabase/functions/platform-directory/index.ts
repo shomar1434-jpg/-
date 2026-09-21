@@ -17,6 +17,25 @@ Deno.serve(async(req)=>{
  try{
   const body:any=await req.json().catch(()=>({})),action=t(body.action,80);
   if(action==='registration-contract-version')return json({ok:true,version:REGISTRATION_CONTRACT_VERSION,requestId});
+  if(action==='inspect-login-school'){
+   // The school login link is public. Resolve only its school identity, never a user or registration secret.
+   const sid=t(body.schoolId,100),scode=t(body.schoolCode,100);
+   if(!sid&&!scode)return json({error:'SCHOOL_REFERENCE_REQUIRED',requestId},400);
+   let row:any=null;
+   if(sid){
+    const q=await sb.from('schools').select('id,school_name,school_code,status').eq('id',sid).maybeSingle();
+    if(q.error)throw q.error;
+    row=q.data||null;
+    // When an ID is present it is authoritative; never resolve a different school by the code.
+    if(!row)return json({error:'SCHOOL_NOT_FOUND',requestId},404);
+   }else{
+    const q=await sb.from('schools').select('id,school_name,school_code,status').eq('school_code',scode).limit(2);
+    if(q.error)throw q.error;
+    row=(q.data||[]).length===1?q.data[0]:null;
+   }
+   if(!row||['disabled','inactive','suspended','deleted'].includes(low(row.status)))return json({error:'SCHOOL_NOT_FOUND',requestId},404);
+   return json({ok:true,school:{id:row.id,schoolId:row.id,school_name:row.school_name,schoolName:row.school_name,school_code:row.school_code,schoolCode:row.school_code,status:row.status},requestId});
+  }
   const findSchool=async()=>{
    const sid=t(body.schoolId,100),scode=t(body.schoolCode,100),reg=t(body.registrationCode,160);
    if(!reg)return null;

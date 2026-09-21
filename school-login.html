@@ -709,10 +709,7 @@
   }
   function findCachedSchoolByLink(){
     const localSchools = readSchools();
-    const refs = [targetSchoolId, targetSchoolCode].map(v=>String(v||'')).filter(Boolean);
-    if(!refs.length) return null;
-    return localSchools.find(s => [s.schoolId,s.id,s.school_id,s.schoolCode,s.school_code,s.registration_code,s.registrationCode]
-      .map(v=>String(v||'')).some(v=>refs.includes(v))) || null;
+    return localSchools.find(s => schoolMatchesLinkContract(s)) || null;
   }
   function schoolContractRefs(s){
     if(!s) return [];
@@ -724,9 +721,19 @@
     const refs=schoolContractRefs(s);
     const idRef=String(targetSchoolId||'').trim();
     const codeRef=String(targetSchoolCode||'').trim();
-    if(idRef && !refs.includes(idRef)) return false;
-    if(codeRef && !refs.includes(codeRef)) return false;
-    return !!(idRef || codeRef);
+    // The stable school ID owns the link. A legacy descriptive code may have changed.
+    if(idRef) return [s.id,s.schoolId,s.school_id].map(v=>String(v||'').trim()).includes(idRef);
+    return !!codeRef && refs.includes(codeRef);
+  }
+  async function inspectLoginSchool(){
+    const endpoint=SUPABASE_URL.replace(/\/$/,'')+'/functions/v1/platform-directory';
+    const response=await loginDeadline(fetch(endpoint,{
+      method:'POST',headers:{'content-type':'application/json','apikey':SUPABASE_KEY},
+      body:JSON.stringify({action:'inspect-login-school',schoolId:targetSchoolId,schoolCode:targetSchoolCode})
+    }),'التحقق من رابط المدرسة');
+    const payload=await loginDeadline(response.json(),'قراءة هوية المدرسة');
+    if(!response.ok||!payload.ok)throw new Error(payload.error||'تعذر التحقق من رابط المدرسة');
+    return payload.school||null;
   }
   async function resolveActiveSchool(){
     if(activeSchool && schoolMatchesLinkContract(activeSchool)) return activeSchool;
@@ -739,24 +746,24 @@
     // ممنوع تمامًا الانتقال إلى مدرسة أخرى اعتمادًا على بريد مكتوب أو جلسة/مدرسة سابقة.
     if(hasExplicitSchoolContract){
       try{
-        if(window.SmartSchoolSupabase){
-          const sb = window.SmartSchoolSupabase.getClient && window.SmartSchoolSupabase.getClient();
-          if(sb){
-            for(const ref of refs){
-              if(school) break;
-              for(const col of ['id','school_code','registration_code']){
-                const q = await sb.from('schools').select('*').eq(col,ref).limit(2);
-                if(q && !q.error && q.data && q.data.length===1){
-                  const candidate = window.SmartSchoolSupabase.normalizeSchool ? window.SmartSchoolSupabase.normalizeSchool(q.data[0]) : q.data[0];
-                  if(schoolMatchesLinkContract(candidate)){ school=candidate; break; }
-                }
-              }
-            }
-          }
-        }
+        const candidate=await inspectLoginSchool();
+        if(schoolMatchesLinkContract(candidate))school=candidate;
       }catch(e){ console.warn('school exact resolve failed', e); }
 
-      // توافق محلي آمن: لا نقبل إلا عقدًا يطابق كل مراجع الرابط نفسه.
+      // Compatibility during Edge Function deployment: one bounded legacy lookup.
+      if(!school){
+        try{
+          const sb=window.SmartSchoolSupabase?.getClient?.()||getClient();
+          if(sb){
+            const field=targetSchoolId?'id':'school_code',value=targetSchoolId||targetSchoolCode;
+            const result=await loginDeadline(sb.from('schools').select('id,school_name,school_code,status').eq(field,value).limit(2),'قراءة سجل المدرسة');
+            const row=!result.error&&result.data?.length===1?result.data[0]:null;
+            if(row&&schoolMatchesLinkContract(row)&&!['disabled','inactive','suspended','deleted'].includes(String(row.status||'').toLowerCase()))school=row;
+          }
+        }catch(e){console.warn('school legacy lookup unavailable',e);}
+      }
+
+      // Existing browser cache is usable only when its stable ID or unique code matches this link.
       if(!school){
         school = localSchools.find(candidate => schoolMatchesLinkContract(candidate)) || null;
       }
@@ -1087,9 +1094,13 @@
         if(title) title.textContent = 'جارٍ التحقق من رابط المدرسة المستقلة...';
       }
     }
-    const school = await resolveActiveSchool();
+    let school=null;
+    try{school=await loginDeadline(resolveActiveSchool(),'التحقق من رابط المدرسة');}
+    catch(err){setMsg(err?.message||'تعذر التحقق من رابط المدرسة، حاول مجددًا.');}
     if(!school && hasSchoolLink){
-      setMsg('رابط المدرسة لم يطابق سجل مدرسة في Supabase أو العقد المحلي. لا يتم السماح بالدخول من رابط عام. أعد نسخ رابط الدخول من إدارة المدارس بعد تحديث النسخة.');
+      const title=document.getElementById('school-title');
+      if(title)title.textContent='تعذر التحقق من رابط المدرسة';
+      if(!document.getElementById('login-msg')?.textContent)setMsg('لم يتم التحقق من المدرسة المرتبطة بالرابط. تحقق من الاتصال ثم أعد فتح الرابط القديم كما هو.');
     }
   }
   document.addEventListener('DOMContentLoaded', initSchoolLoginPage);

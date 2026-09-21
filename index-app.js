@@ -61,10 +61,21 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
         const secureSystemAdminLogin = async (email, password) => {
             if (!window.SmartSchoolSupabase) throw new Error('Supabase غير جاهز');
             const sb = window.SmartSchoolSupabase.getClient();
-            const login = await sb.auth.signInWithPassword({ email: String(email||'').trim().toLowerCase(), password: String(password||'') });
-            if (login.error || !login.data?.session) throw new Error('بيانات الدخول غير صحيحة');
+            const deadline = (operation) => Promise.race([
+                operation,
+                new Promise((_, reject) => setTimeout(() => reject(new Error('انتهت مهلة اتصال خدمة الدخول. حاول بعد قليل.')), 15000))
+            ]);
+            const login = await deadline(sb.auth.signInWithPassword({ email: String(email||'').trim().toLowerCase(), password: String(password||'') }));
+            if (login.error || !login.data?.session) {
+                const authError = login.error;
+                const message = String(authError?.message || '').toLowerCase();
+                if (/invalid login credentials|invalid credentials/.test(message)) throw new Error('البريد الإلكتروني أو كلمة المرور غير صحيحة');
+                if (/fetch|network|timeout|connection|failed to|5\d\d|503|502|504/.test(message) || Number(authError?.status) >= 500)
+                    throw new Error('خدمة تسجيل الدخول غير متاحة الآن. تحقق من اتصال Supabase ثم حاول مجددًا.');
+                throw new Error(authError?.message || 'تعذر التحقق من حساب مدير النظام');
+            }
             const session = login.data.session;
-            const invoked = await sb.functions.invoke('system-admin', { body:{action:'verify'} });
+            const invoked = await deadline(sb.functions.invoke('system-admin', { body:{action:'verify'} }));
             if(invoked.error || !invoked.data?.ok){ await sb.auth.signOut(); throw new Error(invoked.data?.error || invoked.error?.message || 'ليس لديك صلاحية مدير النظام'); }
             return { session, user: login.data.user };
         };
@@ -141,10 +152,15 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
             }
         };
 
+        let adminLoginPending = false;
         const handleAdminDirectEntry = async () => {
+            if (adminLoginPending) return;
             const e = normalizeEmail(document.getElementById('system-admin-email')?.value || '');
             const password = String(document.getElementById('system-admin-password')?.value || '');
             if(!e || !password){ showToast('أدخل بريد مدير النظام وكلمة المرور'); return; }
+            adminLoginPending = true;
+            const button = document.getElementById('mainLoginBtn');
+            if (button) { button.disabled = true; button.textContent = 'جارٍ الدخول...'; }
             try{
                 const verified = await secureSystemAdminLogin(e,password);
                 isManagerVerifiedInSession = true;
@@ -153,6 +169,7 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
                 document.getElementById('waiting-screen').classList.add('hidden');
                 startApp({id:verified.user.id,name:'مدير/ة النظام',email:e,microsoftEmail:e,role:'leadership',isActive:true,isRootAdmin:true});
             }catch(err){ isManagerVerifiedInSession=false; sessionStorage.removeItem('system_admin_verified'); showToast(err.message||'تم رفض الدخول'); }
+            finally { adminLoginPending = false; if (button) { button.disabled = false; button.textContent = 'دخول'; } }
         };
 
         const handleRoleSelection = async (role) => {

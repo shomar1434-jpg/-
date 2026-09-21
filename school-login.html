@@ -909,8 +909,18 @@
     if(typeof v==='string') return v.split(/[،,|]+/).map(x=>teacherRoleCode(x.trim())).filter(Boolean);
     return [];
   }
+  let schoolLoginPending = false;
+  function loginDeadline(promise, label){
+    let timer;
+    return Promise.race([
+      Promise.resolve(promise),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('انتهت مهلة الاتصال أثناء ' + label + '. تحقق من توفر خدمة المدرسة وحاول مجددًا.')), 15000); })
+    ]).finally(() => clearTimeout(timer));
+  }
   async function schoolLogin(event){
     if(event && typeof event.preventDefault === 'function') event.preventDefault();
+    if(schoolLoginPending) return;
+    schoolLoginPending = true;
     setMsg(''); setLoading(true);
     try{
       const loginEl = document.getElementById('login-email');
@@ -920,14 +930,14 @@
       // RL122: لا يختار المستخدم دوره يدويًا. الخادم يحل الدور من عضويته الفعالة في المدرسة.
       const requestedDbRole = '';
       if(!loginId || !password){ setMsg('يرجى إدخال البريد/اسم المستخدم والرقم السري'); return; }
-      const school = await resolveActiveSchool();
+      const school = await loginDeadline(resolveActiveSchool(), 'التحقق من رابط المدرسة');
       if((targetSchoolId || targetSchoolCode) && !school){ setMsg('رابط المدرسة غير مرتبط بسجل مدرسة صحيح. تم إيقاف الدخول حمايةً لعزل المدارس.'); return; }
       if((targetSchoolId || targetSchoolCode) && !schoolMatchesLinkContract(school)){ setMsg('تم رفض الدخول لأن هوية المدرسة لا تطابق رابطها المستقل.'); return; }
       // RL136 — توافق الدخول القديم المربوط بالمدرسة مع عقد الجلسة السحابي الحالي.
       // القاعدة الأساسية التي كانت تعمل: حساب موجود داخل نفس المدرسة + كلمة مرور صحيحة + Active.
       // نحاول إنشاء platform-session للاستفادة من العزل والخدمات السحابية، لكن فشل طبقة
       // الجلسة لا يلغي حسابًا سبق أن تحقق محليًا/من users داخل نفس المدرسة.
-      let user = await loginFromSupabase(loginId,password);
+      let user = await loginDeadline(loginFromSupabase(loginId,password), 'قراءة حساب المدرسة');
       if(!user) user = loginFromLocal(loginId,password,school);
 
       const boundResolvedSchoolId=String((school&&(school.schoolId||school.id||school.school_id))||targetSchoolId||'').trim();
@@ -939,7 +949,7 @@
       // المباشرة من users حسابًا صحيحًا قبل وصوله إلى platform-session.
       if(window.PlatformCloudSession){
         try{
-          platformSessionPayload = await window.PlatformCloudSession.open(loginId,password,boundResolvedSchoolId);
+          platformSessionPayload = await loginDeadline(window.PlatformCloudSession.open(loginId,password,boundResolvedSchoolId), 'إنشاء جلسة المدرسة');
           const issuedSchoolId=String(platformSessionPayload&&platformSessionPayload.schoolId||window.PlatformCloudSession.schoolId?.()||'').trim();
           if(boundResolvedSchoolId && issuedSchoolId && issuedSchoolId!==boundResolvedSchoolId) throw new Error('LOGIN_SESSION_SCHOOL_MISMATCH');
         }catch(sessionError){
@@ -973,7 +983,7 @@
         const diagCode = String(platformSessionError && (platformSessionError.details || platformSessionError.code) || '').trim();
         const reqId = String(platformSessionError && platformSessionError.requestId || '').trim();
         const suffix = diagCode ? ` — رمز التشخيص: ${diagCode}${reqId ? ` / ${reqId}` : ''}` : '';
-        setMsg('تعذر إنشاء جلسة موثقة لهذه المدرسة. لم يتم فتح الواجهة لمنع الخروج المباشر.' + suffix);
+        setMsg((platformSessionError?.message || 'تعذر إنشاء جلسة موثقة لهذه المدرسة. تحقق من خدمة Supabase.') + suffix);
         return;
       }
 
@@ -1044,8 +1054,8 @@
       setTimeout(()=>{ location.assign(target + '?' + q.toString()); }, 80);
     }catch(err){
       console.error('Independent school login error:', err);
-      setMsg('حدث خطأ أثناء تسجيل الدخول. تحقق من الاتصال أو بيانات الحساب.');
-    }finally{ setLoading(false); }
+      setMsg(err?.message || 'حدث خطأ أثناء تسجيل الدخول. تحقق من الاتصال أو بيانات الحساب.');
+    }finally{ schoolLoginPending = false; setLoading(false); }
   }
   window.schoolLogin = schoolLogin;
   function bindLogin(){

@@ -24,7 +24,7 @@ const decodeSignature=(data:unknown)=>{
 const isSystemAdminRole=(v:unknown)=>['system_admin','system-admin','مدير النظام'].includes(safe(v,100).toLowerCase());
 const isStudentAffairsLabel=(v:unknown)=>{
   const x=safe(v,500).toLowerCase().replace(/[_-]+/g,' ').replace(/\s+/g,' ').trim();
-  return x==='student affairs'||x==='deputy students'||x==='وكيل شؤون الطلاب'||x==='وكيلة شؤون الطلاب'||x==='وكيل الشؤون الطلابية'||x==='وكيلة الشؤون الطلابية'||x==='شؤون الطلاب'||x==='الشؤون الطلابية';
+  return x==='student affairs'||x==='deputy students'||x.includes('شؤون الطلاب')||x.includes('الشؤون الطلابية');
 };
 const labels=(v:unknown)=>safe(v,1000).split(/[،,|;/]+/).map(x=>x.trim()).filter(Boolean);
 
@@ -62,7 +62,7 @@ Deno.serve(async(req)=>{
       if(!q.data||String(q.data.status||'active').toLowerCase()!=='active')return null;
       const role=String(q.data.role||'').toLowerCase();
       const sa=labels(q.data.role_label).some(isStudentAffairsLabel);
-      if((role==='agent'||role==='student_affairs')&&sa)return{kind:'student_affairs',schoolId,userId};
+      if(role==='student_affairs'||(role==='agent'&&sa))return{kind:'student_affairs',schoolId,userId};
       return null;
     };
 
@@ -150,13 +150,20 @@ Deno.serve(async(req)=>{
       const now=new Date().toISOString();
       if(!tx.opened_at)await sb.from('student_affairs_guardian_transactions').update({opened_at:now,status:tx.status==='waiting_guardian'?'opened':tx.status,updated_at:now}).eq('id',tx.id);
       const school=await sb.from('schools').select('school_name,school_code').eq('id',tx.school_id).maybeSingle();
-      return json({ok:true,transaction:{formTitle:tx.form_title,status:tx.status==='waiting_guardian'?'opened':tx.status,schoolName:school.data?.school_name||'المدرسة',schoolCode:school.data?.school_code||'',tokenHint:tx.token_hint||''}});
+      return json({ok:true,transaction:{
+        formTitle:tx.form_title,
+        studentName:tx.student_name,
+        sentAt:tx.created_at,
+        createdAt:tx.created_at,
+        status:tx.status==='waiting_guardian'?'opened':tx.status,
+        schoolName:school.data?.school_name||'المدرسة',schoolCode:school.data?.school_code||'',tokenHint:tx.token_hint||''
+      }});
     }
 
     if(action==='verify'){
-      const guardianName=normalizeName(body.guardianName),last4=String(body.phoneLast4||'').replace(/\D/g,'').slice(-4);
-      if(!guardianName||last4.length!==4)return json({error:'أدخل اسم ولي الأمر وآخر أربعة أرقام من الجوال'},400);
-      if(normalizeName(tx.guardian_name)!==guardianName||String(tx.guardian_phone_last4)!==last4)return json({error:'بيانات التحقق غير مطابقة للسجل'},403);
+      const last4=String(body.phoneLast4||'').replace(/\D/g,'').slice(-4);
+      if(last4.length!==4)return json({error:'أدخل آخر أربعة أرقام من جوال ولي الأمر'},400);
+      if(String(tx.guardian_phone_last4)!==last4)return json({error:'آخر أربعة أرقام غير مطابقة للرقم المسجل'},403);
       const verificationToken=randToken(18),verificationHash=await sha256(verificationToken),now=new Date(),expires=new Date(now.getTime()+10*60*1000).toISOString();
       const up=await sb.from('student_affairs_guardian_transactions').update({verified_at:now.toISOString(),verification_hash:verificationHash,verification_expires_at:expires,status:['signed','archived'].includes(tx.status)?tx.status:'verified',updated_at:now.toISOString()}).eq('id',tx.id);
       if(up.error)throw up.error;

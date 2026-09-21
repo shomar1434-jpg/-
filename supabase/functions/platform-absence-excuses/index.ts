@@ -1,11 +1,11 @@
 import {createClient} from 'npm:@supabase/supabase-js@2';
-const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, apikey, x-platform-session, content-type','Access-Control-Allow-Methods':'POST,OPTIONS'};
+const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, x-platform-session, content-type','Access-Control-Allow-Methods':'POST,OPTIONS'};
 const J=(b:any,s=200)=>new Response(JSON.stringify(b),{status:s,headers:{...cors,'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
 const H=async(s:string)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)))).map(x=>x.toString(16).padStart(2,'0')).join('');
 const digits=(s:any)=>String(s||'').replace(/[٠-٩]/g,d=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))).replace(/[۰-۹]/g,d=>String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/\D/g,'');
 const allowed=new Set(['image/jpeg','image/png','image/webp','application/pdf','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document']);
 const labels=(v:any)=>String(v||'').split(/[،,|;/]+/).map(x=>x.trim()).filter(Boolean);
-const isStudentAffairsLabel=(v:any)=>{const x=String(v||'').trim().toLowerCase().replace(/[_-]+/g,' ').replace(/\s+/g,' ');return ['student affairs','deputy students','وكيل شؤون الطلاب','وكيلة شؤون الطلاب','وكيل الشؤون الطلابية','وكيلة الشؤون الطلابية','شؤون الطلاب','الشؤون الطلابية'].includes(x)};
+const isStudentAffairsLabel=(v:any)=>{const x=String(v||'').trim().toLowerCase().replace(/[_-]+/g,' ').replace(/\s+/g,' ');return x==='student affairs'||x==='deputy students'||x.includes('شؤون الطلاب')||x.includes('الشؤون الطلابية')};
 
 Deno.serve(async req=>{
   if(req.method==='OPTIONS')return new Response('ok',{headers:cors});
@@ -15,7 +15,7 @@ Deno.serve(async req=>{
   const sb=createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}}),action=new URL(req.url).searchParams.get('action')||'';
   const body=async()=>await req.clone().json().catch(()=>({}));
   const session=async()=>{let raw=req.headers.get('x-platform-session')||'';if(!raw)throw Object.assign(Error('الجلسة مفقودة'),{status:401});let q=await sb.from('platform_sessions').select('*').eq('session_token_hash',await H(raw)).eq('status','active').gt('expires_at',new Date().toISOString()).maybeSingle();if(!q.data)throw Object.assign(Error('الجلسة غير صالحة'),{status:401});return q.data};
-  const access=async(s:any)=>{if(!s?.school_id||!s?.user_id)return false;let q=await sb.from('school_members').select('role,role_label,status').eq('school_id',s.school_id).eq('user_id',s.user_id).maybeSingle();if(q.error)throw q.error;if(!q.data||String(q.data.status||'active').toLowerCase()!=='active')return false;let r=String(q.data.role||'').toLowerCase(),ok=labels(q.data.role_label).some(isStudentAffairsLabel);return (r==='agent'||r==='student_affairs')&&ok};
+  const access=async(s:any)=>{if(!s?.school_id||!s?.user_id)return false;let q=await sb.from('school_members').select('role,role_label,status').eq('school_id',s.school_id).eq('user_id',s.user_id).maybeSingle();if(q.error)throw q.error;if(!q.data||String(q.data.status||'active').toLowerCase()!=='active')return false;let r=String(q.data.role||'').toLowerCase(),ok=labels(q.data.role_label).some(isStudentAffairsLabel);return r==='student_affairs'||(r==='agent'&&ok)};
   const link=async(t:string)=>{let q=await sb.from('student_absence_excuse_links').select('*').eq('token_hash',await H(t)).maybeSingle(),x=q.data;if(!x||x.revoked_at||x.submitted_at||Date.parse(x.expires_at)<Date.now())return null;return x};
   try{
     if(action==='resolve'){let b=await body(),l=await link(String(b.token||''));if(!l)return J({error:'الرابط غير صالح أو منتهي'},404);return J({ok:true,student_name:l.student_name,stage:l.stage,grade:l.grade,class_name:l.class_name,absence_date:l.absence_date,absence_days:l.absence_days})}

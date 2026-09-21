@@ -59,13 +59,20 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
         const isManagerAccount = () => false;
 
         const secureSystemAdminLogin = async (email, password) => {
-            if (!window.SmartSchoolSupabase) throw new Error('Supabase غير جاهز');
-            const sb = window.SmartSchoolSupabase.getClient();
-            const deadline = (operation) => Promise.race([
-                operation,
-                new Promise((_, reject) => setTimeout(() => reject(new Error('انتهت مهلة اتصال خدمة الدخول. حاول بعد قليل.')), 15000))
-            ]);
-            const login = await deadline(sb.auth.signInWithPassword({ email: String(email||'').trim().toLowerCase(), password: String(password||'') }));
+            if (!window.SmartSchoolSupabase || !window.supabase?.createClient) throw new Error('مكتبة Supabase غير جاهزة. أعد تحميل الصفحة.');
+            const url = String(localStorage.getItem('smartSchoolSupabaseUrl') || 'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/, '');
+            const key = String(localStorage.getItem('smartSchoolSupabaseAnonKey') || 'sb_publishable_wrqnWejHyIhaYnMusFfDQQ_6NBvAK9N');
+            if (!key) throw new Error('مفتاح الاتصال بخدمة الدخول غير متاح.');
+            // A separate client prevents another role's persisted token refresh from locking admin sign-in.
+            const isolated = window.supabase.createClient(url, key, { auth: { persistSession:false, autoRefreshToken:false, detectSessionInUrl:false } });
+            const deadline = (operation, stage) => {
+                let timer;
+                return Promise.race([
+                    operation,
+                    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('انتهت مهلة ' + stage + '. تحقق من اتصال Supabase وحاول مجددًا.')), 25000); })
+                ]).finally(() => clearTimeout(timer));
+            };
+            const login = await deadline(isolated.auth.signInWithPassword({ email: String(email||'').trim().toLowerCase(), password: String(password||'') }), 'مصادقة الحساب');
             if (login.error || !login.data?.session) {
                 const authError = login.error;
                 const message = String(authError?.message || '').toLowerCase();
@@ -75,8 +82,12 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
                 throw new Error(authError?.message || 'تعذر التحقق من حساب مدير النظام');
             }
             const session = login.data.session;
-            const invoked = await deadline(sb.functions.invoke('system-admin', { body:{action:'verify'} }));
-            if(invoked.error || !invoked.data?.ok){ await sb.auth.signOut(); throw new Error(invoked.data?.error || invoked.error?.message || 'ليس لديك صلاحية مدير النظام'); }
+            const invoked = await deadline(isolated.functions.invoke('system-admin', { body:{action:'verify'} }), 'فحص صلاحية مدير النظام');
+            if(invoked.error || !invoked.data?.ok) throw new Error(invoked.data?.error || invoked.error?.message || 'ليس لديك صلاحية مدير النظام');
+            const sb = window.SmartSchoolSupabase.getClient();
+            if (!sb) throw new Error('تعذر إنشاء جلسة مدير النظام في الواجهة.');
+            const installed = await deadline(sb.auth.setSession({ access_token:session.access_token, refresh_token:session.refresh_token }), 'تثبيت الجلسة');
+            if (installed.error || !installed.data?.session) throw new Error(installed.error?.message || 'تعذر تثبيت جلسة مدير النظام.');
             return { session, user: login.data.user };
         };
 

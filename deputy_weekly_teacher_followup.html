@@ -486,20 +486,26 @@
   function reviewerStamp(){const c=currentReviewerIdentity();return {reviewer_id:c.id,reviewer_email:c.email,reviewer_role:c.role,reviewer_name:c.name}}
 
 
-  function resetDeputyFollowupSection(){
-    if(!confirm('سيتم تهيئة قسم متابعة أعمال المعلمين عند الوكيل وحذف أسابيع المتابعة، الحالات، الأرشيف، والتقارير التجريبية لهذا القسم فقط. لن يتم حذف بيانات المعلمين المصدّرة من مركز المعلومات. هل تريد المتابعة؟'))return;
+  async function resetDeputyFollowupSection(){
+    if(!confirm('سيتم تهيئة القوائم والعدادات والأسابيع النشطة والتسليمات في قسم المتابعة. ستبقى النسخ السابقة محفوظة في سجل التدقيق والأرشيف ولن تحذف بيانات المعلمين. هل تريد المتابعة؟'))return;
     try{
+      if(!window.PlatformStateEngine?.resetWeeklyContext)throw new Error('محرك التهيئة السحابية غير متاح؛ حدّث الصفحة ثم أعد المحاولة');
+      const result=await window.PlatformStateEngine.resetWeeklyContext('supervisor',String(activeWeekId||''));
+      const old=currentWeek()||weeks[0]||{},ay=old.year||localStorage.getItem('school_info_academic_year')||'1448',sem=old.term||'الفصل الدراسي الأول';
+      if(!window.PlatformRecordSaveEngine||PlatformRecordSaveEngine.isSystemAdminContext())throw new Error('محرك حفظ فترة المتابعة غير متاح');
+      await PlatformRecordSaveEngine.save({moduleKey:'deputy_weekly_followup',recordType:'weekly_followup_period',recordId:'main',academicYear:ay,semester:sem,scope:'school',folderId:'weekly-teacher-followup',title:'متابعة المعلمين الأسبوعية',data:{weeks:[],archives:archives,activeWeekId:'',reset_at:result.resetAt,reset_generation:result.resetGeneration}});
       const sid=schoolId();
       localStorage.removeItem('deputyWeeklyFollowupWeeks:'+sid);
       localStorage.removeItem('deputyWeeklyFollowupArchive:'+sid);
       localStorage.removeItem('deputyWeeklyFollowupActiveWeek:'+sid);
       localStorage.removeItem('teacherWeeklyTasksPreview:'+sid);
       Object.keys(localStorage).filter(k=>k.startsWith('teacherWeeklyTasksPreview:')).forEach(k=>localStorage.removeItem(k));
-    }catch(e){}
-    weeks=[]; archives=[]; activeWeekId='';
-    refreshTeachers({silent:true,skipSourceRefresh:true});
-    renderAll();
-    toast('تمت تهيئة متابعة أعمال المعلمين وإزالة بيانات الإعداد التجريبية');
+      c3SaveAlerts(c3ReadAlerts().map(a=>({...a,status:'processed',processed_at:new Date().toISOString(),reset_generation:result.resetGeneration})));
+      c3SaveTeacherAlerts(c3ReadTeacherAlerts().map(a=>({...a,read:true,dismissed:true,read_at:new Date().toISOString(),reset_generation:result.resetGeneration})));
+      weeks=[]; activeWeekId='';
+      await refreshTeachers({silent:true,skipSourceRefresh:true});renderAll();
+      toast('تمت التهيئة السحابية: صفر أسابيع نشطة وصفر تسليمات جديدة. الأرشيف السابق محفوظ.');
+    }catch(e){console.error('[deputy weekly reset]',e);toast('تعذر إكمال التهيئة السحابية: '+String(e&&e.message||e));}
   }
   function ymd(d){return d.toISOString().slice(0,10)} function dateLabel(s){if(!s)return '—'; try{return new Date(s+'T12:00:00').toLocaleDateString('ar-SA',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}catch(e){return s}}
   function weekEndThursday(d){let x=new Date(d); x.setHours(12,0,0,0); let diff=(4-x.getDay()+7)%7; x.setDate(x.getDate()+diff); return x}
@@ -971,13 +977,14 @@
     $('ptTerm').value=w.periodTest?.term||w.term||'الفصل الدراسي الأول';
     $('ptPeriod').value=w.periodTest?.period||'فترة أولى'; $('ptEvidenceRequired').value=w.periodTest?.evidence_required===false?'no':'yes'; $('ptEvidenceType').value=w.periodTest?.evidence_type||'نموذج الاختبار أو تحليل النتائج';
   }
-  function savePeriodTestConfig(){
+  async function savePeriodTestConfig(){
     const w=currentWeek(); if(!w)return;
     const ids=[...document.querySelectorAll('.ptTeacher')].filter(x=>x.checked).map(x=>x.value);
     w.periodTest={enabled:true,term:$('ptTerm').value,period:$('ptPeriod').value,teacherIds:ids.length===teachers.length?[]:ids,defaultStatus:'مطلوب',evidence_required:$('ptEvidenceRequired').value==='yes',evidence_type:($('ptEvidenceType').value||'').trim()||'شاهد تنفيذ',activated_at:new Date().toISOString()};
     w.teacherStatuses=w.teacherStatuses||{};
     teachers.forEach(t=>{if(periodTestApplies(w,t.user_id)){w.teacherStatuses[t.user_id]=w.teacherStatuses[t.user_id]||blankTeacherStatus(); w.teacherStatuses[t.user_id].periodTest=w.teacherStatuses[t.user_id].periodTest||'مطلوب';}});
-    saveWeeks(); closeDrawer(); renderAll(); toast('تم تفعيل اختبار الفترة لهذا الأسبوع');
+    const targets=teachers.filter(t=>periodTestApplies(w,t.user_id));closeDrawer();renderAll();toast('جاري حفظ اختبار الفترة وإرساله للمعلمين المستهدفين...');
+    try{const r=await publishActiveWeekMutation(w,targets,'weekly_period_test.assigned');await saveWeeks();renderAll();toast(r.pendingConfirmation?'تم حفظ الاختبار، وسيظهر بعد تأكيد بدء تنفيذ الأسبوع':r.failed.length?`تم حفظ الاختبار وتعذر إرساله إلى ${r.failed.length} حساب`:`تم تفعيل الاختبار وإرساله إلى ${r.published} معلم/ـة`);}catch(e){toast('تم حفظ إعداد الاختبار محليًا وتعذر نشره: '+String(e&&e.message||e));}
   }
   function disablePeriodTest(){
     const w=currentWeek(); if(!w||!w.periodTest)return;
@@ -987,7 +994,7 @@
   }
   function toggleVariableEvidence(){const req=$('asEvidenceRequired')?.value==='yes'; const box=$('asEvidenceTypeWrap'); if(box)box.style.display=req?'block':'none'}
   function openAssignmentDrawer(){if(!currentWeek())return toast('أنشئ أو ولّد أسبوعًا أولًا'); openDrawer(`<div class="drawerHead"><div><h2>إضافة تكليف متغير للأسبوع</h2><div class="muted">يظهر التكليف للمعلم في هذا الأسبوع فقط ويختفي من الأسابيع الأخرى.</div></div><button class="btn secondary" onclick="closeDrawer()">إغلاق</button></div><div class="row"><div class="field"><label>نوع التكليف</label><select id="asType"><option>المناوبة</option><option>الإشراف</option><option>تأمين الحصص</option><option>اختبار أو تقويم</option><option>مهمة مخصصة</option></select></div><div class="field"><label>عنوان/وصف التكليف</label><input id="asTitle" placeholder="مثال: مناوبة الفسحة الأولى أو إعداد اختبار قصير"></div><div class="field"><label>المعلم</label><select id="asTeacher">${teacherOptions()}</select></div><div class="field"><label>اليوم/الموعد</label><select id="asDay"><option>خلال الأسبوع</option>${DAYS.map(d=>'<option>'+d+'</option>').join('')}</select></div><div class="field"><label>هل يتطلب رفع شاهد؟</label><select id="asEvidenceRequired" onchange="toggleVariableEvidence()"><option value="no">لا يتطلب شاهدًا</option><option value="yes">نعم، يتطلب شاهدًا</option></select></div><div class="field" id="asEvidenceTypeWrap" style="display:none"><label>الشاهد المطلوب</label><input id="asEvidenceType" placeholder="مثال: صورة / PDF / رابط / تحليل نتائج"></div><div class="field"><label>ملاحظة</label><input id="asNote" placeholder="اختياري"></div></div><div class="empty">هذا التكليف مرتبط بالأسبوع النشط فقط. إذا طلب الوكيل شاهدًا فلن يستطيع المعلم إرسال أعمال الأسبوع قبل إرفاقه أو إدخال رابط الشاهد.</div><button class="btn" onclick="addVariableAssignment()">حفظ التكليف</button>`)}
-  async function addVariableAssignment(){const w=currentWeek(); if(!w)return; const type=$('asType').value,title=($('asTitle').value||'').trim()||type,required=$('asEvidenceRequired').value==='yes'; w.variableAssignments.push({id:'VA'+Date.now(),type,title,teacher_id:$('asTeacher').value,day:$('asDay').value,note:$('asNote').value,evidence_required:required,evidence_type:required?(($('asEvidenceType').value||'').trim()||'شاهد تنفيذ'):'',status:'مكلف وينتظر التنفيذ',created_at:new Date().toISOString()});await saveWeeks();closeDrawer();renderAll();toast('تم إضافة التكليف للأسبوع الحالي والتحقق سحابيًا')}
+  async function addVariableAssignment(){const w=currentWeek(); if(!w)return toast('لا يوجد أسبوع نشط لإضافة التكليف'); const type=$('asType').value,title=($('asTitle').value||'').trim()||type,required=$('asEvidenceRequired').value==='yes',teacherId=String($('asTeacher').value||''),target=teachers.find(t=>String(t.user_id)===teacherId); if(!target)return toast('تعذر التحقق من حساب المعلم المستهدف');w.variableAssignments.push({id:'VA'+Date.now(),type,title,teacher_id:teacherId,day:$('asDay').value,note:$('asNote').value,evidence_required:required,evidence_type:required?(($('asEvidenceType').value||'').trim()||'شاهد تنفيذ'):'',status:'مكلف وينتظر التنفيذ',created_at:new Date().toISOString()});closeDrawer();renderAll();toast('جاري حفظ التكليف وإرساله للمعلم...');try{const r=await publishActiveWeekMutation(w,[target],'weekly_variable_assignment.assigned');await saveWeeks();renderAll();toast(r.pendingConfirmation?'تم حفظ التكليف وسيظهر بعد تأكيد بدء تنفيذ الأسبوع':r.failed.length?'تم حفظ التكليف وتعذر إرساله؛ تحقق من الحساب ثم أعد المحاولة':'تم حفظ التكليف وإرساله إلى حساب المعلم');}catch(e){await saveWeeks().catch(()=>{});renderAll();toast('تم حفظ التكليف وتعذر إرساله: '+String(e&&e.message||e));}}
   function updateAssignmentStatus(i){const w=currentWeek(); const a=w.variableAssignments[i]; openDrawer(`<div class="drawerHead"><h2>تحديث حالة التكليف</h2><button class="btn secondary" onclick="closeDrawer()">إغلاق</button></div><div class="field"><label>الحالة</label><select id="asStatus"><option>مكلف وينتظر التنفيذ</option><option>مكلف وتم التنفيذ</option><option>مكلف ولم ينفذ</option></select></div><button class="btn" onclick="currentWeek().variableAssignments[${i}].status=document.getElementById('asStatus').value;saveWeeks();closeDrawer();renderAll();toast('تم تحديث الحالة')">حفظ</button>`); $('asStatus').value=a.status||'مكلف وينتظر التنفيذ'}
   async function deleteAssignment(i){const w=currentWeek();if(!w)return;w.variableAssignments.splice(i,1);await saveWeeks();renderAll();toast('تم الحذف والتحقق سحابيًا')}
   function roleOptions(){return '<option value="مهمة إضافية">مهمة إضافية</option>'}
@@ -1001,10 +1008,13 @@
       try{await refreshTeachers({silent:true});}catch(e){console.warn('refresh teachers before extra task',e)}
     }
     const teacherHtml=teacherOptions();
-    openDrawer(`<div class="drawerHead"><h2>تفعيل مهمة إضافية</h2><button class="btn secondary" onclick="closeDrawer()">إغلاق</button></div><div class="row"><div class="field"><label>نوع التكليف</label><select id="exRole" disabled><option value="مهمة إضافية" selected>مهمة إضافية</option></select></div><div class="field"><label>المهمة</label><input id="exTask" type="text" maxlength="250" placeholder="اكتب المهمة التي ستظهر للمعلم"></div><div class="field"><label>المعلم</label><select id="exTeacher"><option value="__ALL__">الكل — جميع المعلمين</option>${teacherHtml||'<option value="">لا توجد أسماء معلمين متاحة</option>'}</select><div class="muted">اختر «الكل» لتفعيل المهمة نفسها لجميع المعلمين دفعة واحدة.</div></div><div class="field"><label>الموعد</label><select id="exDue"><option>خلال الأسبوع</option>${DAYS.map(d=>'<option>'+d+'</option>').join('')}</select></div></div><div class="field"><label>الشاهد المطلوب</label><select id="exEvidence"><option value="none">لا يتطلب شاهدًا</option><option>شاهد تنفيذ</option><option>صورة</option><option>PDF</option><option>رابط</option><option>ملف Excel</option></select></div><button class="btn" onclick="addExtraTask()">تفعيل المهمة</button>`);
+    openDrawer(`<div class="drawerHead"><h2>تفعيل مهمة إضافية</h2><button type="button" class="btn secondary" onclick="closeDrawer()">إغلاق</button></div><div class="row"><div class="field"><label>نوع التكليف</label><select id="exRole" disabled><option value="مهمة إضافية" selected>مهمة إضافية</option></select></div><div class="field"><label>المهمة</label><input id="exTask" type="text" maxlength="250" placeholder="اكتب المهمة التي ستظهر للمعلم"></div><div class="field"><label>المعلم</label><select id="exTeacher"><option value="__ALL__">الكل — جميع المعلمين</option>${teacherHtml||'<option value="">لا توجد أسماء معلمين متاحة</option>'}</select><div class="muted">اختر «الكل» لتفعيل المهمة نفسها لجميع المعلمين دفعة واحدة.</div></div><div class="field"><label>الموعد</label><select id="exDue"><option>خلال الأسبوع</option>${DAYS.map(d=>'<option>'+d+'</option>').join('')}</select></div></div><div class="field"><label>الشاهد المطلوب</label><select id="exEvidence"><option value="none">لا يتطلب شاهدًا</option><option>شاهد تنفيذ</option><option>صورة</option><option>PDF</option><option>رابط</option><option>ملف Excel</option></select></div><button type="button" id="activateExtraTaskBtn" class="btn" onclick="addExtraTask(event)">تفعيل المهمة</button>`);
   }
-  async function addExtraTask(){
-    const w=currentWeek(); if(!w)return;
+  let extraTaskMutationBusy=false;
+  async function addExtraTask(clickEvent){
+    if(clickEvent?.preventDefault)clickEvent.preventDefault();if(extraTaskMutationBusy)return toast('جارٍ تنفيذ عملية التفعيل الحالية...');
+    const w=currentWeek(); if(!w)return toast('لا يوجد أسبوع نشط. أنشئ أسبوعًا ثم اضغط «تأكيد وبدء تنفيذ الأسبوع» قبل تفعيل المهمة.');
+    if(['مغلق','مؤرشف','إجازة'].includes(String(w.status||''))||w.execution_state==='closed')return toast('لا يمكن تفعيل مهمة داخل أسبوع مغلق أو مؤرشف.');
     const task=String($('exTask')?.value||'').trim();
     const teacherId=String($('exTeacher')?.value||'').trim();
     if(!task)return toast('اكتب المهمة الإضافية أولًا');
@@ -1015,6 +1025,7 @@
     const stamp=Date.now();
     const created=[];
     targets.forEach((teacher,i)=>{const row={id:'EX'+stamp+'_'+i,role:'مهمة إضافية',task,teacher_id:String(teacher.user_id),teacher_name:teacher.name||'',due:$('exDue').value,evidence:ev==='none'?'':ev,evidence_required:ev!=='none',status:'مطلوب',created_at:new Date().toISOString(),bulk_assignment:teacherId==='__ALL__',publication_state:w.execution_confirmed_at?'publishing':'pending_confirmation'};w.extraTasks.push(row);created.push(row)});
+    extraTaskMutationBusy=true;const btn=$('activateExtraTaskBtn');if(btn){btn.disabled=true;btn.textContent='جارٍ التفعيل والإرسال...'}
     closeDrawer();renderAll();toast('جاري حفظ المهمة وإرسالها للحساب المستهدف...');
     try{
       const result=await publishActiveWeekMutation(w,targets,'weekly_extra_task.assigned');
@@ -1025,6 +1036,7 @@
       else if(result.failed.length)toast(`حُفظت المهمة لدى الوكيل، وتعذر إرسالها إلى ${result.failed.length} حساب؛ استخدم «إعادة الإرسال»`);
       else toast(teacherId==='__ALL__'?`تم حفظ المهمة وإرسالها إلى جميع المعلمين (${result.published})`:'تم حفظ المهمة وإرسالها إلى حساب المعلم');
     }catch(e){created.forEach(x=>x.publication_state='failed');await saveWeeks().catch(()=>{});renderAll();toast('حُفظت المهمة، لكن تعذر إرسالها للمعلم: '+String(e&&e.message||e));}
+    finally{extraTaskMutationBusy=false;}
   }
   function updateExtraStatus(i){const w=currentWeek(); const a=w.extraTasks[i]; openDrawer(`<div class="drawerHead"><h2>تحديث حالة المهمة الإضافية</h2><button class="btn secondary" onclick="closeDrawer()">إغلاق</button></div><div class="field"><label>الحالة</label><select id="exStatus"><option>مطلوب</option><option>تم التنفيذ</option><option>ناقص</option><option>لم ينفذ</option></select></div><button class="btn" onclick="saveExtraStatus(${i})">حفظ وإرسال التحديث</button>`); $('exStatus').value=a.status||'مطلوب'}
   async function saveExtraStatus(i){const w=currentWeek(),a=w?.extraTasks?.[i];if(!w||!a)return;a.status=$('exStatus').value;a.publication_state=w.execution_confirmed_at?'publishing':'pending_confirmation';const t=teachers.find(x=>String(x.user_id)===String(a.teacher_id));closeDrawer();renderAll();try{const r=await publishActiveWeekMutation(w,t?[t]:[],'weekly_extra_task.updated');a.publication_state=r.pendingConfirmation?'pending_confirmation':(r.failed.length?'failed':'published');await saveWeeks();renderAll();toast(r.failed.length?'تم حفظ التحديث وتعذر إرساله؛ استخدم إعادة الإرسال':'تم حفظ حالة المهمة ومزامنتها مع حساب المعلم')}catch(e){a.publication_state='failed';await saveWeeks().catch(()=>{});renderAll();toast('تم حفظ الحالة وتعذر إرسال التحديث للمعلم')}}

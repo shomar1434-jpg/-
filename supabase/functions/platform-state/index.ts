@@ -165,6 +165,40 @@ Deno.serve(async(req)=>{
       return json({items:result,scope:'school-users',schoolId:s.school_id,supervisor:['admin_performance','admin_employee_records'].includes(moduleKey)?supervisorKey:undefined});
     }
 
+    if(action==='reset-weekly-context'){
+      if(moduleKey!=='weekly_teacher_work')return json({error:'مصدر التهيئة الأسبوعية غير صحيح',code:'STATE_TARGET_MODULE_FORBIDDEN',requestId},403);
+      const mode=String(body.mode||'teacher').toLowerCase(),weekId=String(body.weekId||'').trim();
+      const supervisorReset=mode==='supervisor';
+      if(supervisorReset&&!isManager&&!isAgent)return json({error:'تهيئة متابعة المدرسة تتطلب صلاحية المدير أو الوكيل',code:'STATE_SUPERVISOR_REQUIRED',requestId},403);
+      const resetGeneration=crypto.randomUUID(),markerPayload=(owner:string)=>JSON.stringify({schema:'weekly_reset_marker_v1',school_id:s.school_id,owner_user_id:owner,week_id:weekId||null,mode:supervisorReset?'supervisor':'teacher',reset_at:now,reset_generation:resetGeneration,reset_by:String(s.user_id||''),reviewer_id:supervisorReset?String(s.user_id||''):''});
+      let owners:string[]=[];
+      if(supervisorReset){
+        const members=await sb.from('school_members').select('user_id,role,status').eq('school_id',s.school_id).neq('status','deleted');
+        if(members.error)throw members.error;
+        owners=[...new Set((members.data||[]).filter((m:any)=>['teacher','performance','معلم','معلمة'].includes(String(m.role||'').toLowerCase())).map((m:any)=>String(m.user_id||'')).filter(Boolean))];
+      }else owners=[String(s.user_id||'')];
+      const existing=owners.length?await sb.from('platform_module_state').select('owner_key,state_key,payload,updated_at,deleted_at').eq('school_id',s.school_id).eq('module_key','weekly_teacher_work').in('owner_key',owners):{data:[],error:null};
+      if(existing.error)throw existing.error;
+      const rows:any[]=[];
+      for(const row of (existing.data||[])){
+        const key=String(row.state_key||'');
+        const isExecution=key==='weekly_active_plan_v1'||key.startsWith('weekly_submission_v1:')||key.startsWith('weekly_evidence_draft_v1:');
+        if(!isExecution)continue;
+        if(supervisorReset){
+          let payload:any={};try{payload=JSON.parse(String(row.payload?.value||'{}'))}catch(_){}
+          if(payload.reviewer_id&&String(payload.reviewer_id)!==String(s.user_id||''))continue;
+        }
+        rows.push({school_id:s.school_id,owner_key:String(row.owner_key),module_key:'weekly_teacher_work',state_key:key,payload:row.payload||null,updated_by:s.user_id,updated_at:now,deleted_at:now});
+      }
+      for(const owner of owners)rows.push({school_id:s.school_id,owner_key:owner,module_key:'weekly_teacher_work',state_key:'weekly_reset_marker_v1',payload:{value:markerPayload(owner)},updated_by:s.user_id,updated_at:now,deleted_at:null});
+      if(rows.length){const up=await sb.from('platform_module_state').upsert(rows,{onConflict:'school_id,owner_key,module_key,state_key'});if(up.error)throw up.error;}
+      if(supervisorReset){
+        await sb.from('platform_notifications').update({read_at:now}).eq('school_id',s.school_id).eq('recipient_user_id',String(s.user_id||'')).is('read_at',null).ilike('action_url','%deputy_weekly_teacher_followup%');
+        if(owners.length)await sb.from('platform_notifications').update({read_at:now}).eq('school_id',s.school_id).in('recipient_user_id',owners).is('read_at',null).ilike('action_url','%teacher_weekly_tasks%');
+      }else await sb.from('platform_notifications').update({read_at:now}).eq('school_id',s.school_id).eq('recipient_user_id',String(s.user_id||'')).is('read_at',null).ilike('action_url','%teacher_weekly_tasks%');
+      return json({ok:true,mode:supervisorReset?'supervisor':'teacher',resetAt:now,resetGeneration,owners:owners.length,archivedStates:rows.filter((r:any)=>r.deleted_at).length});
+    }
+
 
     if(action==='publish-weekly-plan'){
       if(!isManager&&!isAgent)return json({error:'هذه العملية تتطلب صلاحية المدير أو الوكيل',code:'STATE_SUPERVISOR_REQUIRED',requestId},403);

@@ -163,9 +163,17 @@
       return {...payload,...delivered};
     }
 
-    function resetTeacherWeeklySection(){
+    function teacherResetMarkerKey(){return 'teacherWeeklyResetMarker:'+schoolId()+':'+String(currentTeacherCloudIdentity().id||me?.user_id||'')}
+    function teacherResetMarker(){return read(teacherResetMarkerKey(),null)}
+    async function resetTeacherWeeklySection(){
       if(!confirm('سيتم تهيئة قسم الأعمال الأسبوعية للمعلم وحذف بيانات المعاينة أو بيانات الإعداد التجريبية الخاصة بعرض هذا القسم فقط. هل تريد المتابعة؟'))return;
+      const oldWeek=currentWeek(),ay=oldWeek?.year||localStorage.getItem('school_info_academic_year')||'1448',sem=oldWeek?.term||'الفصل الدراسي الأول';
       try{
+        if(!window.PlatformStateEngine?.resetWeeklyContext)throw new Error('محرك التهيئة السحابية غير متاح؛ حدّث الصفحة ثم أعد المحاولة');
+        const result=await window.PlatformStateEngine.resetWeeklyContext('teacher',String(oldWeek?.id||''));
+        const marker={reset_at:result.resetAt,reset_generation:result.resetGeneration,week_id:String(oldWeek?.id||'')};
+        localStorage.setItem(teacherResetMarkerKey(),JSON.stringify(marker));
+        if(window.PlatformRecordSaveEngine&&!PlatformRecordSaveEngine.isSystemAdminContext())await PlatformRecordSaveEngine.save({moduleKey:'teacher_weekly_tasks',recordType:'weekly_tasks_period',recordId:'main',academicYear:ay,semester:sem,scope:'user',folderId:'weekly-tasks',title:'المهام الأسبوعية للمعلم',data:{weeks:[],activeWeekId:'',reset_at:marker.reset_at,reset_generation:marker.reset_generation}});
         const sid=schoolId();
         const uid=me?.user_id || me?.id || '';
         Object.keys(localStorage).filter(k=>k.startsWith('teacherWeeklyTasksPreview:')).forEach(k=>localStorage.removeItem(k));
@@ -182,11 +190,11 @@
           });
           localStorage.setItem(wk,JSON.stringify(data));
         }
-      }catch(e){}
-      weeks=[]; activeWeekId=''; activeWeekSource='preview';
-      loadAll();
-      renderAll();
-      toast('تمت تهيئة قسم الأعمال الأسبوعية وإزالة بيانات الإعداد التجريبية');
+        Object.keys(localStorage).filter(k=>k.startsWith('weeklyEvidenceBindings:'+sid+':')).forEach(k=>localStorage.removeItem(k));
+        const alerts=readTeacherSmartAlerts().map(a=>(String(a.teacher_id||'')===String(uid)?{...a,read:true,dismissed:true,read_at:new Date().toISOString()}:a));saveTeacherSmartAlerts(alerts);
+        weeks=[]; activeWeekId=''; activeWeekSource='preview';renderAll();
+        toast('تمت التهيئة سحابيًا. لن تعود الأعمال السابقة، وستظهر فقط الأعمال التي ينشرها الوكيل بعد الآن.');
+      }catch(e){console.error('[teacher weekly reset]',e);toast('تعذر إكمال التهيئة السحابية: '+String(e&&e.message||e));}
     }
     function dateLabel(v){if(!v)return '—'; try{return new Date(v+'T00:00:00').toLocaleDateString('ar-SA',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}catch(e){return v}}
     function blankStatus(){let s={attendance:{},lineup:{},weeklyPlan:'مطلوب',madrasati:'مطلوب',weeklyStrategy:'مطلوب',classTime:'مطلوب',followupRecord:'مطلوب',periodTest:'مطلوب'}; DAYS.forEach(d=>{s.attendance[d]='—';s.lineup[d]='—'});return s}
@@ -229,7 +237,7 @@
     function saveTeacherSmartAlerts(list){localStorage.setItem(teacherSmartAlertsKey(),JSON.stringify(list||[]));}
     function priorityLabel(p){return p==='critical'?'حرج':p==='medium'?'متوسط':'منخفض'}
     function priorityClass(p){return p==='critical'?'critical':p==='medium'?'medium':'low'}
-    function renderTeacherSmartAlerts(){const box=$('teacherSmartAlertsBox'); if(!box)return; const uid=String(me?.user_id||me?.id||''); const email=String(me?.email||'').toLowerCase(); const alerts=readTeacherSmartAlerts().filter(a=>String(a.teacher_id||'')===uid || (email && String(a.teacher_email||'').toLowerCase()===email)).sort((a,b)=>String(b.sent_at||b.created_at||'').localeCompare(String(a.sent_at||a.created_at||''))); if(!alerts.length){box.innerHTML='<div class="empty">لا توجد تنبيهات مرسلة من الوكيل حاليًا.</div>'; return} box.innerHTML=alerts.map(a=>`<div class="teacherAlertCard ${priorityClass(a.priority)}"><h4>${priorityLabel(a.priority)} — تنبيه من الوكيل</h4><p>${esc(a.message||'لديك تنبيه متابعة من الوكيل.')}</p><div class="teacherAlertMeta"><span class="badge ${a.read?'done':'req'}">${a.read?'تم الاطلاع':'جديد'}</span><span class="badge none">الأسبوع ${esc(a.week_number||'—')}</span><span class="badge none">${esc(a.reason||'')}</span>${a.sent_at?'<span class="badge sent">'+new Date(a.sent_at).toLocaleString('ar-SA')+'</span>':''}</div><div class="noPrint" style="margin-top:8px"><button class="btn small green" onclick="markTeacherAlertRead('${esc(a.id)}')">تم الاطلاع</button></div></div>`).join('')}
+    function renderTeacherSmartAlerts(){const box=$('teacherSmartAlertsBox'); if(!box)return; const uid=String(me?.user_id||me?.id||''); const email=String(me?.email||'').toLowerCase(); const alerts=readTeacherSmartAlerts().filter(a=>!a.dismissed&&(String(a.teacher_id||'')===uid || (email && String(a.teacher_email||'').toLowerCase()===email))).sort((a,b)=>String(b.sent_at||b.created_at||'').localeCompare(String(a.sent_at||a.created_at||''))); if(!alerts.length){box.innerHTML='<div class="empty">لا توجد تنبيهات مرسلة من الوكيل حاليًا.</div>'; return} box.innerHTML=alerts.map(a=>`<div class="teacherAlertCard ${priorityClass(a.priority)}"><h4>${priorityLabel(a.priority)} — تنبيه من الوكيل</h4><p>${esc(a.message||'لديك تنبيه متابعة من الوكيل.')}</p><div class="teacherAlertMeta"><span class="badge ${a.read?'done':'req'}">${a.read?'تم الاطلاع':'جديد'}</span><span class="badge none">الأسبوع ${esc(a.week_number||'—')}</span><span class="badge none">${esc(a.reason||'')}</span>${a.sent_at?'<span class="badge sent">'+new Date(a.sent_at).toLocaleString('ar-SA')+'</span>':''}</div><div class="noPrint" style="margin-top:8px"><button class="btn small green" onclick="markTeacherAlertRead('${esc(a.id)}')">تم الاطلاع</button></div></div>`).join('')}
     function markTeacherAlertRead(id){const list=readTeacherSmartAlerts(); const a=list.find(x=>x.id===id); if(a){a.read=true; a.read_at=new Date().toISOString(); saveTeacherSmartAlerts(list); renderTeacherSmartAlerts(); toast('تم تسجيل الاطلاع على التنبيه')}}
 
 
@@ -261,13 +269,15 @@
     async function restorePublishedWeeklyPlan(){
       try{
         if(!window.PlatformStateEngine?.pull)return false;
-        const r=await window.PlatformStateEngine.pull('weekly_teacher_work','user',['weekly_active_plan_v1']);
-        const row=(r?.items||[]).filter(x=>!x.deleted_at&&x.state_key==='weekly_active_plan_v1').pop();if(!row)return false;
-        const plan=JSON.parse(row.payload?.value||'{}');return mergePublishedWeeklyPlan(plan);
+        const r=await window.PlatformStateEngine.pull('weekly_teacher_work','user',['weekly_active_plan_v1','weekly_reset_marker_v1']);
+        const items=r?.items||[],row=items.filter(x=>!x.deleted_at&&x.state_key==='weekly_active_plan_v1').pop(),markerRow=items.filter(x=>!x.deleted_at&&x.state_key==='weekly_reset_marker_v1').pop();if(!row)return false;
+        const plan=JSON.parse(row.payload?.value||'{}'),cloudMarker=markerRow?JSON.parse(markerRow.payload?.value||'{}'):null,marker=cloudMarker||teacherResetMarker(),resetAt=Date.parse(marker?.reset_at||0)||0,planAt=Date.parse(plan.published_at||plan.updated_at||row.updated_at||0)||0;
+        if(resetAt&&planAt<=resetAt)return false;
+        return mergePublishedWeeklyPlan(plan);
       }catch(e){console.warn('[weekly published plan restore]',e);return false;}
     }
     async function restoreWeeklyPeriodFromCloud(){
-      try{const w=currentWeek&&currentWeek()||weeks[0]||{};if(!w||!window.PlatformRecordSaveEngine||PlatformRecordSaveEngine.isSystemAdminContext())return false;const cloud=await PlatformRecordSaveEngine.load({moduleKey:'teacher_weekly_tasks',recordType:'weekly_tasks_period',recordId:'main',academicYear:w.year||localStorage.getItem('school_info_academic_year')||'1448',semester:w.term||'الفصل الدراسي الأول',scope:'user'});if(!cloud||!cloud.data||!Array.isArray(cloud.data.weeks))return false;const cw=cloud.data.weeks,ids=new Set(cw.map(x=>String(x.id)));weeks=weeks.filter(x=>!ids.has(String(x.id))).concat(cw);if(cloud.data.activeWeekId&&cw.some(x=>String(x.id)===String(cloud.data.activeWeekId)))activeWeekId=cloud.data.activeWeekId;localStorage.setItem(weeksKey(),JSON.stringify(weeks.filter(x=>!x.preview)));localStorage.setItem(activeKey(),activeWeekId||'');return true;}catch(e){console.warn('[weekly period restore]',e);return false;}
+      try{const w=currentWeek&&currentWeek()||weeks[0]||{},marker=teacherResetMarker();if(!w||!window.PlatformRecordSaveEngine||PlatformRecordSaveEngine.isSystemAdminContext())return false;const cloud=await PlatformRecordSaveEngine.load({moduleKey:'teacher_weekly_tasks',recordType:'weekly_tasks_period',recordId:'main',academicYear:w.year||localStorage.getItem('school_info_academic_year')||'1448',semester:w.term||'الفصل الدراسي الأول',scope:'user'});if(!cloud||!cloud.data||!Array.isArray(cloud.data.weeks))return false;if(marker?.reset_generation&&cloud.data.reset_generation!==marker.reset_generation)return false;const cw=cloud.data.weeks,ids=new Set(cw.map(x=>String(x.id)));weeks=weeks.filter(x=>!ids.has(String(x.id))).concat(cw);if(cloud.data.activeWeekId&&cw.some(x=>String(x.id)===String(cloud.data.activeWeekId)))activeWeekId=cloud.data.activeWeekId;localStorage.setItem(weeksKey(),JSON.stringify(weeks.filter(x=>!x.preview)));localStorage.setItem(activeKey(),activeWeekId||'');return true;}catch(e){console.warn('[weekly period restore]',e);return false;}
     }
     async function restoreWeeklyReviewDecisionFromCloud(){
       try{

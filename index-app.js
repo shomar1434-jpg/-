@@ -61,8 +61,11 @@ setTimeout(function(){ window.dispatchEvent(new CustomEvent('authReady')); }, 0)
         const secureSystemAdminLogin = async (email, password) => {
             if (!window.SmartSchoolSupabase || !window.supabase?.createClient) throw new Error('مكتبة Supabase غير جاهزة. أعد تحميل الصفحة.');
             const url = String(localStorage.getItem('smartSchoolSupabaseUrl') || 'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/, '');
-            const key = String(localStorage.getItem('smartSchoolSupabaseAnonKey') || 'sb_publishable_wrqnWejHyIhaYnMusFfDQQ_6NBvAK9N');
-            if (!key) throw new Error('مفتاح الاتصال بخدمة الدخول غير متاح.');
+            const canonicalUrl = 'https://cijhgvbtrvmmlcssgxht.supabase.co';
+            // The hosted project has one known anon key. Ignore stale browser overrides for this project.
+            const canonicalKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
+            const key = url === canonicalUrl ? canonicalKey : String(localStorage.getItem('smartSchoolSupabaseAnonKey') || '');
+            if (!key) throw new Error('مفتاح الاتصال بخدمة الدخول غير متاح للمشروع المحدد.');
             // A separate client prevents another role's persisted token refresh from locking admin sign-in.
             const isolated = window.supabase.createClient(url, key, { auth: { persistSession:false, autoRefreshToken:false, detectSessionInUrl:false } });
             const deadline = (operation, stage) => {

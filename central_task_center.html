@@ -97,7 +97,7 @@ body{font-family:Tajawal,Arial,sans-serif;background:linear-gradient(135deg,#eef
       <div><label class="block text-xs font-black text-slate-600 mb-1">القسم / نوع الوكالة</label><select id="ownerSection" class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm"></select></div>
       <div><label class="block text-xs font-black text-slate-600 mb-1">مجموعة السجلات</label><select id="recordGroup" class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm"></select></div>
       <div><label class="block text-xs font-black text-slate-600 mb-1">نطاق التفويض</label><select id="delegationScope" class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm"><option value="record_group">مجموعة السجلات كاملة</option><option value="record_type">سجل محدد من المجموعة</option></select></div>
-      <div id="recordKeyWrap"><label class="block text-xs font-black text-slate-600 mb-1">السجل المحدد</label><select id="recordKey" class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm"></select></div>
+      <div id="recordKeyWrap"><label class="block text-xs font-black text-slate-600 mb-1">السجلات المحددة</label><select id="recordKey" multiple hidden aria-hidden="true" tabindex="-1"></select><details id="recordChoices" class="relative rounded-2xl border border-slate-200 bg-white text-sm"><summary id="recordChoicesSummary" class="cursor-pointer list-none px-4 py-3 font-bold text-slate-700">اختر السجلات المطلوبة ▾</summary><div class="border-t border-slate-200 p-3"><div id="recordCheckboxList" role="group" aria-label="اختر سجلًا أو أكثر" class="grid gap-2 max-h-64 overflow-y-auto"></div><div class="flex justify-between items-center mt-3"><span id="recordChoiceCount" class="text-xs font-bold text-teal-800">لم تحدد سجلات بعد</span><button type="button" class="rounded-xl bg-teal-700 px-3 py-2 text-white text-xs font-bold" onclick="document.getElementById('recordChoices').open=false">تم الاختيار</button></div></div></details><p class="text-xs text-slate-500 mt-1">ضع علامة أمام كل سجل مطلوب. تبقى القائمة مفتوحة حتى تنهي اختيارك.</p></div>
       <div><label class="block text-xs font-black text-slate-600 mb-1">المكلف</label><select id="assigneeId" required class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm"></select></div>
       <div><label class="block text-xs font-black text-slate-600 mb-1">الأولوية</label><select id="priority" class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm"><option value="normal">عادية</option><option value="high">عالية</option><option value="urgent">عاجلة</option></select></div>
       <div><label class="block text-xs font-black text-slate-600 mb-1">تاريخ البداية</label><input id="startDate" type="date" class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm"></div>
@@ -274,6 +274,24 @@ function updateTeacherExtraRole(user,code,add){if(!user||normalizeRole(user.role
 function hasOtherActiveAdditionalRole(user,code,exceptTaskId){code=normalizeExtraCode(code);return tasks().some(x=>x.task_id!==exceptTaskId&&x.assignment_type==='additional_role'&&normalizeExtraCode(x.record_key)===code&&!['withdrawn','archived','rejected','canceled'].includes(x.status)&&userKeys(user).some(k=>userKeys(assigneeTarget(x)).includes(k)))}
 function routeTaskToAssignee(t,oldUser){let u=assigneeTarget(t); updateRouteIndex(t,oldUser); if(t.assignment_type==='additional_role'){updateTeacherExtraRole(u,t.record_key,true); if(oldUser&&!hasOtherActiveAdditionalRole(oldUser,t.record_key,t.task_id)) updateTeacherExtraRole(oldUser,t.record_key,false)} pushNotice(u,'تكليف جديد أو منقول','تم إسناد التكليف: '+t.title,u.task_id||t.task_id,'assigned')}
 function removeTaskRoute(t){let u=assigneeTarget(t); removeRouteIndex(t); if(t.assignment_type==='additional_role'&&!hasOtherActiveAdditionalRole(u,t.record_key,t.task_id)) updateTeacherExtraRole(u,t.record_key,false)}
+function renderRecordCheckboxes(){
+ const select=document.getElementById('recordKey'),list=document.getElementById('recordCheckboxList');
+ if(!select||!list)return;
+ const options=Array.from(select.options);
+ list.innerHTML=options.length?options.map((o,i)=>`<label class="flex items-center gap-3 rounded-xl border border-slate-200 p-2 cursor-pointer hover:bg-teal-50"><input type="checkbox" class="recordCheckbox h-5 w-5 accent-teal-700" data-record-index="${i}" ${o.selected?'checked':''}><span>${esc(o.textContent||o.value)}</span></label>`).join(''):'<div class="p-3 text-slate-500">لا توجد سجلات في هذه المجموعة.</div>';
+ updateRecordChoiceCount();
+}
+function updateRecordChoiceCount(){
+ const n=Array.from(document.getElementById('recordKey')?.selectedOptions||[]).length;
+ const label=n?`تم اختيار ${n} سجل${n>1?'ات':''}`:'اختر السجلات المطلوبة ▾';
+ const summary=document.getElementById('recordChoicesSummary'),count=document.getElementById('recordChoiceCount');
+ if(summary)summary.textContent=label;if(count)count.textContent=n?`تم اختيار ${n} سجل${n>1?'ات':''}`:'لم تحدد سجلات بعد';
+}
+document.addEventListener('change',function(e){
+ const input=e.target.closest?.('#recordCheckboxList input.recordCheckbox');if(!input)return;
+ const option=document.getElementById('recordKey')?.options[Number(input.dataset.recordIndex)];
+ if(!option)return;option.selected=input.checked;updateRecordChoiceCount();
+});
 function populateRecords(){
  const owner=document.getElementById('sourceOwner').value;
  const sectionSelect=document.getElementById('ownerSection');
@@ -289,6 +307,7 @@ function populateRecords(){
   const group=groupSelect.value||groups[0]?.key||'';
   const rows=PlatformRecordCatalog.recordsByGroup(owner,section,group);
   recordSelect.innerHTML=rows.map(r=>`<option value="${esc(PlatformRecordCatalog.optionValue(r))}">${esc(r.label)}</option>`).join('');
+  recordSelect.multiple=true;renderRecordCheckboxes();
   const isGroup=scopeSelect.value==='record_group';
   document.getElementById('recordKeyWrap').classList.toggle('hidden',isGroup);
   return;
@@ -297,6 +316,7 @@ function populateRecords(){
  groupSelect.innerHTML='<option value="general">السجلات</option>';
  const arr=owner==='manager'?MANAGER_RECORDS:(owner==='agent'?AGENT_RECORDS:SHARED_RECORDS);
  recordSelect.innerHTML=arr.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');
+ recordSelect.multiple=true;renderRecordCheckboxes();
 }
 function populateGroupsAndRecords(){
  const owner=document.getElementById('sourceOwner').value;
@@ -312,6 +332,7 @@ function populateRecordOptions(){
  const group=document.getElementById('recordGroup').value;
  const rows=window.PlatformRecordCatalog?.recordsByGroup(owner,section,group)||[];
  document.getElementById('recordKey').innerHTML=rows.map(r=>`<option value="${esc(PlatformRecordCatalog.optionValue(r))}">${esc(r.label)}</option>`).join('');
+ document.getElementById('recordKey').multiple=true;renderRecordCheckboxes();
  const isGroup=document.getElementById('delegationScope').value==='record_group';
  document.getElementById('recordKeyWrap').classList.toggle('hidden',isGroup);
 }
@@ -487,7 +508,7 @@ document.getElementById('delegationScope').addEventListener('change',populateRec
 <script src="platform-event-bus.js"></script>
 <script src="platform-notification-center.js?v=20260910-responsible-v1"></script>
 <script src="platform-dashboard-bridge.js"></script>
-<script src="central-task-cloud-adapter.js?v=20260818-root1"></script>
+<script src="central-task-cloud-adapter.js?v=20260922-RL197-checkbox-records"></script>
 <script src="cloud-file-bootstrap.js"></script>
 <script src="cloud-upload-hub.js"></script>
 <script src="cloud-file-auto-sync.js"></script>

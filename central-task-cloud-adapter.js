@@ -57,12 +57,23 @@
       recordDef={label:rd.label,moduleKey:'delegated_roles',recordType:'full_role_portal',recordId:roleCode,routeUrl:rd.portal,owner:'delegated_roles',ownerSection:'delegated_roles',ownerSectionLabel:'الأدوار المكلف بها',recordGroupKey:'full_roles',recordGroupName:'الأدوار الكاملة',supportsFiles:true};
       delegationScope='record';
     }else{
-      const selectedValue=document.getElementById('recordKey').value;
-      recordDef=delegationScope==='record_group'
-        ? window.PlatformRecordCatalog?.groupDefinition(owner,section,group)
-        : (window.PlatformRecordCatalog?.fromOption(selectedValue)||window.PlatformRecordCatalog?.resolve(selectedValue,owner)||null);
-      if(!recordDef) throw new Error('تعذر التعرف على نطاق التفويض المحدد. حدّث الصفحة واختر القسم والمجموعة مرة أخرى.');
-      delegatedRecords=(delegationScope==='record_group'?(recordDef.records||[]):[recordDef]).filter(r=>r?.moduleKey&&r?.recordType);
+      const picker=document.getElementById('recordKey');
+      const selectedValues=Array.from(picker?.selectedOptions||[]).map(o=>o.value).filter(Boolean);
+      const available=window.PlatformRecordCatalog?.recordsByGroup(owner,section,group)||[];
+      const availableKeys=new Set(available.map(r=>window.PlatformRecordCatalog.optionValue(r)));
+      if(delegationScope==='record_group'){
+        recordDef=window.PlatformRecordCatalog?.groupDefinition(owner,section,group);
+        delegatedRecords=(recordDef?.records||[]).filter(r=>r?.moduleKey&&r?.recordType);
+      }else{
+        if(!selectedValues.length)throw new Error('اختر سجلًا واحدًا على الأقل من المجموعة.');
+        if(selectedValues.some(v=>!availableKeys.has(v)))throw new Error('السجل المختار لا يتبع مجموعة السجلات الحالية.');
+        delegatedRecords=selectedValues.map(v=>window.PlatformRecordCatalog.fromOption(v)).filter(Boolean);
+        if(delegatedRecords.length!==selectedValues.length)throw new Error('تعذر التحقق من جميع السجلات المختارة.');
+        recordDef=delegatedRecords[0];
+      }
+      if(!recordDef||!delegatedRecords.length)throw new Error('تعذر التعرف على نطاق التفويض المحدد. حدّث الصفحة واختر القسم والمجموعة مرة أخرى.');
+      const unique=new Set(delegatedRecords.map(r=>[r.moduleKey,r.recordType,r.recordId||''].join('|')));
+      if(unique.size!==delegatedRecords.length)throw new Error('تكرر أحد السجلات المختارة.');
     }
     const roleCode=assignmentType==='additional_role'?(document.getElementById('additionalRoleCode')?.value||''):'';
     const responsibleId=String(localStorage.getItem('currentUserId')||localStorage.getItem('current_user_id')||'').trim();
@@ -71,7 +82,7 @@
     const responsibleName=typeof currentOwnerLabel==='function'?currentOwnerLabel():'صاحب الصلاحية';
     if(!responsibleId) throw new Error('تعذر تحديد معرف المسؤول الفعلي من جلسة المستخدم. أعد تسجيل الدخول ثم حاول مرة أخرى.');
     const roleDef=assignmentType==='additional_role'?window.fullRoleDefinition?.(roleCode):null;
-    const payload={title:document.getElementById('taskTitle').value,description:document.getElementById('taskDesc').value,assignmentType,sourceOwner:owner,recordKey:recordDef.label,moduleKey:recordDef.moduleKey,recordType:recordDef.recordType||null,recordId:recordDef.recordId||null,ownerLabel:currentOwnerLabel(),assignedTo:u.id,assigneeEmail:u.email,assigneeName:u.name,assigneeRole:u.role,priority:document.getElementById('priority').value,startDate:document.getElementById('startDate').value,dueDate:document.getElementById('dueDate').value,metadata:{responsible_user_id:responsibleId,responsible_email:responsibleEmail,responsible_role:responsibleRole,responsible_name:responsibleName,reviewer_id:responsibleId,reviewer_email:responsibleEmail,reviewer_role:responsibleRole,reviewer_name:responsibleName,recordLabel:recordDef.label,routeUrl:recordDef.routeUrl,catalogVersion:window.PlatformRecordCatalog?.version||'unknown',ownerSection:recordDef.ownerSection||section,ownerSectionLabel:recordDef.ownerSectionLabel||'',recordGroupKey:recordDef.recordGroupKey||group,recordGroupName:recordDef.recordGroupName||recordDef.label,delegationScope,delegatedRoleCode:roleCode||null,delegatedRoleLabel:roleDef?.label||null,rolePortalUrl:roleDef?.portal||null,roleAgencyType:roleDef?.agency||null,delegatedRecords:delegatedRecords.map(r=>({moduleKey:r.moduleKey,recordType:r.recordType,recordId:r.recordId||null,label:r.label,routeUrl:r.routeUrl})),libraryFileId:libraryPreset?.fileId||null,libraryFileName:libraryPreset?.fileName||null,libraryOwner:libraryPreset?.owner||null,libraryModule:libraryPreset?.moduleKey||null,libraryFolder:libraryPreset?.folder||null},grant:{moduleKey:recordDef.moduleKey,recordType:recordDef.recordType||null,recordId:recordDef.recordId||null,permissionScope:delegationScope,recordGroupKey:recordDef.recordGroupKey||group,canCreate:true,canUpdate:true,canUpload:recordDef.supportsFiles!==false,canSubmit:true,canApprove:false}};
+    const payload={title:document.getElementById('taskTitle').value,description:document.getElementById('taskDesc').value,assignmentType,sourceOwner:owner,recordKey:delegatedRecords.length>1?`${delegatedRecords.length} سجلات من ${recordDef.recordGroupName||'المجموعة'}`:recordDef.label,moduleKey:recordDef.moduleKey,recordType:recordDef.recordType||null,recordId:recordDef.recordId||null,ownerLabel:currentOwnerLabel(),assignedTo:u.id,assigneeEmail:u.email,assigneeName:u.name,assigneeRole:u.role,priority:document.getElementById('priority').value,startDate:document.getElementById('startDate').value,dueDate:document.getElementById('dueDate').value,metadata:{responsible_user_id:responsibleId,responsible_email:responsibleEmail,responsible_role:responsibleRole,responsible_name:responsibleName,reviewer_id:responsibleId,reviewer_email:responsibleEmail,reviewer_role:responsibleRole,reviewer_name:responsibleName,recordLabel:recordDef.label,routeUrl:recordDef.routeUrl,catalogVersion:window.PlatformRecordCatalog?.version||'unknown',ownerSection:recordDef.ownerSection||section,ownerSectionLabel:recordDef.ownerSectionLabel||'',recordGroupKey:recordDef.recordGroupKey||group,recordGroupName:recordDef.recordGroupName||recordDef.label,delegationScope,delegatedRoleCode:roleCode||null,delegatedRoleLabel:roleDef?.label||null,rolePortalUrl:roleDef?.portal||null,roleAgencyType:roleDef?.agency||null,delegatedRecords:delegatedRecords.map(r=>({moduleKey:r.moduleKey,recordType:r.recordType,recordId:r.recordId||null,label:r.label,routeUrl:r.routeUrl})),libraryFileId:libraryPreset?.fileId||null,libraryFileName:libraryPreset?.fileName||null,libraryOwner:libraryPreset?.owner||null,libraryModule:libraryPreset?.moduleKey||null,libraryFolder:libraryPreset?.folder||null},grant:{moduleKey:recordDef.moduleKey,recordType:recordDef.recordType||null,recordId:recordDef.recordId||null,permissionScope:delegationScope,recordGroupKey:recordDef.recordGroupKey||group,canCreate:true,canUpdate:true,canUpload:recordDef.supportsFiles!==false,canSubmit:true,canApprove:false}};
     const r=await CloudTaskEngine.create(payload);
     if(!r||!r.task||!r.task.id) throw new Error('لم يُرجع الخادم معرفًا صحيحًا للتكليف المحفوظ.');
     if(assignmentType==='library_record'){

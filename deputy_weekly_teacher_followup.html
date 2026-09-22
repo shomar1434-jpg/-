@@ -192,7 +192,13 @@
   };
   let teachers=[], weeks=[], activeWeekId='', archives=[], weeklyReviewDecisionBusy=false;
   const $=id=>document.getElementById(id); const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
-  function toast(msg){const d=document.createElement('div');d.className='toast';d.textContent=msg;document.body.appendChild(d);setTimeout(()=>d.remove(),2600)}
+  function toast(msg){const d=document.createElement('div');d.className='toast';d.textContent=msg;document.body.appendChild(d);setTimeout(()=>d.remove(),4200)}
+  function weeklyMutationStatus(message,failed=false){
+    let node=document.getElementById('weeklyMutationStatus');
+    if(!node){node=document.createElement('div');node.id='weeklyMutationStatus';node.setAttribute('role','status');node.style.cssText='position:fixed;z-index:21000;bottom:12px;right:12px;max-width:min(600px,calc(100vw - 24px));padding:14px 18px;border-radius:14px;color:#fff;font:900 14px/1.7 Tajawal,Arial,sans-serif;box-shadow:0 12px 30px #0003';document.body.appendChild(node)}
+    node.style.background=failed?'#9f1239':'#0f766e';node.textContent=message;
+    return node;
+  }
   function schoolId(){
     try{
       const cloudSid=String(window.PlatformCloudSession?.schoolId?.()||'').trim();
@@ -474,7 +480,7 @@
       if(!cloud||!cloud.data)return false;
       const cw=Array.isArray(cloud.data.weeks)?cloud.data.weeks:[],ca=Array.isArray(cloud.data.archives)?cloud.data.archives:[];
       const ids=new Set(cw.map(x=>String(x.id))),aids=new Set(ca.map(x=>String(x.id||x.week_id)));
-      weeks=weeks.filter(x=>!ids.has(String(x.id))).concat(cw);
+      weeks=weeks.filter(x=>!ids.has(String(x.id))).concat(cw.map(w=>({...w,variableAssignments:Array.isArray(w.variableAssignments)?w.variableAssignments:[],extraTasks:Array.isArray(w.extraTasks)?w.extraTasks:[]})));
       archives=archives.filter(x=>!aids.has(String(x.id||x.week_id))).concat(ca);
       if(cloud.data.activeWeekId&&cw.some(x=>String(x.id)===String(cloud.data.activeWeekId)))activeWeekId=cloud.data.activeWeekId;
       // لا نستبدل البيانات المحلية القديمة إلا بعد نجاح الاسترجاع السحابي.
@@ -994,7 +1000,29 @@
   }
   function toggleVariableEvidence(){const req=$('asEvidenceRequired')?.value==='yes'; const box=$('asEvidenceTypeWrap'); if(box)box.style.display=req?'block':'none'}
   function openAssignmentDrawer(){if(!currentWeek())return toast('أنشئ أو ولّد أسبوعًا أولًا'); openDrawer(`<div class="drawerHead"><div><h2>إضافة تكليف متغير للأسبوع</h2><div class="muted">يظهر التكليف للمعلم في هذا الأسبوع فقط ويختفي من الأسابيع الأخرى.</div></div><button class="btn secondary" onclick="closeDrawer()">إغلاق</button></div><div class="row"><div class="field"><label>نوع التكليف</label><select id="asType"><option>المناوبة</option><option>الإشراف</option><option>تأمين الحصص</option><option>اختبار أو تقويم</option><option>مهمة مخصصة</option></select></div><div class="field"><label>عنوان/وصف التكليف</label><input id="asTitle" placeholder="مثال: مناوبة الفسحة الأولى أو إعداد اختبار قصير"></div><div class="field"><label>المعلم</label><select id="asTeacher">${teacherOptions()}</select></div><div class="field"><label>اليوم/الموعد</label><select id="asDay"><option>خلال الأسبوع</option>${DAYS.map(d=>'<option>'+d+'</option>').join('')}</select></div><div class="field"><label>هل يتطلب رفع شاهد؟</label><select id="asEvidenceRequired" onchange="toggleVariableEvidence()"><option value="no">لا يتطلب شاهدًا</option><option value="yes">نعم، يتطلب شاهدًا</option></select></div><div class="field" id="asEvidenceTypeWrap" style="display:none"><label>الشاهد المطلوب</label><input id="asEvidenceType" placeholder="مثال: صورة / PDF / رابط / تحليل نتائج"></div><div class="field"><label>ملاحظة</label><input id="asNote" placeholder="اختياري"></div></div><div class="empty">هذا التكليف مرتبط بالأسبوع النشط فقط. إذا طلب الوكيل شاهدًا فلن يستطيع المعلم إرسال أعمال الأسبوع قبل إرفاقه أو إدخال رابط الشاهد.</div><button class="btn" onclick="addVariableAssignment()">حفظ التكليف</button>`)}
-  async function addVariableAssignment(){const w=currentWeek(); if(!w)return toast('لا يوجد أسبوع نشط لإضافة التكليف'); const type=$('asType').value,title=($('asTitle').value||'').trim()||type,required=$('asEvidenceRequired').value==='yes',teacherId=String($('asTeacher').value||''),target=teachers.find(t=>String(t.user_id)===teacherId); if(!target)return toast('تعذر التحقق من حساب المعلم المستهدف');w.variableAssignments.push({id:'VA'+Date.now(),type,title,teacher_id:teacherId,day:$('asDay').value,note:$('asNote').value,evidence_required:required,evidence_type:required?(($('asEvidenceType').value||'').trim()||'شاهد تنفيذ'):'',status:'مكلف وينتظر التنفيذ',created_at:new Date().toISOString()});closeDrawer();renderAll();toast('جاري حفظ التكليف وإرساله للمعلم...');try{const r=await publishActiveWeekMutation(w,[target],'weekly_variable_assignment.assigned');await saveWeeks();renderAll();toast(r.pendingConfirmation?'تم حفظ التكليف وسيظهر بعد تأكيد بدء تنفيذ الأسبوع':r.failed.length?'تم حفظ التكليف وتعذر إرساله؛ تحقق من الحساب ثم أعد المحاولة':'تم حفظ التكليف وإرساله إلى حساب المعلم');}catch(e){await saveWeeks().catch(()=>{});renderAll();toast('تم حفظ التكليف وتعذر إرساله: '+String(e&&e.message||e));}}
+  let variableAssignmentMutationBusy=false;
+  async function addVariableAssignment(){
+    if(variableAssignmentMutationBusy)return;
+    const w=currentWeek();if(!w)return weeklyMutationStatus('لا يوجد أسبوع نشط لإضافة التكليف.',true);
+    if(['مغلق','مؤرشف','إجازة'].includes(String(w.status||''))||w.execution_state==='closed')return weeklyMutationStatus('لا يمكن نشر تكليف في أسبوع مغلق أو مؤرشف.',true);
+    const teacherId=String($('asTeacher')?.value||''),target=teachers.find(t=>String(t.user_id)===teacherId);
+    if(!target)return weeklyMutationStatus('اختر معلمًا مرتبطًا بالمدرسة أولًا.',true);
+    const type=String($('asType')?.value||''),title=String($('asTitle')?.value||'').trim()||type,required=$('asEvidenceRequired')?.value==='yes';
+    const row={id:'VA'+Date.now()+'_'+Math.random().toString(36).slice(2,6),type,title,teacher_id:teacherId,day:$('asDay')?.value||'خلال الأسبوع',note:$('asNote')?.value||'',evidence_required:required,evidence_type:required?(String($('asEvidenceType')?.value||'').trim()||'شاهد تنفيذ'):'',status:'مكلف وينتظر التنفيذ',created_at:new Date().toISOString(),publication_state:w.execution_confirmed_at?'publishing':'pending_confirmation'};
+    w.variableAssignments=Array.isArray(w.variableAssignments)?w.variableAssignments:[];
+    w.variableAssignments.push(row);
+    variableAssignmentMutationBusy=true;
+    const btn=document.querySelector('#drawerHost button[onclick*="addVariableAssignment"]');if(btn){btn.disabled=true;btn.textContent='جارٍ الحفظ والإرسال...'}
+    weeklyMutationStatus('جارٍ حفظ التكليف والتحقق من إرساله إلى حساب المعلم...');
+    try{
+      const result=await publishActiveWeekMutation(w,[target],'weekly_variable_assignment.assigned');
+      row.publication_state=result.pendingConfirmation?'pending_confirmation':(result.failed?.length?'failed':'published');
+      row.published_at=row.publication_state==='published'?new Date().toISOString():'';
+      await saveWeeks();closeDrawer();renderAll();
+      weeklyMutationStatus(result.pendingConfirmation?'حُفظ التكليف سحابيًا؛ سيظهر للمعلم بعد تأكيد بدء تنفيذ الأسبوع.':result.failed?.length?'حُفظ التكليف، لكن تعذر إرساله للمعلم: '+(result.failed[0]?.error||'تحقق من ربط الحساب.'):'تم حفظ التكليف وتأكيد إرساله إلى حساب المعلم.',!!result.failed?.length);
+    }catch(e){row.publication_state='failed';try{await saveWeeks()}catch(saveError){console.error('[variable assignment cloud save]',saveError)}renderAll();weeklyMutationStatus('تعذر تأكيد إرسال التكليف: '+String(e?.message||e)+'. تحقق من الأسبوع قبل إعادة المحاولة.',true)}
+    finally{variableAssignmentMutationBusy=false;if(btn?.isConnected){btn.disabled=false;btn.textContent='حفظ التكليف'}}
+  }
   function updateAssignmentStatus(i){const w=currentWeek(); const a=w.variableAssignments[i]; openDrawer(`<div class="drawerHead"><h2>تحديث حالة التكليف</h2><button class="btn secondary" onclick="closeDrawer()">إغلاق</button></div><div class="field"><label>الحالة</label><select id="asStatus"><option>مكلف وينتظر التنفيذ</option><option>مكلف وتم التنفيذ</option><option>مكلف ولم ينفذ</option></select></div><button class="btn" onclick="currentWeek().variableAssignments[${i}].status=document.getElementById('asStatus').value;saveWeeks();closeDrawer();renderAll();toast('تم تحديث الحالة')">حفظ</button>`); $('asStatus').value=a.status||'مكلف وينتظر التنفيذ'}
   async function deleteAssignment(i){const w=currentWeek();if(!w)return;w.variableAssignments.splice(i,1);await saveWeeks();renderAll();toast('تم الحذف والتحقق سحابيًا')}
   function roleOptions(){return '<option value="مهمة إضافية">مهمة إضافية</option>'}
@@ -1022,21 +1050,22 @@
     const ev=$('exEvidence').value;
     const targets=teacherId==='__ALL__'?teachers.slice():teachers.filter(t=>String(t.user_id)===teacherId);
     if(!targets.length)return toast('تعذر التحقق من المعلمين في قائمة مركز المعلومات');
+    w.extraTasks=Array.isArray(w.extraTasks)?w.extraTasks:[];
     const stamp=Date.now();
     const created=[];
     targets.forEach((teacher,i)=>{const row={id:'EX'+stamp+'_'+i,role:'مهمة إضافية',task,teacher_id:String(teacher.user_id),teacher_name:teacher.name||'',due:$('exDue').value,evidence:ev==='none'?'':ev,evidence_required:ev!=='none',status:'مطلوب',created_at:new Date().toISOString(),bulk_assignment:teacherId==='__ALL__',publication_state:w.execution_confirmed_at?'publishing':'pending_confirmation'};w.extraTasks.push(row);created.push(row)});
     extraTaskMutationBusy=true;const btn=$('activateExtraTaskBtn');if(btn){btn.disabled=true;btn.textContent='جارٍ التفعيل والإرسال...'}
-    closeDrawer();renderAll();toast('جاري حفظ المهمة وإرسالها للحساب المستهدف...');
+    weeklyMutationStatus('جارٍ حفظ المهمة الإضافية وإرسالها إلى حساب المعلم...');
     try{
       const result=await publishActiveWeekMutation(w,targets,'weekly_extra_task.assigned');
       const failedIds=new Set((result.failed||[]).map(x=>String(x.id)));
       created.forEach(x=>{x.publication_state=result.pendingConfirmation?'pending_confirmation':(failedIds.has(String(x.teacher_id))?'failed':'published');x.published_at=x.publication_state==='published'?new Date().toISOString():''});
-      await saveWeeks();renderAll();
-      if(result.pendingConfirmation)toast('تم حفظ المهمة لدى الوكيل وستظهر للمعلم بعد تأكيد بدء تنفيذ الأسبوع');
-      else if(result.failed.length)toast(`حُفظت المهمة لدى الوكيل، وتعذر إرسالها إلى ${result.failed.length} حساب؛ استخدم «إعادة الإرسال»`);
-      else toast(teacherId==='__ALL__'?`تم حفظ المهمة وإرسالها إلى جميع المعلمين (${result.published})`:'تم حفظ المهمة وإرسالها إلى حساب المعلم');
-    }catch(e){created.forEach(x=>x.publication_state='failed');await saveWeeks().catch(()=>{});renderAll();toast('حُفظت المهمة، لكن تعذر إرسالها للمعلم: '+String(e&&e.message||e));}
-    finally{extraTaskMutationBusy=false;}
+      await saveWeeks();closeDrawer();renderAll();
+      if(result.pendingConfirmation)weeklyMutationStatus('حُفظت المهمة سحابيًا وستظهر للمعلم بعد تأكيد بدء تنفيذ الأسبوع.');
+      else if(result.failed.length)weeklyMutationStatus(`حُفظت المهمة، وتعذر إرسالها إلى ${result.failed.length} حساب: ${result.failed[0]?.error||'راجع ربط الحساب.'}`,true);
+      else weeklyMutationStatus(teacherId==='__ALL__'?`تم حفظ المهمة وإرسالها إلى جميع المعلمين (${result.published})`:'تم حفظ المهمة وإرسالها إلى حساب المعلم.');
+    }catch(e){created.forEach(x=>x.publication_state='failed');await saveWeeks().catch(saveError=>console.error('[extra task cloud save]',saveError));renderAll();weeklyMutationStatus('تعذر تأكيد إرسال المهمة: '+String(e&&e.message||e)+'. تحقق من قائمة المهام قبل إعادة المحاولة.',true);}
+    finally{extraTaskMutationBusy=false;if(btn?.isConnected){btn.disabled=false;btn.textContent='تفعيل المهمة'}}
   }
   function updateExtraStatus(i){const w=currentWeek(); const a=w.extraTasks[i]; openDrawer(`<div class="drawerHead"><h2>تحديث حالة المهمة الإضافية</h2><button class="btn secondary" onclick="closeDrawer()">إغلاق</button></div><div class="field"><label>الحالة</label><select id="exStatus"><option>مطلوب</option><option>تم التنفيذ</option><option>ناقص</option><option>لم ينفذ</option></select></div><button class="btn" onclick="saveExtraStatus(${i})">حفظ وإرسال التحديث</button>`); $('exStatus').value=a.status||'مطلوب'}
   async function saveExtraStatus(i){const w=currentWeek(),a=w?.extraTasks?.[i];if(!w||!a)return;a.status=$('exStatus').value;a.publication_state=w.execution_confirmed_at?'publishing':'pending_confirmation';const t=teachers.find(x=>String(x.user_id)===String(a.teacher_id));closeDrawer();renderAll();try{const r=await publishActiveWeekMutation(w,t?[t]:[],'weekly_extra_task.updated');a.publication_state=r.pendingConfirmation?'pending_confirmation':(r.failed.length?'failed':'published');await saveWeeks();renderAll();toast(r.failed.length?'تم حفظ التحديث وتعذر إرساله؛ استخدم إعادة الإرسال':'تم حفظ حالة المهمة ومزامنتها مع حساب المعلم')}catch(e){a.publication_state='failed';await saveWeeks().catch(()=>{});renderAll();toast('تم حفظ الحالة وتعذر إرسال التحديث للمعلم')}}

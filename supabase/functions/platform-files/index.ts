@@ -235,6 +235,27 @@ Deno.serve(async(req)=>{
    if(replaced){await sb.from('platform_files').update({status:'archived',updated_at:now}).eq('id',replaced.id);await event('replaced',replaced,{new_values:{replacement_file_id:id}})}
    await event('uploaded',row,{new_values:{path,name:file.name,size:file.size,evidence_id:evidence?.id||null}});return json({file:row,evidence});
   }
+  // Supervisor access is a separate read-only action; normal private-library ACL stays unchanged.
+  if(action==='supervisor-library-list'||action==='supervisor-library-preview'){
+   if(sessionRole!=='manager')return json({error:'المتابعة متاحة لمدير المدرسة فقط'},403);
+   const target=String(body.targetUserId||''),moduleKey=safeKey(body.moduleKey);
+   if(!isUuid(target)||!moduleKey.startsWith('section_library_')||!privateModuleRole(moduleKey))return json({error:'طلب متابعة غير صالح'},400);
+   const {data:membership,error:memberError}=await sb.from('school_members').select('role,status').eq('school_id',s.school_id).eq('user_id',target).limit(20);
+   if(memberError)throw memberError;
+   if(!(membership||[]).some((m:any)=>String(m.status||'active').toLowerCase()==='active'&&normalizeRole(m.role)===privateModuleRole(moduleKey)))return json({error:'المستخدم غير مرتبط بهذا القسم في المدرسة'},403);
+   if(action==='supervisor-library-list'){
+    const {data,error}=await sb.from('platform_files').select('*').eq('school_id',s.school_id).eq('owner_user_id',target).eq('ownership_scope','user').eq('module_key',moduleKey).eq('status','active').is('deleted_at',null).order('created_at',{ascending:false}).limit(1000);
+    if(error)throw error;
+    return json({files:data||[]});
+   }
+   const {data:file,error}=await sb.from('platform_files').select('*').eq('id',body.fileId).eq('school_id',s.school_id).eq('owner_user_id',target).eq('ownership_scope','user').eq('module_key',moduleKey).eq('status','active').is('deleted_at',null).maybeSingle();
+   if(error)throw error;
+   if(!file)return json({error:'الملف غير متاح في مكتبة هذا المستخدم'},404);
+   const {data:signed,error:storageError}=await sb.storage.from(file.bucket_name).createSignedUrl(file.storage_path,120);
+   if(storageError)throw storageError;
+   await event('supervisor_viewed',file);
+   return json({file,signedUrl:signed.signedUrl});
+  }
   if(action==='list'){
    if(body.moduleKey&&isPrivateUserModule(body.moduleKey)&&!privateModuleAllowed(body.moduleKey))return json({error:'الوحدة الخاصة المطلوبة لا تطابق دور الجلسة الحالية',code:'PRIVATE_MODULE_ROLE_MISMATCH',requestId},403);
    let q=sb.from('platform_files').select('*').eq('school_id',s.school_id).order('created_at',{ascending:false}).limit(Math.min(Number(body.limit)||500,1000));

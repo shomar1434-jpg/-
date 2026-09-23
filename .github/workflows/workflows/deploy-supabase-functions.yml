@@ -7,6 +7,7 @@ on:
     branches:
       - main
     paths:
+      - "supabase/functions/platform-session/**"
       - "supabase/functions/**"
       - ".github/workflows/deploy-supabase-functions.yml"
 
@@ -48,11 +49,61 @@ jobs:
           fi
           echo "Functions found: ${count}"
 
+      - name: Deploy platform-session login gateway
+        run: |
+          supabase functions deploy platform-session \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
+            --no-verify-jwt
+
       - name: Deploy all Supabase Edge Functions
         run: |
           supabase functions deploy \
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
             --no-verify-jwt
+
+      - name: Verify platform-session is reachable
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co/functions/v1/platform-session"
+          ok=0
+
+          for attempt in 1 2 3 4 5; do
+            echo "Session probe attempt ${attempt}/5"
+            http_code="$(
+              curl \
+                --silent \
+                --show-error \
+                --output /tmp/platform_session_probe.json \
+                --write-out '%{http_code}' \
+                --connect-timeout 15 \
+                --max-time 30 \
+                --header 'content-type: application/json' \
+                --data '{"action":"probe"}' \
+                "${URL}" \
+                || true
+            )"
+
+            if [ -f /tmp/platform_session_probe.json ]; then
+              cat /tmp/platform_session_probe.json
+              echo
+            fi
+
+            if [ "${http_code}" = "200" ] && \
+               grep -q '"service":"platform-session"' /tmp/platform_session_probe.json 2>/dev/null; then
+              ok=1
+              break
+            fi
+
+            if [ "${attempt}" -lt 5 ]; then
+              sleep 6
+            fi
+          done
+
+          if [ "${ok}" != "1" ]; then
+            echo "::error::platform-session was not reachable after deployment."
+            exit 1
+          fi
 
       - name: Verify platform-document-workspace is reachable
         shell: bash

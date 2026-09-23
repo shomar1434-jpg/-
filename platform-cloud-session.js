@@ -235,15 +235,33 @@
     localStorage.getItem('smartSchoolSupabaseAnonKey') ||
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
 
+  let openPromise = null;
   async function open(login, password, schoolId, requestedRole) {
-    const response = await fetch(`${url()}/functions/v1/platform-session`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        apikey: key(),
-      },
-      body: JSON.stringify({ login, password, schoolId, role: requestedRole || undefined }),
-    });
+    // RL199: منع النقرات المتتابعة من إنشاء عدة جلسات متزامنة، وإنهاء الطلب
+    // الشبكي نفسه عند تجاوز المهلة بدل تركه يعمل بعد إعادة تمكين زر الدخول.
+    if(openPromise)return openPromise;
+    openPromise=(async()=>{
+    const controller=new AbortController();
+    const timeout=setTimeout(()=>controller.abort(),25000);
+    let response;
+    try{
+      response = await fetch(`${url()}/functions/v1/platform-session`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          apikey: key(),
+        },
+        body: JSON.stringify({ login, password, schoolId, role: requestedRole || undefined }),
+        signal:controller.signal,
+      });
+    }catch(error){
+      if(error?.name==='AbortError'){
+        const timeoutError=new Error('انتهت مهلة إنشاء جلسة المدرسة. حاول مرة أخرى.');
+        timeoutError.code='SESSION_REQUEST_TIMEOUT';
+        throw timeoutError;
+      }
+      throw error;
+    }finally{clearTimeout(timeout)}
 
     const payload = await response.json().catch(() => ({}));
 
@@ -267,6 +285,8 @@
     markVerifiedContext({schoolId:payload.schoolId,userId:payload.userId,role:payload.role});
 
     return payload;
+    })();
+    try{return await openPromise}finally{openPromise=null}
   }
 
   async function sessionAction(action, body = {}) {

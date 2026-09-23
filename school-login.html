@@ -570,7 +570,7 @@
 })();
 </script>
 
-<script src="platform-cloud-session.js?v=20260915-RL163-verified-context-cache"></script>
+<script src="platform-cloud-session.js?v=20260923-RL199-login-timeout"></script>
 <!-- RL115: strict independent-school link binding; fail closed on school mismatch. -->
 <!-- RL136: legacy active-account school-bound login + cloud-session compatibility merge. -->
 <script id="independent-school-login-engine">
@@ -917,11 +917,12 @@
     return [];
   }
   let schoolLoginPending = false;
-  function loginDeadline(promise, label){
+  function loginDeadline(promise, label, timeoutMs){
     let timer;
+    const ms=Number(timeoutMs)>0?Number(timeoutMs):15000;
     return Promise.race([
       Promise.resolve(promise),
-      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('انتهت مهلة الاتصال أثناء ' + label + '. تحقق من توفر خدمة المدرسة وحاول مجددًا.')), 15000); })
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('انتهت مهلة الاتصال أثناء ' + label + '. تحقق من توفر خدمة المدرسة وحاول مجددًا.')), ms); })
     ]).finally(() => clearTimeout(timer));
   }
   async function schoolLogin(event){
@@ -940,13 +941,11 @@
       const school = await loginDeadline(resolveActiveSchool(), 'التحقق من رابط المدرسة');
       if((targetSchoolId || targetSchoolCode) && !school){ setMsg('رابط المدرسة غير مرتبط بسجل مدرسة صحيح. تم إيقاف الدخول حمايةً لعزل المدارس.'); return; }
       if((targetSchoolId || targetSchoolCode) && !schoolMatchesLinkContract(school)){ setMsg('تم رفض الدخول لأن هوية المدرسة لا تطابق رابطها المستقل.'); return; }
-      // RL136 — توافق الدخول القديم المربوط بالمدرسة مع عقد الجلسة السحابي الحالي.
-      // القاعدة الأساسية التي كانت تعمل: حساب موجود داخل نفس المدرسة + كلمة مرور صحيحة + Active.
-      // نحاول إنشاء platform-session للاستفادة من العزل والخدمات السحابية، لكن فشل طبقة
-      // الجلسة لا يلغي حسابًا سبق أن تحقق محليًا/من users داخل نفس المدرسة.
-      let user = await loginDeadline(loginFromSupabase(loginId,password), 'قراءة حساب المدرسة');
-      if(!user) user = loginFromLocal(loginId,password,school);
-
+      // RL199 — مسار دخول مركزي واحد. كانت الصفحة تقرأ الحساب مباشرة من Supabase
+      // ثم تعيد المصادقة عبر platform-session؛ فإذا تجاوزت القراءة الأولى 15 ثانية
+      // يتوقف الدخول قبل الوصول إلى الجلسة الموقعة. الجلسة الخادمية هي المرجع
+      // النهائي للمدرسة والعضوية والدور، لذلك لا نكرر الاستعلامات في المتصفح.
+      let user = null;
       const boundResolvedSchoolId=String((school&&(school.schoolId||school.id||school.school_id))||targetSchoolId||'').trim();
       let platformSessionPayload = null;
       let sessionCompatFallback = false;
@@ -956,7 +955,7 @@
       // المباشرة من users حسابًا صحيحًا قبل وصوله إلى platform-session.
       if(window.PlatformCloudSession){
         try{
-          platformSessionPayload = await loginDeadline(window.PlatformCloudSession.open(loginId,password,boundResolvedSchoolId), 'إنشاء جلسة المدرسة');
+          platformSessionPayload = await loginDeadline(window.PlatformCloudSession.open(loginId,password,boundResolvedSchoolId), 'إنشاء جلسة المدرسة', 30000);
           const issuedSchoolId=String(platformSessionPayload&&platformSessionPayload.schoolId||window.PlatformCloudSession.schoolId?.()||'').trim();
           if(boundResolvedSchoolId && issuedSchoolId && issuedSchoolId!==boundResolvedSchoolId) throw new Error('LOGIN_SESSION_SCHOOL_MISMATCH');
         }catch(sessionError){

@@ -255,6 +255,9 @@ Deno.serve(async (request) => {
     const schoolRef = text(payload?.schoolId);
 
     const requestedAction = lower(payload?.action || 'login');
+    if (requestedAction === 'probe') {
+      return json({ok:true,service:'platform-session',version:'2026.09.23-RL199',requestId});
+    }
     if (requestedAction === 'login' && (!login || !password || !schoolRef)) {
       return json({error:'بيانات الجلسة غير مكتملة',code:'SESSION_INPUT_INCOMPLETE',requestId},400);
     }
@@ -377,10 +380,20 @@ Deno.serve(async (request) => {
 
     let crossSchoolCredentialUser: any = null;
     let sameLoginIdentityUser: any = null;
+    let loginIdentityRows: any[] = [];
     try {
-      const identityQ = await admin.from('users').select('*').limit(5000);
+      // البريد هو معرف الدخول الغالب في المدارس؛ الاستعلام المحدد يمنع سحب
+      // آلاف المستخدمين في كل محاولة. يبقى المسح القديم احتياطًا لأسماء
+      // المستخدمين/الهويات التاريخية فقط.
+      let identityQ = normalizedLogin.includes('@')
+        ? await admin.from('users').select('*').eq('email', normalizedLogin).limit(100)
+        : await admin.from('users').select('*').limit(5000);
+      if (!identityQ.error && normalizedLogin.includes('@') && !(identityQ.data || []).length) {
+        identityQ = await admin.from('users').select('*').limit(5000);
+      }
       if (!identityQ.error) {
         const identityRows = (identityQ.data || []).filter((row: Record<string, unknown>) => loginMatches(row, login));
+        loginIdentityRows = identityRows;
         // Keep a UUID identity candidate separate from credential validation.
         // It may be the selected school's legacy row whose password was stored
         // on the linked school record instead of users.
@@ -569,16 +582,16 @@ Deno.serve(async (request) => {
 
     // إذا لم يوجد سجل مستخدم مستقل داخل المدرسة المختارة، نتحقق من عضوية نفس الهوية في school_members.
     if (!user) {
-      const allUsersResult = await admin.from('users').select('*').limit(5000);
-      if (!allUsersResult.error) {
+      // RL199: لا نعيد تحميل جدول users (حتى 5000 صف) للمرة الثانية في طلب
+      // الدخول نفسه. نتيجة فحص الهوية السابقة هي المرجع، وSupabase Auth يستطيع
+      // إنشاء هوية دنيا للتحقق من العضوية عندما لا يوجد صف legacy مطابق.
+      {
         // RL118: credential identity and school authorization are separate concerns.
         // A legacy users row may still be pending/hold an old role while school_members
         // already contains the authoritative ACTIVE membership for this school.
         // We may use that row only to prove the credential identity; the active
         // school_members row below remains mandatory before granting school access.
-        const identityCandidates = (allUsersResult.data || []).filter(
-          (row: Record<string, unknown>) => loginMatches(row, login),
-        );
+        const identityCandidates = loginIdentityRows;
         diagnosticIdentityFound = diagnosticIdentityFound || identityCandidates.length > 0;
         let identityUser = identityCandidates.find((candidate: Record<string, unknown>) => {
           if (authUser) return text(candidate.id) === text(authUser.id) || lower(candidate.email) === normalizedLogin;

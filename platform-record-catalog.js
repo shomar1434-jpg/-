@@ -4,6 +4,7 @@ const RECORDS=[{"label":"سجل الاتصالات الإدارية: الصاد�
 const norm=v=>String(v||'').trim().toLowerCase();
 let CANONICAL_RECORDS=[];
 let canonicalSyncPromise=null;
+const CANONICAL_CACHE_KEY='platformCanonicalRecordCatalogV2_RL198';
 function effectiveRecords(){
   if(!CANONICAL_RECORDS.length)return RECORDS;
   return RECORDS.filter(r=>r.owner!=='manager'&&r.owner!=='agent').concat(CANONICAL_RECORDS);
@@ -29,9 +30,9 @@ async function syncCanonicalSources(force){
     const [mt,wt]=await Promise.all([m.text(),w.text()]);
     const managers=extractJsonArray(mt,'const records =').map(mapManagerRecord);
     const agents=extractJsonArray(wt,'const FORMS =').map(mapAgentRecord);
-    if(managers.length&&agents.length){CANONICAL_RECORDS=managers.concat(agents);try{sessionStorage.setItem('platformCanonicalRecordCatalogV1',JSON.stringify(CANONICAL_RECORDS))}catch(_){}}
+    if(managers.length&&agents.length){CANONICAL_RECORDS=managers.concat(agents);try{sessionStorage.setItem(CANONICAL_CACHE_KEY,JSON.stringify(CANONICAL_RECORDS));sessionStorage.removeItem('platformCanonicalRecordCatalogV1')}catch(_){}}
     return CANONICAL_RECORDS.slice();
-  }catch(e){console.warn('[record-catalog canonical sync]',e);try{const cached=JSON.parse(sessionStorage.getItem('platformCanonicalRecordCatalogV1')||'[]');if(Array.isArray(cached)&&cached.length)CANONICAL_RECORDS=cached}catch(_){}return CANONICAL_RECORDS.slice()}})();
+  }catch(e){console.warn('[record-catalog canonical sync]',e);try{const cached=JSON.parse(sessionStorage.getItem(CANONICAL_CACHE_KEY)||'[]');if(Array.isArray(cached)&&cached.length)CANONICAL_RECORDS=cached}catch(_){}return CANONICAL_RECORDS.slice()}})();
   return canonicalSyncPromise;
 }
 function all(){return effectiveRecords().slice()}
@@ -43,6 +44,6 @@ function resolve(value,owner){const q=norm(value);return effectiveRecords().find
 function optionValue(r){return [r.moduleKey,r.recordType,r.recordId||''].map(encodeURIComponent).join('::')}
 function fromOption(value){const [m,t,id]=String(value||'').split('::').map(x=>{try{return decodeURIComponent(x)}catch(_){return x}});return effectiveRecords().find(r=>r.moduleKey===m&&r.recordType===t&&(!id||String(r.recordId||'')===String(id)))||null}
 function groupDefinition(owner,section,group){const rows=recordsByGroup(owner,section,group);if(!rows.length)return null;const first=rows[0];return {label:first.recordGroupName||first.ownerSectionLabel,owner:first.owner,ownerRole:first.ownerRole,ownerSection:first.ownerSection,ownerSectionLabel:first.ownerSectionLabel,recordGroupKey:first.recordGroupKey,recordGroupName:first.recordGroupName,moduleKey:first.moduleKey,recordType:null,recordId:null,permissionScope:'record_group',routeUrl:first.routeUrl,records:rows}}
-window.PlatformRecordCatalog={all,byOwner,sections,groups,recordsByGroup,groupDefinition,resolve,fromOption,optionValue,syncCanonicalSources,version:'3.0.0-canonical-source'};
+window.PlatformRecordCatalog={all,byOwner,sections,groups,recordsByGroup,groupDefinition,resolve,fromOption,optionValue,syncCanonicalSources,version:'3.1.0-RL198-canonical-routing'};
 if(window.PlatformRecordRegistry){effectiveRecords().forEach(r=>{try{PlatformRecordRegistry.register({...r})}catch(e){}})}
 })();

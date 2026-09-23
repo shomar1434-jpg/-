@@ -478,7 +478,26 @@ function legacyWakilDefinition(r){
  const id=LEGACY_WAKIL_RECORD_MAP[key]||LEGACY_WAKIL_LABEL_MAP[String(r?.label||r?.display_name||'').trim()];if(!id)return null;
  return (window.PlatformRecordCatalog?.all?.()||[]).find(x=>String(x.recordId||x.recordKey||'')===id)||null;
 }
-function iwRecordDefinition(r){const all=window.PlatformRecordCatalog?.all?.()||[],mk=String(r?.module_key||''),rt=String(r?.record_type||''),rid=String(r?.record_id||'');if(rid){const exact=all.find(x=>String(x.moduleKey||'')===mk&&String(x.recordType||'')===rt&&String(x.recordId||'')===rid);if(exact)return exact}return all.find(x=>String(x.moduleKey||'')===mk&&String(x.recordType||'')===rt&&!x.recordId)||legacyWakilDefinition(r)||null}
+function iwNormRecordText(v){return String(v||'').trim().replace(/\s+/g,' ').toLowerCase()}
+function iwRecordDefinitionByLabel(r,all){
+ const label=iwNormRecordText(r?.label||r?.display_name||'');if(!label)return null;
+ const owner=String(inlineWs?.task?.source_owner||inlineWs?.task?.sourceOwner||'');
+ let rows=(all||[]).filter(x=>iwNormRecordText(x.label)===label||(x.aliases||[]).some(a=>iwNormRecordText(a)===label));
+ if(['manager','agent'].includes(owner)){const scoped=rows.filter(x=>String(x.owner||'')===owner);if(scoped.length)rows=scoped}
+ return rows.length===1?rows[0]:null;
+}
+function iwRecordDefinition(r){
+ const all=window.PlatformRecordCatalog?.all?.()||[],mk=String(r?.module_key||''),rt=String(r?.record_type||''),rid=String(r?.record_id||''),byLabel=iwRecordDefinitionByLabel(r,all);
+ if(rid){
+  const exact=all.find(x=>String(x.moduleKey||'')===mk&&String(x.recordType||'')===rt&&String(x.recordId||'')===rid);
+  // تصحيح التكليفات التاريخية: إذا تعارض الاسم الظاهر مع المعرّف القديم، فالاسم الفريد
+  // داخل قسمه يعاد إلى تعريفه القانوني بدل فتح سجل آخر محفوظ في route_url قديم.
+  if(exact&&byLabel&&iwNormRecordText(exact.label)!==iwNormRecordText(r?.label||r?.display_name||''))return byLabel;
+  if(exact)return exact;
+ }
+ if(byLabel)return byLabel;
+ return all.find(x=>String(x.moduleKey||'')===mk&&String(x.recordType||'')===rt&&!x.recordId)||legacyWakilDefinition(r)||null
+}
 function iwResolvedRecords(){const out=[],seen=new Set(),push=(r)=>{if(!r?.module_key||!r?.record_type||String(r.record_type)==='record')return;const d=iwRecordDefinition(r);if(!d)return;const row={...r,module_key:r.module_key,record_type:r.record_type,record_id:r.record_id||null,route_url:r.route_url||d.routeUrl,_definition:d,label:r.label||r.display_name||d.label||r.record_type};const k=[row.module_key,row.record_type,row.record_id||''].join('|');if(!seen.has(k)){seen.add(k);out.push(row)}};const md=inlineWs?.task?.metadata||{};if(Array.isArray(md.delegatedRecords))md.delegatedRecords.forEach(x=>push({module_key:x.moduleKey,record_type:x.recordType,record_id:x.recordId||null,record_key:x.recordKey||x.recordId||null,label:x.label,route_url:x.routeUrl}));(inlineWs?.records||[]).forEach(push);if(!out.length&&md.delegationScope==='record_group'){const owner=inlineWs?.task?.source_owner||inlineWs?.task?.sourceOwner||'';const rows=window.PlatformRecordCatalog?.recordsByGroup?.(owner,md.ownerSection||'',md.recordGroupKey||'')||[];rows.forEach(x=>push({module_key:x.moduleKey,record_type:x.recordType,record_id:x.recordId||null,label:x.label,route_url:x.routeUrl}));}if(!out.length&&inlineWs?.task?.module_key&&inlineWs?.task?.record_type&&String(inlineWs.task.record_type)!=='record')push({module_key:inlineWs.task.module_key,record_type:inlineWs.task.record_type,record_id:inlineWs.task.record_id||null,record_key:inlineWs.task.record_key||null,label:inlineWs.task.record_key||inlineWs.task.title,route_url:inlineWs.task.metadata?.routeUrl||''});return out}
 function renderInlineWorkspace(){if(!inlineWs)return;const box=document.getElementById('inlineWorkspace'),t=inlineWs.task||{},progress=Number(t.progress_percent||0);let content='';
  if(inlineTab==='records'){if(isLibraryDelegatedTask(t)){content=`<div class="iw-record border-2 border-teal-200 bg-teal-50"><h3 class="font-black text-teal-900 text-lg">${esc(t.metadata?.libraryFileName||t.record_key||t.title||'السجل السحابي')}</h3><p class="text-sm text-slate-600 font-bold my-3">هذا السجل مفوض لك من مكتبة المسؤول. صلاحيتك محصورة في هذا الملف فقط، وتحفظ التعديلات كسلسلة إصدارات في ملف المسؤول الأصلي.</p><button class="px-5 py-3 rounded-xl bg-teal-700 text-white text-sm font-black" onclick="openDelegatedLibraryFileFromTask()">فتح السجل والعمل عليه</button></div>`}else if(t.assignment_type==='additional_role'){const code=String(t.metadata?.delegatedRoleCode||t.record_id||t.record_key||''),d=fullRoleDefinition(code);content=`<div class="iw-record border-2 border-teal-200 bg-teal-50"><h3 class="font-black text-teal-900 text-lg">${esc(d?.label||t.metadata?.delegatedRoleLabel||t.title||'الدور المكلف به')}</h3><p class="text-sm text-slate-600 font-bold my-3">هذا تكليف بدور كامل. افتح بوابة الدور للوصول إلى سجلاته وتنفيذاته دون مغادرة دورك الأساسي نهائيًا.</p><button class="px-5 py-3 rounded-xl bg-teal-700 text-white text-sm font-black" onclick="openDelegatedRoleFromTask()">فتح بوابة الدور كاملة</button></div>`}else{const rs=iwResolvedRecords();content=rs.length?`<div class="grid grid-cols-1 md:grid-cols-2 gap-3">${rs.map(r=>{const d=r._definition||iwRecordDefinition(r);return `<div class="iw-record"><h3 class="font-black text-slate-800">${esc(d?.label||r.label||r.record_type||'سجل')}</h3><p class="text-xs text-slate-500 font-bold my-2">${esc(d?.groupName||'السجل المفوض')} · التنفيذ داخله يوثق تلقائيًا كشاهد</p><button class="px-4 py-2 rounded-xl bg-teal-600 text-white text-xs font-black" onclick="openDelegatedRecord('${esc(r.module_key)}','${esc(r.record_type)}','${esc(r.record_id||'')}')">فتح السجل والعمل عليه</button></div>`}).join('')}</div>`:'<div class="text-center text-slate-500 font-bold p-8">لا توجد سجلات مرتبطة بالتكليف.</div>'}}
@@ -488,7 +507,21 @@ function renderInlineWorkspace(){if(!inlineWs)return;const box=document.getEleme
 function setInlineTab(x){inlineTab=x;renderInlineWorkspace()}
 function openDelegatedRoleFromTask(){if(!inlineWs?.task)return;const t=inlineWs.task,code=String(t.metadata?.delegatedRoleCode||t.record_id||t.record_key||''),d=fullRoleDefinition(code);if(!d?.portal){toast('لم يتم تعريف بوابة هذا الدور',false);return}const q=new URLSearchParams({delegated_role:'1',delegated_role_task:String(t.id||t.task_id||''),return_to:'central_task_center.html?mode=assignee&task_id='+encodeURIComponent(String(t.id||t.task_id||''))});if(d.agency)q.set('agency_type',d.agency);location.href=d.portal+'?'+q.toString()}
 function closeInlineWorkspace(){document.getElementById('inlineWorkspace').classList.add('hidden');inlineWs=null;history.replaceState(null,'','central_task_center.html?mode=assignee')}
-async function openDelegatedRecord(moduleKey,recordType,recordId){try{const row=iwResolvedRecords().find(x=>String(x.module_key)===String(moduleKey)&&String(x.record_type)===String(recordType)&&String(x.record_id||'')===String(recordId||''));if(!row)throw new Error('السجل المطلوب غير موجود ضمن روابط هذا التكليف');const d=row._definition||iwRecordDefinition(row);let url=row.route_url||d?.routeUrl||'';if(!url){const r=await PlatformCore.registry(moduleKey,recordType);url=r.recordType?.route_url||''}if(!url)throw new Error('لم يتم تعريف مسار هذا السجل في القاموس الموحد');const q=new URLSearchParams({task_id:inlineWs.task.id,delegated:'1',module_key:moduleKey,record_type:recordType,return_to:'central_task_center.html?mode=assignee&task_id='+inlineWs.task.id});if(recordId)q.set('record_id',recordId);location.href=url+(url.includes('?')?'&':'?')+q.toString()}catch(e){toast(e.message,false)}}
+async function openDelegatedRecord(moduleKey,recordType,recordId){try{
+ const row=iwResolvedRecords().find(x=>String(x.module_key)===String(moduleKey)&&String(x.record_type)===String(recordType)&&String(x.record_id||'')===String(recordId||''));
+ if(!row)throw new Error('السجل المطلوب غير موجود ضمن روابط هذا التكليف');
+ const d=row._definition||iwRecordDefinition(row);
+ const resolvedModule=String(d?.moduleKey||row.module_key||moduleKey),resolvedType=String(d?.recordType||row.record_type||recordType),resolvedId=String(d?.recordId||row.record_id||recordId||'');
+ // المسار القانوني الحالي مقدم دائمًا على route_url التاريخي المخزن في التكليف.
+ let url=d?.routeUrl||row.route_url||'';
+ if(!url){const r=await PlatformCore.registry(resolvedModule,resolvedType);url=r.recordType?.route_url||''}
+ if(!url)throw new Error('لم يتم تعريف مسار هذا السجل في القاموس الموحد');
+ const target=new URL(url,location.href);if(target.origin!==location.origin)throw new Error('تم منع مسار سجل خارج نطاق المنصة');
+ // سجلات المدير والوكيل تستخدم record في الرابط؛ تثبيته هنا يمنع بقاء معرّف سجل قديم.
+ if(resolvedId&&/^(manager_records|wakil-records)\.html$/i.test(target.pathname.split('/').pop()||''))target.searchParams.set('record',resolvedId);
+ target.searchParams.set('task_id',String(inlineWs.task.id));target.searchParams.set('delegated','1');target.searchParams.set('module_key',resolvedModule);target.searchParams.set('record_type',resolvedType);if(resolvedId)target.searchParams.set('record_id',resolvedId);target.searchParams.set('return_to','central_task_center.html?mode=assignee&task_id='+inlineWs.task.id);
+ location.href=target.href;
+}catch(e){toast(e.message||'تعذر فتح السجل',false)}}
 async function submitInlineForApproval(){try{const hasActivity=(inlineWs.updates||[]).length>0;if(!hasActivity)throw new Error('لا يمكن الإرسال قبل تنفيذ عمل فعلي داخل السجل.');await CloudTaskEngine.transition(inlineWs.task.id,'pending_approval','تم إرسال التنفيذ الداخلي للاعتماد');emitTaskEvent('task.approval_requested',inlineWs.task,{summary:'أرسل '+(inlineWs.task.assignee_name||'المكلف')+' التنفيذ الداخلي للتكليف "'+(inlineWs.task.title||'')+'" للاعتماد.',title:'تنفيذ داخلي بانتظار الاعتماد',severity:'important',notifyPush:true});toast('تم إرسال التنفيذ للاعتماد');await refresh();await openInlineWorkspace(inlineWs.task.id)}catch(e){toast(e.message||'تعذر الإرسال',false)}}
 function initAssigneeMode(){document.getElementById('pageHeading').textContent='مركز تكليفاتي';document.getElementById('pageSubtitle').textContent='تنفيذ التكليفات داخل السجلات المرتبطة وإرسال الأعمال للاعتماد من مركز موحد.';document.getElementById('ownerTabs').classList.add('hidden');document.getElementById('createView').classList.add('hidden');document.getElementById('listView').classList.remove('hidden');window.currentView='all';renderAll();renderList();const initial=qs('task_id');if(initial)setTimeout(()=>openInlineWorkspace(initial),500)}
 function renderAll(){renderSummary(); if((window.currentView||'create')==='analytics') renderAnalytics(); else if((window.currentView||'create')!=='create') renderList()}
@@ -503,12 +536,12 @@ document.getElementById('delegationScope').addEventListener('change',populateRec
 <script src="cloud-file-engine.js"></script>
 <script src="cloud-task-engine.js?v=20260818-root1"></script>
 <script src="platform-core-engine.js"></script>
-<script src="platform-record-catalog.js"></script>
+<script src="platform-record-catalog.js?v=20260923-RL198-canonical-routing"></script>
 <script src="platform-record-registry.js"></script>
 <script src="platform-event-bus.js"></script>
 <script src="platform-notification-center.js?v=20260910-responsible-v1"></script>
 <script src="platform-dashboard-bridge.js"></script>
-<script src="central-task-cloud-adapter.js?v=20260922-RL197-checkbox-records"></script>
+<script src="central-task-cloud-adapter.js?v=20260923-RL198-canonical-routing"></script>
 <script src="cloud-file-bootstrap.js"></script>
 <script src="cloud-upload-hub.js"></script>
 <script src="cloud-file-auto-sync.js"></script>

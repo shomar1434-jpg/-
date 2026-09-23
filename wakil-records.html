@@ -1472,11 +1472,18 @@ function allowedWakilCategory(cat){
   if(!agencies.length) return true;
   return agencies.indexOf(cat)>-1;
 }
-function visibleForms(){return FORMS.filter(function(f){return allowedWakilCategory(f.category||'shared');});}
+function delegatedVerifiedForm(){var q=new URLSearchParams(location.search),access=window.PlatformDelegatedAccess;
+  if(q.get('delegated')!=='1'||!q.get('task_id')||!access?.grant)return null;
+  var id=String(q.get('record_id')||q.get('record')||'');
+  if(String(access.grant.record_id||'')!==id||String(access.grant.record_type||'')!=='canonical_record')return null;
+  return FORMS.find(function(f){return String(f.id)===id})||null;
+}
+function visibleForms(){var rows=FORMS.filter(function(f){return allowedWakilCategory(f.category||'shared');});var granted=delegatedVerifiedForm();if(granted&&!rows.some(function(f){return f.id===granted.id}))rows.push(granted);return rows;}
+window.addEventListener('platform:delegated-access-granted',function(){var granted=delegatedVerifiedForm();if(granted){current=granted;renderNav();renderForm();loadCurrent();}});
 function formsByCategory(){
   return WAKIL_CATEGORY_ORDER.map(cat=>({cat,label:wakilCategoryLabel(cat),items:FORMS.filter(f=>(f.category||'shared')===cat && allowedWakilCategory(f.category||'shared'))})).filter(g=>g.items.length);
 }
-function ensureCurrentVisible(){var vf=visibleForms(); if(vf.length && (!current || !allowedWakilCategory(current.category||'shared'))) current=vf[0];}
+function ensureCurrentVisible(){var vf=visibleForms(); if(vf.length && (!current || !vf.some(function(f){return f.id===current.id}))) current=vf[0];}
 function agencyNoticeHtml(){var list=currentWakilAgencies(); var txt=list.length?list.map(function(x){return WAKIL_AGENCY_LABELS[x]||x}).join(' + '):'كل السجلات'; return '<div style="margin:10px 0 14px;padding:10px;border:1px solid #b8d4c8;border-radius:14px;background:#f0fdfa;color:#0f766e;font-size:12px;font-weight:900;line-height:1.8">التصنيف الحالي: '+txt+'<br><span style="color:#64748b;font-weight:800">تظهر السجلات والأرشيف حسب تصنيفات الوكيل المحددة من حساب المدير.</span></div>';}
 
 
@@ -2173,7 +2180,7 @@ renderNav();renderForm();loadCurrent();bindAutoGrow(qs('#formPage'));autoGrowAll
 <!-- Unified Comprehensive Cloud Storage -->
 <script src="cloud-file-auto-sync.js"></script>
 
-<script src="platform-record-catalog.js"></script>
+<script src="platform-record-catalog.js?v=20260923-RL198-canonical-routing"></script>
 <script src="delegated-access-guard.js"></script>
 <script src="school-activity-engine.js"></script>
 

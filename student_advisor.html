@@ -55,9 +55,12 @@
 <!-- SAFE_PATCH: bypass activation without touching archived data -->
 <style id="safe-activation-bypass-style">
 #activation-overlay{display:none!important;visibility:hidden!important;pointer-events:none!important;}
-#welcome-gate{display:none!important;visibility:hidden!important;pointer-events:none!important;}
 #main-report-app[hidden],#main-report-app.hidden{display:none!important;visibility:hidden!important;}
 .safe-hidden-deactivate{display:none!important;}
+</style>
+<style id="student-advisor-entry-gate-fix">
+#welcome-gate{z-index:2147482500!important;background:linear-gradient(145deg,#e9f7f5 0%,#f8fbfb 48%,#dcefed 100%)!important;background-image:linear-gradient(145deg,#e9f7f5 0%,#f8fbfb 48%,#dcefed 100%)!important;isolation:isolate;visibility:hidden;}
+#welcome-gate::before,#welcome-gate::after{display:none!important;content:none!important;}
 </style>
 <script id="safe-activation-bypass-head">
 (function(){try{
@@ -2212,7 +2215,7 @@ body{overflow-x:hidden}
 <div class="hidden" hidden id="main-report-app">
 <nav class="no-print bg-white/90 backdrop-blur-md border-b p-3 sticky top-0 z-[100] flex justify-between items-center px-8 shadow-sm">
 <div class="flex items-center gap-4">
-<button class="p-2 text-slate-400 hover:bg-slate-50 rounded-full" onclick="goHome()"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg></button><!-- أيقونة الثيم اللوني -->
+<button class="p-2 text-slate-400 hover:bg-slate-50 rounded-full" onclick="returnToAdvisorDashboard()" title="العودة إلى واجهة القسم الرئيسية"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg></button><!-- أيقونة الثيم اللوني -->
 <button class="p-2 text-slate-600 hover:bg-slate-100 rounded-full transition-all" onclick="openThemeModal()" title="مكتبة الألوان">
 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewbox="0 0 24 24">
 <path d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
@@ -3243,7 +3246,8 @@ font-size:16px;font-weight:700;text-align:center;background:#fff;color:#0f172a;"
 
         function showMainReportApp() { const app=document.getElementById('main-report-app'); app.hidden=false; app.removeAttribute('hidden'); app.classList.remove('hidden'); }
         function startNewReport() { resetFormOnly(); applyReportTemplate('تقرير تنفيذ'); setReportHeading('تقرير تنفيذ'); currentEditingId = null; document.getElementById('welcome-dashboard').style.display = 'none'; showMainReportApp(); updateReportProgress(); }
-        function goHome() { const app=document.getElementById('main-report-app'); app.classList.add('hidden'); app.hidden=true; app.setAttribute('hidden',''); document.getElementById('archive-view').style.display='none'; document.getElementById('stats-view').style.display='none'; document.getElementById('welcome-dashboard').style.display = 'block'; window.scrollTo({top:0,behavior:'auto'}); }
+        function returnToAdvisorDashboard() { const url=new URL(window.location.href); url.searchParams.set('view','dashboard'); url.hash=''; window.location.replace(url.pathname+'?'+url.searchParams.toString()); }
+        function goHome() { returnToAdvisorDashboard(); }
         function setReportHeading(title) {
             const heading = document.getElementById('report-title-heading');
             if (heading) heading.innerText = title || 'تقرير تنفيذ';
@@ -4707,10 +4711,10 @@ window.confirmDeleteReport=async function(){
     }
     b.innerHTML=html;
   }
-  function attach(){var q=function(id){return document.getElementById(id)}; q('ssBack')&&q('ssBack').addEventListener('click',function(){location.href='index.html'}); q('ssExit')&&q('ssExit').addEventListener('click',function(){location.href='index.html'}); q('ssTeachers')&&q('ssTeachers').addEventListener('click',function(){showUsers('teacher')}); q('ssAgents')&&q('ssAgents').addEventListener('click',function(){showUsers('agent')}); q('ssActivate')&&q('ssActivate').addEventListener('click',showActivation); q('ssRegLink')&&q('ssRegLink').addEventListener('click',showRegLink); q('ssAlert')&&q('ssAlert').addEventListener('click',showAlert); q('ssInbox')&&q('ssInbox').addEventListener('click',showInbox); q('ssMeetWallet')&&q('ssMeetWallet').addEventListener('click',showWallet); q('ssMeetingRoom')&&q('ssMeetingRoom').addEventListener('click',showMeetingRoom); q('ssCloud')&&q('ssCloud').addEventListener('click',showCloud); q('ssTeacherRecords')&&q('ssTeacherRecords').addEventListener('click',function(){ window.open('student_advisor_records.html','_blank','noopener'); }); q('ssDataAnalysis')&&q('ssDataAnalysis').addEventListener('click',function(){ window.open('student_followup_analysis_updated.html','_blank','noopener'); }); }
+  function attach(){var q=function(id){return document.getElementById(id)}; q('ssBack')&&q('ssBack').addEventListener('click',function(){location.href='index.html'}); q('ssExit')&&q('ssExit').addEventListener('click',function(){location.href='index.html'}); q('ssTeachers')&&q('ssTeachers').addEventListener('click',function(){showUsers('teacher')}); q('ssAgents')&&q('ssAgents').addEventListener('click',function(){showUsers('agent')}); q('ssActivate')&&q('ssActivate').addEventListener('click',showActivation); q('ssRegLink')&&q('ssRegLink').addEventListener('click',showRegLink); q('ssAlert')&&q('ssAlert').addEventListener('click',showAlert); q('ssInbox')&&q('ssInbox').addEventListener('click',showInbox); q('ssMeetWallet')&&q('ssMeetWallet').addEventListener('click',showWallet); q('ssMeetingRoom')&&q('ssMeetingRoom').addEventListener('click',showMeetingRoom); q('ssCloud')&&q('ssCloud').addEventListener('click',showCloud); q('ssTeacherRecords')&&q('ssTeacherRecords').addEventListener('click',function(){ location.href='student_advisor_records.html?return_to=student_advisor.html%3Fview%3Ddashboard'; }); q('ssDataAnalysis')&&q('ssDataAnalysis').addEventListener('click',function(){ location.href='student_followup_analysis_updated.html'; }); }
   function showUsers(role){var list=users().filter(function(u){return u.role===role}); panel(role==='teacher'?'الموجه/الموجهة الطلابيةون':'الوكلاء', list.length?list.map(function(u){return '<div class="ss-card"><b>'+esc(u.name)+'</b><div class="ss-muted">'+esc(u.email||'')+' — '+(u.status==='active'?'مفعل':'بانتظار التفعيل')+'</div></div>'}).join(''):'<div class="ss-empty">لا توجد حسابات مسجلة.</div>')}
   function showTeacherRecords(){
-    window.open('student_advisor_records.html','_blank','noopener');
+    window.location.href='student_advisor_records.html?return_to=student_advisor.html%3Fview%3Ddashboard';
   }
 
 
@@ -5504,7 +5508,7 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
     w.document.close();
   };
 
-  window.editAdvisorArchivedRecord=function(id){var r=read().find(function(x){return String(x.id)===String(id)});if(!r)return;sessionStorage.setItem('advisor_record_edit_payload',JSON.stringify(r));location.href='student_advisor_records.html?return_to=student_advisor.html';};
+  window.editAdvisorArchivedRecord=function(id){var r=read().find(function(x){return String(x.id)===String(id)});if(!r)return;sessionStorage.setItem('advisor_record_edit_payload',JSON.stringify(r));location.href='student_advisor_records.html?return_to=student_advisor.html%3Fview%3Ddashboard';};
   window.deleteAdvisorArchivedRecord = async function(id){
     if(!confirm('هل تريد حذف هذا السجل؟')) return;
     var item=read().find(function(x){return String(x.id)===String(id);});
@@ -5635,21 +5639,27 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
   if(window.__SAFE_ACTIVATION_BYPASS_TAIL__) return;
   window.__SAFE_ACTIVATION_BYPASS_TAIL__ = true;
   function activateFlags(){try{localStorage.setItem('school_active','true');localStorage.setItem('app_activated','true');localStorage.setItem('activation_status','active');sessionStorage.setItem('school_active','true');sessionStorage.setItem('app_activated','true');}catch(e){}}
-  function hideActivationAndShowDashboard(){
+  function showInitialAdvisorView(){
     activateFlags();
     var activation=document.getElementById('activation-overlay');
     if(activation){activation.style.display='none';activation.style.visibility='hidden';activation.setAttribute('aria-hidden','true');}
     var gate=document.getElementById('welcome-gate'), dash=document.getElementById('welcome-dashboard'), app=document.getElementById('main-report-app');
-    if(gate){gate.style.setProperty('display','none','important');gate.style.visibility='hidden';gate.setAttribute('aria-hidden','true');}
-    if(dash && (!app || app.classList.contains('hidden') || app.style.display==='none')) dash.style.display='block';
+    var dashboardRequested=false;try{dashboardRequested=new URLSearchParams(location.search||'').get('view')==='dashboard'}catch(_){ }
+    if(app && !app.hidden && !app.classList.contains('hidden')) return;
+    if(dashboardRequested){
+      if(gate){gate.style.display='none';gate.style.visibility='hidden';gate.setAttribute('aria-hidden','true');}
+      if(dash)dash.style.display='block';
+    }else{
+      if(dash)dash.style.display='none';
+      if(gate){gate.style.display='flex';gate.style.visibility='visible';gate.setAttribute('aria-hidden','false');}
+    }
   }
   function protectDeactivation(){
     ['deactivateSystem','deactivateApp','resetActivation','clearActivation'].forEach(function(fn){try{window[fn]=function(){console.warn('تم تعطيل إلغاء التنشيط لحماية الأرشفة المحفوظة.');return false;};}catch(e){}});
     try{document.querySelectorAll('button,a,[role="button"],div[onclick],span[onclick]').forEach(function(el){var text=(el.textContent||'').replace(/\s+/g,' ').trim();var act=(el.getAttribute('onclick')||'');if(/إلغاء\s*تنشيط|الغاء\s*تنشيط|تعطيل\s*النظام|مسح\s*كافة\s*البيانات/.test(text)||/deactivate|resetActivation|clearActivation/.test(act)){el.classList.add('safe-hidden-deactivate');el.style.display='none';el.removeAttribute('onclick');}});}catch(e){}
   }
-  var __v6ActivationBooted=false;function boot(){activateFlags();protectDeactivation();setTimeout(protectDeactivation,300);if(!__v6ActivationBooted){__v6ActivationBooted=true;hideActivationAndShowDashboard();}}
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot); else boot();
-  window.addEventListener('load',boot);
+  var __v6ActivationBooted=false;function boot(){activateFlags();protectDeactivation();setTimeout(protectDeactivation,300);if(!__v6ActivationBooted){__v6ActivationBooted=true;showInitialAdvisorView();}}
+  if(document.readyState==='complete') boot(); else window.addEventListener('load',boot,{once:true});
 })();
 </script>
 <script src="performance-file-engine.js"></script>
@@ -5799,8 +5809,7 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
     return /student_followup_analysis_updated\.html|student_advisor_analysis_tool\.html|student_advisor_analysis|teacher_data_analysis|تحليل\s*البيانات|تحليل\s*بيانات\s*الطلاب/.test(t);
   }
   function openSeparate(src){
-    try{ window.open(src, '_blank', 'noopener,noreferrer'); }
-    catch(e){ window.location.href = src; }
+    window.location.href = src === RECORDS_PAGE ? RECORDS_PAGE+'?return_to=student_advisor.html%3Fview%3Ddashboard' : src;
   }
   function intercept(e){
     var raw=e.target;

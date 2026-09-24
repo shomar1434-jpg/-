@@ -2215,7 +2215,7 @@ body{overflow-x:hidden}
 <div class="hidden" hidden id="main-report-app">
 <nav class="no-print bg-white/90 backdrop-blur-md border-b p-3 sticky top-0 z-[100] flex justify-between items-center px-8 shadow-sm">
 <div class="flex items-center gap-4">
-<button class="p-2 text-slate-400 hover:bg-slate-50 rounded-full" onclick="returnToAdvisorDashboard()" title="العودة إلى واجهة القسم الرئيسية"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg></button><!-- أيقونة الثيم اللوني -->
+<button class="p-2 text-slate-400 hover:bg-slate-50 rounded-full" onclick="goHome()" title="العودة إلى واجهة القسم الرئيسية"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg></button><!-- أيقونة الثيم اللوني -->
 <button class="p-2 text-slate-600 hover:bg-slate-100 rounded-full transition-all" onclick="openThemeModal()" title="مكتبة الألوان">
 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewbox="0 0 24 24">
 <path d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
@@ -3244,9 +3244,18 @@ font-size:16px;font-weight:700;text-align:center;background:#fff;color:#0f172a;"
             } 
         }
 
-        function showMainReportApp() { const app=document.getElementById('main-report-app'); app.hidden=false; app.removeAttribute('hidden'); app.classList.remove('hidden'); }
+        function showMainReportApp() { const app=document.getElementById('main-report-app'); app.style.removeProperty('display'); app.style.removeProperty('visibility'); app.hidden=false; app.removeAttribute('hidden'); app.classList.remove('hidden'); }
         function startNewReport() { resetFormOnly(); applyReportTemplate('تقرير تنفيذ'); setReportHeading('تقرير تنفيذ'); currentEditingId = null; document.getElementById('welcome-dashboard').style.display = 'none'; showMainReportApp(); updateReportProgress(); }
-        function returnToAdvisorDashboard() { const url=new URL(window.location.href); url.searchParams.set('view','dashboard'); url.hash=''; window.location.replace(url.pathname+'?'+url.searchParams.toString()); }
+        function returnToAdvisorDashboard() {
+            document.body.classList.remove('current-visible-report-print-mode','manager-report-printing','agent-report-printing','advisor-print-current','activity-direct-current-print');
+            const app=document.getElementById('main-report-app');
+            if(app){app.style.display='none';app.classList.add('hidden');app.hidden=true;app.setAttribute('hidden','');}
+            ['archive-view','stats-view'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='none';});
+            const gate=document.getElementById('welcome-gate');if(gate){gate.style.display='none';gate.style.visibility='hidden';gate.setAttribute('aria-hidden','true');}
+            const dash=document.getElementById('welcome-dashboard');if(dash){dash.style.display='block';dash.scrollTop=0;}
+            try{const url=new URL(window.location.href);url.searchParams.set('view','dashboard');url.hash='';history.replaceState(history.state,'',url.pathname+'?'+url.searchParams.toString());}catch(_){ }
+            window.scrollTo({top:0,behavior:'auto'});
+        }
         function goHome() { returnToAdvisorDashboard(); }
         function setReportHeading(title) {
             const heading = document.getElementById('report-title-heading');
@@ -5775,9 +5784,9 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
     window.updateRelatedElements = function(){ window.__forceFillReportCategoryData(); };
   }
   ['saveReportToArchive','saveReport','saveCurrentReport','confirmSaveReport'].forEach(function(n){
-    var f = window[n];
-    if(typeof f === 'function' && !f.__forceCategoryWrapped){
-      var w = function(){ return f.apply(this, arguments); };
+      const f = window[n];
+      if(typeof f === 'function' && !f.__forceCategoryWrapped){
+      const w = function(){ return f.apply(this, arguments); };
       w.__forceCategoryWrapped = true;
       window[n] = w;
     }

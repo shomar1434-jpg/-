@@ -3434,7 +3434,7 @@ async function saveReportToArchive() {
                 const item = document.createElement('div'); 
                 item.className = "bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex justify-between items-center group hover:border-teal-200 transition-all archive-item-card"; 
                 // يظهر هنا "تاريخ الإعداد" الفعلي في قائمة الأرشيف
-                item.innerHTML = `<div><h4 class="font-bold text-slate-700 text-sm report-title">${report.title}</h4><p class="text-[10px] text-teal-600 font-bold">تاريخ الإعداد: ${report.date} ${report.isComplete ? '✅' : '⏳'}</p></div><div class="flex gap-2">${(report.readOnly || report.archiveType === 'meetingMinutes' || report.archiveType === 'studentAdvisorSmartArchivePreview') ? `<button onclick="previewArchivedReadOnly(${report.id})" class="bg-teal-600 text-white px-4 py-2 rounded-xl text-[10px] font-bold">معاينة</button><button onclick="requestDeleteReport(${report.id})" class="bg-red-50 text-red-500 px-4 py-2 rounded-xl text-[10px] font-bold">حذف</button>` : `<button onclick="editReport(${report.id})" class="bg-teal-600 text-white px-4 py-2 rounded-xl text-[10px] font-bold">تعديل</button><button onclick="requestDeleteReport(${report.id})" class="bg-red-50 text-red-500 px-4 py-2 rounded-xl text-[10px] font-bold">حذف</button>`}</div>`; 
+                item.innerHTML = `<div><h4 class="font-bold text-slate-700 text-sm report-title">${report.title}</h4><p class="text-[10px] text-teal-600 font-bold">تاريخ الإعداد: ${report.date} ${report.isComplete ? '✅' : '⏳'}</p></div><div class="flex gap-2">${(report.readOnly || report.archiveType === 'meetingMinutes' || report.archiveType === 'studentAdvisorSmartArchivePreview') ? `<button onclick="previewArchivedReadOnly(${JSON.stringify(String(report.id))})" class="bg-teal-600 text-white px-4 py-2 rounded-xl text-[10px] font-bold">معاينة</button><button onclick="requestDeleteReport(${JSON.stringify(String(report.id))})" class="bg-red-50 text-red-500 px-4 py-2 rounded-xl text-[10px] font-bold">حذف</button>` : `<button onclick="editReport(${JSON.stringify(String(report.id))})" class="bg-teal-600 text-white px-4 py-2 rounded-xl text-[10px] font-bold">تعديل</button><button onclick="requestDeleteReport(${JSON.stringify(String(report.id))})" class="bg-red-50 text-red-500 px-4 py-2 rounded-xl text-[10px] font-bold">حذف</button>`}</div>`; 
                 list.appendChild(item); 
             }); 
             container.appendChild(list); 
@@ -3458,7 +3458,7 @@ async function saveReportToArchive() {
                     const cat = ALL_CATEGORIES.find(c => c.id === report.category);
                     const item = document.createElement('div');
                     item.className = "bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex justify-between items-center group hover:border-teal-200 transition-all archive-item-card";
-                    item.innerHTML = `<div><h4 class="font-bold text-slate-700 text-sm report-title">${report.title}</h4><p class="text-[10px] text-teal-600 font-bold">الإعداد: ${report.date} | ${cat ? cat.name : ''} ${report.isComplete ? '✅' : '⏳'}</p></div><div class="flex gap-2">${(report.readOnly || report.archiveType === 'meetingMinutes' || report.archiveType === 'studentAdvisorSmartArchivePreview') ? `<button onclick="previewArchivedReadOnly(${report.id})" class="bg-teal-600 text-white px-4 py-2 rounded-xl text-[10px] font-bold">معاينة</button><button onclick="requestDeleteReport(${report.id})" class="bg-red-50 text-red-500 px-4 py-2 rounded-xl text-[10px] font-bold">حذف</button>` : `<button onclick="editReport(${report.id})" class="bg-teal-600 text-white px-4 py-2 rounded-xl text-[10px] font-bold">تعديل</button><button onclick="requestDeleteReport(${report.id})" class="bg-red-50 text-red-500 px-4 py-2 rounded-xl text-[10px] font-bold">حذف</button>`}</div>`; 
+                    item.innerHTML = `<div><h4 class="font-bold text-slate-700 text-sm report-title">${report.title}</h4><p class="text-[10px] text-teal-600 font-bold">الإعداد: ${report.date} | ${cat ? cat.name : ''} ${report.isComplete ? '✅' : '⏳'}</p></div><div class="flex gap-2">${(report.readOnly || report.archiveType === 'meetingMinutes' || report.archiveType === 'studentAdvisorSmartArchivePreview') ? `<button onclick="previewArchivedReadOnly(${JSON.stringify(String(report.id))})" class="bg-teal-600 text-white px-4 py-2 rounded-xl text-[10px] font-bold">معاينة</button><button onclick="requestDeleteReport(${JSON.stringify(String(report.id))})" class="bg-red-50 text-red-500 px-4 py-2 rounded-xl text-[10px] font-bold">حذف</button>` : `<button onclick="editReport(${JSON.stringify(String(report.id))})" class="bg-teal-600 text-white px-4 py-2 rounded-xl text-[10px] font-bold">تعديل</button><button onclick="requestDeleteReport(${JSON.stringify(String(report.id))})" class="bg-red-50 text-red-500 px-4 py-2 rounded-xl text-[10px] font-bold">حذف</button>`}</div>`; 
                     list.appendChild(item);
                 });
                 container.appendChild(list);
@@ -6026,7 +6026,17 @@ window.ensurePerformanceBeneficiariesControl=ensure;
 const MODULE='student_advisor', LEGACY='reports_archive', CANON='performance_reports_archive_v2';
 function parseRows(raw){try{const rows=JSON.parse(raw||'[]');return Array.isArray(rows)?rows:[]}catch(_){return[]}}
 function localRows(){return parseRows(typeof performanceRoleLocalGet==='function'?performanceRoleLocalGet(LEGACY):localStorage.getItem(LEGACY))}
-function setLocalRows(rows){const raw=JSON.stringify(rows);if(typeof performanceRoleLocalSet==='function')performanceRoleLocalSet(LEGACY,raw);else localStorage.setItem(LEGACY,raw);return raw}
+function compactRows(rows){return rows.map(row=>{const copy={...row};delete copy.content;delete copy.pdfHtml;delete copy.officialHtml;delete copy.html;return copy})}
+function setLocalRows(rows){
+  window.__studentAdvisorCloudArchiveRows=rows;
+  const raw=JSON.stringify(compactRows(rows));
+  try{if(typeof performanceRoleLocalSet==='function')performanceRoleLocalSet(LEGACY,raw);else localStorage.setItem(LEGACY,raw)}
+  catch(error){
+    try{if(typeof performanceRoleLocalRemove==='function')performanceRoleLocalRemove(LEGACY);else localStorage.removeItem('student_advisor_reports_archive_local_v1')}catch(_){}
+    if(typeof performanceRoleLocalSet==='function')performanceRoleLocalSet(LEGACY,raw);else localStorage.setItem(LEGACY,raw);
+  }
+  return raw;
+}
 function folderId(row){return String(row?.archiveFolderId||row?.category||'').trim()}
 function directDashboard(){
   document.body.classList.remove('current-visible-report-print-mode','manager-report-printing','agent-report-printing','advisor-print-current','activity-direct-current-print');
@@ -6069,7 +6079,7 @@ window.saveReportToArchive=async function(){
   try{
     if(typeof freezeReportDOMForArchive==='function')freezeReportDOMForArchive();
     let rows=await readCloudRows();
-    const id=String(currentEditingId||Date.now()+'_'+Math.random().toString(36).slice(2,8));
+    const id=currentEditingId||Date.now();
     const prior=rows.find(row=>String(row.id)===id);
     const completion=typeof checkReportCompletionStatus==='function'?checkReportCompletionStatus():{isComplete:true};
     const report={id,title,programName:title,category:cat,categoryName:folderName,archiveFolderId:cat,archiveFolderName:folderName,archiveRole:'student_advisor',archiveType:'performanceReport',reportDate:document.getElementById('dateInputHeader')?.value||'',date:prior?.date||new Date().toLocaleDateString('ar-SA'),createdAt:prior?.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString(),saveTimestamp:Date.now(),isComplete:!!completion.isComplete,content:document.getElementById('report-content-container')?.innerHTML||''};
@@ -6079,6 +6089,26 @@ window.saveReportToArchive=async function(){
     if(typeof refreshDashboardMetrics==='function')refreshDashboardMetrics();
     showToast('تم حفظ «'+title+'» داخل مجلد «'+folderName+'» ✅');return true;
   }catch(error){console.error('[student advisor archive RL204]',error);showToast('تعذر حفظ التقرير: '+String(error?.message||error));return false}
+};
+window.loadCanonicalPerformanceArchiveV6=async function(){const rows=await readCloudRows();setLocalRows(rows);window.__performanceCanonicalReady=true;return rows};
+window.openArchiveView=async function(){
+  try{await window.loadCanonicalPerformanceArchiveV6()}
+  catch(error){console.error('[student advisor archive load RL206]',error);showToast('تعذر تحميل الأرشيف السحابي: '+String(error?.message||error));return false}
+  const dash=document.getElementById('welcome-dashboard');if(dash)dash.style.display='none';
+  const archive=document.getElementById('archive-view');if(archive)archive.style.display='block';
+  if(typeof renderArchiveFolders==='function')renderArchiveFolders();return true;
+};
+window.editReport=async function(id){
+  try{
+    const rows=window.__studentAdvisorCloudArchiveRows||await readCloudRows();
+    const report=rows.find(row=>String(row.id)===String(id));if(!report)throw new Error('تعذر العثور على التقرير في الأرشيف السحابي');
+    const root=document.getElementById('report-content-container');if(!root||!report.content)throw new Error('محتوى التقرير غير متاح');
+    root.innerHTML=report.content;currentEditingId=report.id;
+    const category=document.getElementById('categorySelect');if(category&&report.category)category.value=report.category;
+    const date=document.getElementById('dateInputHeader');if(date&&report.reportDate)date.value=report.reportDate;
+    const archive=document.getElementById('archive-view');if(archive)archive.style.display='none';
+    showMainReportApp();if(typeof updateReportProgress==='function')updateReportProgress();return true;
+  }catch(error){console.error('[student advisor archive edit RL206]',error);showToast('تعذر فتح التقرير: '+String(error?.message||error));return false}
 };
 })();
 </script>

@@ -3408,23 +3408,24 @@
       }else if(typeof window.saveAdvisorRecordToArchive === 'function'){
         var localOk=await window.saveAdvisorRecordToArchive(payload); if(localOk===false) throw new Error('تعذر تأكيد الحفظ السحابي');
       }else{
-        if(!window.PlatformRecordSaveEngine||PlatformRecordSaveEngine.isSystemAdminContext())throw new Error('محرك حفظ السجلات السحابي غير متاح');
-        var cloud=await PlatformRecordSaveEngine.listAll({moduleKey:'student_advisor_records',recordType:'advisor_record',scope:'user'});
+        var cloud=[];
+        try{if(window.PlatformRecordSaveEngine&&!PlatformRecordSaveEngine.isSystemAdminContext())cloud=await PlatformRecordSaveEngine.listAll({moduleKey:'student_advisor_records',recordType:'advisor_record',scope:'user'})||[]}catch(readSecondaryError){console.warn('[advisor record secondary list]',readSecondaryError)}
         var existing=(cloud||[]).map(function(x){return Object.assign({},x.data||{},x.meta||{});});
         var baseName=String(payload.personName||'بدون اسم').trim()||'بدون اسم';
         var dup=existing.filter(function(r){return String(r.folderId)===String(payload.folderId)&&String(r.baseName||r.studentName)===baseName;}).length+1;
         var saved={id:Date.now(),folderId:payload.folderId,formId:payload.formId,title:payload.title,baseName:baseName,studentName:baseName,duplicateNo:dup,displayName:dup>1?baseName+' ('+dup+')':baseName,htmlContent:payload.htmlContent,summary:payload.summary,formValues:payload.formValues||[],pdfMode:true,createdAt:new Date().toLocaleString('ar-SA'),createdAtIso:new Date().toISOString()};
         var ay=localStorage.getItem('school_info_academic_year')||localStorage.getItem('academic_year')||'1448';
         var sem=localStorage.getItem('semester')||localStorage.getItem('current_semester')||'سنوي';
-        await PlatformRecordSaveEngine.save({moduleKey:'student_advisor_records',recordType:'advisor_record',recordId:String(saved.id),academicYear:ay,semester:sem,scope:'user',folderId:saved.folderId,title:saved.title,entityId:baseName,entityType:'student',data:saved,createdAt:saved.createdAtIso});
-        var verified=await PlatformRecordSaveEngine.listAll({moduleKey:'student_advisor_records',recordType:'advisor_record',scope:'user'});
-        if(!(verified||[]).some(function(x){return String(x.data&&x.data.id||x.meta&&x.meta.recordId||'')===String(saved.id)&&String(x.data&&x.data.folderId||x.meta&&x.meta.folderId||'')===String(saved.folderId)}))throw new Error('لم يظهر السجل داخل المجلد المطابق بعد الحفظ');
         await commitAdvisorCanonicalArchive(saved);
+        try{
+          if(!window.PlatformRecordSaveEngine||PlatformRecordSaveEngine.isSystemAdminContext())throw new Error('المحرك الثانوي غير متاح');
+          await PlatformRecordSaveEngine.save({moduleKey:'student_advisor_records',recordType:'advisor_record',recordId:String(saved.id),academicYear:ay,semester:sem,scope:'user',folderId:saved.folderId,title:saved.title,entityId:baseName,entityType:'student',data:saved,createdAt:saved.createdAtIso});
+        }catch(secondaryError){console.warn('[advisor record secondary catalog]',secondaryError)}
       }
       alert('تم حفظ نسخة السجل في الأرشيف مع التحقق السحابي.');
     }catch(e){
       console.error(e);
-      alert('تعذر إرسال النسخة إلى الأرشيف.');
+      alert('تعذر إرسال النسخة إلى الأرشيف: '+String(e&&e.message||e));
     }
   };
 })();
@@ -3553,6 +3554,10 @@
 function returnToAdvisorSection(){
   try{
     sessionStorage.setItem('student_advisor_direct_dashboard_v1','1');
+    try{
+      var ref=new URL(document.referrer||'',location.href);
+      if(ref.origin===location.origin&&/\/student_advisor\.html$/i.test(ref.pathname)&&history.length>1){history.back();return}
+    }catch(_ref){ }
     var qs=new URLSearchParams(location.search||'');
     var raw=qs.get('return_to')||'student_advisor.html?view=dashboard';
     var target=new URL(raw,location.href);

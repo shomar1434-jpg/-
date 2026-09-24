@@ -12,7 +12,16 @@
   try{
     var q=new URLSearchParams(location.search||'');
     var direct=q.get('view')==='dashboard'||q.get('directReturn')==='1'||q.get('sectionReturn')==='1'||sessionStorage.getItem('student_advisor_direct_dashboard_v1')==='1';
-    if(direct){document.documentElement.setAttribute('data-advisor-direct-dashboard','1');sessionStorage.removeItem('student_advisor_direct_dashboard_v1');}
+    if(direct){
+      document.documentElement.setAttribute('data-advisor-direct-dashboard','1');sessionStorage.removeItem('student_advisor_direct_dashboard_v1');
+      document.addEventListener('DOMContentLoaded',function(){
+        var gate=document.getElementById('welcome-gate'),activation=document.getElementById('activation-overlay'),dash=document.getElementById('welcome-dashboard');
+        if(gate){gate.style.setProperty('display','none','important');gate.style.setProperty('visibility','hidden','important')}
+        if(activation){activation.style.setProperty('display','none','important');activation.style.setProperty('visibility','hidden','important')}
+        if(dash){dash.style.setProperty('display','block','important');dash.style.setProperty('visibility','visible','important')}
+        if(document.body)document.body.classList.add('advisor-direct-ready');
+      },{once:true});
+    }
   }catch(_){ }
 })();
 </script>
@@ -21,6 +30,8 @@ html[data-advisor-direct-dashboard="1"] #welcome-gate,
 html[data-advisor-direct-dashboard="1"] #activation-overlay,
 html[data-advisor-direct-dashboard="1"] #main-report-app{display:none!important;visibility:hidden!important;animation:none!important}
 html[data-advisor-direct-dashboard="1"] #welcome-dashboard{display:block!important;visibility:visible!important;animation:none!important;opacity:1!important;transform:none!important}
+html[data-advisor-direct-dashboard="1"] body:not(.advisor-direct-ready){opacity:0!important;animation:none!important}
+html[data-advisor-direct-dashboard="1"] body.advisor-direct-ready{opacity:1!important;transition:none!important}
 </style>
 
 <style id="platform-first-paint-guard">#elsPicker{display:none!important;visibility:hidden!important}html[data-system-admin-context="1"] #activeSchoolLabel{display:none!important;visibility:hidden!important}</style>
@@ -5669,14 +5680,19 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
     if(editId){var idx=items.findIndex(function(r){return Number(r.id)===editId});if(idx>=0){saved=Object.assign({},items[idx],{folderId:folderId,title:payload.title||folderById(folderId).name,baseName:studentName,studentName:studentName,displayName:items[idx].displayName||studentName,htmlContent:payload.htmlContent||'',summary:payload.summary||'',formValues:payload.formValues||[],updatedAt:new Date().toISOString()});items[idx]=saved;}else editId=0;}
     if(!editId){var duplicateNo=items.filter(function(r){return r.folderId===folderId&&r.baseName===studentName;}).length+1;saved={id:Date.now(),folderId:folderId,title:payload.title||folderById(folderId).name,baseName:studentName,studentName:studentName,duplicateNo:duplicateNo,displayName:duplicateNo>1?studentName+' ('+duplicateNo+')':studentName,htmlContent:payload.htmlContent||'',summary:payload.summary||'',formValues:payload.formValues||[],pdfMode:true,createdAt:new Date().toLocaleString('ar-SA'),createdAtIso:new Date().toISOString()};items.push(saved);}
     try{
-      if(window.PlatformRecordSaveEngine && !PlatformRecordSaveEngine.isSystemAdminContext()){
+      var ok=await write(items);if(!ok)return false;
+      var verify=read().find(function(r){return Number(r.id)===Number(saved.id)&&r.folderId===folderId});
+      if(!verify)throw new Error('تعذر التحقق من ظهور السجل داخل مجلده');
+      try{
+        if(window.PlatformRecordSaveEngine && !PlatformRecordSaveEngine.isSystemAdminContext()){
         var ay=(saved.academicYear||localStorage.getItem('school_info_academic_year')||localStorage.getItem('academic_year')||'1448');
         var sem=(saved.semester||localStorage.getItem('semester')||localStorage.getItem('current_semester')||'سنوي');
         saved.academicYear=ay;saved.semester=sem;saved.__recordEngineV2=true;
         await PlatformRecordSaveEngine.save({moduleKey:'student_advisor_records',recordType:'advisor_record',recordId:String(saved.id),academicYear:ay,semester:sem,scope:'user',folderId:folderId,title:saved.title||folderById(folderId).name,entityId:saved.studentId||'',entityType:'student',data:saved,createdAt:saved.createdAtIso});
-      }
-    }catch(e){console.error('[advisor record cloud]',e);alert('تعذر تأكيد حفظ السجل المستقل سحابيًا؛ لم يتم تعديل الأرشيف.');return false;}
-    var ok=await write(items); if(!ok)return false; var verify=read().find(function(r){return Number(r.id)===Number(saved.id)&&r.folderId===folderId});if(!verify){alert('تعذر التحقق من ظهور السجل داخل مجلده.');return false}sessionStorage.removeItem('advisor_record_edit_id');if(document.getElementById('advisor-records-archive-view')&&document.getElementById('advisor-records-archive-view').style.display!=='none')renderAdvisorRecordsArchiveFolders();return true;
+        }
+      }catch(secondaryError){console.warn('[advisor record secondary catalog]',secondaryError)}
+      sessionStorage.removeItem('advisor_record_edit_id');if(document.getElementById('advisor-records-archive-view')&&document.getElementById('advisor-records-archive-view').style.display!=='none')renderAdvisorRecordsArchiveFolders();return true;
+    }catch(e){console.error('[advisor record cloud]',e);alert('تعذر حفظ السجل في مجلد الأرشيف: '+String(e&&e.message||e));return false;}
   };
 
   window.addEventListener('message',function(event){
@@ -6336,7 +6352,7 @@ window.filterArchiveReports=function(){const q=String(document.getElementById('a
 document.addEventListener('click',function(ev){const b=ev.target.closest('[data-perf-action][data-report-id]');if(!b)return;ev.preventDefault();ev.stopPropagation();const id=b.dataset.reportId,action=b.dataset.perfAction;if(action==='edit')window.editReport?.(id);else if(action==='delete')window.requestDeleteReport?.(id);else window.previewArchivedReadOnly?.(id)},true);
 const priorOpen=window.openArchiveView;window.openArchiveView=async function(){try{await reconcile(true);document.getElementById('welcome-dashboard').style.display='none';document.getElementById('archive-view').style.display='block';window.renderArchiveFolders();return true}catch(e){console.error('[advisor archive single source]',e);showToast('تعذر تحميل الأرشيف الموحد: '+String(e?.message||e));return false}};
 const priorDelete=window.requestDeleteReport;window.requestDeleteReport=async function(id){const ok=await priorDelete(String(id));if(ok){await reconcile(true);if(window.currentArchiveViewCatId)window.openArchiveFolder(window.currentArchiveViewCatId);else window.renderArchiveFolders()}return ok};
-const priorEdit=window.editReport;window.editReport=window.loadReport=async function(id){await reconcile(false);return priorEdit(String(id))};
+const priorEdit=window.editReport;window.editReport=window.loadReport=async function(id){return priorEdit(String(id))};
 window.studentAdvisorPerformanceArchiveReconcile=reconcile;
 setTimeout(()=>reconcile(false).catch(e=>console.warn('[advisor archive initial reconcile]',e)),0);
 })();

@@ -2215,7 +2215,7 @@ body{overflow-x:hidden}
 <div class="hidden" hidden id="main-report-app">
 <nav class="no-print bg-white/90 backdrop-blur-md border-b p-3 sticky top-0 z-[100] flex justify-between items-center px-8 shadow-sm">
 <div class="flex items-center gap-4">
-<button class="p-2 text-slate-400 hover:bg-slate-50 rounded-full" onclick="goHome()" title="العودة إلى واجهة القسم الرئيسية"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg></button><!-- أيقونة الثيم اللوني -->
+<button class="p-2 text-slate-400 hover:bg-slate-50 rounded-full" id="studentAdvisorReportBackBtn" onclick="returnToStudentAdvisorSections(event)" title="العودة إلى واجهة الأقسام"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg></button><!-- أيقونة الثيم اللوني -->
 <button class="p-2 text-slate-600 hover:bg-slate-100 rounded-full transition-all" onclick="openThemeModal()" title="مكتبة الألوان">
 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewbox="0 0 24 24">
 <path d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
@@ -6006,6 +6006,68 @@ const prevStart=window.startNewReport;if(typeof prevStart==='function'&&!prevSta
 const root=document.getElementById('report-content-container');if(root&&window.MutationObserver){let t;new MutationObserver(()=>{clearTimeout(t);t=setTimeout(ensure,25)}).observe(root,{childList:true,subtree:true})}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{ensure();setTimeout(ensure,250)});else{ensure();setTimeout(ensure,250)}
 window.ensurePerformanceBeneficiariesControl=ensure;
+})();
+</script>
+<script id="STUDENT_ADVISOR_REPORT_RETURN_AND_ARCHIVE_RL204">
+(function(){
+'use strict';
+const MODULE='student_advisor', LEGACY='reports_archive', CANON='performance_reports_archive_v2';
+function parseRows(raw){try{const rows=JSON.parse(raw||'[]');return Array.isArray(rows)?rows:[]}catch(_){return[]}}
+function localRows(){return parseRows(typeof performanceRoleLocalGet==='function'?performanceRoleLocalGet(LEGACY):localStorage.getItem(LEGACY))}
+function setLocalRows(rows){const raw=JSON.stringify(rows);if(typeof performanceRoleLocalSet==='function')performanceRoleLocalSet(LEGACY,raw);else localStorage.setItem(LEGACY,raw);return raw}
+function folderId(row){return String(row?.archiveFolderId||row?.category||'').trim()}
+function directDashboard(){
+  document.body.classList.remove('current-visible-report-print-mode','manager-report-printing','agent-report-printing','advisor-print-current','activity-direct-current-print');
+  const app=document.getElementById('main-report-app');
+  if(app){app.classList.add('hidden');app.hidden=true;app.setAttribute('hidden','');app.style.setProperty('display','none','important');app.style.setProperty('visibility','hidden','important')}
+  ['archive-view','stats-view','stats-dashboard'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='none'});
+  const gate=document.getElementById('welcome-gate');if(gate){gate.style.display='none';gate.style.visibility='hidden'}
+  const dash=document.getElementById('welcome-dashboard');if(dash){dash.hidden=false;dash.classList.remove('hidden');dash.style.setProperty('display','block','important');dash.style.setProperty('visibility','visible','important')}
+  try{const u=new URL(location.href);u.searchParams.set('view','dashboard');u.hash='';history.replaceState(history.state,'',u.pathname+'?'+u.searchParams.toString())}catch(_){}
+  try{window.scrollTo(0,0)}catch(_){}
+  try{if(typeof refreshDashboardMetrics==='function')refreshDashboardMetrics()}catch(_){}
+  return false;
+}
+window.returnToStudentAdvisorSections=function(ev){if(ev){ev.preventDefault();ev.stopPropagation();ev.stopImmediatePropagation()}return directDashboard()};
+const back=document.getElementById('studentAdvisorReportBackBtn');if(back)back.addEventListener('click',window.returnToStudentAdvisorSections,true);
+async function readCloudRows(){
+  const G=window.PlatformPersistenceGuard;if(!G||typeof G.readExactValues!=='function')throw new Error('محرك الأرشيف السحابي غير متاح');
+  const result=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:[CANON]});
+  if(!result?.ok)throw new Error(result?.error||'تعذر قراءة أرشيف الأداء');
+  if(result.values?.[CANON]!==undefined)return parseRows(result.values[CANON]);
+  const legacy=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:[LEGACY]});
+  return legacy?.ok&&legacy.values?.[LEGACY]!==undefined?parseRows(legacy.values[LEGACY]):localRows();
+}
+async function writeAndVerify(rows,id,cat){
+  const G=window.PlatformPersistenceGuard;if(!G||typeof G.writeExactValues!=='function'||typeof G.readExactValues!=='function')throw new Error('محرك الأرشيف السحابي غير متاح');
+  const raw=JSON.stringify(rows),written=await G.writeExactValues({moduleKey:MODULE,scope:'user',values:{[CANON]:raw}});
+  if(!written?.ok)throw new Error(written?.error||'تعذر كتابة تقرير الأداء');
+  const checked=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:[CANON]});
+  if(!checked?.ok)throw new Error(checked?.error||'تعذر التحقق من التقرير المحفوظ');
+  const verified=parseRows(checked.values?.[CANON]);
+  if(!verified.some(row=>String(row.id)===String(id)&&folderId(row)===cat))throw new Error('لم يظهر التقرير داخل مجلد المجال المحدد');
+  setLocalRows(verified);return verified;
+}
+window.saveReportToArchive=async function(){
+  const selected=typeof selectedPerformanceArchiveDomain==='function'?selectedPerformanceArchiveDomain():{id:'',name:''};
+  const cat=String(selected.id||'').trim();if(!cat){showToast('اختر المجال أولاً ⚠️');return false}
+  const title=String(document.getElementById('field_prog_name')?.innerText||'').trim();if(!title){showToast('أدخل اسم البرنامج قبل الحفظ ⚠️');return false}
+  const folderName=String(selected.name||(typeof performanceArchiveFolderName==='function'?performanceArchiveFolderName(cat):cat)||cat).trim();
+  showToast('جاري حفظ «'+title+'» في «'+folderName+'»...');
+  try{
+    if(typeof freezeReportDOMForArchive==='function')freezeReportDOMForArchive();
+    let rows=await readCloudRows();
+    const id=String(currentEditingId||Date.now()+'_'+Math.random().toString(36).slice(2,8));
+    const prior=rows.find(row=>String(row.id)===id);
+    const completion=typeof checkReportCompletionStatus==='function'?checkReportCompletionStatus():{isComplete:true};
+    const report={id,title,programName:title,category:cat,categoryName:folderName,archiveFolderId:cat,archiveFolderName:folderName,archiveRole:'student_advisor',archiveType:'performanceReport',reportDate:document.getElementById('dateInputHeader')?.value||'',date:prior?.date||new Date().toLocaleDateString('ar-SA'),createdAt:prior?.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString(),saveTimestamp:Date.now(),isComplete:!!completion.isComplete,content:document.getElementById('report-content-container')?.innerHTML||''};
+    const index=rows.findIndex(row=>String(row.id)===id);if(index>=0)rows[index]=report;else rows.push(report);
+    rows=await writeAndVerify(rows,id,cat);currentEditingId=id;
+    if(typeof renderArchiveFolders==='function'&&document.getElementById('archive-view')?.style.display==='block')renderArchiveFolders();
+    if(typeof refreshDashboardMetrics==='function')refreshDashboardMetrics();
+    showToast('تم حفظ «'+title+'» داخل مجلد «'+folderName+'» ✅');return true;
+  }catch(error){console.error('[student advisor archive RL204]',error);showToast('تعذر حفظ التقرير: '+String(error?.message||error));return false}
+};
 })();
 </script>
 </body>

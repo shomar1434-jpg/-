@@ -1186,7 +1186,7 @@
 
             <!-- قائمة الاستمارات المتاحة -->
             <nav class="flex-1 overflow-y-auto p-3 space-y-1" id="forms-list">
-                <button onclick="switchTab('home-tab')" id="btn-home-tab" class="tab-btn w-full flex items-center space-x-3 space-x-reverse p-2.5 rounded-xl transition-all duration-200 bg-emerald-50 text-emerald-800 font-bold border-r-4 border-emerald-600">
+                <button onclick="switchTab('home-tab')" id="btn-home-tab" data-platform-nav-ignore="1" class="tab-btn w-full flex items-center space-x-3 space-x-reverse p-2.5 rounded-xl transition-all duration-200 bg-emerald-50 text-emerald-800 font-bold border-r-4 border-emerald-600">
                     <span class="text-base">🏠</span><span class="text-xs text-right flex-1">الصفحة الرئيسية</span>
                 </button>
                 <button onclick="switchTab('care-tab')" id="btn-care-tab" class="tab-btn w-full flex items-center space-x-3 space-x-reverse p-2.5 rounded-xl transition-all duration-200 hover:bg-slate-50 text-slate-600 font-medium">
@@ -1261,7 +1261,7 @@
                     </div>
                 </div>
             <div class="flex space-x-2 space-x-reverse">
-                    <button type="button" onclick="returnToAdvisorSection()" class="bg-slate-700 hover:bg-slate-800 text-white font-bold py-2 px-5 rounded-xl text-sm shadow-sm transition-all">↩ العودة إلى قسم الموجّه الطلابي</button>
+                    <button type="button" id="advisor-records-back-to-sections" onclick="returnToAdvisorSection()" class="bg-slate-700 hover:bg-slate-800 text-white font-bold py-2 px-5 rounded-xl text-sm shadow-sm transition-all">↩ العودة إلى واجهة الأقسام</button>
                     <button id="print-current-btn" onclick="triggerPrint()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-5 rounded-xl text-sm shadow-sm hover:shadow transition-all flex items-center gap-1.5 hidden">
                         🖨️ طباعة السجل الحالي كـ PDF رسمي
                     </button>
@@ -3360,24 +3360,17 @@
       }else if(typeof window.saveAdvisorRecordToArchive === 'function'){
         var localOk=await window.saveAdvisorRecordToArchive(payload); if(localOk===false) throw new Error('تعذر تأكيد الحفظ السحابي');
       }else{
-        var key='student_advisor_records_archive_v2';
-        var items=[];
-        try{items=JSON.parse(localStorage.getItem(key)||'[]');}catch(e){items=[];}
-        var dup=items.filter(function(r){return r.folderId===payload.folderId && r.baseName===payload.personName;}).length+1;
-        items.push({
-          id:Date.now(),
-          folderId:payload.folderId,
-          title:payload.title,
-          baseName:payload.personName,
-          duplicateNo:dup,
-          displayName:dup>1?payload.personName+' ('+dup+')':payload.personName,
-          htmlContent:payload.htmlContent,
-          summary:payload.summary,
-          pdfMode:true,
-          createdAt:new Date().toLocaleString('ar-SA')
-        });
-        localStorage.setItem(key,JSON.stringify(items));
-        if(window.PlatformPersistenceGuard&&PlatformPersistenceGuard.commit){var cc=await PlatformPersistenceGuard.commitExact({moduleKey:'student_advisor',scope:'user',keys:[key]});if(!cc||cc.ok===false)throw new Error(cc&&cc.error||'تعذر التحقق السحابي');}
+        if(!window.PlatformRecordSaveEngine||PlatformRecordSaveEngine.isSystemAdminContext())throw new Error('محرك حفظ السجلات السحابي غير متاح');
+        var cloud=await PlatformRecordSaveEngine.listAll({moduleKey:'student_advisor_records',recordType:'advisor_record',scope:'user'});
+        var existing=(cloud||[]).map(function(x){return Object.assign({},x.data||{},x.meta||{});});
+        var baseName=String(payload.personName||'بدون اسم').trim()||'بدون اسم';
+        var dup=existing.filter(function(r){return String(r.folderId)===String(payload.folderId)&&String(r.baseName||r.studentName)===baseName;}).length+1;
+        var saved={id:Date.now(),folderId:payload.folderId,formId:payload.formId,title:payload.title,baseName:baseName,studentName:baseName,duplicateNo:dup,displayName:dup>1?baseName+' ('+dup+')':baseName,htmlContent:payload.htmlContent,summary:payload.summary,formValues:payload.formValues||[],pdfMode:true,createdAt:new Date().toLocaleString('ar-SA'),createdAtIso:new Date().toISOString()};
+        var ay=localStorage.getItem('school_info_academic_year')||localStorage.getItem('academic_year')||'1448';
+        var sem=localStorage.getItem('semester')||localStorage.getItem('current_semester')||'سنوي';
+        await PlatformRecordSaveEngine.save({moduleKey:'student_advisor_records',recordType:'advisor_record',recordId:String(saved.id),academicYear:ay,semester:sem,scope:'user',folderId:saved.folderId,title:saved.title,entityId:baseName,entityType:'student',data:saved,createdAt:saved.createdAtIso});
+        var verified=await PlatformRecordSaveEngine.listAll({moduleKey:'student_advisor_records',recordType:'advisor_record',scope:'user'});
+        if(!(verified||[]).some(function(x){return String(x.data&&x.data.id||x.meta&&x.meta.recordId||'')===String(saved.id)&&String(x.data&&x.data.folderId||x.meta&&x.meta.folderId||'')===String(saved.folderId)}))throw new Error('لم يظهر السجل داخل المجلد المطابق بعد الحفظ');
       }
       alert('تم حفظ نسخة السجل في الأرشيف مع التحقق السحابي.');
     }catch(e){
@@ -3509,10 +3502,7 @@
 
 <script>
 function returnToAdvisorSection(){
-  var q=new URLSearchParams(location.search||'');
-  var target=q.get('return_to')||'student_advisor.html?view=dashboard';
-  if(!/^student_advisor\.html(?:\?|$)/.test(target))target='student_advisor.html?view=dashboard';
-  location.href=target;
+  location.replace('student_advisor.html?return_to=sections&view=dashboard');
 }
 </script>
 <script src="active_school_scope.js" defer></script>

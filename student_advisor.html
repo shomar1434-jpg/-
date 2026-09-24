@@ -6112,5 +6112,57 @@ window.editReport=async function(id){
 };
 })();
 </script>
+<script id="STUDENT_ADVISOR_PERFORMANCE_ARCHIVE_TEACHER_PARITY_RL207">
+(function(){
+'use strict';
+const MODULE='student_advisor',INDEX='student_advisor_perf_index_v1',PREFIX='student_advisor_perf_report_v1_',LEGACY='performance_reports_archive_v2';
+let indexRows=[];
+const parseArray=v=>{try{const x=typeof v==='string'?JSON.parse(v):v;return Array.isArray(x)?x:[]}catch(_){return[]}};
+const parseObject=v=>{try{const x=typeof v==='string'?JSON.parse(v):v;return x&&typeof x==='object'?x:null}catch(_){return null}};
+const idOf=x=>String(x?.id??'').trim(),catOf=x=>String(x?.archiveFolderId||x?.category||'').trim();
+const keyOf=id=>PREFIX+String(id).replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,120);
+function meta(x){return {id:idOf(x),title:String(x?.title||x?.programName||'تقرير'),programName:String(x?.programName||x?.title||'تقرير'),category:catOf(x),categoryName:String(x?.categoryName||x?.archiveFolderName||''),archiveFolderId:catOf(x),archiveFolderName:String(x?.archiveFolderName||x?.categoryName||''),archiveRole:'student_advisor',archiveType:'performanceReport',createdAt:x?.createdAt||'',updatedAt:x?.updatedAt||'',stateKey:x?.stateKey||keyOf(idOf(x)),storageEngine:'PerformanceArchiveCleanV5'};}
+function cache(){
+  const raw=JSON.stringify(indexRows.map(meta));
+  try{performanceRoleLocalSet('reports_archive',raw)}catch(_){try{performanceRoleLocalRemove('reports_archive');performanceRoleLocalSet('reports_archive',raw)}catch(__){}}
+  window.__performanceArchiveRoleView=indexRows.map(meta);
+}
+async function guard(){let n=0;while((!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.readExactValues!=='function')&&n++<80)await new Promise(r=>setTimeout(r,100));if(!window.PlatformPersistenceGuard)throw new Error('محرك الأرشيف السحابي غير متاح');return PlatformPersistenceGuard;}
+async function read(keys){const G=await guard(),r=await G.readExactValues({moduleKey:MODULE,scope:'user',keys});if(!r?.ok)throw new Error(r?.error||'تعذر قراءة الأرشيف');return r.values||{};}
+async function write(values){const G=await guard(),r=await G.writeExactValues({moduleKey:MODULE,scope:'user',values});if(!r?.ok)throw new Error(r?.error||'تعذر حفظ الأرشيف');return true;}
+async function bootstrap(force){
+  if(indexRows.length&&!force){cache();return indexRows}
+  const values=await read([INDEX,LEGACY]);indexRows=parseArray(values[INDEX]).map(meta).filter(x=>idOf(x)&&catOf(x));
+  if(!indexRows.length){
+    const legacy=parseArray(values[LEGACY]);
+    if(legacy.length){const writes={};indexRows=[];for(const row of legacy){if(!idOf(row)||!catOf(row))continue;const full={...row,stateKey:keyOf(idOf(row)),archiveFolderId:catOf(row),archiveRole:'student_advisor'};writes[full.stateKey]=JSON.stringify(full);indexRows.push(meta(full))}writes[INDEX]=JSON.stringify(indexRows);await write(writes)}
+  }
+  cache();return indexRows;
+}
+async function fetchReport(id){await bootstrap(false);const m=indexRows.find(x=>idOf(x)===String(id));if(!m)return null;const v=await read([m.stateKey||keyOf(id)]);return parseObject(v[m.stateKey||keyOf(id)]);}
+async function saveReport(report){
+  await bootstrap(false);const full={...report,id:idOf(report),category:catOf(report),archiveFolderId:catOf(report),stateKey:keyOf(idOf(report)),archiveRole:'student_advisor',archiveType:'performanceReport',storageEngine:'PerformanceArchiveCleanV5'};
+  if(!full.id||!full.category)throw new Error('بيانات التقرير أو المجال غير مكتملة');
+  const m=meta(full),next=indexRows.filter(x=>idOf(x)!==full.id);next.push(m);
+  await write({[full.stateKey]:JSON.stringify(full),[INDEX]:JSON.stringify(next)});
+  const check=await read([full.stateKey,INDEX]),saved=parseObject(check[full.stateKey]),idx=parseArray(check[INDEX]);
+  if(!saved||idOf(saved)!==full.id||catOf(saved)!==full.category||!idx.some(x=>idOf(x)===full.id&&catOf(x)===full.category))throw new Error('لم يكتمل التحقق السحابي للتقرير');
+  indexRows=idx.map(meta);cache();return full;
+}
+window.PerformanceArchiveCleanV5={MODULE,INDEX_KEY:INDEX,REPORT_PREFIX:PREFIX,hydrateUnified:bootstrap,getView:()=>indexRows.slice(),find:id=>indexRows.find(x=>idOf(x)===String(id))||null,fetchReport,saveFast:async r=>({report:await saveReport(r),verification:Promise.resolve(true)})};
+window.performanceArchiveUnifiedBootstrap=bootstrap;
+window.saveReportToArchive=async function(){
+  if(window.__studentAdvisorPerformanceSaveInFlight){showToast('الحفظ السابق ما زال جاريًا؛ انتظر حتى يكتمل.');return false}
+  const selected=selectedPerformanceArchiveDomain(),cat=String(selected.id||'').trim();if(!cat){showToast('اختر المجال أولاً ⚠️');return false}
+  const name=String(document.getElementById('field_prog_name')?.innerText||'').trim();if(!name){showToast('أدخل اسم البرنامج قبل الحفظ ⚠️');return false}
+  window.__studentAdvisorPerformanceSaveInFlight=true;
+  try{if(typeof freezeReportDOMForArchive==='function')freezeReportDOMForArchive();const editId=String(window.__performanceExplicitEditId||currentEditingId||'');const old=editId?await fetchReport(editId):null;const id=old?idOf(old):(String(Date.now())+'_'+Math.random().toString(36).slice(2,8));const folder=String(selected.name||performanceArchiveFolderName(cat)||cat);await saveReport({id,title:name,programName:name,category:cat,categoryName:folder,archiveFolderId:cat,archiveFolderName:folder,createdAt:old?.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString(),content:document.getElementById('report-content-container')?.innerHTML||''});currentEditingId=id;window.__performanceExplicitEditId=id;showToast('تم حفظ «'+name+'» داخل مجلد «'+folder+'» ✅');return true}catch(e){console.error('[advisor teacher-parity save]',e);showToast('تعذر حفظ التقرير: '+String(e?.message||e));return false}finally{window.__studentAdvisorPerformanceSaveInFlight=false}
+};
+window.editReport=window.loadReport=async function(id){
+  try{const r=await fetchReport(String(id));if(!r)throw new Error('تعذر العثور على التقرير');const root=document.getElementById('report-content-container');root.innerHTML=r.content||'';root.querySelectorAll('select[data-saved-value]').forEach(s=>{const v=s.getAttribute('data-saved-value');if([...s.options].some(o=>o.value===v))s.value=v});currentEditingId=r.id;window.__performanceExplicitEditId=String(r.id);document.getElementById('archive-view').style.display='none';showMainReportApp();if(typeof updateReportProgress==='function')updateReportProgress();return true}catch(e){showToast('تعذر فتح التقرير للتعديل: '+String(e?.message||e));return false}
+};
+window.openArchiveView=async function(){try{await bootstrap(true);document.getElementById('welcome-dashboard').style.display='none';document.getElementById('archive-view').style.display='block';renderArchiveFolders();return true}catch(e){showToast('تعذر تحميل الأرشيف: '+String(e?.message||e));return false}};
+})();
+</script>
 </body>
 </html>

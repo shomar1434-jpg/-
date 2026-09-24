@@ -3551,7 +3551,19 @@
 
 <script>
 function returnToAdvisorSection(){
-  location.replace('student_advisor.html?return_to=sections&view=dashboard');
+  try{
+    sessionStorage.setItem('student_advisor_direct_dashboard_v1','1');
+    var qs=new URLSearchParams(location.search||'');
+    var raw=qs.get('return_to')||'student_advisor.html?view=dashboard';
+    var target=new URL(raw,location.href);
+    target.searchParams.set('view','dashboard');
+    target.searchParams.set('directReturn','1');
+    target.searchParams.set('sectionReturn','1');
+    ['schoolId','schoolName','admin','owner','token','mode','viewerRole','viewer','returnRole','managerFollow','follow','readonly','targetUser','followUserId','userId','uid','followEmail','targetEmail','targetRole'].forEach(function(key){
+      var value=qs.get(key);if(value&&!target.searchParams.has(key))target.searchParams.set(key,value);
+    });
+    location.replace(target.pathname+target.search+target.hash);
+  }catch(_){location.replace('student_advisor.html?view=dashboard&directReturn=1&sectionReturn=1')}
 }
 </script>
 <script src="active_school_scope.js" defer></script>

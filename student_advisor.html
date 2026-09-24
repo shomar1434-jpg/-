@@ -56,6 +56,7 @@
 <style id="safe-activation-bypass-style">
 #activation-overlay{display:none!important;visibility:hidden!important;pointer-events:none!important;}
 #welcome-gate{display:none!important;visibility:hidden!important;pointer-events:none!important;}
+#main-report-app[hidden],#main-report-app.hidden{display:none!important;visibility:hidden!important;}
 .safe-hidden-deactivate{display:none!important;}
 </style>
 <script id="safe-activation-bypass-head">
@@ -1919,7 +1920,6 @@ body{overflow-x:hidden}
 <script defer src="premium-ui.js"></script>
 <script src="platform-state-engine.js"></script>
 <script src="platform-persistence-guard.js?v=20260828-canonical-archive-v6"></script>
-<script defer src="school-base-settings-source.js"></script>
 <style id="im-static-messaging-style">
 .im-static-messaging-btn{position:relative;display:inline-flex!important;align-items:center;justify-content:center;gap:7px;white-space:nowrap;text-decoration:none!important;background:#f0fdfa!important;color:#0f766e!important;border:1px solid #ccfbf1!important;border-radius:12px;padding:8px 14px;font-size:12px;font-weight:800;visibility:visible!important;opacity:1!important;pointer-events:auto!important}
 .im-static-messaging-btn:hover{background:#ccfbf1!important}
@@ -1935,7 +1935,13 @@ body{overflow-x:hidden}
   const nativeRemove=Storage.prototype.removeItem;
   const KEYS={
     reports_archive: ROLE+'_reports_archive_local_v1',
-    category_goals: ROLE+'_category_goals_local_v1'
+    category_goals: ROLE+'_category_goals_local_v1',
+    persist_region: ROLE+'_persist_region_local_v1',
+    persist_school: ROLE+'_persist_school_local_v1',
+    persist_name_m: ROLE+'_persist_name_m_local_v1',
+    persist_name_p: ROLE+'_persist_name_p_local_v1',
+    persist_sig_data: ROLE+'_persist_sig_data_local_v1',
+    persist_stamp_data: ROLE+'_persist_stamp_data_local_v1'
   };
   window.RolePerformanceLocal={
     role:ROLE,
@@ -2203,7 +2209,7 @@ body{overflow-x:hidden}
 </div>
 </div>
 <!-- التطبيق الرئيسي -->
-<div class="hidden" id="main-report-app">
+<div class="hidden" hidden id="main-report-app">
 <nav class="no-print bg-white/90 backdrop-blur-md border-b p-3 sticky top-0 z-[100] flex justify-between items-center px-8 shadow-sm">
 <div class="flex items-center gap-4">
 <button class="p-2 text-slate-400 hover:bg-slate-50 rounded-full" onclick="goHome()"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg></button><!-- أيقونة الثيم اللوني -->
@@ -2637,8 +2643,8 @@ font-size:16px;font-weight:700;text-align:center;background:#fff;color:#0f172a;"
         let pendingReportIdToOpen = null; // للمنبه الذكي
 
         // متغيرات مؤقتة للإعدادات المخصصة
-        let tempPersistSig = localStorage.getItem('persist_sig_data') || null;
-        let tempPersistStamp = localStorage.getItem('persist_stamp_data') || null;
+        let tempPersistSig = performanceRoleLocalGet('persist_sig_data') || null;
+        let tempPersistStamp = performanceRoleLocalGet('persist_stamp_data') || null;
 
         // مكتبة العبارات التحفيزية
         const SUNDAY_QUOTES = [
@@ -3013,10 +3019,10 @@ font-size:16px;font-weight:700;text-align:center;background:#fff;color:#0f172a;"
 
         // --- وظائف الإعدادات المخصصة الجديدة ---
         function openAppSettings() {
-            document.getElementById('setting_region').value = localStorage.getItem('persist_region') || "";
-            document.getElementById('setting_school').value = localStorage.getItem('persist_school') || "";
-            document.getElementById('setting_name_m').value = localStorage.getItem('persist_name_m') || "";
-            document.getElementById('setting_name_p').value = localStorage.getItem('persist_name_p') || "";
+            document.getElementById('setting_region').value = performanceRoleLocalGet('persist_region') || "";
+            document.getElementById('setting_school').value = performanceRoleLocalGet('persist_school') || "";
+            document.getElementById('setting_name_m').value = performanceRoleLocalGet('persist_name_m') || "";
+            document.getElementById('setting_name_p').value = performanceRoleLocalGet('persist_name_p') || "";
             
             updatePersistentStatusLabels();
             document.getElementById('app-settings-modal').style.display = 'flex';
@@ -3067,13 +3073,13 @@ font-size:16px;font-weight:700;text-align:center;background:#fff;color:#0f172a;"
             const nameM = document.getElementById('setting_name_m').value;
             const nameP = document.getElementById('setting_name_p').value;
             
-            localStorage.setItem('persist_region', region);
-            localStorage.setItem('persist_school', school);
-            localStorage.setItem('persist_name_m', nameM);
-            localStorage.setItem('persist_name_p', nameP);
+            performanceRoleLocalSet('persist_region', region);
+            performanceRoleLocalSet('persist_school', school);
+            performanceRoleLocalSet('persist_name_m', nameM);
+            performanceRoleLocalSet('persist_name_p', nameP);
             
-            if (tempPersistSig) localStorage.setItem('persist_sig_data', tempPersistSig);
-            if (tempPersistStamp) localStorage.setItem('persist_stamp_data', tempPersistStamp);
+            if (tempPersistSig) performanceRoleLocalSet('persist_sig_data', tempPersistSig);
+            if (tempPersistStamp) performanceRoleLocalSet('persist_stamp_data', tempPersistStamp);
             applyPersistentSettingsToReport();
             updateReportProgress();
             
@@ -3083,12 +3089,12 @@ font-size:16px;font-weight:700;text-align:center;background:#fff;color:#0f172a;"
 
         function resetPersistentSettings() {
             if (confirm('هل تريد فعلاً التراجع عن جميع الخيارات المثبتة (الأسماء والتواقيع)؟')) {
-                localStorage.removeItem('persist_region');
-                localStorage.removeItem('persist_school');
-                localStorage.removeItem('persist_name_m');
-                localStorage.removeItem('persist_name_p');
-                localStorage.removeItem('persist_sig_data');
-                localStorage.removeItem('persist_stamp_data');
+                performanceRoleLocalRemove('persist_region');
+                performanceRoleLocalRemove('persist_school');
+                performanceRoleLocalRemove('persist_name_m');
+                performanceRoleLocalRemove('persist_name_p');
+                performanceRoleLocalRemove('persist_sig_data');
+                performanceRoleLocalRemove('persist_stamp_data');
                 tempPersistSig = null;
                 tempPersistStamp = null;
                 
@@ -3104,12 +3110,12 @@ font-size:16px;font-weight:700;text-align:center;background:#fff;color:#0f172a;"
         }
 
         function applyPersistentSettingsToReport() {
-            const pRegion = localStorage.getItem('persist_region');
-            const pSchool = localStorage.getItem('persist_school');
-            const pNameM = localStorage.getItem('persist_name_m');
-            const pNameP = localStorage.getItem('persist_name_p');
-            const pSig = localStorage.getItem('persist_sig_data');
-            const pStamp = localStorage.getItem('persist_stamp_data');
+            const pRegion = performanceRoleLocalGet('persist_region');
+            const pSchool = performanceRoleLocalGet('persist_school');
+            const pNameM = performanceRoleLocalGet('persist_name_m');
+            const pNameP = performanceRoleLocalGet('persist_name_p');
+            const pSig = performanceRoleLocalGet('persist_sig_data');
+            const pStamp = performanceRoleLocalGet('persist_stamp_data');
 
             if (pRegion) document.getElementById('field_region').innerText = pRegion;
             if (pSchool) document.getElementById('field_school').innerText = pSchool;
@@ -3235,8 +3241,9 @@ font-size:16px;font-weight:700;text-align:center;background:#fff;color:#0f172a;"
             } 
         }
 
-        function startNewReport() { resetFormOnly(); applyReportTemplate('تقرير تنفيذ'); setReportHeading('تقرير تنفيذ'); currentEditingId = null; document.getElementById('welcome-dashboard').style.display = 'none'; document.getElementById('main-report-app').classList.remove('hidden'); updateReportProgress(); }
-        function goHome() { document.getElementById('main-report-app').classList.add('hidden'); document.getElementById('welcome-dashboard').style.display = 'block'; }
+        function showMainReportApp() { const app=document.getElementById('main-report-app'); app.hidden=false; app.removeAttribute('hidden'); app.classList.remove('hidden'); }
+        function startNewReport() { resetFormOnly(); applyReportTemplate('تقرير تنفيذ'); setReportHeading('تقرير تنفيذ'); currentEditingId = null; document.getElementById('welcome-dashboard').style.display = 'none'; showMainReportApp(); updateReportProgress(); }
+        function goHome() { const app=document.getElementById('main-report-app'); app.classList.add('hidden'); app.hidden=true; app.setAttribute('hidden',''); document.getElementById('archive-view').style.display='none'; document.getElementById('stats-view').style.display='none'; document.getElementById('welcome-dashboard').style.display = 'block'; window.scrollTo({top:0,behavior:'auto'}); }
         function setReportHeading(title) {
             const heading = document.getElementById('report-title-heading');
             if (heading) heading.innerText = title || 'تقرير تنفيذ';
@@ -3257,7 +3264,7 @@ font-size:16px;font-weight:700;text-align:center;background:#fff;color:#0f172a;"
             document.getElementById('field_prog_name').innerText = reportTitle;
             currentEditingId = null;
             document.getElementById('welcome-dashboard').style.display = 'none';
-            document.getElementById('main-report-app').classList.remove('hidden');
+            showMainReportApp();
             closeAdditionalReportsMenu();
             updateReportProgress();
             showToast('تم فتح ' + reportTitle + ' ✅');
@@ -3444,7 +3451,7 @@ async function saveReportToArchive() {
                 if(report.reportDate) document.getElementById('dateInputHeader').value = report.reportDate;
                 
                 document.getElementById('archive-view').style.display = 'none'; 
-                document.getElementById('main-report-app').classList.remove('hidden'); 
+                showMainReportApp();
                 updateReportProgress();
             } 
         }
@@ -3530,8 +3537,8 @@ body{overflow-x:hidden}
         function getPortfolioIdentity(reports) {
             const currentTeacher = document.getElementById('name_m')?.innerText?.trim();
             const currentSchool = document.getElementById('field_school')?.innerText?.trim();
-            let teacher = currentTeacher || localStorage.getItem('persist_name_m') || '';
-            let school = currentSchool || localStorage.getItem('persist_school') || '';
+            let teacher = currentTeacher || performanceRoleLocalGet('persist_name_m') || '';
+            let school = currentSchool || performanceRoleLocalGet('persist_school') || '';
             if ((!teacher || !school) && reports && reports.length) {
                 const temp = document.createElement('div');
                 temp.innerHTML = reports[0].content || '';
@@ -3541,7 +3548,7 @@ body{overflow-x:hidden}
             return {
                 teacher: teacher || '................................',
                 school: school || '................................',
-                region: localStorage.getItem('persist_region') || document.getElementById('field_region')?.innerText?.trim() || '................................'
+                region: performanceRoleLocalGet('persist_region') || document.getElementById('field_region')?.innerText?.trim() || '................................'
             };
         }
 
@@ -4504,7 +4511,7 @@ body{overflow-x:hidden}
                 setReportHeading(snapshot.heading || currentReportTemplate);
                 currentEditingId = null;
                 document.getElementById('welcome-dashboard').style.display = 'none';
-                document.getElementById('main-report-app').classList.remove('hidden');
+                showMainReportApp();
                 updateReportProgress();
                 showToast('تمت استعادة آخر مسودة ✅');
             } catch (error) {
@@ -4642,7 +4649,7 @@ window.confirmDeleteReport=async function(){
 <script id="ss-final-actions-script">
 (function(){
   if(window.__ssFinalActionsReady) return; window.__ssFinalActionsReady=true;
-  var ROLE='teacher', NS='smartSchoolUnifiedOpsV2', APP='الموجه/الموجهة الطلابية';
+  var ROLE='student_advisor', NS='smartSchoolUnifiedOpsV2', APP='الموجه/الموجهة الطلابية';
   function read(k,d){try{return JSON.parse(localStorage.getItem(k)||JSON.stringify(d||[]))}catch(e){return d||[]}}
   function write(k,v){localStorage.setItem(k,JSON.stringify(v));window.dispatchEvent(new Event('ssDataChanged'));}
   function uid(p){return (p||'id')+'_'+Date.now()+'_'+Math.random().toString(36).slice(2,7)}

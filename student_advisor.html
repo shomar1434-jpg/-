@@ -6279,5 +6279,67 @@ window.requestDeleteReport=async function(id){
 window.openArchiveView=async function(){try{await bootstrap(true);document.getElementById('welcome-dashboard').style.display='none';document.getElementById('archive-view').style.display='block';renderArchiveFolders();return true}catch(e){showToast('تعذر تحميل الأرشيف: '+String(e?.message||e));return false}};
 })();
 </script>
+<script id="STUDENT_ADVISOR_PERFORMANCE_SINGLE_SOURCE_RL212">
+(function(){
+'use strict';
+const MODULE='student_advisor',INDEX='student_advisor_perf_index_v1',PREFIX='student_advisor_perf_report_v1_',LEGACY='performance_reports_archive_v2',DELETED='student_advisor_perf_deleted_v1';
+const arr=v=>{try{const x=typeof v==='string'?JSON.parse(v):v;return Array.isArray(x)?x:[]}catch(_){return[]}};
+const idOf=x=>String(x?.id??'').trim(),catOf=x=>String(x?.archiveFolderId||x?.category||'').trim();
+const safeId=v=>String(v||'').replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,120);
+const stateKey=id=>PREFIX+safeId(id);
+const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const js=v=>String(v??'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+function view(){try{return window.PerformanceArchiveCleanV5?.getView?.()||[]}catch(_){return[]}}
+function folderName(cat){try{return ALL_CATEGORIES.find(x=>String(x.id)===String(cat))?.name||String(cat||'')}catch(_){return String(cat||'')}}
+function normalize(row,idOverride){const id=String(idOverride||idOf(row)),cat=catOf(row);return {...row,id,programName:String(row?.programName||row?.title||'تقرير'),title:String(row?.title||row?.programName||'تقرير'),category:cat,categoryName:String(row?.categoryName||row?.archiveFolderName||folderName(cat)),archiveFolderId:cat,archiveFolderName:String(row?.archiveFolderName||row?.categoryName||folderName(cat)),archiveRole:'student_advisor',archiveType:'performanceReport',stateKey:stateKey(id),storageEngine:'PerformanceArchiveCleanV5',updatedAt:row?.updatedAt||new Date().toISOString()}}
+async function guard(){let n=0;while((!window.PlatformPersistenceGuard||typeof PlatformPersistenceGuard.readExactValues!=='function')&&n++<80)await new Promise(r=>setTimeout(r,100));if(!window.PlatformPersistenceGuard)throw new Error('محرك الأرشيف السحابي غير متاح');return PlatformPersistenceGuard}
+async function reconcile(force){
+  const G=await guard();
+  const r=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:[INDEX,LEGACY,DELETED]});if(!r?.ok)throw new Error(r?.error||'تعذر قراءة مصادر الأرشيف');
+  const values=r.values||{},deleted=new Set(arr(values[DELETED]).map(x=>String(x?.id??x))),current=arr(values[INDEX]).filter(x=>idOf(x)&&catOf(x)&&!deleted.has(idOf(x)));
+  const detailKeys=current.map(x=>String(x?.stateKey||stateKey(idOf(x)))).filter(Boolean),detailRead=detailKeys.length?await G.readExactValues({moduleKey:MODULE,scope:'user',keys:detailKeys}):{ok:true,values:{}};
+  if(!detailRead?.ok)throw new Error(detailRead?.error||'تعذر قراءة تفاصيل تقارير الأداء');const details=detailRead.values||{};
+  const byId=new Map(current.map(x=>[idOf(x),normalize(x)])),writes={};let changed=false;
+  for(const raw of arr(values[LEGACY])){
+    let id=idOf(raw),cat=catOf(raw);if(!id||!cat||deleted.has(id))continue;
+    const prior=byId.get(id);
+    if(prior&&catOf(prior)!==cat){id=id+'_migrated_'+safeId(cat);if(deleted.has(id))continue}
+    const full=normalize(raw,id),existing=byId.get(id);
+    if(!existing){byId.set(id,full);changed=true}
+    else byId.set(id,normalize({...full,...existing,id,content:existing.content||full.content||''},id));
+    if(full.content&&(!existing||!details[stateKey(id)])){writes[stateKey(id)]=JSON.stringify(normalize({...full,...byId.get(id),content:full.content},id))}
+  }
+  const unified=[...byId.values()].filter(x=>idOf(x)&&catOf(x)&&!deleted.has(idOf(x)));
+  if(changed||force||JSON.stringify(current.map(x=>normalize(x)))!==JSON.stringify(unified.map(x=>normalize(x)))){writes[INDEX]=JSON.stringify(unified);const w=await G.writeExactValues({moduleKey:MODULE,scope:'user',values:writes});if(!w?.ok)throw new Error(w?.error||'تعذر توحيد فهرس تقارير الأداء')}
+  await window.PerformanceArchiveCleanV5?.hydrateUnified?.(true);
+  const finalRows=view();
+  window.__performanceArchiveCleanV5View=finalRows;window.__performanceArchiveRoleView=finalRows;window.performanceArchiveCleanView=()=>view();
+  try{if(typeof refreshDashboardMetrics==='function')refreshDashboardMetrics()}catch(_){ }
+  return finalRows;
+}
+function actionButtons(row){const id=js(idOf(row));if(row?.readOnly||window.__MANAGER_FOLLOW_VERIFIED__?.readonly)return `<button type="button" data-perf-action="preview" data-report-id="${esc(idOf(row))}" class="bg-teal-50 text-teal-700 px-4 py-2 rounded-xl text-[10px] font-bold">معاينة</button>`;return `<button type="button" data-perf-action="edit" data-report-id="${esc(idOf(row))}" class="bg-teal-600 text-white px-4 py-2 rounded-xl text-[10px] font-bold">تعديل</button><button type="button" data-perf-action="delete" data-report-id="${esc(idOf(row))}" class="bg-red-50 text-red-500 px-4 py-2 rounded-xl text-[10px] font-bold">حذف</button>`}
+function rowHtml(row,includeFolder){const cat=catOf(row);return `<div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex justify-between items-center group hover:border-teal-200 transition-all archive-item-card"><div><h4 class="font-bold text-slate-700 text-sm report-title">${esc(row.title||row.programName||'تقرير')}</h4><p class="text-[10px] text-teal-600 font-bold">تاريخ الإعداد: ${esc(row.date||row.reportDate||'غير محدد')}${includeFolder?' | '+esc(folderName(cat)):''}</p></div><div class="flex gap-2">${actionButtons(row)}</div></div>`}
+window.renderArchiveFolders=function(){
+  window.currentArchiveViewCatId=null;try{currentArchiveViewCatId=null}catch(_){ }
+  document.getElementById('archive-search-wrapper')?.classList.remove('hidden');document.getElementById('back-to-folders')?.classList.add('hidden');
+  const rows=view(),container=document.getElementById('archive-content'),goals=(()=>{try{return JSON.parse(performanceRoleLocalGet('category_goals')||'{}')}catch(_){return{}}})();
+  document.getElementById('archive-view-title').innerText='أرشيف المجالات';document.getElementById('archive-count').innerText=rows.length+' تقرير كلي';container.innerHTML='';
+  const grid=document.createElement('div');grid.className='grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6';
+  ALL_CATEGORIES.forEach(cat=>{const count=rows.filter(r=>catOf(r)===String(cat.id)).length,target=goals[cat.id]||5,folder=document.createElement('div');folder.className='folder-item flex flex-col items-center text-center group';folder.dataset.folderId=String(cat.id);folder.innerHTML=`<div class="folder-badge">${count} / ${target}</div><svg class="folder-icon group-hover:scale-110 transition-transform" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path></svg><span class="text-xs font-bold text-slate-700 leading-tight h-10 overflow-hidden">${esc(cat.name)}</span>`;folder.onclick=()=>window.openArchiveFolder(String(cat.id));grid.appendChild(folder)});container.appendChild(grid)
+};
+window.openArchiveFolder=function(catId){
+  window.currentArchiveViewCatId=String(catId);try{currentArchiveViewCatId=String(catId)}catch(_){ }
+  const rows=view().filter(r=>catOf(r)===String(catId)),container=document.getElementById('archive-content');document.getElementById('archive-view-title').innerText='مجلد: '+folderName(catId);document.getElementById('back-to-folders')?.classList.remove('hidden');document.getElementById('archive-search-wrapper')?.classList.add('hidden');
+  container.innerHTML=rows.length?`<div class="space-y-4">${rows.slice().reverse().map(r=>rowHtml(r,false)).join('')}</div>`:'<div class="text-center py-20 text-slate-400 font-bold">لا توجد تقارير في هذا المجلد.</div>'
+};
+window.filterArchiveReports=function(){const q=String(document.getElementById('archive-search-input')?.value||'').trim().toLowerCase();if(!q){window.renderArchiveFolders();return}const rows=view().filter(r=>String(r.title||r.programName||'').toLowerCase().includes(q)),container=document.getElementById('archive-content');container.innerHTML=rows.length?`<div class="space-y-4">${rows.slice().reverse().map(r=>rowHtml(r,true)).join('')}</div>`:'<div class="text-center py-20 text-slate-400 font-bold">لم يتم العثور على تقارير مطابقة.</div>'};
+document.addEventListener('click',function(ev){const b=ev.target.closest('[data-perf-action][data-report-id]');if(!b)return;ev.preventDefault();ev.stopPropagation();const id=b.dataset.reportId,action=b.dataset.perfAction;if(action==='edit')window.editReport?.(id);else if(action==='delete')window.requestDeleteReport?.(id);else window.previewArchivedReadOnly?.(id)},true);
+const priorOpen=window.openArchiveView;window.openArchiveView=async function(){try{await reconcile(true);document.getElementById('welcome-dashboard').style.display='none';document.getElementById('archive-view').style.display='block';window.renderArchiveFolders();return true}catch(e){console.error('[advisor archive single source]',e);showToast('تعذر تحميل الأرشيف الموحد: '+String(e?.message||e));return false}};
+const priorDelete=window.requestDeleteReport;window.requestDeleteReport=async function(id){const ok=await priorDelete(String(id));if(ok){await reconcile(true);if(window.currentArchiveViewCatId)window.openArchiveFolder(window.currentArchiveViewCatId);else window.renderArchiveFolders()}return ok};
+const priorEdit=window.editReport;window.editReport=window.loadReport=async function(id){await reconcile(false);return priorEdit(String(id))};
+window.studentAdvisorPerformanceArchiveReconcile=reconcile;
+setTimeout(()=>reconcile(false).catch(e=>console.warn('[advisor archive initial reconcile]',e)),0);
+})();
+</script>
 </body>
 </html>

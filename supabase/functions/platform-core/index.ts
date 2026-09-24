@@ -412,9 +412,47 @@ Deno.serve(async (req) => {
         if(type==='library'&&String(file.owner_user_id||'')!==String(session.user_id))return json({error:'يسمح باختيار الشاهد من مكتبة قسم صاحب الحساب فقط'},403);
         items.push({type,fileId,name:String(raw?.name||file.display_name||'شاهد').slice(0,240)});
       }
+      const {data:current,error:currentErr}=await sb.from('semester_plan_weeks').select('programs').eq('id',id).eq('school_id',session.school_id).eq('owner_user_id',session.user_id).maybeSingle();
+      if(currentErr)throw currentErr;if(!current)return json({error:'تعذر العثور على أسبوع الخطة'},404);
+      const programs=Array.isArray(current.programs)?current.programs.map((x:any)=>String(x)):[];
+      const rawExecution=Array.isArray(body.programExecutionItems)?body.programExecutionItems:[];
+      const programExecutionItems=programs.map((program:string,index:number)=>{
+        const incoming=rawExecution.find((x:any)=>Number(x?.index)===index)||{};
+        const status=String(incoming.status||'not_started');
+        if(!['completed','partial','not_completed'].includes(status))throw new Error('حالة تنفيذ أحد البرامج غير صحيحة');
+        return {index,program,status,note:String(incoming.note||'').slice(0,1000)};
+      });
+      if(programExecutionItems.some((x:any)=>x.status==='not_completed'))return json({error:'يجب تحديد البرنامج منفذًا أو منفذًا جزئيًا قبل إرسال الشواهد'},409);
       const firstFile=items.find((x:any)=>x.fileId);
-      const {data,error}=await sb.from('semester_plan_weeks').update({evidence_items:items,evidence_file_id:firstFile?.fileId||null,evidence_name:firstFile?.name||items[0]?.name||'',evidence_submitted_at:now,execution_status:'pending_manager',execution_rating:null,execution_reviewed_at:null,execution_reviewed_by:null,updated_at:now}).eq('id',id).eq('school_id',session.school_id).eq('owner_user_id',session.user_id).eq('plan_status','approved').in('execution_status',['awaiting_evidence','pending_manager']).select('*').maybeSingle();
+      const {data,error}=await sb.from('semester_plan_weeks').update({evidence_items:items,program_execution_items:programExecutionItems,evidence_file_id:firstFile?.fileId||null,evidence_name:firstFile?.name||items[0]?.name||'',evidence_submitted_at:now,execution_status:'pending_manager',execution_rating:null,execution_reviewed_at:null,execution_reviewed_by:null,evidence_returned_at:null,evidence_returned_by:null,evidence_return_note:null,updated_at:now}).eq('id',id).eq('school_id',session.school_id).eq('owner_user_id',session.user_id).eq('plan_status','approved').in('execution_status',['awaiting_evidence','returned']).select('*').maybeSingle();
       if(error)throw error;if(!data)return json({error:'يجب اعتماد خطة الأسبوع قبل رفع شواهد التنفيذ'},409);return json({row:data});
+    }
+
+    if (action === 'semester-plan-return-evidence') {
+      if(!isSemesterPlanManager)return json({error:'إعادة الشواهد متاحة لمدير المدرسة فقط'},403);
+      const id=String(body.id||''),note=String(body.note||'').trim();if(!note)return json({error:'اكتب ملاحظة توضح المطلوب استكماله'},400);
+      const {data,error}=await sb.from('semester_plan_weeks').update({execution_status:'returned',evidence_return_note:note,evidence_returned_at:now,evidence_returned_by:session.user_id,execution_rating:null,execution_reviewed_at:null,execution_reviewed_by:null,updated_at:now}).eq('id',id).eq('school_id',session.school_id).eq('plan_status','approved').eq('execution_status','pending_manager').select('*').maybeSingle();
+      if(error)throw error;if(!data)return json({error:'تعذر إعادة الشواهد للاستكمال'},409);return json({row:data});
+    }
+
+    if (action === 'semester-plan-final-approve') {
+      if(!isSemesterPlanManager)return json({error:'الاعتماد النهائي متاح لمدير المدرسة فقط'},403);
+      const ownerUserId=String(body.ownerUserId||''),planType=String(body.planType||''),academicYear=String(body.academicYear||''),semester=String(body.semester||'');
+      if(!ownerUserId||!planType||!academicYear||!semester)return json({error:'بيانات الخطة النهائية غير مكتملة'},400);
+      const {data:weeks,error:weeksErr}=await sb.from('semester_plan_weeks').select('*').eq('school_id',session.school_id).eq('owner_user_id',ownerUserId).eq('plan_type',planType).eq('academic_year',academicYear).eq('semester',semester).order('week_order');
+      if(weeksErr)throw weeksErr;const planWeeks=weeks||[];
+      if(planWeeks.length!==19)return json({error:`لا يمكن الاعتماد النهائي قبل تسجيل الأسابيع التسعة عشر؛ المسجل حاليًا ${planWeeks.length}`},409);
+      const incomplete=planWeeks.filter((w:any)=>!(w.is_vacation===true&&w.plan_status==='approved')&&w.execution_status!=='approved');
+      if(incomplete.length)return json({error:`لا يمكن الاعتماد النهائي؛ يوجد ${incomplete.length} أسبوعًا لم يعتمد تنفيذها بعد`},409);
+      const ratings={high:0,medium:0,low:0,vacation:0};for(const w of planWeeks){if(w.is_vacation)ratings.vacation++;else if(['high','medium','low'].includes(String(w.execution_rating)))ratings[String(w.execution_rating)]++;}
+      const archive={school_id:session.school_id,owner_user_id:ownerUserId,owner_role:String(planWeeks[0]?.owner_role||''),plan_type:planType,academic_year:academicYear,semester,weeks_count:planWeeks.length,completed_weeks:planWeeks.filter((w:any)=>w.execution_status==='approved'||w.is_vacation).length,summary:{ratings,finalStatus:'approved_and_archived'},snapshot:planWeeks,approved_by:session.user_id,approved_at:now,updated_at:now};
+      const {data,error}=await sb.from('semester_plan_archives').upsert(archive,{onConflict:'school_id,owner_user_id,plan_type,academic_year,semester'}).select('*').single();if(error)throw error;return json({archive:data});
+    }
+
+    if (action === 'semester-plan-archives-list') {
+      let q=sb.from('semester_plan_archives').select('*').eq('school_id',session.school_id).order('approved_at',{ascending:false});
+      if(!isSemesterPlanManager)q=q.eq('owner_user_id',session.user_id);if(body.academicYear)q=q.eq('academic_year',String(body.academicYear));if(body.semester)q=q.eq('semester',String(body.semester));
+      const {data,error}=await q;if(error)throw error;return json({rows:data||[]});
     }
 
     if (action === 'semester-plan-execution-decision' || action === 'semester-plan-execution-rating') {

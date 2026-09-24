@@ -6115,13 +6115,14 @@ window.editReport=async function(id){
 <script id="STUDENT_ADVISOR_PERFORMANCE_ARCHIVE_TEACHER_PARITY_RL207">
 (function(){
 'use strict';
-const MODULE='student_advisor',INDEX='student_advisor_perf_index_v1',PREFIX='student_advisor_perf_report_v1_',LEGACY='performance_reports_archive_v2';
+const MODULE='student_advisor',INDEX='student_advisor_perf_index_v1',PREFIX='student_advisor_perf_report_v1_',LEGACY='performance_reports_archive_v2',DELETED='student_advisor_perf_deleted_v1';
 let indexRows=[];
 const parseArray=v=>{try{const x=typeof v==='string'?JSON.parse(v):v;return Array.isArray(x)?x:[]}catch(_){return[]}};
 const parseObject=v=>{try{const x=typeof v==='string'?JSON.parse(v):v;return x&&typeof x==='object'?x:null}catch(_){return null}};
 const idOf=x=>String(x?.id??'').trim(),catOf=x=>String(x?.archiveFolderId||x?.category||'').trim();
 const keyOf=id=>PREFIX+String(id).replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,120);
-function meta(x){return {id:idOf(x),title:String(x?.title||x?.programName||'تقرير'),programName:String(x?.programName||x?.title||'تقرير'),category:catOf(x),categoryName:String(x?.categoryName||x?.archiveFolderName||''),archiveFolderId:catOf(x),archiveFolderName:String(x?.archiveFolderName||x?.categoryName||''),archiveRole:'student_advisor',archiveType:'performanceReport',createdAt:x?.createdAt||'',updatedAt:x?.updatedAt||'',stateKey:x?.stateKey||keyOf(idOf(x)),storageEngine:'PerformanceArchiveCleanV5'};}
+function displayDate(x){const raw=x?.date||x?.reportDate||x?.createdAt||x?.updatedAt||'';if(!raw)return 'غير محدد';if(/^\d{4}-\d{2}-\d{2}T/.test(String(raw))){try{return new Date(raw).toLocaleDateString('ar-SA-u-ca-islamic-umalqura')}catch(_){}}return String(raw)}
+function meta(x){return {id:idOf(x),title:String(x?.title||x?.programName||'تقرير'),programName:String(x?.programName||x?.title||'تقرير'),category:catOf(x),categoryName:String(x?.categoryName||x?.archiveFolderName||''),archiveFolderId:catOf(x),archiveFolderName:String(x?.archiveFolderName||x?.categoryName||''),archiveRole:'student_advisor',archiveType:'performanceReport',date:displayDate(x),reportDate:String(x?.reportDate||''),isComplete:!!x?.isComplete,createdAt:x?.createdAt||'',updatedAt:x?.updatedAt||'',stateKey:x?.stateKey||keyOf(idOf(x)),storageEngine:'PerformanceArchiveCleanV5'};}
 function cache(){
   const raw=JSON.stringify(indexRows.map(meta));
   try{performanceRoleLocalSet('reports_archive',raw)}catch(_){try{performanceRoleLocalRemove('reports_archive');performanceRoleLocalSet('reports_archive',raw)}catch(__){}}
@@ -6132,14 +6133,41 @@ async function read(keys){const G=await guard(),r=await G.readExactValues({modul
 async function write(values){const G=await guard(),r=await G.writeExactValues({moduleKey:MODULE,scope:'user',values});if(!r?.ok)throw new Error(r?.error||'تعذر حفظ الأرشيف');return true;}
 async function bootstrap(force){
   if(indexRows.length&&!force){cache();return indexRows}
-  const values=await read([INDEX,LEGACY]);indexRows=parseArray(values[INDEX]).map(meta).filter(x=>idOf(x)&&catOf(x));
-  if(!indexRows.length){
+  const values=await read([INDEX,LEGACY,DELETED]),hasIndex=values[INDEX]!==undefined;
+  const deleted=new Set(parseArray(values[DELETED]).map(x=>String(x?.id??x)));
+  indexRows=parseArray(values[INDEX]).map(meta).filter(x=>idOf(x)&&catOf(x)&&!deleted.has(idOf(x)));
+  if(!hasIndex){
     const legacy=parseArray(values[LEGACY]);
-    if(legacy.length){const writes={};indexRows=[];for(const row of legacy){if(!idOf(row)||!catOf(row))continue;const full={...row,stateKey:keyOf(idOf(row)),archiveFolderId:catOf(row),archiveRole:'student_advisor'};writes[full.stateKey]=JSON.stringify(full);indexRows.push(meta(full))}writes[INDEX]=JSON.stringify(indexRows);await write(writes)}
+    if(legacy.length){const writes={};indexRows=[];for(const row of legacy){if(!idOf(row)||!catOf(row)||deleted.has(idOf(row)))continue;const full={...row,stateKey:keyOf(idOf(row)),archiveFolderId:catOf(row),archiveRole:'student_advisor'};writes[full.stateKey]=JSON.stringify(full);indexRows.push(meta(full))}writes[INDEX]=JSON.stringify(indexRows);await write(writes)}
+  }else{
+    /* يعيد حفظ الفهرس بصيغته المكتملة حتى لا يظهر تاريخ undefined في السجلات القديمة. */
+    await write({[INDEX]:JSON.stringify(indexRows)});
   }
   cache();return indexRows;
 }
-async function fetchReport(id){await bootstrap(false);const m=indexRows.find(x=>idOf(x)===String(id));if(!m)return null;const v=await read([m.stateKey||keyOf(id)]);return parseObject(v[m.stateKey||keyOf(id)]);}
+async function fetchReport(id){
+  await bootstrap(false);const wanted=String(id),m=indexRows.find(x=>idOf(x)===wanted);if(!m)return null;
+  const stateKey=m.stateKey||keyOf(id),v=await read([stateKey]);let full=parseObject(v[stateKey]);
+  if(full&&full.content)return full;
+  /* تصحيح ذاتي لتقارير ما قبل 207: قد يكون الفهرس موجودًا بينما ملف التقرير التفصيلي لم يُنشأ. */
+  const legacyValues=await read([LEGACY]),legacy=parseArray(legacyValues[LEGACY]);
+  const old=legacy.find(x=>idOf(x)===wanted&&x?.content);if(!old)return null;
+  full={...old,id:wanted,stateKey,category:catOf(old)||m.category,archiveFolderId:catOf(old)||m.category,archiveRole:'student_advisor',archiveType:'performanceReport',storageEngine:'PerformanceArchiveCleanV5'};
+  const repaired=meta(full),next=indexRows.filter(x=>idOf(x)!==wanted);next.push(repaired);
+  await write({[stateKey]:JSON.stringify(full),[INDEX]:JSON.stringify(next)});
+  const check=await read([stateKey,INDEX]);if(!parseObject(check[stateKey])?.content||!parseArray(check[INDEX]).some(x=>idOf(x)===wanted))throw new Error('تعذر استعادة محتوى التقرير القديم');
+  indexRows=parseArray(check[INDEX]).map(meta);cache();return full;
+}
+async function removeReport(id){
+  await bootstrap(false);const wanted=String(id),m=indexRows.find(x=>idOf(x)===wanted);if(!m)throw new Error('تعذر العثور على التقرير في الأرشيف');
+  const values=await read([DELETED]),deleted=parseArray(values[DELETED]).filter(x=>String(x?.id??x)!==wanted);
+  deleted.push({id:wanted,stateKey:m.stateKey||keyOf(wanted),deletedAt:new Date().toISOString()});
+  const next=indexRows.filter(x=>idOf(x)!==wanted),stateKey=m.stateKey||keyOf(wanted);
+  await write({[stateKey]:'',[INDEX]:JSON.stringify(next),[DELETED]:JSON.stringify(deleted)});
+  const check=await read([stateKey,INDEX,DELETED]);
+  if(String(check[stateKey]||'')!==''||parseArray(check[INDEX]).some(x=>idOf(x)===wanted)||!parseArray(check[DELETED]).some(x=>String(x?.id??x)===wanted))throw new Error('لم يكتمل التحقق السحابي من الحذف');
+  indexRows=parseArray(check[INDEX]).map(meta);cache();return true;
+}
 async function saveReport(report){
   await bootstrap(false);const full={...report,id:idOf(report),category:catOf(report),archiveFolderId:catOf(report),stateKey:keyOf(idOf(report)),archiveRole:'student_advisor',archiveType:'performanceReport',storageEngine:'PerformanceArchiveCleanV5'};
   if(!full.id||!full.category)throw new Error('بيانات التقرير أو المجال غير مكتملة');
@@ -6149,7 +6177,7 @@ async function saveReport(report){
   if(!saved||idOf(saved)!==full.id||catOf(saved)!==full.category||!idx.some(x=>idOf(x)===full.id&&catOf(x)===full.category))throw new Error('لم يكتمل التحقق السحابي للتقرير');
   indexRows=idx.map(meta);cache();return full;
 }
-window.PerformanceArchiveCleanV5={MODULE,INDEX_KEY:INDEX,REPORT_PREFIX:PREFIX,hydrateUnified:bootstrap,getView:()=>indexRows.slice(),find:id=>indexRows.find(x=>idOf(x)===String(id))||null,fetchReport,saveFast:async r=>({report:await saveReport(r),verification:Promise.resolve(true)})};
+window.PerformanceArchiveCleanV5={MODULE,INDEX_KEY:INDEX,REPORT_PREFIX:PREFIX,hydrateUnified:bootstrap,getView:()=>indexRows.slice(),find:id=>indexRows.find(x=>idOf(x)===String(id))||null,fetchReport,remove:async id=>({verification:Promise.resolve(await removeReport(id))}),saveFast:async r=>({report:await saveReport(r),verification:Promise.resolve(true)})};
 window.performanceArchiveUnifiedBootstrap=bootstrap;
 window.saveReportToArchive=async function(){
   if(window.__studentAdvisorPerformanceSaveInFlight){showToast('الحفظ السابق ما زال جاريًا؛ انتظر حتى يكتمل.');return false}
@@ -6159,7 +6187,11 @@ window.saveReportToArchive=async function(){
   try{if(typeof freezeReportDOMForArchive==='function')freezeReportDOMForArchive();const editId=String(window.__performanceExplicitEditId||currentEditingId||'');const old=editId?await fetchReport(editId):null;const id=old?idOf(old):(String(Date.now())+'_'+Math.random().toString(36).slice(2,8));const folder=String(selected.name||performanceArchiveFolderName(cat)||cat);await saveReport({id,title:name,programName:name,category:cat,categoryName:folder,archiveFolderId:cat,archiveFolderName:folder,createdAt:old?.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString(),content:document.getElementById('report-content-container')?.innerHTML||''});currentEditingId=id;window.__performanceExplicitEditId=id;showToast('تم حفظ «'+name+'» داخل مجلد «'+folder+'» ✅');return true}catch(e){console.error('[advisor teacher-parity save]',e);showToast('تعذر حفظ التقرير: '+String(e?.message||e));return false}finally{window.__studentAdvisorPerformanceSaveInFlight=false}
 };
 window.editReport=window.loadReport=async function(id){
-  try{const r=await fetchReport(String(id));if(!r)throw new Error('تعذر العثور على التقرير');const root=document.getElementById('report-content-container');root.innerHTML=r.content||'';root.querySelectorAll('select[data-saved-value]').forEach(s=>{const v=s.getAttribute('data-saved-value');if([...s.options].some(o=>o.value===v))s.value=v});currentEditingId=r.id;window.__performanceExplicitEditId=String(r.id);document.getElementById('archive-view').style.display='none';showMainReportApp();if(typeof updateReportProgress==='function')updateReportProgress();return true}catch(e){showToast('تعذر فتح التقرير للتعديل: '+String(e?.message||e));return false}
+  try{const r=await fetchReport(String(id));if(!r||!r.content)throw new Error('محتوى التقرير غير موجود في الأرشيف السحابي');const root=document.getElementById('report-content-container');root.innerHTML=r.content;root.querySelectorAll('select[data-saved-value]').forEach(s=>{const v=s.getAttribute('data-saved-value');if([...s.options].some(o=>o.value===v))s.value=v});currentEditingId=r.id;window.__performanceExplicitEditId=String(r.id);const category=document.getElementById('categorySelect');if(category&&r.category)category.value=r.category;const date=document.getElementById('dateInputHeader');if(date&&r.reportDate)date.value=r.reportDate;document.getElementById('archive-view').style.display='none';showMainReportApp();if(typeof updateReportProgress==='function')updateReportProgress();return true}catch(e){console.error('[advisor archive edit RL209]',e);showToast('تعذر فتح التقرير للتعديل: '+String(e?.message||e));return false}
+};
+window.requestDeleteReport=async function(id){
+  if(!confirm('هل تريد حذف هذا التقرير نهائيًا من أرشيف الموجه الطلابي؟'))return false;
+  try{await removeReport(String(id));const folder=(typeof currentArchiveViewCatId!=='undefined'&&currentArchiveViewCatId)||window.currentArchiveViewCatId||'';if(folder&&typeof openArchiveFolder==='function')openArchiveFolder(folder);else if(typeof renderArchiveFolders==='function')renderArchiveFolders();if(typeof refreshDashboardMetrics==='function')refreshDashboardMetrics();showToast('تم حذف التقرير سحابيًا والتحقق من الحذف 🗑️');return true}catch(e){console.error('[advisor archive delete RL209]',e);showToast('تعذر حذف التقرير: '+String(e?.message||e));return false}
 };
 window.openArchiveView=async function(){try{await bootstrap(true);document.getElementById('welcome-dashboard').style.display='none';document.getElementById('archive-view').style.display='block';renderArchiveFolders();return true}catch(e){showToast('تعذر تحميل الأرشيف: '+String(e?.message||e));return false}};
 })();

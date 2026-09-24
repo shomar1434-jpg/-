@@ -1048,7 +1048,7 @@
 <link rel="stylesheet" href="premium-ui.css">
 <script defer src="premium-ui.js"></script>
 
-<script>window.CLOUD_STATE_CONFIG={moduleKey:'student_advisor',scope:'user',legacyModules:['student_advisor_records'],keys:['moajeh_system_database','student_advisor_records_archive_v2'],prefixes:['moajeh_']};</script>
+<script>window.CLOUD_STATE_CONFIG={moduleKey:'student_advisor',scope:'user',legacyModules:['student_advisor_records'],keys:['moajeh_system_database','student_advisor_records_archive_v2','student_advisor_custom_settings_v1'],prefixes:['moajeh_']};</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-bridge.js"></script>
 <script src="platform-state-engine.js"></script>
@@ -1328,7 +1328,7 @@
                             <p>وزارة التعليم</p>
                             <div class="official-header-edu-line" aria-label="إدارة التعليم">
                                 <span class="official-header-edu-label">إدارة تعليم</span>
-                                <input type="text" id="header-edu-dir" oninput="syncHeaderFromRecord()" class="official-header-input official-clean-input focus:outline-none bg-transparent text-slate-900 font-extrabold px-0 py-0 text-xs text-center" value="الرياض" aria-label="اسم إدارة التعليم">
+                                <input type="text" id="header-edu-dir" oninput="syncHeaderFromRecord()" class="official-header-input official-clean-input focus:outline-none bg-transparent text-slate-900 font-extrabold px-0 py-0 text-xs text-center" value="" aria-label="اسم إدارة التعليم" readonly>
                             </div>
                         </div>
 
@@ -1341,11 +1341,15 @@
                         <div class="official-header-side official-header-left text-xs text-slate-800 font-extrabold">
                             <div class="official-header-field">
                                 <span>المدرسة</span>
-                                <input type="text" id="header-school-name" oninput="syncHeaderFromRecord()" class="official-header-input official-clean-input focus:outline-none bg-transparent text-slate-900 font-extrabold px-1 py-0 text-xs text-right" value="الملك فيصل الابتدائية">
+                                <input type="text" id="header-school-name" oninput="syncHeaderFromRecord()" class="official-header-input official-clean-input focus:outline-none bg-transparent text-slate-900 font-extrabold px-1 py-0 text-xs text-right" value="" readonly>
                             </div>
                             <div class="official-header-field">
                                 <span>اليوم</span>
-                                <input type="text" id="header-day" oninput="syncHeaderFromRecord()" class="official-header-input official-clean-input focus:outline-none bg-transparent text-slate-900 font-extrabold px-1 py-0 text-xs text-right" value="الخميس">
+                                <input type="text" id="header-day" oninput="syncHeaderFromRecord()" class="official-header-input official-clean-input focus:outline-none bg-transparent text-slate-900 font-extrabold px-1 py-0 text-xs text-right" value="" readonly>
+                            </div>
+                            <div class="official-header-field">
+                                <span>العام</span>
+                                <input type="text" id="header-academic-year" class="official-header-input official-clean-input focus:outline-none bg-transparent text-slate-900 font-extrabold px-1 py-0 text-xs text-right" value="" readonly>
                             </div>
                             <div class="official-header-field">
                                 <span>التاريخ</span>
@@ -2526,22 +2530,50 @@
                 });
 
                 yearSelect.innerHTML = '';
-                for (let y = 1445; y <= 1477; y++) {
+                for (let y = 1447; y <= 1547; y++) {
                     const opt = document.createElement('option');
                     opt.value = y;
                     opt.innerText = convertNumToArabic(y);
                     yearSelect.appendChild(opt);
                 }
 
-                daySelect.value = "23";
-                monthSelect.value = "05";
-                yearSelect.value = "1447";
+                const today = currentUmmAlQuraParts();
+                daySelect.value = today.day;
+                monthSelect.value = today.month;
+                yearSelect.value = today.year;
             }
 
             // تبقى الحقول العلوية مخفية لأغراض التوافق مع الحفظ السابق فقط
             fillHijriSelectors('global');
             // هذه هي الحقول الفعلية التي يستخدمها المستخدم داخل السجل
             fillHijriSelectors('header');
+            applyStudentAdvisorSettingsToHeaders();
+        }
+
+        function currentUmmAlQuraParts() {
+            const parts = new Intl.DateTimeFormat('en-US-u-ca-islamic-umalqura', {day:'2-digit',month:'2-digit',year:'numeric'}).formatToParts(new Date());
+            const get = type => parts.find(p => p.type === type)?.value || '';
+            return {day:get('day').padStart(2,'0'),month:get('month').padStart(2,'0'),year:get('year')};
+        }
+        function currentArabicWeekday() {
+            return new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura',{weekday:'long'}).format(new Date());
+        }
+        function advisorSetting(key, fallbackKeys) {
+            const roleKey='student_advisor_'+key+'_local_v1';
+            const direct=localStorage.getItem(roleKey);if(direct)return direct;
+            for(const k of (fallbackKeys||[])){const v=localStorage.getItem(k);if(v)return v}
+            return '';
+        }
+        function applyStudentAdvisorSettingsToHeaders() {
+            let cloudSettings={};try{cloudSettings=JSON.parse(localStorage.getItem('student_advisor_custom_settings_v1')||'{}')}catch(_){cloudSettings={}}
+            const school=cloudSettings.school||advisorSetting('persist_school',['smart_school_name','current_school_name','school_name']);
+            const region=cloudSettings.region||advisorSetting('persist_region',['smart_school_education_department','education_department','edu_dept']);
+            const academicYear=cloudSettings.academicYear||advisorSetting('persist_academic_year',['school_info_academic_year','school_academic_year','academic_year'])||'1448';
+            const today=currentUmmAlQuraParts();
+            const values={'header-school-name':school,'header-edu-dir':region,'header-day':currentArabicWeekday(),'header-academic-year':academicYear+' هـ','header-date-day':today.day,'header-date-month':today.month,'header-date-year':today.year};
+            Object.entries(values).forEach(([id,value])=>{const el=document.getElementById(id);if(el&&value)el.value=value});
+            localStorage.setItem('school_info_academic_year',academicYear);
+            syncHeaderFromRecord();
         }
 
         // جعل التعبئة من داخل السجل هي المصدر الأساسي للترويسة الرسمية
@@ -2764,6 +2796,7 @@
             data['global_edu_dir'] = document.getElementById('header-edu-dir').value;
             data['global_school_name'] = document.getElementById('header-school-name').value;
             data['global_day'] = document.getElementById('header-day').value;
+            data['global_academic_year'] = document.getElementById('header-academic-year')?.value || '';
             data['global_date_day'] = document.getElementById('header-date-day').value;
             data['global_date_month'] = document.getElementById('header-date-month').value;
             data['global_date_year'] = document.getElementById('header-date-year').value;
@@ -3350,6 +3383,21 @@
     };
   }
 
+  async function commitAdvisorCanonicalArchive(saved){
+    var guard=window.PlatformPersistenceGuard,key='student_advisor_records_archive_v2';
+    if(!guard||typeof guard.readExactValues!=='function'||typeof guard.writeExactValues!=='function')throw new Error('محرك أرشيف سجلات الموجه غير متاح');
+    var current=await guard.readExactValues({moduleKey:'student_advisor',scope:'user',keys:[key]});
+    if(!current||!current.ok)throw new Error(current&&current.error||'تعذر قراءة أرشيف سجلات الموجه');
+    var rows=[];try{rows=JSON.parse(current.values&&current.values[key]||'[]');if(!Array.isArray(rows))rows=[]}catch(_){rows=[]}
+    rows=rows.filter(function(r){return String(r&&r.id)!==String(saved.id)});rows.push(saved);
+    var raw=JSON.stringify(rows),written=await guard.writeExactValues({moduleKey:'student_advisor',scope:'user',values:{[key]:raw}});
+    if(!written||written.ok===false)throw new Error(written&&written.error||'تعذر تثبيت السجل في مجلد الأرشيف');
+    var verified=await guard.readExactValues({moduleKey:'student_advisor',scope:'user',keys:[key]});
+    var check=[];try{check=JSON.parse(verified.values&&verified.values[key]||'[]')}catch(_){check=[]}
+    if(!verified.ok||!check.some(function(r){return String(r&&r.id)===String(saved.id)&&String(r&&r.folderId)===String(saved.folderId)}))throw new Error('لم يظهر السجل داخل المجلد المطابق بعد الحفظ');
+    localStorage.setItem(key,JSON.stringify(check));return true;
+  }
+
   window.sendCurrentRecordToAdvisorArchive = async function(){
     var payload = capturePrintableRecord();
     if(!payload) return;
@@ -3371,6 +3419,7 @@
         await PlatformRecordSaveEngine.save({moduleKey:'student_advisor_records',recordType:'advisor_record',recordId:String(saved.id),academicYear:ay,semester:sem,scope:'user',folderId:saved.folderId,title:saved.title,entityId:baseName,entityType:'student',data:saved,createdAt:saved.createdAtIso});
         var verified=await PlatformRecordSaveEngine.listAll({moduleKey:'student_advisor_records',recordType:'advisor_record',scope:'user'});
         if(!(verified||[]).some(function(x){return String(x.data&&x.data.id||x.meta&&x.meta.recordId||'')===String(saved.id)&&String(x.data&&x.data.folderId||x.meta&&x.meta.folderId||'')===String(saved.folderId)}))throw new Error('لم يظهر السجل داخل المجلد المطابق بعد الحفظ');
+        await commitAdvisorCanonicalArchive(saved);
       }
       alert('تم حفظ نسخة السجل في الأرشيف مع التحقق السحابي.');
     }catch(e){

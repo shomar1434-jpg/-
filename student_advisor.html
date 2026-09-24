@@ -1941,6 +1941,7 @@ body{overflow-x:hidden}
     category_goals: ROLE+'_category_goals_local_v1',
     persist_region: ROLE+'_persist_region_local_v1',
     persist_school: ROLE+'_persist_school_local_v1',
+    persist_academic_year: ROLE+'_persist_academic_year_local_v1',
     persist_name_m: ROLE+'_persist_name_m_local_v1',
     persist_name_p: ROLE+'_persist_name_p_local_v1',
     persist_sig_data: ROLE+'_persist_sig_data_local_v1',
@@ -2564,6 +2565,10 @@ font-size:16px;font-weight:700;text-align:center;background:#fff;color:#0f172a;"
 <label class="text-[10px] font-bold text-teal-700 mr-2 uppercase">اسم المدرسة:</label>
 <input class="w-full mt-1 bg-white border border-teal-100 rounded-xl p-3 text-xs font-bold outline-none focus:border-teal-500" id="setting_school" placeholder="اكتب اسم المدرسة" type="text"/>
 </div>
+<div class="sm:col-span-2">
+<label class="text-[10px] font-bold text-teal-700 mr-2 uppercase">العام الدراسي:</label>
+<select class="w-full mt-1 bg-white border border-teal-100 rounded-xl p-3 text-xs font-bold outline-none focus:border-teal-500" id="setting_academic_year"></select>
+</div>
 </div>
 <div>
 <label class="text-[10px] font-bold text-slate-400 mr-2 uppercase">اسم معد التقرير الافتراضي:</label>
@@ -3033,9 +3038,34 @@ font-size:16px;font-weight:700;text-align:center;background:#fff;color:#0f172a;"
         function closeThemeModal() { document.getElementById('theme-modal').style.display = 'none'; }
 
         // --- وظائف الإعدادات المخصصة الجديدة ---
-        function openAppSettings() {
+        function fillStudentAdvisorAcademicYears() {
+            const select = document.getElementById('setting_academic_year');
+            if (!select || select.options.length) return;
+            for (let y = 1447; y <= 1547; y++) select.add(new Option(`${y} هـ`, String(y)));
+        }
+        async function openAppSettings() {
+            try {
+                const guard = window.PlatformPersistenceGuard;
+                if (guard?.readExactValues) {
+                    const cloud = await guard.readExactValues({moduleKey:'student_advisor', scope:'user', keys:['student_advisor_custom_settings_v1']});
+                    const raw = cloud?.values?.student_advisor_custom_settings_v1;
+                    if (raw) {
+                        localStorage.setItem('student_advisor_custom_settings_v1', raw);
+                        const saved = JSON.parse(raw);
+                        if (saved.region != null) performanceRoleLocalSet('persist_region', saved.region);
+                        if (saved.school != null) performanceRoleLocalSet('persist_school', saved.school);
+                        if (saved.academicYear != null) performanceRoleLocalSet('persist_academic_year', saved.academicYear);
+                        if (saved.nameM != null) performanceRoleLocalSet('persist_name_m', saved.nameM);
+                        if (saved.nameP != null) performanceRoleLocalSet('persist_name_p', saved.nameP);
+                        if (saved.signature) performanceRoleLocalSet('persist_sig_data', saved.signature);
+                        if (saved.stamp) performanceRoleLocalSet('persist_stamp_data', saved.stamp);
+                    }
+                }
+            } catch (error) { console.warn('[student advisor settings hydrate]', error); }
+            fillStudentAdvisorAcademicYears();
             document.getElementById('setting_region').value = performanceRoleLocalGet('persist_region') || "";
             document.getElementById('setting_school').value = performanceRoleLocalGet('persist_school') || "";
+            document.getElementById('setting_academic_year').value = performanceRoleLocalGet('persist_academic_year') || localStorage.getItem('school_info_academic_year') || '1448';
             document.getElementById('setting_name_m').value = performanceRoleLocalGet('persist_name_m') || "";
             document.getElementById('setting_name_p').value = performanceRoleLocalGet('persist_name_p') || "";
             
@@ -3082,19 +3112,43 @@ font-size:16px;font-weight:700;text-align:center;background:#fff;color:#0f172a;"
             }
         }
 
-        function savePersistentSettings() {
+        async function savePersistentSettings() {
             const region = document.getElementById('setting_region').value.trim();
             const school = document.getElementById('setting_school').value.trim();
+            const academicYear = document.getElementById('setting_academic_year').value || '1448';
             const nameM = document.getElementById('setting_name_m').value;
             const nameP = document.getElementById('setting_name_p').value;
             
             performanceRoleLocalSet('persist_region', region);
             performanceRoleLocalSet('persist_school', school);
+            performanceRoleLocalSet('persist_academic_year', academicYear);
+            localStorage.setItem('school_info_academic_year', academicYear);
             performanceRoleLocalSet('persist_name_m', nameM);
             performanceRoleLocalSet('persist_name_p', nameP);
             
             if (tempPersistSig) performanceRoleLocalSet('persist_sig_data', tempPersistSig);
             if (tempPersistStamp) performanceRoleLocalSet('persist_stamp_data', tempPersistStamp);
+            const cloudSettings = {
+                region, school, academicYear, nameM, nameP,
+                signature: tempPersistSig || performanceRoleLocalGet('persist_sig_data') || '',
+                stamp: tempPersistStamp || performanceRoleLocalGet('persist_stamp_data') || '',
+                updatedAt: new Date().toISOString()
+            };
+            const settingsKey = 'student_advisor_custom_settings_v1';
+            const settingsRaw = JSON.stringify(cloudSettings);
+            localStorage.setItem(settingsKey, settingsRaw);
+            try {
+                const guard = window.PlatformPersistenceGuard;
+                if (!guard || typeof guard.writeExactValues !== 'function' || typeof guard.readExactValues !== 'function') throw new Error('محرك الإعدادات السحابي غير متاح');
+                const written = await guard.writeExactValues({moduleKey:'student_advisor', scope:'user', values:{[settingsKey]:settingsRaw}});
+                if (!written || written.ok === false) throw new Error(written?.error || 'تعذر حفظ الإعدادات المخصصة');
+                const checked = await guard.readExactValues({moduleKey:'student_advisor', scope:'user', keys:[settingsKey]});
+                if (!checked?.ok || String(checked.values?.[settingsKey] || '') !== settingsRaw) throw new Error('لم يكتمل التحقق السحابي من الإعدادات');
+            } catch (error) {
+                console.error('[student advisor settings]', error);
+                showToast('تعذر تثبيت الإعدادات سحابياً؛ لم يتم اعتماد الحفظ ❌');
+                return;
+            }
             applyPersistentSettingsToReport();
             updateReportProgress();
             
@@ -3106,6 +3160,7 @@ font-size:16px;font-weight:700;text-align:center;background:#fff;color:#0f172a;"
             if (confirm('هل تريد فعلاً التراجع عن جميع الخيارات المثبتة (الأسماء والتواقيع)؟')) {
                 performanceRoleLocalRemove('persist_region');
                 performanceRoleLocalRemove('persist_school');
+                performanceRoleLocalRemove('persist_academic_year');
                 performanceRoleLocalRemove('persist_name_m');
                 performanceRoleLocalRemove('persist_name_p');
                 performanceRoleLocalRemove('persist_sig_data');
@@ -5446,7 +5501,19 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
 
   function esc(v){return String(v||'').replace(/[&<>"']/g,function(ch){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];});}
   function read(){try{return JSON.parse(localStorage.getItem(ARCHIVE_KEY)||'[]');}catch(e){return [];}}
-  async function write(items){localStorage.setItem(ARCHIVE_KEY,JSON.stringify(items||[]));return true}
+  async function write(items){
+    var before=localStorage.getItem(ARCHIVE_KEY)||'[]',raw=JSON.stringify(items||[]);
+    localStorage.setItem(ARCHIVE_KEY,raw);
+    try{
+      var guard=window.PlatformPersistenceGuard;
+      if(!guard||typeof guard.writeExactValues!=='function'||typeof guard.readExactValues!=='function')throw new Error('محرك الأرشيف السحابي غير متاح');
+      var saved=await guard.writeExactValues({moduleKey:'student_advisor',scope:'user',values:{[ARCHIVE_KEY]:raw}});
+      if(!saved||saved.ok===false)throw new Error(saved&&saved.error||'تعذر حفظ فهرس أرشيف السجلات');
+      var checked=await guard.readExactValues({moduleKey:'student_advisor',scope:'user',keys:[ARCHIVE_KEY]});
+      if(!checked||!checked.ok||String(checked.values&&checked.values[ARCHIVE_KEY]||'')!==raw)throw new Error('لم يكتمل التحقق السحابي من أرشيف السجلات');
+      return true;
+    }catch(e){localStorage.setItem(ARCHIVE_KEY,before);throw e}
+  }
   function folderById(id){return FOLDERS.find(function(f){return f.id===id;})||FOLDERS[0]||{id:'other',name:'سجل'};}
   function contentEl(){return document.getElementById('advisor-records-archive-content');}
   function docForRecord(r, autoPrint){

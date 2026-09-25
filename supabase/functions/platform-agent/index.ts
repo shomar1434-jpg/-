@@ -77,7 +77,7 @@ async function executeTool(admin:any,tool:string,args:any,c:any){assertToolAllow
  if(tool==='get_discipline_summary'){const rows=await safeRows(admin,'school_staff_discipline_states',sid,undefined,160);return compact(rows,['id','user_id','employee_id','month','year','academic_year','status','summary','updated_at'])}
  if(tool==='get_memory'){const rows=await safeRows(admin,'agent_memories',sid,q=>q.eq('academic_year',year),120);const visible=rows.filter((x:any)=>x.scope==='school'||String(x.user_id||'')===String(c.userId));return compact(visible,['id','scope','user_id','role','content','tags','created_at'])}
  if(tool==='search_school_records'){
-   const query=lower(args?.query);if(!query)return[];const sources=[['central_tasks',['title','status','module','assignee_name']],['meetings',['title','status','type','location']],['platform_files',['name','file_name','module','role']],['platform_module_state',['module_key','state']],['school_readiness_evidence',['task_id','phase','status','file_name']]];const out:any[]=[];
+   const query=lower(args?.query);if(!query)return[];const sources=[['central_tasks',['id','title','status','module','assignee_name']],['meetings',['id','title','status','type','location']],['platform_files',['id','name','file_name','module','role']],['platform_module_state',['id','module_key','state']],['school_readiness_evidence',['id','task_id','phase','status','file_name']]];const out:any[]=[];
    for(const [table,fields] of sources as any){const rows=ownRows(await safeRows(admin,table,sid,undefined,100),c);for(const r of rows){const hay=lower(fields.map((f:string)=>typeof r[f]==='object'?JSON.stringify(r[f]):r[f]).join(' '));if(hay.includes(query))out.push({source:table,data:compact([r],fields)[0]});if(out.length>=60)break}if(out.length>=60)break}return out;
  }
  if(tool==='propose_action')return{suggestedAction:{type:text(args?.type||'draft'),label:text(args?.label||'إجراء مقترح'),payload:args?.payload||{},risk:/delete|send|approve|archive_year|close_year|permission|role/i.test(text(args?.type))?'red':'yellow'}};
@@ -131,6 +131,26 @@ Deno.serve(async(req)=>{if(req.method==='OPTIONS')return new Response('ok',{head
  if(action==='history_messages'){const id=text(body.payload?.conversationId);const cq=await admin.from('agent_conversations').select('*').eq('id',id).eq('school_id',c.schoolId).eq('user_id',c.userId).eq('academic_year',c.academicYear).limit(1).maybeSingle();if(cq.error||!cq.data)return json({error:'المحادثة غير موجودة في هذا السياق',requestId},404);const mq=await admin.from('agent_messages').select('*').eq('conversation_id',id).eq('school_id',c.schoolId).eq('user_id',c.userId).order('created_at',{ascending:true}).limit(300);return json({success:true,conversation:cq.data,messages:mq.data||[],requestId})}
  if(action==='tool'){const tool=text(body.payload?.tool),result=await executeTool(admin,tool,body.payload?.args||{},c);await audit(admin,c,'tool.direct',{tool},requestId);return json({success:true,result,answer:JSON.stringify(result,null,2),toolsUsed:[tool],requestId})}
  if(action==='knowledge_status'){const health=await knowledgeHealth(admin);return json({success:true,knowledgeHealth:health,requestId})}
+ if(action==='search'){
+   const query=text(body.payload?.query).slice(0,180);if(!query)return json({error:'أدخل عبارة البحث.',requestId},400);
+   const rawResults:any[]=await executeTool(admin,'search_school_records',{query},c);
+   const meta:any={central_tasks:{kindLabel:'تكليف',routeKey:'tasks'},meetings:{kindLabel:'اجتماع',routeKey:'meetings'},platform_files:{kindLabel:'ملف أو شاهد',routeKey:'files'},platform_module_state:{kindLabel:'حالة قسم',routeKey:'school_dashboard'},school_readiness_evidence:{kindLabel:'شاهد جاهزية',routeKey:'readiness'}};
+   const results=rawResults.map((x:any)=>{const d=x.data||{},m=meta[x.source]||{kindLabel:'سجل',routeKey:'school_dashboard'};return{source:x.source,kindLabel:m.kindLabel,routeKey:m.routeKey,recordId:text(d.id),title:text(d.title||d.name||d.file_name||d.module_key||d.task_id||'نتيجة'),subtitle:text(d.assignee_name||d.status||d.type||d.module||d.phase||d.role||'')}}).slice(0,60);
+   await audit(admin,c,'search',{query,count:results.length},requestId);return json({success:true,query,results,requestId});
+ }
+ if(action==='diagnostics'){
+   const [tasks,files,moduleState]=await Promise.all([executeTool(admin,'get_tasks',{},c),executeTool(admin,'get_files',{},c),executeTool(admin,'get_current_module_state',{},c)]);
+   const taskRows:any[]=Array.isArray(tasks)?tasks:[],fileRows:any[]=Array.isArray(files)?files:[];const now=Date.now();
+   const openTasks=taskRows.filter((x:any)=>!/done|completed|closed|منجز|مكتمل|مغلق/i.test(text(x.status)));
+   const overdue=openTasks.filter((x:any)=>x.due_date&&Date.parse(x.due_date)<now);
+   const issues:any[]=[];
+   if(overdue.length)issues.push({severity:'critical',title:`${overdue.length} تكليفات متأخرة`,detail:'تجاوزت موعدها ولم تغلق بعد. راجع المكلفين وحالة التنفيذ.',routeKey:'tasks'});
+   if(openTasks.length&&!overdue.length)issues.push({severity:'warning',title:`${openTasks.length} تكليفات مفتوحة`,detail:'تحتاج متابعة حالة الإنجاز والشواهد.',routeKey:'tasks'});
+   if(!fileRows.length)issues.push({severity:'info',title:'لا توجد ملفات مرئية للدور الحالي',detail:'لم يعد فهرس الملفات السحابية نتائج مطابقة للمدرسة والدور الحاليين.',routeKey:'files'});
+   if(moduleState?.module==='unknown')issues.push({severity:'info',title:'الصفحة الحالية غير مربوطة بمكيف تشغيلي',detail:'يستطيع الوكيل العام العمل، لكن تحليل حقول هذه الصفحة سيكون محدودًا.'});
+   const metrics=[{label:'التكليفات المفتوحة',value:openTasks.length,note:`المتأخرة: ${overdue.length}`},{label:'الملفات المرئية',value:fileRows.length,note:'حسب صلاحية الدور'},{label:'الملاحظات',value:issues.length,note:'تشخيص للقراءة فقط'}];
+   await audit(admin,c,'diagnostics',{openTasks:openTasks.length,overdue:overdue.length,files:fileRows.length,issues:issues.length},requestId);return json({success:true,metrics,issues,requestId});
+ }
  if(action==='file'){
    const f=body.payload?.file;if(!f?.base64)return json({error:'لم يتم إرسال ملف صالح',requestId},400);const prompt=text(body.payload?.prompt||'حلل الملف في سياق العمل المدرسي الحالي.');const system=`أنت ${profile.label} داخل منصة إدارة مدرسية سعودية. ${profile.prompt} المدرسة الحالية فقط: ${c.schoolId}. العام: ${c.academicYear}هـ. حلل الملف دون اختلاق بيانات، وميز الحقائق عن التوصيات.`;const input=[{role:'system',content:[{type:'input_text',text:system}]},{role:'user',content:[{type:'input_text',text:prompt},{type:'input_file',filename:text(f.name||'file'),file_data:`data:${text(f.type||'application/octet-stream')};base64,${f.base64}`}]}];const d=await openai({model:Deno.env.get('OPENAI_AGENT_MODEL')||'gpt-4.1-mini',input,store:false});const answer=outputText(d);await audit(admin,c,'file.analysis',{fileName:f.name},requestId);return json({success:true,answer,toolsUsed:[],requestId})
  }

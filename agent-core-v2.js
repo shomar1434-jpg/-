@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 if(window.__SCHOOL_AGENT_CORE_V2__)return;window.__SCHOOL_AGENT_CORE_V2__=true;
-const VERSION='2.4.0';
+const VERSION='2.6.0';
 const LS={conv:'school_agent_v2_conversations',memory:'school_agent_v2_memory',audit:'school_agent_v2_audit',actions:'school_agent_v2_actions'};
 const sensitive=/password|token|secret|anonkey|service_role|api[_-]?key/i;
 function parse(v,d){
@@ -158,6 +158,22 @@ async function api(action,payload,opts){
 async function chat(message,convId){const c=await resolvedContext();let conv=conversations().find(x=>x.id===convId)||{id:convId||uuid(),title:clean(message).slice(0,70)||'محادثة جديدة',messages:[],createdAt:new Date().toISOString(),schoolId:c.schoolId,role:c.role,academicYear:c.academicYear};conv.messages.push({role:'user',content:message,at:new Date().toISOString()});saveConversation(conv);const data=await api('chat',{message,conversation:conv.messages.slice(-16),conversationId:conv.id,title:conv.title});conv.messages.push({role:'assistant',content:data.answer||'',at:new Date().toISOString(),toolsUsed:data.toolsUsed||[],sources:Array.isArray(data.sources)?data.sources:[],suggestedActions:data.suggestedActions||[]});conv.updatedAt=new Date().toISOString();saveConversation(conv);(data.suggestedActions||[]).forEach(x=>proposeAction(x.type,x.payload,x.label));return{conversation:conv,data}}
 async function brief(){return api('brief',{})}
 async function searchSchool(query){return api('chat',{message:'ابحث داخل بيانات المدرسة الحالية عن: '+query+'، واستخدم أداة البحث المناسبة. اعرض النتائج ذات الصلة فقط مع توضيح مصدرها، ولا تفترض شيئًا غير موجود.',conversation:[]})}
+async function searchStructured(query){return api('search',{query:clean(query).slice(0,180)})}
+async function diagnostics(){return api('diagnostics',{})}
+const SAFE_ROUTES={
+  tasks:'central_task_center.html',files:'cloud_files_center.html',meetings:'meeting_minutes_template.html',
+  readiness:'school_readiness.html',performance:'performance_evaluation.html',school_dashboard:'school-performance-dashboard.html'
+};
+function navigateToResult(result){
+  const route=SAFE_ROUTES[clean(result?.routeKey)];
+  if(!route)throw new Error('لا يوجد مسار آمن مسجل لهذا النوع من النتائج.');
+  const u=new URL(route,location.href);
+  const id=clean(result?.recordId);
+  if(id&&/^[0-9a-z-]{3,80}$/i.test(id))u.searchParams.set('record_id',id);
+  u.searchParams.set('return_to',file());
+  audit('navigation.open',{routeKey:result.routeKey,recordId:id||null});
+  location.href=u.href;
+}
 async function analyzeCurrent(){return api('analyze_current',{page:{text:visiblePage(),fields:fields()}})}
 async function analyzeFile(fileObj,prompt){const max=12*1024*1024;if(fileObj.size>max)throw new Error('الحد الحالي لتحليل الملف من الواجهة 12MB.');const base64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]||'');r.onerror=rej;r.readAsDataURL(fileObj)});return api('file',{prompt:prompt||'حلل الملف في سياق العمل الحالي.',file:{name:fileObj.name,type:fileObj.type||'application/octet-stream',base64}})}
 function proactiveSuggestions(){const c=context(),out=[];const fs=fields();const empty=fs.filter(f=>!f.value&&/اسم|عنوان|هدف|تاريخ|مدرسة|مجال|إجراء|وصف|نتيجة/.test(f.label||'')).length;if(empty>=3)out.push('يوجد '+empty+' حقول مهمة فارغة في الصفحة الحالية؛ يمكن للوكيل مساعدتك في استكمالها.');const acts=proposedActions().filter(a=>a.status==='pending').length;if(acts)out.push('لديك '+acts+' إجراء مقترح بانتظار المراجعة.');if(c.module==='readiness')out.push('يمكنني فحص الجاهزية الحالية وتحديد المهام أو الشواهد التي تحتاج متابعة.');if(c.module==='performance')out.push('يمكنني مراجعة اكتمال عناصر الأداء والشواهد قبل الحفظ.');if(c.module==='discipline')out.push('يمكنني تلخيص حركة الانضباط واكتشاف الأنماط المتكررة من البيانات المتاحة.');if(c.module==='meetings')out.push('يمكنني تحويل قرارات الاجتماع إلى مسودة مهام قابلة للمراجعة.');if(c.module==='health_advisor')out.push('يمكنني ربط التقرير بمجال الأداء الصحي والأهداف المناسبة دون الخروج عن دور التوجيه الصحي.');if(c.module==='kindergarten_teacher')out.push('يمكنني دعم تقارير رياض الأطفال وفق مجالات الأداء الـ19 دون استخدام منطق الاختبارات التقليدية.');return[...new Set(out)].slice(0,6)}
@@ -167,6 +183,6 @@ async function deleteCloudMemory(id){const d=await api('memory_delete',{id});for
 async function cloudHistory(){const d=await api('history',{});return d.conversations||[]}
 async function cloudConversation(id){const d=await api('history_messages',{conversationId:id});return d}
 function exportContext(){return{context:context(),profile:window.AgentRoleProfiles?.get(context().role)||{},page:{text:visiblePage(),fields:fields()},memory:memory(),actions:proposedActions(),audit:(()=>{const a=parse(localStorage.getItem(LS.audit),[]);return Array.isArray(a)?a.slice(0,80):[]})()}}
-window.AgentCoreV2={VERSION,context,assertContext,resolvedContext,fields,visiblePage,api,recoverPlatformSession,chat,brief,searchSchool,analyzeCurrent,analyzeFile,memory,remember,forgetMemory,proactiveSuggestions,cloudMemory,rememberCloud,deleteCloudMemory,cloudHistory,cloudConversation,conversations,saveConversation,proposedActions,proposeAction,approveAction,rejectAction,audit,exportContext};
+window.AgentCoreV2={VERSION,context,assertContext,resolvedContext,fields,visiblePage,api,recoverPlatformSession,chat,brief,searchSchool,searchStructured,diagnostics,navigateToResult,analyzeCurrent,analyzeFile,memory,remember,forgetMemory,proactiveSuggestions,cloudMemory,rememberCloud,deleteCloudMemory,cloudHistory,cloudConversation,conversations,saveConversation,proposedActions,proposeAction,approveAction,rejectAction,audit,exportContext};
 window.dispatchEvent(new CustomEvent('agent-core-v2-ready',{detail:{version:VERSION}}));
 })();

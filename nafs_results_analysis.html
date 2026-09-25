@@ -1282,7 +1282,7 @@
         ["الأعداد والعمليات عليها", /الأعداد|الاعداد|العمليات|عمليات/],
         ["الجبر والدوال الحقيقية والتحليل الرياضي", /الدوال|التحليل|الحقيقية|الر\s*ياضي/],
         ["الجبر", /الجبر|الجرب/],
-        ["البيانات والاحتمالات", /البيانات|الاحتمالات|الاحتمالت/]
+        ["البيانات والاحتمالات", /البيان|احتما/]
       ],
       "العلوم": [
         ["العلوم الفيزيائية والكيميائية", /الفيز|الكيميائية|كيميائية|ملفيز/],
@@ -1305,6 +1305,10 @@
     }
 
     function mapVisualToArabic(str) {
+      // بطاقات نافس المولدة من منصة التوزيع الرقمي تستخدم محارف
+      // Arabic Presentation Forms. التطبيع القياسي يغطي جميع أشكال الحروف
+      // (وليس مجموعة جزئية منها فقط كما كان في الجدول اليدوي أدناه).
+      str = String(str || '').normalize('NFKC');
       const map = {
         '\uFE8B': 'ئ', '\uFE8E': 'ا', '\uFE91': 'ب', '\uFE92': 'ب', '\uFE94': 'ة',
         '\uFE97': 'ت', '\uFE98': 'ت', '\uFE9A': 'ث', '\uFE9B': 'ث', '\uFE9C': 'ث',
@@ -1322,7 +1326,7 @@
       return str.split('').map(c => map[c] || c).join('');
     }
 
-    function extractSchoolHeader(pageText) {
+    function extractSchoolHeader(pageText, items) {
       const normalized = mapVisualToArabic(pageText);
       const reversed = reverseString(normalized);
       
@@ -1338,6 +1342,30 @@
           const words = m[1].trim().split(/\s+/);
           out.schoolName = words.slice(-3).join(' ');
         }
+      }
+
+      // استخراج اسم المدرسة من سطر القيمة نفسه يمنع اختلاط ترتيب الكلمات
+      // عندما يفصل مولد PDF الاسم إلى عشرات المقاطع البصرية.
+      const positioned = (items || []).map(item => ({
+        text: mapVisualToArabic(item.str || ''),
+        x: Number(item.transform && item.transform[4]),
+        y: Number(item.transform && item.transform[5])
+      }));
+      const schoolCode = positioned.find(item => /^S-\d+$/i.test(item.text.trim()));
+      if (schoolCode) {
+        const visualSchoolName = positioned
+          .filter(item => Math.abs(item.y - schoolCode.y) <= 2 && item.x < schoolCode.x - 25 && /[\u0600-\u06ff]/.test(item.text))
+          .sort((a, b) => a.x - b.x)
+          .map(item => item.text)
+          .join('');
+        const itemBasedSchoolName = normalizeArabicPdfText(reverseString(visualSchoolName));
+        if (!out.schoolName && itemBasedSchoolName.length >= 4) out.schoolName = itemBasedSchoolName;
+      }
+
+      if (out.schoolName) {
+        out.schoolName = normalizeArabicPdfText(out.schoolName)
+          // أثر شائع عند فصل التاء المربوطة و(الـ) بين مقطعين بصريين.
+          .replace(/ا\s+ةأل/g, 'ة الأ');
       }
 
       // 2. Gender
@@ -1423,15 +1451,93 @@
       return skills;
     }
 
+    function matchNafsDomainName(subject, label) {
+      const normalized = normalizeArabicPdfText(label);
+      const patterns = NAFS_DOMAIN_PATTERNS[subject] || [];
+      const found = patterns.find(([, rx]) => rx.test(normalized));
+      return found ? found[0] : '';
+    }
+
+    // قارئ موضعي لصفحات الرسوم. لا يعتمد على ترتيب النص داخل PDF لأن منصة
+    // التوزيع الرقمي قد تغيّر ترتيب أعمدة المجالات من بطاقة إلى أخرى.
+    function parseDomainChartByItems(items, subject) {
+      const positioned = (items || []).map(item => ({
+        text: mapVisualToArabic(item.str || ''),
+        x: Number(item.transform && item.transform[4]),
+        y: Number(item.transform && item.transform[5])
+      })).filter(item => Number.isFinite(item.x) && Number.isFinite(item.y));
+
+      const percentages = positioned.filter(item => /^\s*-?\d+(?:\.\d+)?\s*%\s*$/.test(item.text));
+      if (percentages.length < 6 || percentages.length % 3 !== 0) return [];
+
+      const columnCount = percentages.length / 3;
+      if (columnCount < 2 || columnCount > 6) return [];
+
+      const firstSeries = percentages.slice(0, columnCount);
+      const valueStarts = firstSeries.map(item => item.x);
+      const gaps = valueStarts.slice(1).map((x, index) => x - valueStarts[index]).sort((a, b) => a - b);
+      const columnWidth = gaps.length ? gaps[Math.floor(gaps.length / 2)] : 120;
+      // إحداثي النسبة هو بداية النص عند يسار العمود، بينما عنوان المجال
+      // يتمركز في العمود؛ لذلك نستخدم مركز العمود الحقيقي للمطابقة.
+      const centers = valueStarts.map(x => x + (columnWidth / 2));
+      const lowestValueY = Math.min(...percentages.map(item => item.y));
+      const labelCandidates = positioned.filter(item =>
+        !item.text.includes('%') && item.y < lowestValueY - 20 && item.y > lowestValueY - 180
+      );
+      const yBands = new Map();
+      labelCandidates.forEach(item => {
+        const band = Math.round(item.y / 5) * 5;
+        yBands.set(band, (yBands.get(band) || 0) + 1);
+      });
+      const labelY = [...yBands.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+      const labelFragments = Number.isFinite(labelY)
+        ? labelCandidates.filter(item => Math.abs(item.y - labelY) <= 10)
+        : [];
+
+      const labels = centers.map((center, columnIndex) => {
+        const fragments = labelFragments
+          .filter(item => {
+            let nearestIndex = 0;
+            let nearestDistance = Infinity;
+            centers.forEach((candidate, index) => {
+              const distance = Math.abs(item.x - candidate);
+              if (distance < nearestDistance) {
+                nearestDistance = distance;
+                nearestIndex = index;
+              }
+            });
+            return nearestIndex === columnIndex && nearestDistance < 80;
+          })
+          .sort((a, b) => a.x - b.x)
+          .map(item => item.text)
+          .join('');
+        return normalizeArabicPdfText(reverseString(fragments));
+      });
+
+      const domainNames = labels.map(label => matchNafsDomainName(subject, label));
+      if (domainNames.filter(Boolean).length !== columnCount) return [];
+
+      const values = percentages.map(item => Number.parseFloat(item.text.replace('%', '').trim()));
+      return domainNames.map((name, index) => ({
+        name,
+        score: values[index],
+        benchmark: values[columnCount + index],
+        kingdom: values[(columnCount * 2) + index]
+      })).filter(skill => skill.name && Number.isFinite(skill.score) && Number.isFinite(skill.benchmark));
+    }
+
     function parseNafsPdfPages(pages) {
       const firstPage = pages[0] || { text: "", items: [] };
-      const header = extractSchoolHeader(firstPage.text);
+      const header = extractSchoolHeader(firstPage.text, firstPage.items);
       const subjects = {};
 
       for (let i = 0; i < pages.length; i++) {
         Object.keys(NAFS_DOMAIN_PATTERNS).forEach(subject => {
           if (subjects[subject]) return;
-          const skills = parseDomainChartByText(pages[i].text, subject);
+          const positionedSkills = parseDomainChartByItems(pages[i].items, subject);
+          const skills = positionedSkills.length
+            ? positionedSkills
+            : parseDomainChartByText(pages[i].text, subject);
           if (skills.length > 0) {
             subjects[subject] = { skills, sourcePage: i + 1 };
           }

@@ -70,7 +70,7 @@ async function executeTool(admin:any,tool:string,args:any,c:any){assertToolAllow
    return{tasks:{total:tasks.length,pending:tasks.filter((x:any)=>!/done|completed|closed|منجز|مكتمل/i.test(text(x.status))).length},meetings:meetings.length,files:files.length,readinessEvidence:readiness.length,performanceStates:perf.length,disciplineStates:discipline.length,academicYear:year};
  }
  if(tool==='get_readiness_status'){const evidence=await safeRows(admin,'school_readiness_evidence',sid,undefined,300);const state=await safeRows(admin,'platform_module_state',sid,q=>q.eq('module_key','readiness'),30);return{evidence:compact(evidence,['id','task_id','phase','status','file_name','created_at','academic_year']),state:compact(state)}}
- if(tool==='get_tasks'){const rows=await safeRows(admin,'central_tasks',sid,undefined,200);return compact(ownRows(rows,c),['id','title','status','priority','assignee_id','assignee_name','due_date','progress','role','module','created_at'])}
+ if(tool==='get_tasks'){const rows=await safeRows(admin,'central_tasks',sid,undefined,200);return compact(ownRows(rows,c),['id','title','status','priority','assigned_to','assignee_name','due_date','progress_percent','assignee_role','module_key','metadata','created_at'])}
  if(tool==='get_meetings'){const rows=await safeRows(admin,'meetings',sid,undefined,120);return compact(rows,['id','title','meeting_date','status','type','location','created_by','created_at'])}
  if(tool==='get_files'){const rows=await safeRows(admin,'platform_files',sid,undefined,180);return compact(ownRows(rows,c),['id','name','file_name','module','role','user_id','academic_year','term','folder_id','created_at'])}
  if(tool==='get_performance_status'){const rows=await safeRows(admin,'school_performance_evaluation_states',sid,undefined,150);return compact(ownRows(rows,c),['id','user_id','role','status','score','year','academic_year','updated_at','created_at'])}
@@ -143,12 +143,14 @@ Deno.serve(async(req)=>{if(req.method==='OPTIONS')return new Response('ok',{head
    const taskRows:any[]=Array.isArray(tasks)?tasks:[],fileRows:any[]=Array.isArray(files)?files:[];const now=Date.now();
    const openTasks=taskRows.filter((x:any)=>!/done|completed|closed|منجز|مكتمل|مغلق/i.test(text(x.status)));
    const overdue=openTasks.filter((x:any)=>x.due_date&&Date.parse(x.due_date)<now);
-   const issues:any[]=[];
+   const issues:any[]=[];const awaitingReview=taskRows.filter((x:any)=>['submitted','under_review'].includes(String(x?.metadata?.evidence_delivery?.state||''))||String(x.status)==='pending_approval');const returnedEvidence=taskRows.filter((x:any)=>String(x?.metadata?.evidence_delivery?.state||'')==='returned'||String(x.status)==='returned');
    if(overdue.length)issues.push({severity:'critical',title:`${overdue.length} تكليفات متأخرة`,detail:'تجاوزت موعدها ولم تغلق بعد. راجع المكلفين وحالة التنفيذ.',routeKey:'tasks'});
    if(openTasks.length&&!overdue.length)issues.push({severity:'warning',title:`${openTasks.length} تكليفات مفتوحة`,detail:'تحتاج متابعة حالة الإنجاز والشواهد.',routeKey:'tasks'});
+   if(awaitingReview.length)issues.push({severity:'warning',title:`${awaitingReview.length} تنفيذات بانتظار المراجعة`,detail:'وصلت للمراجع وتحتاج معاينة الشواهد ثم اتخاذ قرار.',routeKey:'tasks'});
+   if(returnedEvidence.length)issues.push({severity:'info',title:`${returnedEvidence.length} شواهد معادة للاستكمال`,detail:'ينتظر المحرك شاهدًا بديلًا من المكلف.',routeKey:'tasks'});
    if(!fileRows.length)issues.push({severity:'info',title:'لا توجد ملفات مرئية للدور الحالي',detail:'لم يعد فهرس الملفات السحابية نتائج مطابقة للمدرسة والدور الحاليين.',routeKey:'files'});
    if(moduleState?.module==='unknown')issues.push({severity:'info',title:'الصفحة الحالية غير مربوطة بمكيف تشغيلي',detail:'يستطيع الوكيل العام العمل، لكن تحليل حقول هذه الصفحة سيكون محدودًا.'});
-   const metrics=[{label:'التكليفات المفتوحة',value:openTasks.length,note:`المتأخرة: ${overdue.length}`},{label:'الملفات المرئية',value:fileRows.length,note:'حسب صلاحية الدور'},{label:'الملاحظات',value:issues.length,note:'تشخيص للقراءة فقط'}];
+   const metrics=[{label:'التكليفات المفتوحة',value:openTasks.length,note:`المتأخرة: ${overdue.length}`},{label:'بانتظار المراجعة',value:awaitingReview.length,note:`المعادة: ${returnedEvidence.length}`},{label:'الملفات المرئية',value:fileRows.length,note:'حسب صلاحية الدور'},{label:'الملاحظات',value:issues.length,note:'تشخيص للقراءة فقط'}];
    await audit(admin,c,'diagnostics',{openTasks:openTasks.length,overdue:overdue.length,files:fileRows.length,issues:issues.length},requestId);return json({success:true,metrics,issues,requestId});
  }
  if(action==='file'){

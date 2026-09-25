@@ -98,6 +98,21 @@ Deno.serve(async(req)=>{
   };
   const mine=(t:any)=>t&&(String(t.assigned_to||'')===String(s.user_id)||String(t.assignee_email||'').toLowerCase()===sessionEmail);
   const canRead=(t:any)=>t&&t.school_id===s.school_id&&(isOwner||mine(t)||String(t.created_by)===String(s.user_id));
+  const deliveryMeta=(t:any)=>{
+   const d=t?.metadata?.evidence_delivery||{};
+   const legacy:Record<string,string>={active:'required',transferred:'required',in_progress:'evidence_saved',pending_approval:'submitted',returned:'returned',approved:'approved',rejected:'rejected',archived:'archived',closed:'archived'};
+   return {version:'1.0.0',state:String(d.state||legacy[String(t?.status||'')]||'required'),revision:Number(d.revision||0),periodId:String(d.periodId||t?.metadata?.periodId||t?.metadata?.weekId||t?.metadata?.semester||'general'),reviewerId:String(d.reviewerId||t?.metadata?.reviewer_id||t?.created_by||''),...d};
+  };
+  const isDeliveryReviewer=(t:any)=>String(deliveryMeta(t).reviewerId||t?.created_by||'')===String(s.user_id||'');
+  const writeDelivery=async(t:any,state:string,extra:any={},taskChanges:any={})=>{
+   const previous=deliveryMeta(t),next={...previous,...extra,state,revision:Number(previous.revision||0)+1,updatedAt:now,updatedBy:String(s.user_id||'')};
+   const metadata={...(t.metadata||{}),evidence_delivery:next,assignment_evidence_engine:'1.0.0'};
+   const {data,error}=await sb.from('central_tasks').update({...taskChanges,metadata,updated_at:now}).eq('id',t.id).eq('school_id',s.school_id).select('*').single();if(error)throw error;
+   return {task:data,delivery:next,previous};
+  };
+  const activeEvidence=async(taskId:string)=>{const {data,error}=await sb.from('central_task_evidence').select('*,platform_files(*)').eq('school_id',s.school_id).eq('task_id',taskId).eq('status','active').is('deleted_at',null).order('created_at',{ascending:false});if(error)throw error;return data||[]};
+  const allEvidence=async(taskId:string)=>{const {data,error}=await sb.from('central_task_evidence').select('*,platform_files(*)').eq('school_id',s.school_id).eq('task_id',taskId).is('deleted_at',null).order('created_at',{ascending:false});if(error)throw error;return data||[]};
+  const executionUpdates=async(taskId:string)=>{const {data,error}=await sb.from('central_task_updates').select('*').eq('school_id',s.school_id).eq('task_id',taskId).order('created_at',{ascending:false});if(error)throw error;return data||[]};
   const executionStatuses=new Set(['active','in_progress','transferred','returned']);
   const terminalStatuses=new Set(['approved','rejected','withdrawn','archived','closed','canceled']);
   const revokeTaskAccess=async(taskId:string)=>{
@@ -236,7 +251,8 @@ Deno.serve(async(req)=>{
     const registered=await ensureRegisteredRecord(mk,rt,r.recordId||null,preValidationOwner);
     if(!registered)return json({error:rt==='canonical_record'?`تعذر التحقق من السجل الأصلي المحدد: ${mk}/${String(r.recordId||'بدون معرف')}`:`السجل غير مسجل في القاموس الموحد: ${mk}/${rt}`},409);
    }
-   const row={school_id:s.school_id,module_key:safeKey(body.moduleKey||body.sourceOwner||'central_tasks'),record_type:body.recordType||body.assignmentType||null,record_id:body.recordId||null,title:String(body.title||'').trim().slice(0,300),description:String(body.description||'').trim()||null,assignment_type:['record','partial','additional_role'].includes(body.assignmentType)?body.assignmentType:'partial',source_owner:body.sourceOwner||null,record_key:body.recordKey||null,created_by:s.user_id,owner_role:s.role,owner_label:body.ownerLabel||null,assigned_to:assignedTo,assignee_email:assigneeEmail,assignee_name:body.assigneeName||null,assignee_role:body.assigneeRole||null,priority:['low','normal','high','urgent'].includes(body.priority)?body.priority:'normal',status:'active',start_date:body.startDate||null,due_date:body.dueDate||null,requires_approval:body.requiresApproval!==false,metadata:{...(body.metadata||{}),assignment_engine_version:'2.0.0',assignment_engine:'unified',created_via:'platform-tasks'}};
+   const initialDelivery={version:'1.0.0',state:'required',revision:1,periodId:String(body.periodId||body.metadata?.periodId||body.startDate||'general'),reviewerId:String(body.reviewerId||body.metadata?.reviewer_id||s.user_id),createdAt:now,updatedAt:now,updatedBy:String(s.user_id)};
+   const row={school_id:s.school_id,module_key:safeKey(body.moduleKey||body.sourceOwner||'central_tasks'),record_type:body.recordType||body.assignmentType||null,record_id:body.recordId||null,title:String(body.title||'').trim().slice(0,300),description:String(body.description||'').trim()||null,assignment_type:['record','partial','additional_role'].includes(body.assignmentType)?body.assignmentType:'partial',source_owner:body.sourceOwner||null,record_key:body.recordKey||null,created_by:s.user_id,owner_role:s.role,owner_label:body.ownerLabel||null,assigned_to:assignedTo,assignee_email:assigneeEmail,assignee_name:body.assigneeName||null,assignee_role:body.assigneeRole||null,priority:['low','normal','high','urgent'].includes(body.priority)?body.priority:'normal',status:'active',start_date:body.startDate||null,due_date:body.dueDate||null,requires_approval:body.requiresApproval!==false,metadata:{...(body.metadata||{}),evidenceRequired:body.metadata?.source_type==='readiness'?false:body.metadata?.evidenceRequired!==false,evidence_delivery:initialDelivery,assignment_evidence_engine:'1.0.0',assignment_engine_version:'2.1.0',assignment_engine:'unified',created_via:'platform-tasks'}};
    if(!row.title)return json({error:'عنوان التكليف مطلوب'},400);
    const {data:t,error}=await sb.from('central_tasks').insert(row).select('*').single();if(error){console.error('[platform-tasks:create:insert]',requestId,error,row);throw error;}if(!t?.id)throw new Error('تعذر إنشاء معرف التكليف بعد الإدراج');
    await sb.from('central_task_assignments').insert({school_id:s.school_id,task_id:t.id,assigned_to:assignedTo,assignee_email:assigneeEmail,assignee_name:row.assignee_name,assignee_role:row.assignee_role,assigned_by:s.user_id,assignment_reason:'إنشاء التكليف',is_current:true});
@@ -277,6 +293,46 @@ Deno.serve(async(req)=>{
    await event(t.id,'created','تم إنشاء التكليف',null,t);await notice(t.id,assignedTo,assigneeEmail,'assigned','تكليف جديد',`تم إسناد التكليف: ${t.title}`);return json({task:t},201);
   }
   const task=await getTask(String(body.taskId||''));if(!task)return json({error:'التكليف غير موجود'},404);
+  if(action==='delivery-state'){
+   if(!canRead(task))return json({error:'لا توجد صلاحية'},403);
+   const [evidence,updates]=await Promise.all([allEvidence(task.id),executionUpdates(task.id)]);
+   return json({task,delivery:deliveryMeta(task),evidence,updates,counters:{executed:evidence.length||updates.length?1:0,submitted:['submitted','under_review','approved','returned','rejected','archived'].includes(deliveryMeta(task).state)?1:0,approved:['approved','archived'].includes(deliveryMeta(task).state)?1:0}});
+  }
+  if(action==='delivery-submit'){
+   if(!mine(task))return json({error:'هذا التكليف غير مسند إليك'},403);
+   if(!['active','in_progress','transferred','returned'].includes(String(task.status||'')))return json({error:'لا يمكن إرسال التنفيذ في حالة التكليف الحالية'},409);
+   const [evidence,updates]=await Promise.all([activeEvidence(task.id),executionUpdates(task.id)]);
+   const evidenceRequired=task.metadata?.evidenceRequired!==false&&task.metadata?.evidence_required!==false;
+   if(evidenceRequired&&!evidence.length&&!updates.some((u:any)=>u.link_url))return json({error:'يجب رفع شاهد صالح أو ربط شاهد قبل الإرسال'},409);
+   if(!evidence.length&&!updates.length)return json({error:'لا يوجد تنفيذ محفوظ يمكن إرساله'},409);
+   const submittedAt=now;const wr=await writeDelivery(task,'submitted',{submittedAt,submittedBy:String(s.user_id),previewedAt:null,previewedBy:null,decision:null,decisionNote:null},{status:'pending_approval',progress_percent:Math.max(Number(task.progress_percent||0),90)});const data=wr.task;
+   await sb.from('central_task_updates').update({status:'pending_approval',updated_at:now}).eq('task_id',task.id).eq('school_id',s.school_id).eq('status','draft');
+   await event(task.id,'submitted','تم إرسال التنفيذ والشواهد للمراجعة',task,{...data,metadata:wr.task.metadata});await notice(task.id,task.created_by,task.metadata?.reviewer_email||null,'submitted','تنفيذ بانتظار المراجعة',`أرسل ${task.assignee_name||'المكلف'} تنفيذ التكليف "${task.title}".`);
+   return json({task:{...data,metadata:wr.task.metadata},delivery:wr.delivery,evidence,updates});
+  }
+  if(action==='delivery-open-review'){
+   if(!isDeliveryReviewer(task))return json({error:'لا تملك صلاحية مراجعة هذا التكليف'},403);
+   if(String(task.status)!=='pending_approval')return json({error:'التنفيذ ليس في حالة انتظار المراجعة'},409);
+   const wr=await writeDelivery(task,'under_review',{previewedAt:now,previewedBy:String(s.user_id),reviewerId:String(s.user_id)});await event(task.id,'under_review','فتح المراجع الشاهد',null,wr.delivery);return json(wr);
+  }
+  if(action==='delivery-review'){
+   if(!isDeliveryReviewer(task))return json({error:'لا تملك صلاحية القرار'},403);
+   if(String(task.status)!=='pending_approval')return json({error:'تمت معالجة هذا التسليم مسبقًا أو تغيرت حالته'},409);
+   const current=deliveryMeta(task);if(!current.previewedAt||String(current.previewedBy)!==String(s.user_id))return json({error:'يجب فتح الشاهد ومعاينته قبل اتخاذ القرار'},409);
+   const decision=String(body.decision||''),allowed=new Set(['approved','returned','rejected']);if(!allowed.has(decision))return json({error:'قرار المراجعة غير صالح'},400);
+   const note=String(body.note||'').trim();if(decision!=='approved'&&!note)return json({error:'سبب الإعادة أو الرفض إلزامي'},400);
+   const changes:any={status:decision};if(decision==='approved')changes.progress_percent=100;const wr=await writeDelivery(task,decision,{decision,decisionNote:note||null,decidedAt:now,decidedBy:String(s.user_id)},changes);const data=wr.task;
+   await sb.from('central_task_reviews').insert({school_id:s.school_id,task_id:task.id,reviewer_id:s.user_id,decision:decision==='returned'?'returned_for_correction':decision,review_notes:note||null});
+   await sb.from('central_task_updates').update({status:decision,updated_at:now}).eq('task_id',task.id).eq('school_id',s.school_id).eq('status','pending_approval');
+   if(decision==='approved')await revokeTaskAccess(task.id);
+   await syncReadinessProjection(data,'transition',{status:decision,note});await event(task.id,decision,note||'تم اعتماد التنفيذ',task,{...data,metadata:wr.task.metadata});await notice(task.id,task.assigned_to,task.assignee_email,decision,decision==='approved'?'تم اعتماد التنفيذ':decision==='returned'?'أعيد التنفيذ للاستكمال':'لم يعتمد التنفيذ',note||`تم تحديث حالة التكليف "${task.title}".`);
+   return json({task:{...data,metadata:wr.task.metadata},delivery:wr.delivery});
+  }
+  if(action==='delivery-archive'){
+   if(!isDeliveryReviewer(task))return json({error:'لا تملك صلاحية الأرشفة'},403);
+   if(!['approved','rejected'].includes(String(task.status||'')))return json({error:'لا تتم الأرشفة قبل اكتمال قرار المراجعة'},409);
+   const wr=await writeDelivery(task,'archived',{archivedAt:now,archivedBy:String(s.user_id)},{status:'archived',closed_at:now});const data=wr.task;await revokeTaskAccess(task.id);await sb.from('central_task_evidence').update({status:'archived'}).eq('task_id',task.id).eq('school_id',s.school_id).eq('status','active');await event(task.id,'archived','تمت أرشفة التنفيذ وشواهده',task,data);return json({task:data,delivery:wr.delivery});
+  }
   if(action==='delete-task'){
    if(!isOwner)return json({error:'حذف التكليف متاح للمدير والوكيل فقط'},403);
    await revokeTaskAccess(task.id);
@@ -330,9 +386,16 @@ Deno.serve(async(req)=>{
    const changes:any={status:task.status==='active'||task.status==='transferred'||task.status==='returned'?'in_progress':task.status};if(progress!=null)changes.progress_percent=progress;await sb.from('central_tasks').update(changes).eq('id',task.id);await syncReadinessProjection({...task,...changes},body.updateType==='blocked'?'blocked':'update',{notes:body.notes||body.title||'',progressPercent:progress});await event(task.id,'updated',body.title||body.notes||'تحديث تنفيذ',null,u);return json({update:u});
   }
   if(action==='attach-evidence'){
-   if(!isOwner&&!mine(task))return json({error:'لا توجد صلاحية'},403);const fileId=String(body.platformFileId||'');const {data:file}=await sb.from('platform_files').select('*').eq('id',fileId).eq('school_id',s.school_id).maybeSingle();if(!file)return json({error:'الملف غير موجود'},404);
-   const {data,error}=await sb.from('central_task_evidence').upsert({school_id:s.school_id,task_id:task.id,update_id:isUuid(body.updateId)?body.updateId:null,platform_file_id:fileId,uploaded_by:s.user_id,evidence_type:body.evidenceType||'execution',status:'active'},{onConflict:'task_id,platform_file_id'}).select('*').single();if(error)throw error;
-   await sb.from('platform_file_links').upsert({school_id:s.school_id,file_id:fileId,module_key:'central_tasks',record_type:'central_task',record_id:task.id,relation_type:'evidence',linked_by:s.user_id,is_primary:false},{onConflict:'school_id,file_id,module_key,record_type,record_id,relation_type'});await syncReadinessProjection(task,'evidence',{platformFileId:fileId,fileName:file.display_name||file.original_name||file.file_name||'شاهد تنفيذ'});await event(task.id,'evidence_uploaded','تم إرفاق شاهد',null,{platform_file_id:fileId});return json({evidence:data});
+   if(!isOwner&&!mine(task))return json({error:'لا توجد صلاحية'},403);
+   if(['pending_approval','approved','archived','closed','withdrawn','canceled'].includes(String(task.status||'')))return json({error:'التكليف مقفل للرفع في حالته الحالية'},409);
+   const fileId=String(body.platformFileId||'');const {data:file}=await sb.from('platform_files').select('*').eq('id',fileId).eq('school_id',s.school_id).eq('status','active').maybeSingle();if(!file)return json({error:'الملف غير موجود أو غير نشط'},404);
+   if(mine(task)&&String(file.uploaded_by||file.owner_user_id||'')!==String(s.user_id))return json({error:'لا يمكن ربط ملف يخص مستخدمًا آخر كشاهد للتكليف'},403);
+   const evidenceType=String(body.evidenceType||'execution').slice(0,100),current=await activeEvidence(task.id),sameSlot=current.filter((x:any)=>String(x.evidence_type||'execution')===evidenceType);
+   if(sameSlot.length&&!['returned','rejected'].includes(String(task.status||'')))return json({error:'يوجد شاهد حالي لهذا البند. لا يمكن الاستبدال إلا بعد الإعادة أو عدم الاعتماد'},409);
+   if(sameSlot.length)await sb.from('central_task_evidence').update({status:'archived'}).eq('school_id',s.school_id).eq('task_id',task.id).eq('evidence_type',evidenceType).eq('status','active');
+   const {data,error}=await sb.from('central_task_evidence').upsert({school_id:s.school_id,task_id:task.id,update_id:isUuid(body.updateId)?body.updateId:null,platform_file_id:fileId,uploaded_by:s.user_id,evidence_type:evidenceType,status:'active',deleted_at:null},{onConflict:'task_id,platform_file_id'}).select('*').single();if(error)throw error;
+   await sb.from('platform_file_links').upsert({school_id:s.school_id,file_id:fileId,module_key:'central_tasks',record_type:'central_task',record_id:task.id,relation_type:'evidence',linked_by:s.user_id,is_primary:false},{onConflict:'school_id,file_id,module_key,record_type,record_id,relation_type'});
+   const wr=await writeDelivery(task,'evidence_saved',{evidenceSavedAt:now,evidenceSavedBy:String(s.user_id),currentEvidenceId:data.id,currentFileId:fileId,previewedAt:null,previewedBy:null},{status:'in_progress'});await syncReadinessProjection(task,'evidence',{platformFileId:fileId,fileName:file.display_name||file.original_name||file.file_name||'شاهد تنفيذ'});await event(task.id,'evidence_saved','تم حفظ وربط شاهد التنفيذ',null,{platform_file_id:fileId,evidence_id:data.id,delivery:wr.delivery});return json({evidence:data,delivery:wr.delivery,task:wr.task});
   }
   if(action==='linked-records'){
    if(!canRead(task))return json({error:'لا توجد صلاحية'},403);const {data,error}=await sb.from('task_record_links').select('*').eq('task_id',task.id);if(error)throw error;const {data:grants}=await sb.from('task_access_grants').select('*').eq('task_id',task.id).eq('status','active');return json({records:data||[],grants:grants||[]});

@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-const VERSION='15.0.0-RL170-records-interactivity';
+const VERSION='15.1.0-RL221-teacher-scope-canonical-match';
 if(window.SchoolInformationSource&&String(window.SchoolInformationSource.VERSION||'')===VERSION)return;
 const SUPABASE_URL=(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'');
 const DEFAULT_SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
@@ -497,7 +497,42 @@ function normalizeScope(scope){
  scope=scope||{};
  return {stage:safe(scope.stage),grade:safe(scope.grade),track_name:safe(scope.track_name||scope.track),section_name:safe(scope.section_name||scope.section)};
 }
-function studentMatchesScope(r,scope){const s=normalizeScope(scope);return (!s.stage||safe(r.stage)===s.stage)&&(!s.grade||safe(r.grade)===s.grade)&&(!s.track_name||safe(r.track_name)===s.track_name)&&(!s.section_name||safe(r.section_name)===s.section_name)}
+function canonicalStage(v){
+ const t=normalizedText(v).replace(/^المرحله\s+/,'').replace(/^مرحله\s+/,'');
+ if(/رياض\s*ال?اطفال|روضه|تمهيدي/.test(t))return 'kindergarten';
+ if(/طفوله\s*مبكره/.test(t))return 'early';
+ if(/ابتدا[يئ]/.test(t))return 'primary';
+ if(/متوسط/.test(t))return 'middle';
+ if(/ثانو|مسارات/.test(t))return 'high';
+ return t;
+}
+function canonicalGrade(v){
+ let t=normalizedText(v).replace(/^(المرحله|مرحله)\s+/,'').replace(/^(الصف|صف)\s+/,'');
+ t=t.replace(/\s+(?:ال)?(?:ابتدا[يئ]\S*|متوسط\S*|ثانو\S*)\s*$/,'').trim();
+ const rules=[[/^(ال)?اول$|^1$|^١$/,'grade_1'],[/^(ال)?ثاني$|^(ال)?ثانى$|^2$|^٢$/,'grade_2'],[/^(ال)?ثالث$|^3$|^٣$/,'grade_3'],[/^(ال)?رابع$|^4$|^٤$/,'grade_4'],[/^(ال)?خامس$|^5$|^٥$/,'grade_5'],[/^(ال)?سادس$|^6$|^٦$/,'grade_6']];
+ for(const [re,key] of rules)if(re.test(t))return key;
+ return t;
+}
+function canonicalSection(v){
+ return normalizedText(v).replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/^(الفصل|فصل|الشعبه|شعبه)\s*/,'').replace(/^0+(?=\d)/,'');
+}
+function canonicalTrack(v){
+ const t=normalizedText(v).replace(/^المسار\s+/,'');
+ if(!t)return '';
+ if(/عام|مشترك/.test(t))return 'general';
+ if(/حاسب|هندسه/.test(t))return 'computer_engineering';
+ if(/صحه|حياه/.test(t))return 'health_life';
+ if(/اداره|اعمال/.test(t))return 'business';
+ if(/شرعي/.test(t))return 'sharia';
+ return t;
+}
+function studentMatchesScope(r,scope){
+ const s=normalizeScope(scope);
+ return (!s.stage||canonicalStage(r.stage)===canonicalStage(s.stage))
+  &&(!s.grade||canonicalGrade(r.grade)===canonicalGrade(s.grade))
+  &&(!s.track_name||canonicalTrack(r.track_name)===canonicalTrack(s.track_name))
+  &&(!s.section_name||canonicalSection(r.section_name)===canonicalSection(s.section_name));
+}
 async function getStudentsByScope(scope={},force=false){
  if(force)await refresh();else await ensureFresh(false);
  return state.students.filter(r=>studentMatchesScope(r,scope));

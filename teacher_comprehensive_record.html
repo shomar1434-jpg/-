@@ -141,6 +141,36 @@
                 sameCenterScopeValue(left, right) {
                     return this.normalizeArabicEducationText(left) === this.normalizeArabicEducationText(right);
                 },
+                canonicalCenterGrade(value) {
+                    let text = this.normalizeArabicEducationText(value)
+                        .replace(/^(المرحله|مرحله)\s+/, '')
+                        .replace(/^(الصف|صف)\s+/, '')
+                        .replace(/\s+(?:ال)?(?:ابتدا[يئ]\S*|متوسط\S*|ثانو\S*)\s*$/, '')
+                        .trim();
+                    const rules = [
+                        [/^(ال)?اول$|^1$|^١$/, 'grade_1'], [/^(ال)?ثاني$|^(ال)?ثانى$|^2$|^٢$/, 'grade_2'],
+                        [/^(ال)?ثالث$|^3$|^٣$/, 'grade_3'], [/^(ال)?رابع$|^4$|^٤$/, 'grade_4'],
+                        [/^(ال)?خامس$|^5$|^٥$/, 'grade_5'], [/^(ال)?سادس$|^6$|^٦$/, 'grade_6']
+                    ];
+                    const match = rules.find(([re]) => re.test(text));
+                    return match ? match[1] : text;
+                },
+                canonicalCenterSection(value) {
+                    return this.normalizeArabicEducationText(value)
+                        .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
+                        .replace(/^(الفصل|فصل|الشعبه|شعبه)\s*/, '')
+                        .replace(/^0+(?=\d)/, '');
+                },
+                canonicalCenterTrack(value) {
+                    const text = this.normalizeArabicEducationText(value).replace(/^المسار\s+/, '');
+                    if (!text) return '';
+                    if (/عام|مشترك/.test(text)) return 'general';
+                    if (/حاسب|هندسه/.test(text)) return 'computer_engineering';
+                    if (/صحه|حياه/.test(text)) return 'health_life';
+                    if (/اداره|اعمال/.test(text)) return 'business';
+                    if (/شرعي/.test(text)) return 'sharia';
+                    return text;
+                },
                 centerStudentMatchesClassScope(student, cls) {
                     if (!student || !cls) return false;
                     const studentStage = this.canonicalCenterStage(student.stage_key || student.stage);
@@ -148,9 +178,9 @@
                     // هوية الكشف إلزامياً: المرحلة + الصف + الفصل/الشعبة.
                     // المسار يضاف إلى الهوية عند اختياره في المرحلة الثانوية.
                     if (!studentStage || !classStage || studentStage !== classStage) return false;
-                    if (!this.sameCenterScopeValue(student.grade, cls.grade)) return false;
-                    if (!this.sameCenterScopeValue(student.section_name, cls.section)) return false;
-                    if (String(cls.track || '').trim() && !this.sameCenterScopeValue(student.track_name, cls.track)) return false;
+                    if (this.canonicalCenterGrade(student.grade) !== this.canonicalCenterGrade(cls.grade)) return false;
+                    if (this.canonicalCenterSection(student.section_name) !== this.canonicalCenterSection(cls.section)) return false;
+                    if (String(cls.track || '').trim() && this.canonicalCenterTrack(student.track_name) !== this.canonicalCenterTrack(cls.track)) return false;
                     return true;
                 },
                 centerStudentIdentity(student) {
@@ -160,8 +190,8 @@
                     return [
                         this.normalizeArabicEducationText(student?.name),
                         this.canonicalCenterStage(student?.stage_key || student?.stage),
-                        this.normalizeArabicEducationText(student?.grade),
-                        this.normalizeArabicEducationText(student?.section_name)
+                        this.canonicalCenterGrade(student?.grade),
+                        this.canonicalCenterSection(student?.section_name)
                     ].join('||');
                 },
                 backupScopeRepairRows(rows) {
@@ -704,7 +734,7 @@
                         if (!grade) return;
                         const track = (s.track_name || '').toString().trim();
                         const section = (s.section_name || '').toString().trim();
-                        const key = [stage, grade, track, section].join('||');
+                        const key = [stage, this.canonicalCenterGrade(grade), this.canonicalCenterTrack(track), this.canonicalCenterSection(section)].join('||');
                         if (!groupsMap.has(key)) {
                             groupsMap.set(key, { key, stage, grade, track, section, count: 0 });
                         }
@@ -792,7 +822,7 @@
                     const selectedScope = { stage: form.stage, grade: form.grade, track: form.track, section: form.section };
                     const filtered = sourceStudents
                         .map((s, idx) => this.normalizeCenterStudent(s, idx))
-                        .filter(s => !s.student_status || ['نشط', 'active', 'فعال', ''].includes(String(s.student_status).trim()))
+                        .filter(s => !s.student_status || ['نشط', 'active', 'فعال', ''].includes(String(s.student_status).trim().toLowerCase()))
                         // نفس دالة النطاق تستخدم في الاستيراد والمزامنة لمنع اختلاف النتائج بينهما.
                         .filter(s => this.centerStudentMatchesClassScope(s, selectedScope))
                         .filter(s => s.name);
@@ -819,9 +849,9 @@
                     // الاستبدال يخص السجل نفسه فقط. إدخال المرحلة في المقارنة يمنع حذف سجل لمرحلة أخرى لها صف/شعبة بالاسم نفسه.
                     this.classes = this.classes.filter(c => !(c.source === 'information_center'
                         && this.canonicalCenterStage(c.stage) === this.canonicalCenterStage(classObj.stage)
-                        && this.sameCenterScopeValue(c.grade, classObj.grade)
-                        && this.sameCenterScopeValue(c.track, classObj.track)
-                        && this.sameCenterScopeValue(c.section, classObj.section)
+                        && this.canonicalCenterGrade(c.grade) === this.canonicalCenterGrade(classObj.grade)
+                        && this.canonicalCenterTrack(c.track) === this.canonicalCenterTrack(classObj.track)
+                        && this.canonicalCenterSection(c.section) === this.canonicalCenterSection(classObj.section)
                         && this.sameCenterScopeValue(c.subject, classObj.subject)));
                     this.classes.push(classObj);
                     this.currentClassId = classObj.id;
@@ -3274,7 +3304,7 @@
 <script src="school-activity-engine.js"></script>
   <script src="evidence-library-source.js"></script>
 
-<script src="school-information-source.js?v=20260916-RL169-stable-select-dropdowns"></script>
+<script src="school-information-source.js?v=20260926-RL221-teacher-scope-canonical-match"></script>
 <script src="student-roster-linker.js?v=20260831-student-cascade-v1"></script>
 <script src="internal-messaging.js"></script>
 <script defer src="unified_workspace.js"></script>

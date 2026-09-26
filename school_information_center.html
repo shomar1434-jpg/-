@@ -239,7 +239,7 @@
           </div>
 
           <div id="stageGradesEditor" style="margin-top:12px">
-            <div class="muted">اختر المرحلة لتظهر الصفوف الثلاثة وتحدد عدد الفصول لكل صف.</div>
+            <div class="muted">اختر المرحلة لتظهر صفوفها المعتمدة وتحدد عدد الفصول لكل صف.</div>
           </div>
 
           <div class="actions" style="margin-top:12px">
@@ -669,7 +669,7 @@
   }
   function exactGradeNames(stage){
     stage=normalizeStageName(stage);
-    if(stage==='ابتدائية')return ['الرابع','الخامس','السادس'];
+    if(stage==='ابتدائية')return ['الأول','الثاني','الثالث','الرابع','الخامس','السادس'];
     if(stage==='رياض أطفال'||stage==='طفولة مبكرة'||stage==='متوسطة'||stage==='ثانوية')return ['الأول','الثاني','الثالث'];
     return [];
   }
@@ -685,7 +685,12 @@
       const wanted=exactGradeNames(name);
       const oldGrades=Array.isArray(grades)?grades:[];
       const normalizedGrades=wanted.map((gradeName,i)=>{
-        const old=oldGrades[i]||{};
+        // طابق الصف المحفوظ باسمه لا بموضعه. النسخ السابقة كانت تعرض الرابع إلى
+        // السادس فقط؛ الاعتماد على الفهرس عند توسيع الابتدائية كان سينقل بيانات
+        // الرابع إلى الأول. الـ fallback بالفهرس آمن فقط إن كان الاسم مفقوداً.
+        const old=oldGrades.find(g=>canonicalGradeLabel(g?.name)===canonicalGradeLabel(gradeName))
+          || oldGrades.find(g=>!safe(g?.name)&&oldGrades.indexOf(g)===i)
+          || {};
         return {
           id:old.id||('grade_'+Date.now()+'_'+name+'_'+i),
           name:gradeName,
@@ -730,7 +735,7 @@ window.prepareStageGradesEditor=function(){
     const stage=normalizeStageName($('structureStageType')?.value),box=$('stageGradesEditor');
     if(!box)return;
     if(!stage){
-      box.innerHTML='<div class="muted">اختر المرحلة لتظهر الصفوف الثلاثة وتحدد عدد الفصول لكل صف.</div>';
+      box.innerHTML='<div class="muted">اختر المرحلة لتظهر صفوفها المعتمدة وتحدد عدد الفصول لكل صف.</div>';
       return;
     }
     const existing=(Array.isArray(academicStructure?.stages)?academicStructure.stages:[]).find(s=>normalizeStageName(s?.name)===stage);
@@ -2203,7 +2208,7 @@ window.readExcel = async function(){
 <script src="delegated-access-guard.js"></script>
   <script src="evidence-library-source.js"></script>
 
-<script src="school-information-source.js?v=20260916-RL169-stable-select-dropdowns"></script>
+<script src="school-information-source.js?v=20260926-RL221-teacher-scope-canonical-match"></script>
 <script src="internal-messaging.js"></script>
 
 <script id="central-information-provider-ui">

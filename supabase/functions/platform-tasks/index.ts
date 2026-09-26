@@ -213,7 +213,7 @@ Deno.serve(async(req)=>{
    let q=sb.from('central_tasks').select('*,central_task_updates(*),central_task_evidence(*),central_task_assignments(*)').eq('school_id',s.school_id).is('deleted_at',null).order('updated_at',{ascending:false}).limit(Math.min(Number(body.limit)||500,1000));
    if(!isOwner)q=q.or(`assigned_to.eq.${s.user_id},created_by.eq.${s.user_id}${sessionEmail?`,assignee_email.eq.${sessionEmail}`:''}`);
    if(body.status)q=q.eq('status',body.status);if(body.moduleKey)q=q.eq('module_key',safeKey(body.moduleKey));
-   const {data,error}=await q;if(error)throw error;return json({tasks:data||[]});
+   const {data,error}=await q;if(error)throw error;return json({tasks:data||[],scope:{schoolId:String(s.school_id||''),userId:String(s.user_id||''),email:sessionEmail,role:String(s.role||''),isOwner}});
   }
   if(action==='get'){
    const t=await getTask(String(body.taskId||''));if(!t)return json({error:'التكليف غير موجود'},404);if(!canRead(t))return json({error:'لا توجد صلاحية'},403);

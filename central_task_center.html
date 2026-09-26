@@ -261,12 +261,17 @@ function collectUsers(){let out=[]; const keys=[NS+'_users','smartSchoolCloudSto
 function currentAssigneeId(){return String(window.PlatformCloudSession?.userId?.()||sessionStorage.getItem('currentUserId')||localStorage.getItem('currentUserId')||localStorage.getItem('current_user_id')||'').trim()}
 function currentAssigneeEmail(){return String(window.PlatformCloudSession?.email?.()||sessionStorage.getItem('currentUserEmail')||localStorage.getItem('currentUserEmail')||'').trim().toLowerCase()}
 function isMine(t){
- const sid=currentSchoolId(),taskSchool=String(t?.school_id||t?._raw?.school_id||'').trim();
- if(!sid||taskSchool&&taskSchool!==sid)return false;
+ // لا تجعل قيمة مدرسة محلية قديمة تحجب نتيجة صادق عليها الخادم. عند توفر
+ // جلسة سحابية نستخدم مدرستها فقط، وإلا نترك التحقق المدرسي للخادم الذي
+ // أعاد قائمة التكليفات مقيدة بالمدرسة أصلاً.
+ const cloudSid=String(window.PlatformCloudSession?.schoolId?.()||'').trim();
+ const taskSchool=String(t?.school_id||t?._raw?.school_id||'').trim();
+ if(cloudSid&&taskSchool&&taskSchool!==cloudSid)return false;
  const id=currentAssigneeId(),taskId=String(t?.assignee_id||t?._raw?.assigned_to||'').trim();
- if(id&&taskId)return taskId===id;
  const email=currentAssigneeEmail(),taskEmail=String(t?.assignee_email||t?._raw?.assignee_email||'').trim().toLowerCase();
- return !!(!taskId&&email&&taskEmail&&taskEmail===email);
+ // الحسابات القديمة قد يتغير UUID الخاص بها عند توحيد الهوية، بينما يبقى
+ // البريد الموثق نفسه. التطابق بأي من المعرفين كافٍ بعد عزل المدرسة سحابياً.
+ return !!((id&&taskId&&taskId===id)||(email&&taskEmail&&taskEmail===email));
 }
 function normalizeExtraCode(v){v=String(v||'').trim(); let map={'التوجيه الصحي':'health_guidance','موجه صحي':'health_guidance','الموجه الصحي':'health_guidance','health_guidance':'health_guidance','health':'health_guidance','منسق الموهوبين':'gifted_coordinator','الموهوبين':'gifted_coordinator','منسق الجودة':'quality_coordinator','الجودة':'quality_coordinator','محضر المختبر':'lab_preparator','مختبر':'lab_preparator','مصادر التعلم':'learning_resources'};return map[v]||v}
 function readRoleMap(){return read('smart_school_teacher_extra_roles_map',{})}function writeRoleMap(m){write('smart_school_teacher_extra_roles_map',m);write('smartSchoolCloudStorage_teacher_extra_roles_map',m)}

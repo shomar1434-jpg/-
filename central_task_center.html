@@ -258,8 +258,23 @@ function normalizeRole(r){r=String(r||'').toLowerCase(); if(['teacher','معلم
 function roleLabel(r){return {teacher:'معلم/معلمة',admin_employee:'موظف/موظفة إدارية',administrative_employee:'موظف/موظفة إدارية',agent:'وكيل/وكيلة',student_advisor:'موجه/موجهة طلابية',activity_leader:'رائد/رائدة نشاط'}[r]||'مستخدم'}
 function currentOwnerLabel(){return normalizeRole(role())==='agent'?'الوكيل/الوكيلة':'المدير/المديرة'}
 function collectUsers(){let out=[]; const keys=[NS+'_users','smartSchoolCloudStorage_users','smart_school_users','school_users','users','registered_users','school_members','administrative_employee_plans']; keys.forEach(k=>{let a=read(k,[]); if(Array.isArray(a)) out=out.concat(a.map(x=>k==='administrative_employee_plans'?Object.assign({},x,{role:'admin_employee',name:x.name||x.employeeName}):x))}); for(let i=0;i<localStorage.length;i++){let k=localStorage.key(i); if(/users|school_members|accounts/i.test(k||'')){let a=read(k,[]); if(Array.isArray(a)) out=out.concat(a)}} let seen=new Set(); out=out.map(u=>({id:u.id||u.user_id||u.email||uid(),name:u.name||u.fullName||u.full_name||u.employeeName||u.email||'مستخدم',email:u.email||'',role:normalizeRole(u.role||u.dbRole||u.type),status:u.status||((u.active||u.isActive)?'active':'active'),schoolId:u.schoolId||u.school_id||currentSchoolId()})).filter(u=>u.status!=='deleted' && (!u.schoolId || String(u.schoolId)===String(currentSchoolId()))).filter(u=>{let key=String(u.id||u.email); if(seen.has(key))return false; seen.add(key); return true;}); if(!out.length) out=[{id:'demo_teacher',name:'معلم تجريبي',role:'teacher',email:''},{id:'demo_admin',name:'موظف إداري تجريبي',role:'admin_employee',email:''},{id:'demo_agent',name:'وكيل تجريبي',role:'agent',email:''}]; return out}
-function currentAssigneeId(){return String(window.PlatformCloudSession?.userId?.()||sessionStorage.getItem('currentUserId')||localStorage.getItem('currentUserId')||localStorage.getItem('current_user_id')||'').trim()}
-function currentAssigneeEmail(){return String(window.PlatformCloudSession?.email?.()||sessionStorage.getItem('currentUserEmail')||localStorage.getItem('currentUserEmail')||'').trim().toLowerCase()}
+function supervisorFollowIdentity(){
+ try{
+  const p=new URLSearchParams(location.search||'');
+  const storedActive=sessionStorage.getItem('manager_follow_active_v2')==='1';
+  const followActive=p.get('follow')==='1'||p.get('readonly')==='1'||p.get('managerFollow')==='1'||/supervisor_readonly|follow/i.test(p.get('mode')||'')||storedActive;
+  if(!followActive)return null;
+  let ctx={};try{ctx=JSON.parse(sessionStorage.getItem('manager_follow_context_v2')||'{}')||{}}catch(_){ctx={}}
+  const schoolId=String(p.get('schoolId')||p.get('school_id')||ctx.schoolId||'').trim();
+  const cloudSchool=String(window.PlatformCloudSession?.schoolId?.()||'').trim();
+  if(schoolId&&cloudSchool&&schoolId!==cloudSchool)return {id:'',email:'',schoolId:'',readonly:true,invalid:true};
+  const id=String(p.get('targetUser')||p.get('followUserId')||p.get('userId')||p.get('uid')||ctx.targetUserId||'').trim();
+  const email=String(p.get('followEmail')||p.get('targetEmail')||ctx.targetEmail||'').trim().toLowerCase();
+  return {id,email,schoolId:schoolId||cloudSchool,readonly:true,invalid:!(id||email)};
+ }catch(_){return {id:'',email:'',schoolId:'',readonly:true,invalid:true}}
+}
+function currentAssigneeId(){const f=supervisorFollowIdentity();if(f)return String(f.id||'').trim();return String(window.PlatformCloudSession?.userId?.()||sessionStorage.getItem('currentUserId')||localStorage.getItem('currentUserId')||localStorage.getItem('current_user_id')||'').trim()}
+function currentAssigneeEmail(){const f=supervisorFollowIdentity();if(f)return String(f.email||'').trim().toLowerCase();return String(window.PlatformCloudSession?.email?.()||sessionStorage.getItem('currentUserEmail')||localStorage.getItem('currentUserEmail')||'').trim().toLowerCase()}
 function isMine(t){
  // لا تجعل قيمة مدرسة محلية قديمة تحجب نتيجة صادق عليها الخادم. عند توفر
  // جلسة سحابية نستخدم مدرستها فقط، وإلا نترك التحقق المدرسي للخادم الذي

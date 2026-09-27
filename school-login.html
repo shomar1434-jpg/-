@@ -730,8 +730,8 @@
     const response=await loginDeadline(fetch(endpoint,{
       method:'POST',headers:{'content-type':'application/json','apikey':SUPABASE_KEY},
       body:JSON.stringify({action:'inspect-login-school',schoolId:targetSchoolId,schoolCode:targetSchoolCode})
-    }),'التحقق من رابط المدرسة');
-    const payload=await loginDeadline(response.json(),'قراءة هوية المدرسة');
+    }),'التحقق من رابط المدرسة',20000);
+    const payload=await loginDeadline(response.json(),'قراءة هوية المدرسة',10000);
     if(!response.ok||!payload.ok)throw new Error(payload.error||'تعذر التحقق من رابط المدرسة');
     return payload.school||null;
   }
@@ -756,7 +756,7 @@
           const sb=window.SmartSchoolSupabase?.getClient?.()||getClient();
           if(sb){
             const field=targetSchoolId?'id':'school_code',value=targetSchoolId||targetSchoolCode;
-            const result=await loginDeadline(sb.from('schools').select('id,school_name,school_code,status').eq(field,value).limit(2),'قراءة سجل المدرسة');
+            const result=await loginDeadline(sb.from('schools').select('id,school_name,school_code,status').eq(field,value).limit(2),'قراءة سجل المدرسة',20000);
             const row=!result.error&&result.data?.length===1?result.data[0]:null;
             if(row&&schoolMatchesLinkContract(row)&&!['disabled','inactive','suspended','deleted'].includes(String(row.status||'').toLowerCase()))school=row;
           }
@@ -938,7 +938,10 @@
       // RL122: لا يختار المستخدم دوره يدويًا. الخادم يحل الدور من عضويته الفعالة في المدرسة.
       const requestedDbRole = '';
       if(!loginId || !password){ setMsg('يرجى إدخال البريد/اسم المستخدم والرقم السري'); return; }
-      const school = await loginDeadline(resolveActiveSchool(), 'التحقق من رابط المدرسة');
+      // RL224: resolveActiveSchool قد يجرب بوابة الدليل ثم القراءة الاحتياطية
+      // بالتتابع. كانت المهلة الخارجية 15 ثانية فتقطع المسار قبل أن تصل
+      // القراءة الاحتياطية إلى نتيجتها، رغم أن كل طلب له مهلة مستقلة.
+      const school = await loginDeadline(resolveActiveSchool(), 'التحقق من رابط المدرسة', 45000);
       if((targetSchoolId || targetSchoolCode) && !school){ setMsg('رابط المدرسة غير مرتبط بسجل مدرسة صحيح. تم إيقاف الدخول حمايةً لعزل المدارس.'); return; }
       if((targetSchoolId || targetSchoolCode) && !schoolMatchesLinkContract(school)){ setMsg('تم رفض الدخول لأن هوية المدرسة لا تطابق رابطها المستقل.'); return; }
       // RL199 — مسار دخول مركزي واحد. كانت الصفحة تقرأ الحساب مباشرة من Supabase
@@ -1084,6 +1087,12 @@
     if(__schoolLoginInitDone) return;
     __schoolLoginInitDone = true;
     bindLogin();
+    // RL224: reason=cloud_session_required يعني أن الصفحة المحمية لم تجد
+    // جلسة موثقة في هذا التبويب. نمسح مفاتيح الجلسة السحابية الخاصة بالتبويب
+    // فقط حتى لا تعيد جلسة منتهية حلقة الدخول، ولا نمس أي بيانات مدرسة أو حساب.
+    if(params.get('reason')==='cloud_session_required'){
+      try{window.PlatformCloudSession?.clear?.();}catch(_){ }
+    }
     const hasSchoolLink = !!(targetSchoolId || targetSchoolCode);
     if(hasSchoolLink){
       const cached = findCachedSchoolByLink();
@@ -1094,7 +1103,7 @@
       }
     }
     let school=null;
-    try{school=await loginDeadline(resolveActiveSchool(),'التحقق من رابط المدرسة');}
+    try{school=await loginDeadline(resolveActiveSchool(),'التحقق من رابط المدرسة',45000);}
     catch(err){setMsg(err?.message||'تعذر التحقق من رابط المدرسة، حاول مجددًا.');}
     if(!school && hasSchoolLink){
       const title=document.getElementById('school-title');

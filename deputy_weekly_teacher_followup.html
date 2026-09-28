@@ -191,6 +191,10 @@
     'أخرى':['مهمة إضافية مخصصة']
   };
   let teachers=[], weeks=[], activeWeekId='', archives=[], weeklyReviewDecisionBusy=false;
+  // RL225: maps historical regenerated week ids to one canonical period/week.
+  // Submissions keep their original cloud state_key, so aliases preserve access
+  // without duplicating the week card or deleting any submitted work.
+  let weekIdAliases={};
   const $=id=>document.getElementById(id); const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
   function toast(msg){const d=document.createElement('div');d.className='toast';d.textContent=msg;document.body.appendChild(d);setTimeout(()=>d.remove(),4200)}
   function weeklyMutationStatus(message,failed=false){
@@ -451,6 +455,48 @@
     }
   }
   function safeLocalSet(key,value){try{localStorage.setItem(key,value);return true}catch(e){console.warn('[weekly light cache skipped]',key,e&&e.name||e);return false}}
+  function normWeekPart(v){return String(v??'').trim().replace(/\s+/g,' ').toLowerCase()}
+  function weekCanonicalKey(w){
+    const year=normWeekPart(w?.year||localStorage.getItem('school_info_academic_year')||''),term=normWeekPart(w?.term||'');
+    const number=normWeekPart(w?.number||w?.week_number||'');
+    return [year,term,number||normWeekPart(w?.start||w?.end||w?.id||'')].join('|');
+  }
+  function weekRichness(w){
+    if(!w)return -1;
+    const closed=['مغلق','مؤرشف'].includes(String(w.status||''))||w.execution_state==='closed'||!!w.closed_at;
+    return (closed?140:0)+(w.execution_confirmed_at?80:0)+(w.status==='نشط'?50:0)+(w.execution_state==='in_progress'?40:0)+
+      (Object.keys(w.teacherSubmissions||{}).length*30)+(Object.keys(w.teacherStatuses||{}).length*3)+
+      ((w.variableAssignments||[]).length*8)+((w.extraTasks||[]).length*8)+(w.periodTest?8:0)+
+      (w.recovered_from_submission?10:0);
+  }
+  function uniqueWeekRows(rows){
+    const out=[],seen=new Set();
+    for(const row of (rows||[])){const key=String(row?.id||row?.task_id||JSON.stringify(row||{}));if(seen.has(key))continue;seen.add(key);out.push(row)}
+    return out;
+  }
+  function mergeWeekCopies(a,b){
+    const keep=weekRichness(b)>weekRichness(a)?b:a,other=keep===a?b:a,canonicalId=String(keep?.id||other?.id||'');
+    for(const oldId of [a?.id,b?.id].map(v=>String(v||'')).filter(Boolean))if(oldId!==canonicalId)weekIdAliases[oldId]=canonicalId;
+    const merged={...other,...keep};
+    merged.id=canonicalId;
+    merged.teacherStatuses={...(other?.teacherStatuses||{}),...(keep?.teacherStatuses||{})};
+    merged.teacherSubmissions={...(other?.teacherSubmissions||{}),...(keep?.teacherSubmissions||{})};
+    merged.variableAssignments=uniqueWeekRows([...(other?.variableAssignments||[]),...(keep?.variableAssignments||[])]);
+    merged.extraTasks=uniqueWeekRows([...(other?.extraTasks||[]),...(keep?.extraTasks||[])]);
+    merged.basicTasks=(keep?.basicTasks?.length?keep.basicTasks:other?.basicTasks)||BASIC_TASKS;
+    merged.periodTest=keep?.periodTest||other?.periodTest||null;
+    return merged;
+  }
+  function dedupeWeeks(list){
+    const byKey=new Map(),order=[];weekIdAliases={};
+    for(const raw of (list||[])){
+      if(!raw||typeof raw!=='object')continue;
+      const w={...raw,variableAssignments:Array.isArray(raw.variableAssignments)?raw.variableAssignments:[],extraTasks:Array.isArray(raw.extraTasks)?raw.extraTasks:[]};
+      const key=weekCanonicalKey(w);
+      if(!byKey.has(key)){byKey.set(key,w);order.push(key)}else byKey.set(key,mergeWeekCopies(byKey.get(key),w));
+    }
+    return order.map(k=>byKey.get(k)).filter(Boolean);
+  }
   function lightWeekCache(w){if(!w)return null;return {id:w.id,number:w.number,year:w.year,term:w.term,start:w.start,end:w.end,status:w.status,execution_state:w.execution_state||'',execution_confirmed_at:w.execution_confirmed_at||'',closed_at:w.closed_at||'',reviewer_id:w.reviewer_id||'',reviewer_email:w.reviewer_email||'',reviewer_role:w.reviewer_role||'',reviewer_name:w.reviewer_name||'',execution_notice:w.execution_notice||''}}
   function lightArchiveCache(a){if(!a)return null;return {id:a.id,week_id:a.week_id,week_number:a.week_number,year:a.year,term:a.term,start:a.start,end:a.end,closed_at:a.closed_at,metrics:a.metrics?{disciplineAvg:a.metrics.disciplineAvg||0,executiveAvg:a.metrics.executiveAvg||a.metrics.avg||0,avg:a.metrics.avg||0,counts:a.metrics.counts||{}}:{}}}
   function cloudWeekRecord(w){const x={...(w||{})};delete x.teacherSubmissions;delete x.evidenceViews;return x}
@@ -461,7 +507,7 @@
     safeLocalSet(archiveKey(),JSON.stringify((archives||[]).slice(0,12).map(lightArchiveCache).filter(Boolean)));
     safeLocalSet(activeKey(),activeWeekId||'');
   }
-  function loadWeeks(){try{weeks=JSON.parse(localStorage.getItem(weeksKey())||'[]')}catch(e){weeks=[]} try{archives=JSON.parse(localStorage.getItem(archiveKey())||'[]')}catch(e){archives=[]} activeWeekId=localStorage.getItem(activeKey())||(weeks.find(w=>w.status==='نشط')||weeks[0]||{}).id||''}
+  function loadWeeks(){try{weeks=dedupeWeeks(JSON.parse(localStorage.getItem(weeksKey())||'[]'))}catch(e){weeks=[]} try{archives=JSON.parse(localStorage.getItem(archiveKey())||'[]')}catch(e){archives=[]} activeWeekId=localStorage.getItem(activeKey())||(weeks.find(w=>w.status==='نشط')||weeks[0]||{}).id||'';activeWeekId=weekIdAliases[String(activeWeekId)]||activeWeekId}
   async function saveWeeks(){
     const w=currentWeek()||weeks[0]||{},ay=w.year||localStorage.getItem('school_info_academic_year')||'1448',sem=w.term||'الفصل الدراسي الأول',same=x=>String(x.year||ay)===String(ay)&&String(x.term||sem)===String(sem),pw=weeks.filter(same).map(cloudWeekRecord),pa=archives.filter(a=>String(a.year||ay)===String(ay)&&String(a.term||sem)===String(sem));
     try{
@@ -479,12 +525,23 @@
       const cloud=await PlatformRecordSaveEngine.load({moduleKey:'deputy_weekly_followup',recordType:'weekly_followup_period',recordId:'main',academicYear:ay,semester:sem,scope:'school'});
       if(!cloud||!cloud.data)return false;
       const cw=Array.isArray(cloud.data.weeks)?cloud.data.weeks:[],ca=Array.isArray(cloud.data.archives)?cloud.data.archives:[];
-      const ids=new Set(cw.map(x=>String(x.id))),aids=new Set(ca.map(x=>String(x.id||x.week_id)));
-      weeks=weeks.filter(x=>!ids.has(String(x.id))).concat(cw.map(w=>({...w,variableAssignments:Array.isArray(w.variableAssignments)?w.variableAssignments:[],extraTasks:Array.isArray(w.extraTasks)?w.extraTasks:[]})));
+      const aids=new Set(ca.map(x=>String(x.id||x.week_id)));
+      // Cloud is authoritative for this academic period. Merge it with any
+      // matching local light rows by the stable period/week key, never by a
+      // regenerated W... id. Other terms remain untouched.
+      const samePeriod=x=>normWeekPart(x?.year||ay)===normWeekPart(ay)&&normWeekPart(x?.term||sem)===normWeekPart(sem);
+      const cloudNeedsHeal=new Set(cw.map(weekCanonicalKey)).size<cw.length;
+      const periodMerged=dedupeWeeks(weeks.filter(samePeriod).concat(cw));
+      weeks=weeks.filter(x=>!samePeriod(x)).concat(periodMerged);
       archives=archives.filter(x=>!aids.has(String(x.id||x.week_id))).concat(ca);
-      if(cloud.data.activeWeekId&&cw.some(x=>String(x.id)===String(cloud.data.activeWeekId)))activeWeekId=cloud.data.activeWeekId;
+      const requestedActive=weekIdAliases[String(cloud.data.activeWeekId||activeWeekId)]||String(cloud.data.activeWeekId||activeWeekId||'');
+      if(requestedActive&&weeks.some(x=>String(x.id)===requestedActive))activeWeekId=requestedActive;
+      else activeWeekId=(periodMerged.find(w=>w.status==='نشط')||periodMerged[0]||{}).id||activeWeekId;
       // لا نستبدل البيانات المحلية القديمة إلا بعد نجاح الاسترجاع السحابي.
-      writeLightWeeklyCache();return true;
+      writeLightWeeklyCache();
+      // Heal an already duplicated cloud period after preserving all nested data.
+      if(cloudNeedsHeal)await saveWeeks();
+      return true;
     }catch(e){console.warn('[deputy weekly period restore]',e);return false;}
   }
   function currentWeek(){return weeks.find(w=>w.id===activeWeekId)||null}
@@ -843,9 +900,14 @@
   function mergeCloudSubmissionPayload(payload){
     if(!payload||String(payload.school_id||'')!==String(schoolId()))return false;
     if(!submissionBelongsToCurrentReviewer(payload))return false;
-    let w=weeks.find(x=>String(x.id)===String(payload.week_id));
+    const incomingWeekId=String(payload.week_id||'');
+    const canonicalWeekId=weekIdAliases[incomingWeekId]||incomingWeekId;
+    let w=weeks.find(x=>String(x.id)===canonicalWeekId);
+    // Historical submissions can arrive with an id generated before RL225.
+    // Resolve them by the stable period/week identity before creating a row.
+    if(!w){const key=weekCanonicalKey({year:payload.year,term:payload.term,number:payload.week_number,start:payload.start,end:payload.end});w=weeks.find(x=>weekCanonicalKey(x)===key)||null;if(w&&incomingWeekId&&incomingWeekId!==String(w.id))weekIdAliases[incomingWeekId]=String(w.id)}
     if(!w){
-      w={id:String(payload.week_id||''),number:payload.week_number||'—',year:payload.year||'',term:payload.term||'',start:payload.start||'',end:payload.end||'',status:'نشط',execution_state:'in_progress',execution_confirmed_at:payload.submitted_at||payload.updated_at||new Date().toISOString(),reviewer_id:payload.reviewer_id||'',reviewer_email:payload.reviewer_email||'',reviewer_role:payload.reviewer_role||'agent',reviewer_name:payload.reviewer_name||'المسؤول',teacherStatuses:{},teacherSubmissions:{},variableAssignments:[],extraTasks:[],recovered_from_submission:true};
+      w={id:canonicalWeekId,number:payload.week_number||'—',year:payload.year||'',term:payload.term||'',start:payload.start||'',end:payload.end||'',status:'نشط',execution_state:'in_progress',execution_confirmed_at:payload.submitted_at||payload.updated_at||new Date().toISOString(),reviewer_id:payload.reviewer_id||'',reviewer_email:payload.reviewer_email||'',reviewer_role:payload.reviewer_role||'agent',reviewer_name:payload.reviewer_name||'المسؤول',teacherStatuses:{},teacherSubmissions:{},variableAssignments:[],extraTasks:[],recovered_from_submission:true};
       weeks.push(w);
     }
     w.teacherSubmissions=w.teacherSubmissions||{};

@@ -2677,10 +2677,10 @@ body{overflow-x:hidden}
 
         function resetForm() {
             document.querySelectorAll('.editable-cell').forEach(el => el.innerText = "");
-            document.getElementById('field_region').innerText = localStorage.getItem('setting_region') || ""; document.getElementById('field_school').innerText = localStorage.getItem('setting_school') || "";
-            document.getElementById('name_m').innerText = localStorage.getItem('def_m') || ""; document.getElementById('name_p').innerText = localStorage.getItem('def_p') || "";
-            const sig = localStorage.getItem('setting_sig'); document.getElementById('sig-display').innerHTML = sig ? `<img src="${sig}">` : "";
-            const stamp = localStorage.getItem('setting_stamp'); document.getElementById('stamp-display').innerHTML = stamp ? `<img src="${stamp}">` : "";
+            document.getElementById('field_region').innerText = agentSettingValue('region'); document.getElementById('field_school').innerText = agentSettingValue('school');
+            document.getElementById('name_m').innerText = agentSettingValue('agentName'); document.getElementById('name_p').innerText = agentSettingValue('managerName');
+            const sig = agentSettingValue('signature'); document.getElementById('sig-display').innerHTML = sig ? `<img src="${sig}">` : "";
+            const stamp = agentSettingValue('stamp'); document.getElementById('stamp-display').innerHTML = stamp ? `<img src="${stamp}">` : "";
             document.querySelectorAll('.evidence-box').forEach(box => { box.innerHTML = `<div class="text-slate-300 no-print">🖼️ + إضافة شاهد</div>`; box.classList.remove('has-content'); });
             document.getElementById('aids_display').innerText = "انقر لاختيار الوسائل...";
             document.getElementById('strategy_select').value = ""; document.getElementById('spec_select').value = ""; 
@@ -2985,8 +2985,52 @@ async function legacyPerformanceSave_DISABLED() {
         function clearSignature() { document.getElementById('sig-display').innerHTML = ""; showToast("تم حذف التوقيع"); }
         function clearStamp() { document.getElementById('stamp-display').innerHTML = ""; showToast("تم حذف الختم"); }
 
-        function openAppSettings() { document.getElementById('setting_region').value = localStorage.getItem('setting_region') || ""; document.getElementById('setting_school').value = localStorage.getItem('setting_school') || ""; document.getElementById('setting_name_m').value = localStorage.getItem('def_m') || ""; document.getElementById('setting_name_p').value = localStorage.getItem('def_p') || ""; document.getElementById('app-settings-modal').style.display='flex'; }
-        function savePersistentSettings() { localStorage.setItem('setting_region', document.getElementById('setting_region').value); localStorage.setItem('setting_school', document.getElementById('setting_school').value); localStorage.setItem('def_m', document.getElementById('setting_name_m').value); localStorage.setItem('def_p', document.getElementById('setting_name_p').value); const sig = document.getElementById('sigSettingPreview').src; if(sig.startsWith('data:')) localStorage.setItem('setting_sig', sig); const stp = document.getElementById('stampSettingPreview').src; if(stp.startsWith('data:')) localStorage.setItem('setting_stamp', stp); document.getElementById('app-settings-modal').style.display='none'; showToast("تم الحفظ ✅"); }
+        function agentSettingsIdentity(){
+            const sid=String(window.PlatformCloudSession?.schoolId?.()||sessionStorage.getItem('smart_school_tab_school_v1')||sessionStorage.getItem('platform_tab_session_school_id_v1')||localStorage.getItem('active_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||'').trim();
+            const uid=String(window.PlatformCloudSession?.userId?.()||sessionStorage.getItem('smart_school_tab_user_v1')||sessionStorage.getItem('platform_tab_session_user_id_v1')||sessionStorage.getItem('currentUserId')||localStorage.getItem('currentUserId')||localStorage.getItem('currentUserEmail')||'').trim().toLowerCase();
+            return {schoolId:sid,userId:uid,key:'agent_custom_settings_v1:'+encodeURIComponent(sid)+':'+encodeURIComponent(uid)};
+        }
+        function readAgentCustomSettings(){
+            const id=agentSettingsIdentity();let saved=null;
+            try{saved=JSON.parse(localStorage.getItem(id.key)||'null')}catch(_){saved=null}
+            if(saved&&saved.schoolId===id.schoolId&&saved.userId===id.userId)return saved;
+            // One-time compatibility values only. They are never written again,
+            // because manager and agent previously shared these global keys.
+            return {version:2,schoolId:id.schoolId,userId:id.userId,region:localStorage.getItem('setting_region')||'',school:localStorage.getItem('setting_school')||'',agentName:localStorage.getItem('def_m')||'',managerName:localStorage.getItem('def_p')||'',signature:localStorage.getItem('setting_sig')||'',stamp:localStorage.getItem('setting_stamp')||''};
+        }
+        function agentSettingValue(name){return String(readAgentCustomSettings()?.[name]||'')}
+        function applyAgentSettingsToModal(saved){
+            saved=saved||readAgentCustomSettings();
+            document.getElementById('setting_region').value=saved.region||'';document.getElementById('setting_school').value=saved.school||'';
+            document.getElementById('setting_name_m').value=saved.agentName||'';document.getElementById('setting_name_p').value=saved.managerName||'';
+            [['sigSettingPreview',saved.signature],['stampSettingPreview',saved.stamp]].forEach(([nodeId,value])=>{const node=document.getElementById(nodeId);if(!node)return;if(value){node.src=value;node.classList.remove('hidden')}else{node.removeAttribute('src');node.classList.add('hidden')}});
+        }
+        async function openAppSettings(){
+            applyAgentSettingsToModal(readAgentCustomSettings());document.getElementById('app-settings-modal').style.display='flex';
+            try{
+                const id=agentSettingsIdentity();
+                if(!id.schoolId||!id.userId||!window.PlatformPersistenceGuard?.readExactValues)return;
+                const cloud=await PlatformPersistenceGuard.readExactValues({moduleKey:'agent',scope:'user',keys:[id.key]});
+                const raw=cloud?.values?.[id.key];if(!raw)return;const saved=JSON.parse(raw);
+                if(saved?.schoolId!==id.schoolId||saved?.userId!==id.userId)return;
+                localStorage.setItem(id.key,raw);applyAgentSettingsToModal(saved);
+            }catch(e){console.warn('[agent custom settings load]',e)}
+        }
+        async function savePersistentSettings(){
+            if(window.ManagerFollowAccessBridge?.request?.().active){showToast('وضع المتابعة للقراءة فقط');return}
+            const id=agentSettingsIdentity();if(!id.schoolId||!id.userId){showToast('تعذر تحديد حساب الوكيلة أو المدرسة');return}
+            const previous=localStorage.getItem(id.key);const old=readAgentCustomSettings();
+            const sigNode=document.getElementById('sigSettingPreview'),stampNode=document.getElementById('stampSettingPreview');
+            const saved={version:2,schoolId:id.schoolId,userId:id.userId,role:'agent',region:document.getElementById('setting_region').value.trim(),school:document.getElementById('setting_school').value.trim(),agentName:document.getElementById('setting_name_m').value.trim(),managerName:document.getElementById('setting_name_p').value.trim(),signature:String(sigNode?.getAttribute('src')||old.signature||''),stamp:String(stampNode?.getAttribute('src')||old.stamp||''),updatedAt:new Date().toISOString()};
+            const raw=JSON.stringify(saved);localStorage.setItem(id.key,raw);
+            try{
+                if(!window.PlatformPersistenceGuard?.writeExactValues||!window.PlatformPersistenceGuard?.readExactValues)throw new Error('محرك الحفظ السحابي غير متاح');
+                const write=await PlatformPersistenceGuard.writeExactValues({moduleKey:'agent',scope:'user',values:{[id.key]:raw}});if(!write||write.ok===false)throw new Error(write?.error||'تعذر الحفظ السحابي');
+                const verify=await PlatformPersistenceGuard.readExactValues({moduleKey:'agent',scope:'user',keys:[id.key]});
+                if(String(verify?.values?.[id.key]||'')!==raw)throw new Error('لم تتطابق إعادة القراءة السحابية مع البيانات المحفوظة');
+                document.getElementById('app-settings-modal').style.display='none';showToast('تم حفظ إعدادات الوكيلة سحابيًا ✅');
+            }catch(e){if(previous===null)localStorage.removeItem(id.key);else localStorage.setItem(id.key,previous);showToast('تعذر اعتماد الحفظ السحابي: '+String(e?.message||e));console.error('[agent custom settings save]',e)}
+        }
         function previewSettingImage(e, id) { if (!e.target.files[0]) return; const r = new FileReader(); r.onload = (ev) => { const p = document.getElementById(id); p.src = ev.target.result; p.classList.remove('hidden'); }; r.readAsDataURL(e.target.files[0]); }
         function showToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3000); }
         function preparePrint() {

@@ -1174,7 +1174,9 @@
     const entries=Object.entries(sub.items||{});
     const sentAt=sub.submitted_at?new Date(sub.submitted_at).toLocaleString('ar-SA'):'لم يرسل نهائيًا';
     const totalCloud=entries.reduce((n,[,it])=>n+(Array.isArray(it.cloud_file_ids)?it.cloud_file_ids.length:0),0);
-    const doneCount=entries.filter(([,it])=>['تم التنفيذ','مكتمل','مكلف وتم التنفيذ'].includes(String(it.status||''))).length;
+    // RL227: an approved task is executed by definition even when a legacy
+    // submission kept its pre-review Arabic status (for example "مطلوب").
+    const doneCount=entries.filter(([,it])=>it.review_status==='approved'||['تم التنفيذ','مكتمل','مكلف وتم التنفيذ'].includes(String(it.status||''))).length;
     const approvedCount=entries.filter(([,it])=>it.review_status==='approved').length,approvedScore=Math.round(approvedCount*100/(entries.length||1));
     const header='<div class="weeklySubmissionHeader"><div><b>تسليم المعلم</b><div class="muted">آخر إرسال: '+esc(sentAt)+' — الإنجاز المرسل: '+esc(sub.executive_score??sub.score??0)+'% — الإنجاز المعتمد: '+approvedScore+'%</div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><span class="badge blue">'+entries.length+' مهمة</span><span class="badge">'+doneCount+' منفذ</span><span class="badge green">'+approvedCount+' معتمد</span><span class="badge gold">'+totalCloud+' مرفق سحابي</span></div></div>';
     const submissionTeacherId=String(sub.teacher_id||t.user_id),submissionStateKey=String(sub.cloud_submission_key||('weekly_submission_v1:'+String(w.id)+':'+submissionTeacherId));

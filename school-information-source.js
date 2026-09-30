@@ -356,6 +356,9 @@ function attachResolution(el,type,dir){
  });
 }
 const observedDocuments=new WeakSet();
+function manualOptionsBoundary(node){
+ try{return node?.closest?.('[data-sis-manual-options="1"],[data-sis-binding="off"]')||null}catch(_){return null}
+}
 function observeBindingRoot(doc){
  if(!doc?.body||observedDocuments.has(doc))return;
  observedDocuments.add(doc);
@@ -363,9 +366,14 @@ function observeBindingRoot(doc){
  const observer=new view.MutationObserver(m=>{
   const meaningful=m.some(change=>{
    if(!change.addedNodes.length)return false;
+   // RL229: editors that own their option lists must not be re-bound after
+   // every row/option mutation. Rebinding them used to rebuild native selects
+   // continuously and close the stage/grade dropdown while the user opened it.
+   if(manualOptionsBoundary(change.target))return false;
    if(change.target?.closest?.('datalist[id^="sis-"],[data-sis-dropdown-root="1"]'))return false;
    return [...change.addedNodes].some(node=>{
     if(node.nodeType!==1)return false;
+    if(manualOptionsBoundary(node))return false;
     if(node.matches?.('datalist[id^="sis-"],datalist[id^="sis-"] *,[data-sis-dropdown-root="1"],[data-sis-dropdown-root="1"] *'))return false;
     return true;
    });
@@ -389,6 +397,7 @@ async function bindInformationFields(root=document){
   const doc=root?.nodeType===9?root:(root?.ownerDocument||document);
   const fields=[];if(root?.matches?.('input,select,textarea'))fields.push(root);if(root?.querySelectorAll)fields.push(...root.querySelectorAll('input,select,textarea'));
   fields.forEach(el=>{
+   if(manualOptionsBoundary(el))return;
    if(el.disabled||['hidden','password','email','date','number','file','checkbox','radio','button','submit'].includes(lower(el.type)))return;
    const type=inferFieldType(el);if(!type)return;el.dataset.sisBinding=type;
    if(RELATED_ONLY_TYPES.has(type))return;

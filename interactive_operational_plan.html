@@ -1294,11 +1294,24 @@ function operationalPlanSchoolId(){
   }catch(_){return ""}
 }
 const OPERATIONAL_PLAN_SCHOOL_ID=operationalPlanSchoolId();
-const OPERATIONAL_PLAN_SCOPE=OPERATIONAL_PLAN_SCHOOL_ID||"unscoped-denied";
-const ACTIVE_PLAN_KEY=`operationalPlanIntegratedV14Annual:${OPERATIONAL_PLAN_SCOPE}`;
-const ARCHIVE_KEY=`operationalPlanArchivesV14:${OPERATIONAL_PLAN_SCOPE}`;
-const RESET_BACKUP_KEY=`operationalPlanResetBackupV14:${OPERATIONAL_PLAN_SCOPE}`;
+const OPERATIONAL_PLAN_SCOPE=OPERATIONAL_PLAN_SCHOOL_ID;
+const ACTIVE_PLAN_KEY=OPERATIONAL_PLAN_SCOPE?`operationalPlanIntegratedV14Annual:${OPERATIONAL_PLAN_SCOPE}`:"";
+const ARCHIVE_KEY=OPERATIONAL_PLAN_SCOPE?`operationalPlanArchivesV14:${OPERATIONAL_PLAN_SCOPE}`:"";
+const RESET_BACKUP_KEY=OPERATIONAL_PLAN_SCOPE?`operationalPlanResetBackupV14:${OPERATIONAL_PLAN_SCOPE}`:"";
 let currentRestoreSection="";
+
+function requireOperationalPlanScope(){
+  const current=operationalPlanSchoolId();
+  if(!OPERATIONAL_PLAN_SCHOOL_ID||!ACTIVE_PLAN_KEY){
+    throw new Error("تعذر تثبيت هوية المدرسة؛ تم منع الحفظ لحماية الخطة من الضياع أو الارتباط بمدرسة أخرى.");
+  }
+  const cloud=String(window.PlatformCloudSession?.schoolId?.()||"").trim();
+  const tab=String(sessionStorage.getItem("platform_tab_session_school_id_v1")||sessionStorage.getItem("smart_school_tab_school_v1")||"").trim();
+  if((cloud&&cloud!==OPERATIONAL_PLAN_SCHOOL_ID)||(tab&&tab!==OPERATIONAL_PLAN_SCHOOL_ID)||(!cloud&&!tab&&current&&current!==OPERATIONAL_PLAN_SCHOOL_ID)){
+    throw new Error("تغير نطاق المدرسة أثناء العمل؛ تم إيقاف الحفظ حتى إعادة فتح القسم من حساب المدرسة الصحيح.");
+  }
+  return OPERATIONAL_PLAN_SCHOOL_ID;
+}
 
 function deepClone(v){return JSON.parse(JSON.stringify(v))}
 function blankPlanState(year=""){
@@ -1312,9 +1325,10 @@ function blankPlanState(year=""){
   };
 }
 function getArchives(){
+  if(!ARCHIVE_KEY)return [];
   try{return JSON.parse(localStorage.getItem(ARCHIVE_KEY)||"[]")||[]}catch{return []}
 }
-function setArchives(a){localStorage.setItem(ARCHIVE_KEY,JSON.stringify(a))}
+function setArchives(a){requireOperationalPlanScope();localStorage.setItem(ARCHIVE_KEY,JSON.stringify(a))}
 function normalizeAcademicYear(y){
   y=String(y||"").trim().replace("هـ","");
   return y?`${y}هـ`:"";
@@ -1364,6 +1378,7 @@ function hideAcademicYearModal(){
 }
 function confirmStartupAcademicYear(){
   const y=startupAcademicYear.value;if(!y)return alert("اختر العام الدراسي.");
+  try{requireOperationalPlanScope()}catch(error){return alert(error.message)}
   state=blankPlanState(y);
   localStorage.setItem(ACTIVE_PLAN_KEY,JSON.stringify(state));
   academicYearModal.dataset.force="0";hideAcademicYearModal();
@@ -1382,6 +1397,7 @@ function resetCurrentPlanForSameYear(){
   if(!year)return alert("حدد العام الدراسي أولًا قبل تهيئة الخطة.");
   if(!confirm(`سيتم مسح جميع بيانات الخطة النشطة للعام ${year} وإعادة فتحها فارغة للعام نفسه.\n\nلن تتأثر الخطط المؤرشفة. هل تريد المتابعة؟`))return;
   try{
+    requireOperationalPlanScope();
     collectCurrentFormValues();
     localStorage.setItem(RESET_BACKUP_KEY,JSON.stringify({savedAt:new Date().toISOString(),year,snapshot:deepClone(state)}));
     const freshState=blankPlanState(year);
@@ -1403,6 +1419,7 @@ function archiveSummary(snapshot){
   return {programs:programs.length,done,troubled,people:(snapshot.people||[]).length,surveys:(snapshot.surveys||[]).length};
 }
 function closeAndArchiveCurrentPlan(){
+  try{requireOperationalPlanScope()}catch(error){return alert(error.message)}
   const y=activeYear();
   if(!y)return alert("لم يتم تحديد عام دراسي للخطة الحالية.");
   document.querySelectorAll('[data-key]').forEach(el=>state.fields[el.dataset.key]=el.value);
@@ -2256,6 +2273,7 @@ function collectCurrentFormValues(){
 }
 function saveAll(show=true){
   try{
+    requireOperationalPlanScope();
     setSaveStatus("saving","جارٍ الحفظ...");
     collectCurrentFormValues();
     const payload=JSON.stringify(state);
@@ -2877,6 +2895,20 @@ function savePlanModification(){
 }
 
 function load(){
+  if(!ACTIVE_PLAN_KEY){
+    state=blankPlanState("");
+    setSaveStatus("error","تعذر تحديد المدرسة — الحفظ متوقف للحماية");
+    populateAcademicYearSelectors();
+    refreshWholePlanUI();
+    return;
+  }
+  try{requireOperationalPlanScope()}catch(error){
+    state=blankPlanState("");
+    setSaveStatus("error",error.message);
+    populateAcademicYearSelectors();
+    refreshWholePlanUI();
+    return;
+  }
   // لا نقرأ المفاتيح العامة القديمة هنا لأنها غير مرتبطة بمدرسة محددة.
   let raw=localStorage.getItem(ACTIVE_PLAN_KEY);
   if(raw){try{state=JSON.parse(raw)}catch{}}

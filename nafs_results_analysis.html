@@ -1040,10 +1040,38 @@
     const NAFS_STATE_KEY = 'latest_school_analysis_v1';
     let nafsCloudHydrated = false;
     let nafsCurrentSourceFile = '';
+    let nafsStartupFinished = false;
+
+    function showNafsStartupError(error){
+      const message=String(error?.message||error||'تعذر فتح قسم بطاقة نافس');
+      console.error('[NAFS startup]',error);
+      try{
+        document.querySelectorAll('.view-section').forEach(el=>el.classList.add('hidden'));
+        const input=document.getElementById('view-pdfInput');
+        if(input)input.classList.remove('hidden');
+        setNafsPersistenceBadge('error','<i class="fa-solid fa-triangle-exclamation"></i> '+message);
+      }catch(_){ }
+    }
+
+    function validateNafsSavedPayload(saved){
+      if(!saved||typeof saved!=='object'||!saved.appData||typeof saved.appData!=='object')return false;
+      if(saved.appData.skills!=null&&!Array.isArray(saved.appData.skills))return false;
+      const sid=nafsSchoolId();
+      if(saved.schoolId&&sid&&String(saved.schoolId)!==sid)return false;
+      return true;
+    }
 
     function nafsSchoolId(){
+      let querySchool='';
+      try{
+        const q=new URLSearchParams(location.search||'');
+        querySchool=q.get('schoolId')||q.get('school_id')||'';
+      }catch(_){ }
       return String(
         window.PlatformCloudSession?.schoolId?.() ||
+        sessionStorage.getItem('platform_tab_session_school_id_v1') ||
+        sessionStorage.getItem('smart_school_tab_school_v1') ||
+        querySchool ||
         localStorage.getItem('active_school_id') ||
         localStorage.getItem('current_school_id') ||
         localStorage.getItem('school_id') ||
@@ -1106,7 +1134,7 @@
     }
 
     function applyNafsSavedPayload(saved){
-      if(!saved||!saved.appData) return false;
+      if(!validateNafsSavedPayload(saved)) return false;
       const sid=nafsSchoolId();
       if(saved.schoolId&&sid&&String(saved.schoolId)!==sid) return false;
       appData={...appData,...nafsClone(saved.appData),skills:Array.isArray(saved.appData.skills)?nafsClone(saved.appData.skills):[]};
@@ -1195,8 +1223,24 @@
 
     // INIT ON LOAD — restore only the current independent school's saved analysis.
     window.onload = async function() {
-      await hydrateNafsSavedState();
+      try{
+        const timeout=new Promise((_,reject)=>setTimeout(()=>reject(new Error('تأخر تحميل جلسة المدرسة؛ يمكنك إعادة فتح القسم من واجهة المدير.')),12000));
+        await Promise.race([hydrateNafsSavedState(),timeout]);
+      }catch(error){
+        showNafsStartupError(error);
+      }finally{
+        nafsStartupFinished=true;
+        const visible=document.querySelector('.view-section:not(.hidden)');
+        if(!visible){
+          const input=document.getElementById('view-pdfInput');
+          if(input)input.classList.remove('hidden');
+        }
+      }
     };
+
+    window.addEventListener('unhandledrejection',event=>{
+      if(!nafsStartupFinished)showNafsStartupError(event.reason||new Error('تعذر إكمال تحميل القسم'));
+    });
 
     function loadPreset(presetNum) {
       const presetSubjectMap = {
@@ -1236,7 +1280,9 @@
 
     function switchView(viewId) {
       document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
-      document.getElementById('view-' + viewId).classList.remove('hidden');
+      const target=document.getElementById('view-' + viewId)||document.getElementById('view-pdfInput');
+      if(!target){showNafsStartupError(new Error('تعذر العثور على واجهة القسم المطلوبة'));return;}
+      target.classList.remove('hidden');
 
       document.querySelectorAll('.view-tab').forEach(btn => {
         btn.classList.remove('bg-moe-teal', 'text-white', 'shadow');

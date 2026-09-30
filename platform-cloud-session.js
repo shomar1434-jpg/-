@@ -562,6 +562,19 @@
     const file=(location.pathname.split('/').pop()||'').toLowerCase();
     if(!file || /(login|register|guardian|public|invite)/.test(file))return '';
 
+    // RL228: a record-specific delegation is authorized by its exact task,
+    // school, module, record type and record id in delegated-access-guard.js.
+    // Do not classify the assignee as the owner role of the target page first;
+    // that late role check used to hide/redirect an already opened record.
+    try{
+      const delegatedParams=new URLSearchParams(location.search||'');
+      const exactDelegation=delegatedParams.get('delegated')==='1'&&
+        !!delegatedParams.get('task_id')&&!!delegatedParams.get('module_key')&&
+        !!delegatedParams.get('record_type')&&
+        !!(delegatedParams.get('record_id')||delegatedParams.get('record'));
+      if(exactDelegation)return '';
+    }catch(_){ }
+
     // RL70: admin_employee_management.html is a supervisor workspace, not the
     // administrative employee's personal portal. Its required role must follow
     // the supervisor that opened it, otherwise RL33 hides the page then redirects
@@ -747,7 +760,7 @@
     }
   }
 
-  const SESSION_VERSION='2026.09.14-RL150-nonblocking-verified-session';
+  const SESSION_VERSION='2026.09.29-RL228-delegated-record-stability';
 
   window.PlatformCloudSession = {
     VERSION:SESSION_VERSION,

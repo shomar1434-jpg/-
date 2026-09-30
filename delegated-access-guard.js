@@ -1,6 +1,7 @@
 (function(){'use strict';
 const q=new URLSearchParams(location.search),taskId=q.get('task_id'),delegated=q.get('delegated')==='1';
 if(!taskId||!delegated)return;
+try{document.documentElement.setAttribute('data-delegated-record-checking','1')}catch(_){ }
 const moduleKey=q.get('module_key')||'shared',recordType=q.get('record_type')||'record',recordId=q.get('record_id')||q.get('record')||null;
 const returnTo=q.get('return_to')||('central_task_center.html?mode=assignee&task_id='+encodeURIComponent(taskId));
 function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
@@ -57,7 +58,8 @@ async function run(){try{
  bar.innerHTML=`<div><strong>تنفيذ تكليف:</strong> ${esc(workspace.task?.title||'تكليف')} · أي حفظ أو تعديل داخل السجل يُوثق تلقائيًا ضمن نسبة الإنجاز.</div><button id="delegatedBackBtn" style="border:0;border-radius:10px;padding:7px 12px;font-weight:900;cursor:pointer">العودة لمركز تكليفاتي</button>`;
  document.body.prepend(bar);bar.querySelector('#delegatedBackBtn').onclick=()=>location.href=returnTo;
  window.PlatformDelegatedAccess={task:workspace.task,grant,workspace,dirty:false,recordActivity:(title,completed=false)=>activity(title,completed?80:60,completed?'record_completed':'record_updated')};
+ try{document.documentElement.setAttribute('data-delegated-record-verified','1');document.documentElement.removeAttribute('data-delegated-record-checking')}catch(_){ }
  hookStorage();hookFormsAndActions();
  await emit('record_opened',{title:'فتح السجل المفوض',notes:'بدأ المكلف العمل داخل السجل.'},20);
- }catch(e){console.error('[delegated-access] رفض فتح السجل',e);const box=document.createElement('div');box.id='delegatedAccessError';box.dir='rtl';box.style.cssText='position:fixed;inset:0;z-index:2147483647;overflow:auto;background:#f8fafc;padding:32px 16px;font-family:system-ui';box.innerHTML=`<div style="max-width:700px;margin:40px auto;padding:30px;border:1px solid #fecaca;border-radius:20px;background:#fff7f7"><h2>تعذر فتح السجل</h2><p>${esc(e.message||e)}</p><button id="delegatedAccessErrorBack" style="border:0;border-radius:10px;padding:9px 16px;font-weight:900;cursor:pointer">العودة إلى التكليف</button></div>`;document.body.appendChild(box);box.querySelector('#delegatedAccessErrorBack').onclick=()=>location.href=returnTo;try{window.scrollTo(0,0)}catch(_){}}}
+ }catch(e){console.error('[delegated-access] رفض فتح السجل',e);try{document.documentElement.removeAttribute('data-delegated-record-checking')}catch(_){}const box=document.createElement('div');box.id='delegatedAccessError';box.dir='rtl';box.style.cssText='position:fixed;inset:0;z-index:2147483647;overflow:auto;background:#f8fafc;padding:32px 16px;font-family:system-ui';box.innerHTML=`<div style="max-width:700px;margin:40px auto;padding:30px;border:1px solid #fecaca;border-radius:20px;background:#fff7f7"><h2>تعذر فتح السجل</h2><p>${esc(e.message||e)}</p><button id="delegatedAccessErrorBack" style="border:0;border-radius:10px;padding:9px 16px;font-weight:900;cursor:pointer">العودة إلى التكليف</button></div>`;document.body.appendChild(box);box.querySelector('#delegatedAccessErrorBack').onclick=()=>location.href=returnTo;try{window.scrollTo(0,0)}catch(_){}}}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',run);else run();})();

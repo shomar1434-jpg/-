@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-const VERSION='15.1.0-RL221-teacher-scope-canonical-match';
+const VERSION='16.0.0-RL231-independent-schools-directory-consistency';
 if(window.SchoolInformationSource&&String(window.SchoolInformationSource.VERSION||'')===VERSION)return;
 const SUPABASE_URL=(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/,'');
 const DEFAULT_SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';

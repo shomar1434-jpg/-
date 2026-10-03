@@ -206,13 +206,17 @@
   function schoolId(){
     try{
       const cloudSid=String(window.PlatformCloudSession?.schoolId?.()||'').trim();
-      if(cloudSid)return cloudSid;
       const q=new URLSearchParams(location.search||'');
+      const tabSid=String(sessionStorage.getItem('platform_tab_session_school_id_v1')||sessionStorage.getItem('smart_school_tab_school_v1')||sessionStorage.getItem('current_school_id')||'').trim();
+      const explicitSid=String(q.get('schoolId')||q.get('school_id')||'').trim();
+      const stableSid=cloudSid||tabSid||explicitSid;
+      if(cloudSid&&tabSid&&cloudSid!==tabSid)throw new Error('DEPUTY_SCHOOL_CONTEXT_MISMATCH');
+      if(explicitSid&&stableSid&&explicitSid!==stableSid)throw new Error('DEPUTY_URL_SCHOOL_CONTEXT_MISMATCH');
+      if(stableSid)return stableSid;
       let a={},u={};
       try{a=JSON.parse(localStorage.getItem('smartSchool.currentSchool')||localStorage.getItem('activeSchool')||localStorage.getItem('currentSchool')||'{}')||{}}catch(_){}
       try{u=JSON.parse(localStorage.getItem('currentSchoolUser')||localStorage.getItem('currentUser')||'{}')||{}}catch(_){}
-      const sid=q.get('schoolId')||q.get('school_id')||
-        localStorage.getItem('active_school_id')||sessionStorage.getItem('active_school_id')||
+      const sid=localStorage.getItem('active_school_id')||sessionStorage.getItem('active_school_id')||
         localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||
         localStorage.getItem('smart_school_id')||localStorage.getItem('platform_file_session_school_id')||
         a.id||a.school_id||u.school_id||u.schoolId||'';
@@ -369,6 +373,13 @@
   }
   async function readTeacherCloudDetails(){
     const sid=schoolId(), rows=[];
+    // المصدر الموثق الأول: Edge Function المربوطة بجلسة المدرسة.
+    try{
+      if(window.SchoolInformationSource?.request){
+        const profiles=await SchoolInformationSource.request('teacher-profiles-list');
+        if(Array.isArray(profiles?.profiles))rows.push(...profiles.profiles.map(x=>({...x,source:'school_teacher_profiles'})));
+      }
+    }catch(e){console.warn('teacher profile details',e)}
     // جداول الإثراء السحابي اختيارية؛ عدم وجودها لا يوقف المزامنة.
     try{
       if(window.SmartSchoolSupabase&&typeof SmartSchoolSupabase.getClient==='function'){
@@ -394,6 +405,14 @@
       teacherRefreshRunning=true;
       const silent=!!opts.silent;
       const skipSourceRefresh=!!opts.skipSourceRefresh;
+      try{
+        if(window.__PLATFORM_ACCESS_READY__)await window.__PLATFORM_ACCESS_READY__;
+        if(window.PlatformCloudSession?.ensure)await window.PlatformCloudSession.ensure();
+      }catch(e){
+        if($('sourceInfo'))$('sourceInfo').textContent='تعذر تثبيت جلسة المدرسة قبل قراءة المعلمين. أعد فتح القسم من حساب الوكيل.';
+        if(!silent)toast('تعذر تثبيت جلسة المدرسة');
+        return false;
+      }
       const sid=schoolId();
       if(!sid){
         if($('sourceInfo'))$('sourceInfo').textContent='تعذر تحديد المدرسة النشطة؛ أعد فتح القسم من حساب الوكيل.';
@@ -412,6 +431,11 @@
           }
           if(typeof SchoolInformationSource.getTeachers==='function'){
             central=await SchoolInformationSource.getTeachers(!skipSourceRefresh)||[];
+          }
+          // مسار احتياطي من نفس المصدر المركزي، وليس من كاش المتصفح.
+          if(!central.length&&typeof SchoolInformationSource.getStaff==='function'){
+            const staff=await SchoolInformationSource.getStaff(true)||[];
+            central=staff.filter(isWeeklyFollowupTeacher);
           }
         }
       }catch(e){console.warn('SchoolInformationSource teachers',e)}
@@ -928,13 +952,7 @@
   }
   async function recoverMissingWeeklyEvidence(){
     if(!window.CloudFileEngine?.list)return 0;let files=[];try{const r=await CloudFileEngine.list({ownershipScope:'school',moduleKey:'teacher_weekly_evidence',recordType:'teacher_weekly_task',limit:1000});files=r?.files||[]}catch(e){console.warn('[weekly evidence recovery list]',e);return 0}
-    let recovered=0;for(const w of weeks){for(const [teacherId,sub] of Object.entries(w.teacherSubmissions||{})){if(!sub?.submitted_at||!submissionBelongsToCurrentReviewer(sub))continue;for(const [key,it] of Object.entries(sub.items||{})){if((it.cloud_file_ids||[]).length)continue;
-      // RL228: recovery is permitted only from the canonical record identity.
-      // The old suffix/time-window fallback could attach a previous week's file
-      // to the same task key in a later week and then lock the teacher upload.
-      const canonicalId=['weekly',String(w.id||''),String(teacherId||''),String(key)].join('_');
-      const candidates=files.filter(f=>String(f.owner_user_id||'')===String(teacherId)&&String(f.primary_record_id||'')===canonicalId).sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
-      const named=String(it.file_name||'').trim();const hit=(named&&candidates.find(f=>[f.display_name,f.original_name].map(String).includes(named)))||candidates[0];if(!hit)continue;it.cloud_file_ids=[String(hit.id)];it.file_name=it.file_name||hit.display_name||hit.original_name||'شاهد مرفوع';it.file_type=it.file_type||hit.mime_type||'';it.file_size=it.file_size||Number(hit.file_size||0);it.evidence_recovered_at=new Date().toISOString();it.evidence_scope={school_id:String(schoolId()||''),week_id:String(w.id||''),teacher_id:String(teacherId||''),item_key:String(key)};recovered++;}}}
+    let recovered=0;for(const w of weeks){for(const [teacherId,sub] of Object.entries(w.teacherSubmissions||{})){if(!sub?.submitted_at||!submissionBelongsToCurrentReviewer(sub))continue;const sent=Date.parse(sub.submitted_at)||Date.now(),min=sent-14*86400000,max=sent+10*60000;for(const [key,it] of Object.entries(sub.items||{})){if((it.cloud_file_ids||[]).length)continue;const expectedOld='file_'+String(key),suffix='_'+String(key);const candidates=files.filter(f=>String(f.owner_user_id||'')===String(teacherId)&&(String(f.primary_record_id||'')===expectedOld||String(f.primary_record_id||'').endsWith(suffix))).filter(f=>{const at=Date.parse(f.created_at||'')||0;return at>=min&&at<=max}).sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));const named=String(it.file_name||'').trim();const hit=(named&&candidates.find(f=>[f.display_name,f.original_name].map(String).includes(named)))||candidates[0];if(!hit)continue;it.cloud_file_ids=[String(hit.id)];it.file_name=it.file_name||hit.display_name||hit.original_name||'شاهد مرفوع';it.file_type=it.file_type||hit.mime_type||'';it.file_size=it.file_size||Number(hit.file_size||0);it.evidence_recovered_at=new Date().toISOString();recovered++;}}}
     return recovered;
   }
 
@@ -1270,7 +1288,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-bridge.js"></script>
-<script src="school-information-source.js?v=20260916-RL170-records-interactivity"></script>
+<script src="school-information-source.js?v=20261001-RL231-independent-schools-directory-consistency"></script>
 <script src="internal-messaging.js"></script>
 <script defer src="unified_workspace.js"></script>
 <script defer src="school_navigation_guard.js"></script>

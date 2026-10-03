@@ -706,16 +706,33 @@
       if(existingIndex>=0)out.stages[existingIndex]=row;else out.stages.push(row);
     };
 
+    const misplacedPrimaryGrades=[];
     (Array.isArray(src.stages)?src.stages:[]).forEach(stage=>{
       const oldName=safe(stage?.name);
       if(oldName==='رياض الأطفال والطفولة المبكرة'){
         const grades=Array.isArray(stage.grades)?stage.grades:[];
         pushStage('رياض أطفال',grades.slice(0,3));
         pushStage('طفولة مبكرة',grades.slice(3,6));
-      }else{
+      }else if(canonicalStageId(oldName)){
         pushStage(oldName,stage.grades);
+      }else if(canonicalGradeId(oldName)){
+        // بعض النسخ القديمة حفظت «الأول/الثاني/الثالث» كمرحلة مستقلة.
+        // ننقلها منطقيًا إلى الابتدائية عند القراءة، ولا نعرضها كبطاقات مراحل زائفة.
+        misplacedPrimaryGrades.push({
+          name:canonicalGradeLabel(oldName),
+          sections:Array.isArray(stage?.sections)?stage.sections:(Array.isArray(stage?.grades)&&stage.grades[0]?.sections)||[],
+          tracks:[]
+        });
       }
     });
+    if(misplacedPrimaryGrades.length){
+      if(!out.stages.some(x=>x.name==='ابتدائية'))pushStage('ابتدائية',misplacedPrimaryGrades);
+      const primary=out.stages.find(x=>x.name==='ابتدائية');
+      misplacedPrimaryGrades.forEach(old=>{
+        const target=primary?.grades?.find(g=>canonicalGradeLabel(g.name)===old.name);
+        if(target&&old.sections.length)target.sections=old.sections.map((sec,j)=>({id:sec.id||('section_recovered_'+j),name:safe(sec.name||sec)||String(j+1)}));
+      });
+    }
     return out;
   }
   
@@ -786,7 +803,7 @@ window.prepareStageGradesEditor=function(){
     renderAcademicStructure();
     try{await saveAcademicStructure({silent:true});setStatus('تم تحديث مرحلة '+name+' وحفظ الصفوف والفصول سحابيًا لهذه المدرسة.','ok')}catch(e){setStatus('تم تحديث الواجهة لكن تعذر الحفظ السحابي للهيكل: '+(e.message||e),'bad')}
   }
-  window.removeAcademicStage=async function(id){if(confirm('حذف هذه المرحلة من الهيكل؟ لا يتم حذف الطلاب تلقائيًا.')){const before=JSON.stringify(academicStructure);academicStructure.stages=academicStructure.stages.filter(s=>s.id!==id);renderAcademicStructure();try{await saveAcademicStructure({silent:true});setStatus('تم حذف المرحلة من الهيكل السحابي دون حذف الطلاب.','ok')}catch(e){try{academicStructure=JSON.parse(before);renderAcademicStructure()}catch(_e){}setStatus('تعذر اعتماد حذف المرحلة سحابيًا، وتمت إعادة الهيكل السابق.','bad')}}}
+  window.removeAcademicStage=async function(id,name){if(confirm('حذف هذه المرحلة من الهيكل؟ لا يتم حذف الطلاب تلقائيًا.')){const before=JSON.stringify(academicStructure),stageName=normalizeStageName(name);academicStructure.stages=academicStructure.stages.filter(s=>!((id&&String(s.id)===String(id))||(!id&&normalizeStageName(s.name)===stageName)));renderAcademicStructure();try{await saveAcademicStructure({silent:true});setStatus('تم حذف المرحلة من الهيكل السحابي دون حذف الطلاب.','ok')}catch(e){try{academicStructure=JSON.parse(before);renderAcademicStructure()}catch(_e){}setStatus('تعذر اعتماد حذف المرحلة سحابيًا، وتمت إعادة الهيكل السابق.','bad')}}}
   window.changeGradeSections=async function(stageId,gradeId,count){const s=academicStructure.stages.find(x=>x.id===stageId),g=s?.grades?.find(x=>x.id===gradeId);if(!g)return;const before=JSON.stringify(g.sections||[]);g.sections=sectionNames(Math.max(1,Number(count)||1)).map((n,i)=>({id:g.sections?.[i]?.id||('section_'+Date.now()+'_'+i),name:n}));renderAcademicStructure();try{await saveAcademicStructure({silent:true});setStatus('تم تحديث عدد الفصول وحفظه سحابيًا.','ok')}catch(e){try{g.sections=JSON.parse(before);renderAcademicStructure()}catch(_e){}setStatus('تعذر حفظ عدد الفصول سحابيًا، وتمت إعادة القيمة السابقة.','bad')}}
   let activeClassImportScope=null;
   let classImportReadSerial=0;
@@ -832,7 +849,7 @@ window.prepareStageGradesEditor=function(){
       <div class="structureStageHeader">
         <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
           <span class="stageTitleBadge">${html(stageName)}</span>
-          <button type="button" class="btn danger" style="padding:6px 9px" onclick="removeAcademicStage('${html(s.id)}')">حذف</button>
+          <button type="button" class="btn danger" style="padding:6px 9px" onclick="removeAcademicStage('${html(s.id||'')}','${html(stageName)}')">حذف</button>
         </div>
         <div class="stageSummary">${gradeCount} صفوف • ${sectionCount} فصول معتمدة</div>
       </div>
@@ -1979,7 +1996,15 @@ window.readExcel = async function(){
     try{const q=await secureSchoolInfo('teacher-profiles-list');return (q.profiles||[]).map(r=>({id:safe(r.user_id||r.id),user_id:safe(r.user_id||r.id),name:safe(r.teacher_name||r.name||''),email:safe(r.email||''),subject:safe(r.subject||''),weekly_lessons:r.weekly_lessons||'',teaching_subjects:Array.isArray(r.teaching_subjects)?r.teaching_subjects:[],assignments:Array.isArray(r.assignments)?r.assignments:[],extra_roles:Array.isArray(r.extra_roles)?r.extra_roles:[],updated_at:r.updated_at||''}));}catch(e){return []}
   }
   async function saveTeacherProfileCloud(t){
-    try{await secureSchoolInfo('teacher-profile-upsert',{profile:{user_id:t.user_id,teacher_name:t.name,email:t.email||'',subject:t.subject||'',weekly_lessons:Number(t.weekly_lessons||0),teaching_subjects:t.teaching_subjects||[],assignments:t.assignments||[],extra_roles:t.extra_roles||[]}});return true;}catch(e){return false}
+    const result=await secureSchoolInfo('teacher-profile-upsert',{profile:{user_id:t.user_id,teacher_name:t.name,email:t.email||'',subject:t.subject||'',weekly_lessons:Number(t.weekly_lessons||0),teaching_subjects:t.teaching_subjects||[],assignments:t.assignments||[],extra_roles:t.extra_roles||[]}});
+    if(!result?.ok)throw new Error('لم يؤكد الخادم حفظ التكليفات التدريسية.');
+    const verify=await secureSchoolInfo('teacher-profiles-list');
+    const saved=(verify.profiles||[]).find(x=>safe(x.user_id||x.id)===safe(t.user_id));
+    if(!saved)throw new Error('تم إرسال البيانات لكن تعذرت إعادة قراءة ملف المعلم من السحابة.');
+    const assignmentSignature=rows=>JSON.stringify((Array.isArray(rows)?rows:[]).map(x=>[safe(x.stage),safe(x.grade),safe(x.track),safe(x.section)]));
+    const expected=assignmentSignature(t.assignments),actual=assignmentSignature(saved.assignments);
+    if(expected!==actual)throw new Error('لم تتطابق التكليفات المقروءة من السحابة مع التكليفات المحفوظة.');
+    return saved;
   }
   function saveTeacherProfiles(rows){localStorage.setItem(teacherStoreKey(),JSON.stringify(rows||[]));}
   function teacherComplete(t){const subs=teacherSubjects(t);return !!(subs.length&&subs.every(x=>safe(x.subject)&&Number(x.weekly_lessons||0)>0)&&Array.isArray(t.assignments)&&t.assignments.some(x=>safe(x.stage)&&safe(x.grade)&&safe(x.section)))}
@@ -2175,13 +2200,19 @@ window.readExcel = async function(){
     const assignments=[...document.querySelectorAll('.teachingAssignmentBox')].map(box=>{const stage=canonicalTeacherStage(box.querySelector('.assStage').value);return {stage,grade:canonicalTeacherGrade(stage,box.querySelector('.assGrade').value),track:safe(box.querySelector('.assTrack').value),section:safe(box.querySelector('.assSection').value)}}).filter(x=>x.stage&&x.grade&&x.section);
     if(!teaching_subjects.length)return alert('أضف مادة واحدة على الأقل وحدد نصابها الأسبوعي.');
     if(!assignments.length)return alert('أضف تكليفًا تدريسيًا واحدًا على الأقل وحدد المرحلة والصف والفصل/الشعبة.');
-    t.teaching_subjects=teaching_subjects; t.subject=teaching_subjects.map(x=>x.subject).join('، '); t.weekly_lessons=teaching_subjects.reduce((n,x)=>n+Number(x.weekly_lessons||0),0); t.assignments=assignments; /* لا نعدل extra_roles هنا؛ إدارة الأدوار الإضافية أصبحت حصرًا من مركز التكليفات */ t.profile_status=teacherComplete(t)?'complete':'missing'; t.updated_at=new Date().toISOString();
-    allTeachers=allTeachers.map(x=>String(x.user_id)===String(userId)?t:x);
-    saveTeacherProfiles(allTeachers);
-    const cloudSaved=await saveTeacherProfileCloud(t);
-    await exportTeachersForDeputy();
-    renderTeachers(); closeTeacherDrawer();
-    setStatus('تم حفظ بيانات المعلم وتحديث مصدر متابعة الوكيل.'+(cloudSaved?' تم الحفظ السحابي أيضًا.':''),'ok');
+    const next={...t,teaching_subjects,subject:teaching_subjects.map(x=>x.subject).join('، '),weekly_lessons:teaching_subjects.reduce((n,x)=>n+Number(x.weekly_lessons||0),0),assignments,updated_at:new Date().toISOString()};
+    next.profile_status=teacherComplete(next)?'complete':'missing';
+    try{
+      setStatus('جارٍ حفظ التكليفات التدريسية والتحقق منها سحابيًا...','note');
+      await saveTeacherProfileCloud(next);
+      allTeachers=allTeachers.map(x=>String(x.user_id)===String(userId)?next:x);
+      saveTeacherProfiles(allTeachers);
+      await exportTeachersForDeputy();
+      renderTeachers(); closeTeacherDrawer();
+      setStatus('تم حفظ بيانات المعلم والتكليفات التدريسية، وإعادة قراءتها من السحابة، وتحديث مصدر متابعة الوكيل.','ok');
+    }catch(e){
+      setStatus('تعذر حفظ التكليفات التدريسية سحابيًا: '+(e.message||e)+'. بقيت النافذة مفتوحة ولم تُفقد المدخلات.','bad');
+    }
   }
   window.switchInfoTab=function(tab){
     const st=$('studentsTab'), tt=$('teachersTab'), sb=$('studentsTabBtn'), tb=$('teachersTabBtn');
@@ -2208,7 +2239,7 @@ window.readExcel = async function(){
 <script src="delegated-access-guard.js"></script>
   <script src="evidence-library-source.js"></script>
 
-<script src="school-information-source.js?v=20260930-RL229-teaching-relations-interactivity"></script>
+<script src="school-information-source.js?v=20261001-RL231-independent-schools-directory-consistency"></script>
 <script src="internal-messaging.js"></script>
 
 <script id="central-information-provider-ui">

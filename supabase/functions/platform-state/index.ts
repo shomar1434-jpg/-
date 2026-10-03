@@ -80,15 +80,50 @@ Deno.serve(async(req)=>{
     const ownerKey=requestedOwnerKey;
     if(!moduleKey&&action!=='health') return json({error:'moduleKey مطلوب',code:'STATE_MODULE_REQUIRED',requestId},400);
 
-    if(action==='health') return json({ok:true,version:'1.10.0-RL183-manager-performance-follow',schoolId:s.school_id,userId:s.user_id,role:s.role});
+    if(action==='health') return json({ok:true,version:'1.11.0-RL232-operational-plan-canonical-read',schoolId:s.school_id,userId:s.user_id,role:s.role});
 
     if(action==='pull'){
       const keys=Array.isArray(body.keys)&&body.keys.length?body.keys.slice(0,500).map((x:unknown)=>safeKey(x,220)).filter(Boolean):[];
       let q=sb.from('platform_module_state').select('module_key,state_key,payload,deleted_at,updated_at,owner_key,updated_by').eq('school_id',s.school_id).eq('module_key',moduleKey).in('owner_key',[requestedOwnerKey,String(s.user_id||'')]).order('updated_at',{ascending:true}).limit(4000);
       if(keys.length)q=q.in('state_key',keys);
       const {data,error}=await q;if(error)throw error;
+      // RL232: operational-plan state was historically written under several host module keys.
+      // Preserve every legacy row, but read the newest school/user-scoped value across aliases.
+      const OPERATIONAL_PLAN_MODULE_ALIASES=[
+        'interactive_operational_plan',
+        'school_command_center',
+        'school_information_center',
+        'administrative_employee_portal',
+        'admin_employee_management',
+        'school_readiness'
+      ];
+      const isOperationalPlanKey=(key:unknown)=>/^operationalPlan(?:Integrated|ResetBackup)V14/i.test(String(key||''));
+      let pulled:any[]=[...(data||[])];
+      if(OPERATIONAL_PLAN_MODULE_ALIASES.includes(moduleKey)){
+        const requestedPlanKeys=keys.filter(isOperationalPlanKey);
+        let pq=sb.from('platform_module_state')
+          .select('module_key,state_key,payload,deleted_at,updated_at,owner_key,updated_by')
+          .eq('school_id',s.school_id)
+          .in('module_key',OPERATIONAL_PLAN_MODULE_ALIASES)
+          .in('owner_key',[requestedOwnerKey,String(s.user_id||'')])
+          .is('deleted_at',null)
+          .order('updated_at',{ascending:true})
+          .limit(500);
+        pq=requestedPlanKeys.length?pq.in('state_key',requestedPlanKeys):pq.like('state_key','operationalPlan%');
+        const extra=await pq;if(extra.error)throw extra.error;
+        const newestByKey=new Map<string,any>();
+        for(const row of extra.data||[]){
+          if(String(row.owner_key)!==requestedOwnerKey||!isOperationalPlanKey(row.state_key))continue;
+          const prior=newestByKey.get(String(row.state_key));
+          if(!prior||new Date(String(row.updated_at||0)).getTime()>=new Date(String(prior.updated_at||0)).getTime()){
+            newestByKey.set(String(row.state_key),row);
+          }
+        }
+        pulled=pulled.filter((row:any)=>!isOperationalPlanKey(row.state_key));
+        for(const row of newestByKey.values())pulled.push({...row,module_key:moduleKey});
+      }
       const accepted:any[]=[];const legacy:any[]=[];
-      for(const row of data||[]){
+      for(const row of pulled){
         const priv=isPrivatePerformanceState(moduleKey,String(row.state_key||''));
         if(priv){
           if(String(row.owner_key)===String(s.user_id))accepted.push(row);
@@ -479,3 +514,4 @@ Deno.serve(async(req)=>{
     return json({error:e instanceof Error?e.message:String(e),code:'STATE_FATAL_ERROR',requestId},500);
   }
 });
+

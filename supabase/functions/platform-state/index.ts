@@ -188,13 +188,33 @@ Deno.serve(async(req)=>{
       const {data,error}=await q;if(error)throw error;
       let result:any[]=data||[];
       if(moduleKey==='weekly_teacher_work'){
-        result=result.filter((row:any)=>{
+        // Legacy evidence drafts did not carry reviewer/school metadata. Resolve
+        // read-only using a non-deleted plan/submission for exactly owner + week.
+        // Never infer a reviewer from the current week or from a display name.
+        const anchors=new Map<string,Set<string>>();
+        for(const row of result){
+          if(row.deleted_at)continue;
+          const key=String(row.state_key||'');
+          if(key!=='weekly_active_plan_v1'&&!key.startsWith('weekly_submission_v1:'))continue;
+          try{const p=JSON.parse(String(row.payload?.value||'{}')),rid=String(p.reviewer_id||''),week=String(p.week_id||'');
+            if(!rid||!week||(p.school_id&&String(p.school_id)!==String(s.school_id)))continue;
+            const k=JSON.stringify([String(row.owner_key),week]);const ids=anchors.get(k)||new Set<string>();ids.add(rid);anchors.set(k,ids);
+          }catch(_){}
+        }
+        result=result.flatMap((row:any)=>{
+          if(row.deleted_at)return [];
           try{
             const payload=JSON.parse(String(row?.payload?.value||'{}'));
-            const rid=String(payload?.reviewer_id||'').trim();
-            if(rid)return rid===String(s.user_id||'');
-            return false;
-          }catch(_){return false;}
+            if(payload.school_id&&String(payload.school_id)!==String(s.school_id))return [];
+            if(payload.teacher_id&&String(payload.teacher_id)!==String(row.owner_key))return [];
+            let rid=String(payload.reviewer_id||'').trim();
+            if(!rid&&String(row.state_key||'').startsWith('weekly_evidence_draft_v1:')){
+              const ids=anchors.get(JSON.stringify([String(row.owner_key),String(payload.week_id||'')]));
+              if(ids?.size===1)rid=Array.from(ids)[0];
+            }
+            if(rid!==String(s.user_id||''))return [];
+            return [{...row,payload:{...row.payload,value:JSON.stringify({...payload,school_id:s.school_id,teacher_id:String(row.owner_key),reviewer_id:rid})}}];
+          }catch(_){return [];}
         });
       }
       return json({items:result,scope:'school-users',schoolId:s.school_id,supervisor:['admin_performance','admin_employee_records'].includes(moduleKey)?supervisorKey:undefined});
@@ -302,7 +322,7 @@ Deno.serve(async(req)=>{
         if(!['returned','rejected'].includes(reviewStatus)||(reviewedAt&&previousSavedAt&&previousSavedAt>reviewedAt))return json({error:'يوجد شاهد محفوظ لهذه المهمة؛ لا يسمح برفع بديل إلا بعد إعادته أو رفضه من المسؤول',code:'STATE_WEEKLY_EVIDENCE_ALREADY_LOCKED',requestId},409);
       }
       draft.items=draft.items&&typeof draft.items==='object'?draft.items:{};const primary:any=ownedFiles[0]||{};
-      draft.items[itemKey]={...(draft.items[itemKey]||{}),cloud_file_ids:ids,file_name:String(incoming.file_name||primary.display_name||primary.original_name||''),file_type:String(incoming.file_type||primary.mime_type||''),file_size:Number(incoming.file_size||primary.file_size||0),cloud_synced_at:now,review_status:'',review_reason:'',updated_at:now};draft.week_id=weekId;draft.teacher_id=teacherId;draft.updated_at=now;
+      draft.items[itemKey]={...(draft.items[itemKey]||{}),cloud_file_ids:ids,file_name:String(incoming.file_name||primary.display_name||primary.original_name||''),file_type:String(incoming.file_type||primary.mime_type||''),file_size:Number(incoming.file_size||primary.file_size||0),cloud_synced_at:now,review_status:'',review_reason:'',updated_at:now};draft.week_id=weekId;draft.teacher_id=teacherId;draft.school_id=s.school_id;draft.reviewer_id=String(plan.reviewer_id||'');draft.reviewer_email=String(plan.reviewer_email||'');draft.teacher_email=String(plan.teacher_email||'');draft.updated_at=now;
       const value=JSON.stringify(draft);if(value.length>MAX_TOTAL_CHARS)return json({error:'حجم مسودة الشواهد كبير جدًا',code:'STATE_PAYLOAD_TOO_LARGE',requestId},413);
       const up=await sb.from('platform_module_state').upsert({school_id:s.school_id,owner_key:teacherId,module_key:'weekly_teacher_work',state_key:stateKey,payload:{value},updated_by:teacherId,updated_at:now,deleted_at:null},{onConflict:'school_id,owner_key,module_key,state_key'});if(up.error)throw up.error;
       return json({ok:true,stateKey,weekId,itemKey,cloud_file_ids:ids});

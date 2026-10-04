@@ -1,6 +1,13 @@
 (function(){
   'use strict';
 
+  // RL234 — one session authority per browser page. Some legacy pages can load
+  // this file more than once through nested engines. A second copy used to own
+  // independent renew/role-check promises and could revoke or reject the token
+  // while the first copy was still using it.
+  if(window.__PLATFORM_CLOUD_SESSION_SINGLETON__ && window.PlatformCloudSession)return;
+  window.__PLATFORM_CLOUD_SESSION_SINGLETON__='2026.10.04-RL234-agent-followup-session-stability';
+
   const TOKEN_KEY = 'platform_file_session_token';
   const EXPIRES_KEY = 'platform_file_session_expires_at';
   const USER_KEY = 'platform_file_session_user_id';
@@ -8,6 +15,7 @@
   const ROLE_KEY = 'platform_file_session_role';
   const TAB_TOKEN_KEY='platform_tab_session_token_v1';
   const TAB_EXPIRES_KEY='platform_tab_session_expires_v1';
+  const TAB_EXPIRES_COMPAT_KEY='platform_tab_session_expires_at_v1';
   const TAB_USER_KEY='platform_tab_session_user_v1';
   const TAB_SCHOOL_KEY='platform_tab_session_school_v1';
   const TAB_ROLE_KEY='smart_school_tab_role_v1';
@@ -212,6 +220,16 @@
     return '';
   }
 
+  // A few old navigation guards wrote the expiry under *_expires_at_v1. Migrate
+  // it inside the same tab only; no school/user identity is accepted from it.
+  function migrateTabExpiryKey(){
+    try{
+      const canonical=String(sessionStorage.getItem(TAB_EXPIRES_KEY)||'').trim();
+      const compat=String(sessionStorage.getItem(TAB_EXPIRES_COMPAT_KEY)||'').trim();
+      if(!canonical&&compat)sessionStorage.setItem(TAB_EXPIRES_KEY,compat);
+    }catch(_){}
+  }
+
   function updateKnownContext(payload) {
     try {
       let raw = parseJson(sessionStorage.getItem('smart_school_current_session')) || {};
@@ -391,7 +409,8 @@
   function applyPayload(payload, renewed = true) {
     if (!payload || !payload.token) throw new Error('استجابة تجديد الجلسة لا تحتوي على رمز صالح');
     const sid=payload.schoolId || currentSchoolId() || '';const rr=payload.role || baseRole() || (hasTabIdentity()?'':localStorage.getItem('currentRole')) || '';
-    sessionStorage.setItem(TAB_TOKEN_KEY,payload.token);sessionStorage.setItem(TAB_EXPIRES_KEY,payload.expiresAt||'');sessionStorage.setItem(TAB_USER_KEY,payload.userId||'');sessionStorage.setItem(TAB_SCHOOL_KEY,sid);sessionStorage.setItem(TAB_ROLE_KEY,rr);
+    sessionStorage.setItem(TAB_TOKEN_KEY,payload.token);sessionStorage.setItem(TAB_EXPIRES_KEY,payload.expiresAt||'');sessionStorage.setItem(TAB_EXPIRES_COMPAT_KEY,payload.expiresAt||'');sessionStorage.setItem(TAB_USER_KEY,payload.userId||'');sessionStorage.setItem(TAB_SCHOOL_KEY,sid);sessionStorage.setItem(TAB_ROLE_KEY,rr);
+    try{delete window.__PLATFORM_SESSION_RECOVERY_FAILURE__}catch(_){}
     updateKnownContext({...payload,schoolId:sid,role:rr});
     window.dispatchEvent(new CustomEvent('platform-cloud-session-ready',{detail:{userId:payload.userId||'',schoolId:sid,role:rr,expiresAt:payload.expiresAt||'',renewed:Boolean(renewed)}}));
     return payload.token;
@@ -399,7 +418,18 @@
 
   let recoveryPromise = null;
   async function recover() {
+    // The promise/failure latch is window-scoped so even a legacy duplicate
+    // loader cannot create a renewal storm. A rejected token is retried only
+    // after a short cool-down or after login/applyPayload installs a new token.
+    if (window.__PLATFORM_SESSION_RECOVERY_PROMISE__) return window.__PLATFORM_SESSION_RECOVERY_PROMISE__;
     if (recoveryPromise) return recoveryPromise;
+    const before=String(token()||'');
+    const previousFailure=window.__PLATFORM_SESSION_RECOVERY_FAILURE__;
+    if(previousFailure&&previousFailure.token===before&&Date.now()-Number(previousFailure.at||0)<15000){
+      const cached=new Error(previousFailure.message||'تعذر تجديد جلسة المدرسة مؤقتًا.');
+      cached.code=previousFailure.code||'SESSION_RENEW_COOLDOWN';
+      throw cached;
+    }
     recoveryPromise = (async () => {
       let oldToken = token();
       const sid = currentSchoolId();
@@ -419,12 +449,14 @@
         const error = new Error(payload.error || 'تعذر تجديد الجلسة السحابية. أعد تسجيل الدخول إلى المدرسة.');
         error.code = payload.code || `HTTP_${response.status}`;
         error.requestId = payload.requestId || '';
+        window.__PLATFORM_SESSION_RECOVERY_FAILURE__={token:oldToken,at:Date.now(),code:error.code,message:error.message};
         throw error;
       }
       return applyPayload(payload, true);
     })();
+    window.__PLATFORM_SESSION_RECOVERY_PROMISE__=recoveryPromise;
     try { return await recoveryPromise; }
-    finally { recoveryPromise = null; }
+    finally { recoveryPromise = null; window.__PLATFORM_SESSION_RECOVERY_PROMISE__=null; }
   }
 
   let ensurePromise = null;
@@ -542,7 +574,8 @@
 
   function clear() {
     // RL33: logout/clear is strictly tab-scoped. Shared localStorage may belong to another open account/tab.
-    [TAB_TOKEN_KEY,TAB_EXPIRES_KEY,TAB_USER_KEY,TAB_SCHOOL_KEY,TAB_ROLE_KEY,'platform_file_session_token','platform_file_session_expires_at','platform_file_session_user_id','platform_file_session_school_id','platform_file_session_role'].forEach(k=>sessionStorage.removeItem(k));
+    [TAB_TOKEN_KEY,TAB_EXPIRES_KEY,TAB_EXPIRES_COMPAT_KEY,TAB_USER_KEY,TAB_SCHOOL_KEY,TAB_ROLE_KEY,'platform_file_session_token','platform_file_session_expires_at','platform_file_session_user_id','platform_file_session_school_id','platform_file_session_role'].forEach(k=>sessionStorage.removeItem(k));
+    try{delete window.__PLATFORM_SESSION_RECOVERY_FAILURE__;window.__PLATFORM_SESSION_RECOVERY_PROMISE__=null}catch(_){}
     try {
       const raw=parseJson(sessionStorage.getItem('smart_school_current_session'));
       if(raw){delete raw.cloudToken;delete raw.cloudExpiresAt;delete raw.cloudUserId;delete raw.cloudSchoolId;delete raw.cloudRole;sessionStorage.setItem('smart_school_current_session',JSON.stringify(raw));}
@@ -738,6 +771,21 @@
           }
         }catch(_){}
       }
+      // RL234: the login endpoint already verified this exact tab identity.
+      // A brief network/renewal failure immediately afterwards is not a proven
+      // role denial and must not eject an agent while opening teacher follow-up.
+      // This grace never changes school/user/role and never applies to an
+      // explicit role or membership denial; protected APIs still validate the
+      // signed token independently on every request.
+      const code=String(err&&err.code||'').toUpperCase();
+      const recoverable=['SESSION_INVALID','SESSION_EXPIRED','SESSION_MISSING','SESSION_RENEW_NOT_FOUND','SESSION_REQUEST_TIMEOUT','SESSION_RENEW_COOLDOWN','HTTP_401','HTTP_408','HTTP_429','HTTP_500','HTTP_502','HTTP_503','HTTP_504'].includes(code)||err?.name==='TypeError';
+      const recent=recoverable?recentlyVerified([required],2*60*1000):null;
+      if(recent){
+        document.documentElement.dataset.platformRoleVerified='1';
+        document.documentElement.dataset.platformSessionDegraded='1';
+        try{window.dispatchEvent(new CustomEvent('platform-cloud-session-degraded',{detail:{code:code||'NETWORK_ERROR',schoolId:recent.schoolId,userId:recent.userId,role:recent.role}}))}catch(_){}
+        return recent;
+      }
       document.documentElement.dataset.platformRoleDenied='1';
       const current=String(baseRole()||'').toLowerCase();
       const normalized=current==='performance'?'teacher':current;
@@ -760,7 +808,7 @@
     }
   }
 
-  const SESSION_VERSION='2026.09.29-RL228-delegated-record-stability';
+  const SESSION_VERSION='2026.10.04-RL234-agent-followup-session-stability';
 
   window.PlatformCloudSession = {
     VERSION:SESSION_VERSION,
@@ -841,6 +889,7 @@
 
   // Same-tab navigation normally keeps sessionStorage, but restoring here also
   // covers pages opened after a browser/sessionStorage transition.
+  migrateTabExpiryKey();
   restoreFromKnownContext();
   startHeartbeat();
   const roleContract=routeRequiredRole();

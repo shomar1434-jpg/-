@@ -237,9 +237,10 @@ Deno.serve(async(req)=>{
   }
   // Supervisor access is a separate read-only action; normal private-library ACL stays unchanged.
   if(action==='supervisor-library-list'||action==='supervisor-library-preview'){
-   if(sessionRole!=='manager')return json({error:'المتابعة متاحة لمدير المدرسة فقط'},403);
+   if(!['manager','agent'].includes(sessionRole))return json({error:'المتابعة متاحة لمدير المدرسة أو وكيلها فقط'},403);
    const target=String(body.targetUserId||''),moduleKey=safeKey(body.moduleKey);
    if(!isUuid(target)||!moduleKey.startsWith('section_library_')||!privateModuleRole(moduleKey))return json({error:'طلب متابعة غير صالح'},400);
+   if(sessionRole==='agent'&&privateModuleRole(moduleKey)!=='teacher')return json({error:'متابعة الوكيل مقصورة على مكتبة المعلم'},403);
    const {data:membership,error:memberError}=await sb.from('school_members').select('role,status').eq('school_id',s.school_id).eq('user_id',target).limit(20);
    if(memberError)throw memberError;
    if(!(membership||[]).some((m:any)=>String(m.status||'active').toLowerCase()==='active'&&normalizeRole(m.role)===privateModuleRole(moduleKey)))return json({error:'المستخدم غير مرتبط بهذا القسم في المدرسة'},403);

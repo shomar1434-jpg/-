@@ -1640,7 +1640,21 @@
 <link rel="stylesheet" href="premium-ui.css">
 <script defer src="premium-ui.js"></script>
 
-<script>window.CLOUD_STATE_CONFIG={moduleKey:'teacher_comprehensive',scope:'user',keys:['followup_global_v3','followup_classes_v3'],prefixes:['teacher_records_period_v1:']};</script>
+<script>
+(function(){
+  var p=new URLSearchParams(location.search||''),mode=String(p.get('mode')||'').toLowerCase();
+  var viewer=String(p.get('viewerRole')||p.get('viewer')||'').toLowerCase();
+  var follow=(p.get('follow')==='1'||p.get('readonly')==='1'||mode.indexOf('supervisor')>=0)&&['manager','agent'].includes(viewer);
+  var target=String(p.get('targetUser')||p.get('followUserId')||p.get('userId')||p.get('uid')||'').trim();
+  window.CLOUD_STATE_CONFIG={moduleKey:'teacher_comprehensive',scope:'user',keys:['followup_global_v3','followup_classes_v3'],prefixes:['teacher_records_period_v1:'],ownerUserId:follow?target:'',readOnly:follow};
+  if(follow){
+    document.documentElement.setAttribute('data-supervisor-readonly','1');
+    window.addEventListener('DOMContentLoaded',function(){
+      document.querySelectorAll('button').forEach(function(b){var t=String(b.textContent||'');if(/حفظ|حذف|إضافة|تعديل|استيراد/.test(t)){b.disabled=true;b.title='وضع المتابعة للقراءة فقط';}});
+    });
+  }
+})();
+</script>
 <script src="platform-state-engine.js"></script>
 <script src="platform-record-save-engine.js?v=20260830-records-final-v3"></script>
 <script src="platform-persistence-guard.js"></script>

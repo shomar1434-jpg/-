@@ -13,6 +13,7 @@
   const prefixes=(explicit?.prefixes||[]).map(String);
   const explicitMode=!!explicit;
   const targetOwnerUserId=String(explicit?.ownerUserId||'').trim();
+  const readOnly=explicit?.readOnly===true;
   const legacyModuleKeys=(explicit?.legacyModules||[]).map(x=>String(x||'').replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,100)).filter(Boolean).filter(x=>x!==moduleKey);
   let applying=false,hydrated=false,booted=false;
   const queues={user:new Map(),school:new Map()};
@@ -83,7 +84,7 @@
   function queue(k,value,deleted){
     // V5: لا نرفع أي كتابة تهيئة محلية قبل اكتمال Hydration.
     // صفحات المنصة تنشئ بعض مفاتيح الأرشيف بقيمة [] أثناء الإقلاع؛ رفعها قبل قراءة السحابة كان يمسح الأرشيف الصحيح.
-    if(applying||!hydrated||!track(k)) return;
+    if(readOnly||applying||!hydrated||!track(k)) return;
     const scope=scopeFor(k),q=queues[scope];
     q.set(String(k),{key:String(k),value:deleted?'':String(value??''),deleted:!!deleted});
     scheduleFlush();
@@ -133,6 +134,7 @@
     return true;
   }
   async function flush(keepalive=false){
+    if(readOnly) return;
     clearTimeout(flushTimer);flushTimer=0;
     if(!window.PlatformStateEngine) return;
     for(const scope of ['school','user']){
@@ -216,6 +218,7 @@
 
 
   async function commit(keys){
+    if(readOnly) return {ok:false,readOnly:true,error:'وضع المتابعة للقراءة فقط'};
     // PERFORMANCE_ARCHIVE_EXACT_DOMAIN_2026_08_28
     // قد يضغط المستخدم حفظ قبل اكتمال تهيئة المحرك السحابي؛ انتظر بدلاً من
     // اعتبار ذلك فشلاً فورياً. لا يتم إرجاع نجاح إلا بعد القراءة من السحابة.

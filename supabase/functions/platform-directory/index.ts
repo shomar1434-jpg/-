@@ -26,7 +26,16 @@ Deno.serve(async(req)=>{
     const q=await sb.from('schools').select('id,school_name,school_code,status').eq('id',sid).maybeSingle();
     if(q.error)throw q.error;
     row=q.data||null;
-    // When an ID is present it is authoritative; never resolve a different school by the code.
+    if(!row){
+     const aliasQ=await sb.from('school_identity_aliases').select('canonical_school_id,status').eq('alias',sid).eq('status','active').maybeSingle();
+     if(aliasQ.error)throw aliasQ.error;
+     if(aliasQ.data?.canonical_school_id){
+      const canonicalQ=await sb.from('schools').select('id,school_name,school_code,status').eq('id',aliasQ.data.canonical_school_id).maybeSingle();
+      if(canonicalQ.error)throw canonicalQ.error;
+      row=canonicalQ.data||null;
+     }
+    }
+    // When an ID is present it is authoritative; aliases may only point to one canonical school.
     if(!row)return json({error:'SCHOOL_NOT_FOUND',requestId},404);
    }else{
     const q=await sb.from('schools').select('id,school_name,school_code,status').eq('school_code',scode).limit(2);
@@ -34,7 +43,7 @@ Deno.serve(async(req)=>{
     row=(q.data||[]).length===1?q.data[0]:null;
    }
    if(!row||['disabled','inactive','suspended','deleted'].includes(low(row.status)))return json({error:'SCHOOL_NOT_FOUND',requestId},404);
-   return json({ok:true,school:{id:row.id,schoolId:row.id,school_name:row.school_name,schoolName:row.school_name,school_code:row.school_code,schoolCode:row.school_code,status:row.status},requestId});
+   return json({ok:true,school:{id:row.id,schoolId:row.id,school_name:row.school_name,schoolName:row.school_name,school_code:row.school_code,schoolCode:row.school_code,status:row.status},canonicalizedFrom:sid&&sid!==String(row.id)?sid:null,requestId});
   }
   const findSchool=async()=>{
    const sid=t(body.schoolId,100),scode=t(body.schoolCode,100),reg=t(body.registrationCode,160);
@@ -156,6 +165,26 @@ Deno.serve(async(req)=>{
    const memberships:any[]=[...(mq.data||[])],byKey=new Set(memberships.map((m:any)=>`${String(m.user_id||'')}|${low(m.role)}`));
    for(const u of uq.data||[]){const k=`${String(u.id||'')}|${low(u.role)}`;if(!byKey.has(k)){memberships.push({id:`legacy:${u.id}`,school_id:schoolId,user_id:u.id,email:u.email,role:u.role,status:u.status||'active',role_label:null,supervisor_user_id:null,legacy_user_row:true});byKey.add(k)}}
    const ids=[...new Set(memberships.map((x:any)=>x.user_id).filter(Boolean))];let users:any[]=[];if(ids.length){const all=await sb.from('users').select('id,full_name,email,role,status,active,school_id,mobile_number,mobile_verified').in('id',ids);if(all.error)throw all.error;users=all.data||[]}
+   return json({ok:true,memberships,users,school:schoolQ.data,requestId});
+  }
+  if(action==='list-follow-users'){
+   if(!isManager&&!isAgent)return json({error:'SUPERVISOR_REQUIRED',requestId},403);
+   const requestedRole=low(body.role||'teacher');
+   if(requestedRole!=='teacher')return json({error:'FOLLOW_ROLE_NOT_ALLOWED',requestId},400);
+   const mq=await sb.from('school_members').select('id,school_id,user_id,email,role,status,role_label').eq('school_id',schoolId).eq('role','teacher').neq('status','deleted').order('created_at');
+   if(mq.error)throw mq.error;
+   const memberships:any[]=[...(mq.data||[])];
+   const memberIds=new Set(memberships.map((m:any)=>String(m.user_id||'')).filter(Boolean));
+   const legacyQ=await sb.from('users').select('id,full_name,email,role,status,active,school_id').eq('school_id',schoolId).eq('role','teacher').neq('status','deleted').order('created_at');
+   if(legacyQ.error)throw legacyQ.error;
+   for(const u of legacyQ.data||[]){
+    if(!memberIds.has(String(u.id||''))){
+     memberships.push({id:`legacy:${u.id}`,school_id:schoolId,user_id:u.id,email:u.email,role:'teacher',status:u.status||((u.active===false)?'disabled':'active'),role_label:null,legacy_user_row:true});
+     memberIds.add(String(u.id||''));
+    }
+   }
+   const ids=[...memberIds];let users:any[]=[];
+   if(ids.length){const uq=await sb.from('users').select('id,full_name,email,role,status,active,school_id').in('id',ids);if(uq.error)throw uq.error;users=uq.data||[]}
    return json({ok:true,memberships,users,school:schoolQ.data,requestId});
   }
   if(action==='set-user-status'||action==='delete-user'||action==='upsert-user'||action==='reset-user-password'){

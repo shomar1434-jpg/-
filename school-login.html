@@ -733,7 +733,12 @@
     }),'التحقق من رابط المدرسة',20000);
     const payload=await loginDeadline(response.json(),'قراءة هوية المدرسة',10000);
     if(!response.ok||!payload.ok)throw new Error(payload.error||'تعذر التحقق من رابط المدرسة');
-    return payload.school||null;
+    const school=payload.school||null;
+    if(school&&payload.canonicalizedFrom){
+      targetSchoolId=String(school.id||school.schoolId||'').trim();
+      try{sessionStorage.setItem('school_link_canonicalized_from',String(payload.canonicalizedFrom));}catch(_){ }
+    }
+    return school;
   }
   async function resolveActiveSchool(){
     if(activeSchool && schoolMatchesLinkContract(activeSchool)) return activeSchool;

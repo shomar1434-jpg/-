@@ -3712,7 +3712,16 @@ function openWakilRecordsNewTab() {
   function uid(p){return (p||'id')+'_'+Date.now()+'_'+Math.random().toString(36).slice(2,7)}
   function esc(s){return String(s||'').replace(/[&<>"']/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]})}
   function fmt(d){try{return new Date(d||Date.now()).toLocaleString('ar-SA')}catch(e){return''}}
-  function users(){var u=read(NS+'_users',[]); if(!u.length){u=[{id:'agent_1',name:'الوكيل',role:'agent',status:'active',permissions:['meetings','alerts']},{id:'teacher_1',name:'المعلم',role:'teacher',status:'active',permissions:['receive']},{id:'activity_1',name:'رائد/ة النشاط',role:'activity_leader',status:'active',permissions:['receive']}]; write(NS+'_users',u)} return u}
+  var followDirectoryUsers=[];
+  function users(){var u=read(NS+'_users',[]); return Array.isArray(u)?u:[]}
+  async function cloudFollowUsers(role){
+    if(role!=='teacher')return users().filter(function(u){return u.role===role});
+    if(!window.SmartSchoolSupabase||typeof SmartSchoolSupabase.listFollowUsers!=='function')throw new Error('مصدر حسابات المدرسة السحابي غير متاح. حدّث الصفحة وحاول مجددًا.');
+    var list=await SmartSchoolSupabase.listFollowUsers('teacher');
+    list=(Array.isArray(list)?list:[]).filter(function(u){return u&&u.id&&u.role==='teacher'&&u.status==='active'});
+    followDirectoryUsers=list;
+    return list;
+  }
   function saveUsers(u){write(NS+'_users',u)}
   function notifs(role){return read(NS+'_notifications_'+role,[])}
   function saveNotif(role,n){var a=notifs(role); a.unshift(Object.assign({id:uid('notif'),createdAt:new Date().toISOString(),read:false},n)); write(NS+'_notifications_'+role,a)}
@@ -3764,21 +3773,31 @@ function openWakilRecordsNewTab() {
     b.innerHTML=html;
   }
   function attach(){var q=function(id){return document.getElementById(id)}; q('ssBack')&&q('ssBack').addEventListener('click',function(){location.href='index.html'}); q('ssExit')&&q('ssExit').addEventListener('click',function(){location.href='index.html'}); q('ssTeachers')&&q('ssTeachers').addEventListener('click',function(){showUsers('teacher')}); q('ssActivityLeaders')&&q('ssActivityLeaders').addEventListener('click',function(){showUsers('activity_leader')}); q('ssAgents')&&q('ssAgents').addEventListener('click',function(){showUsers('agent')}); q('ssActivate')&&q('ssActivate').addEventListener('click',showActivation); q('ssRegLink')&&q('ssRegLink').addEventListener('click',showRegLink); q('ssAlert')&&q('ssAlert').addEventListener('click',showAlert); q('ssInbox')&&q('ssInbox').addEventListener('click',showInbox); q('ssMeetWallet')&&q('ssMeetWallet').addEventListener('click',showWallet); q('ssMeetingRoom')&&q('ssMeetingRoom').addEventListener('click',showMeetingRoom); q('ssCloud')&&q('ssCloud').addEventListener('click',showCloud); }
-  function showUsers(role){
-    var list=users().filter(function(u){return u.role===role && u.status==='active'});
+  async function showUsers(role){
     var title=role==='teacher'?'المعلمون':'الوكلاء';
-    panel(title, list.length?list.map(function(u){
+    panel(title,'<div class="ss-empty">جارٍ تحميل الحسابات المفعلة من المدرسة…</div>');
+    try{
+     var list=await cloudFollowUsers(role);
+     panel(title, list.length?list.map(function(u){
       return '<div class="ss-card"><b class="ss-follow-name" style="cursor:pointer" onclick="ssOpenFollow(\''+u.id+'\',\''+role+'\')">'+esc(u.name||'مستخدم')+'</b><div class="ss-muted">'+esc(u.email||'')+' — مفعل</div><div class="ss-actions"><button class="ss-action blue" onclick="ssOpenFollow(\''+u.id+'\',\''+role+'\')">الدخول للمتابعة</button></div></div>';
-    }).join(''):'<div class="ss-empty">لا توجد حسابات مفعلة.</div>')
+     }).join(''):'<div class="ss-empty">لا توجد حسابات معلمين مفعلة في هذه المدرسة.</div>');
+    }catch(e){
+     console.error('[agent-follow-users]',e);
+     panel(title,'<div class="ss-empty" style="color:#b91c1c;border-color:#fecaca;background:#fff7f7">تعذر تحميل حسابات المدرسة من المصدر السحابي.<br>'+esc(e&&e.message||'حاول تحديث الصفحة ثم إعادة المحاولة.')+'</div>');
+    }
   }
 
   function ssOpenFollow(userId, role){
-    var selected=(users()||[]).find(function(u){return String(u.id)===String(userId)})||{};
+    var selected=(followDirectoryUsers.concat(users())||[]).find(function(u){return String(u.id)===String(userId)})||{};
     var email=String(selected.email||'').trim().toLowerCase();
     if(!email){alert('لا يمكن الدخول للمتابعة لأن هذا الحساب لا يحتوي على بريد منصة مدرستي.');return;}
-    try{sessionStorage.setItem(NS+'_last_follow_target',JSON.stringify(selected));}catch(e){}
+    var __qp=new URLSearchParams(location.search||''); var __sid=__qp.get('schoolId')||__qp.get('school_id')||String(window.PlatformCloudSession?.schoolId?.()||'');
+    try{
+      sessionStorage.setItem(NS+'_last_follow_target',JSON.stringify(selected));
+      sessionStorage.setItem('supervisor_follow_context_v1',JSON.stringify({mode:'supervisor_follow',readonly:true,viewerRole:'agent',schoolId:__sid,targetUserId:String(userId),targetEmail:email,targetRole:role,createdAt:new Date().toISOString()}));
+    }catch(e){}
     var file = role==='agent' ? 'agent.html' : (role==='student_advisor' ? 'student_advisor.html' : (role==='activity_leader' ? 'activity_leader.html' : 'teacher.html'));
-    var __qp=new URLSearchParams(location.search||''); var __sid=__qp.get('schoolId')||__qp.get('school_id')||''; var params = '?follow=1&readonly=1&mode=supervisor_readonly&viewer='+encodeURIComponent(ROLE||'manager')+'&viewerRole='+encodeURIComponent(ROLE||'manager')+'&returnRole='+encodeURIComponent(ROLE||'manager')+'&targetRole='+encodeURIComponent(role)+'&followEmail='+encodeURIComponent(email)+'&targetEmail='+encodeURIComponent(email)+'&targetUser='+encodeURIComponent(userId)+'&followUserId='+encodeURIComponent(userId)+'&userId='+encodeURIComponent(userId)+'&uid='+encodeURIComponent(userId)+'&schoolId='+encodeURIComponent(__sid)+'&schoolMode=independent&independent=true&loginMode=direct&direct=1&blockNewReport=true&archiveReadOnly=true';
+    var params = '?follow=1&readonly=1&supervisorFollow=1&mode=supervisor_readonly&viewer=agent&viewerRole=agent&returnRole=agent&targetRole='+encodeURIComponent(role)+'&followEmail='+encodeURIComponent(email)+'&targetEmail='+encodeURIComponent(email)+'&targetUser='+encodeURIComponent(userId)+'&followUserId='+encodeURIComponent(userId)+'&userId='+encodeURIComponent(userId)+'&uid='+encodeURIComponent(userId)+'&schoolId='+encodeURIComponent(__sid)+'&schoolMode=independent&independent=true&blockNewReport=true&archiveReadOnly=true';
     window.location.href = file + params;
   }
   window.ssOpenFollow = ssOpenFollow;

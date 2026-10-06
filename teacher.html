@@ -20,14 +20,14 @@
   function request(){
     var p=q(), mode=norm(p.get('mode'));
     var viewer=norm(p.get('viewerRole')||p.get('viewer')||p.get('returnRole'));
-    var active=(p.get('managerFollow')==='1'||viewer==='manager') && (p.get('follow')==='1'||p.get('readonly')==='1'||mode.indexOf('supervisor')>=0);
+    var active=(p.get('managerFollow')==='1'||p.get('supervisorFollow')==='1'||viewer==='manager'||viewer==='agent') && (p.get('follow')==='1'||p.get('readonly')==='1'||mode.indexOf('supervisor')>=0);
     return {active:active,schoolId:String(p.get('schoolId')||p.get('school_id')||'').trim(),targetUserId:String(p.get('targetUser')||p.get('followUserId')||p.get('userId')||p.get('uid')||'').trim(),targetEmail:norm(p.get('followEmail')||p.get('targetEmail')||''),targetRole:norm(p.get('targetRole')||''),viewer:viewer};
   }
-  function stored(){return parse(sessionStorage.getItem('manager_follow_context_v2'))||{}}
+  function stored(){return parse(sessionStorage.getItem('supervisor_follow_context_v1'))||parse(sessionStorage.getItem('manager_follow_context_v2'))||{}}
   async function verify(expectedRoles){
     var r=request(); if(!r.active) return null;
     var c=stored();
-    if(!c || c.mode!=='manager_follow' || c.readonly!==true) throw new Error('MANAGER_FOLLOW_CONTEXT_MISSING');
+    if(!c || !['manager_follow','supervisor_follow'].includes(c.mode) || c.readonly!==true) throw new Error('MANAGER_FOLLOW_CONTEXT_MISSING');
     if(!r.schoolId || !same(r.schoolId,c.schoolId)) throw new Error('MANAGER_FOLLOW_SCHOOL_MISMATCH');
     if(r.targetUserId && c.targetUserId && !same(r.targetUserId,c.targetUserId)) throw new Error('MANAGER_FOLLOW_TARGET_MISMATCH');
     if(r.targetEmail && c.targetEmail && norm(r.targetEmail)!==norm(c.targetEmail)) throw new Error('MANAGER_FOLLOW_EMAIL_MISMATCH');
@@ -38,16 +38,25 @@
     var currentSchool=String(PlatformCloudSession.schoolId?.()||'').trim();
     var currentRole=norm(PlatformCloudSession.role?.());
     if(!same(currentSchool,r.schoolId)) throw new Error('MANAGER_SESSION_SCHOOL_MISMATCH');
-    if(!/^(manager|leadership|principal|school_manager|مدير)$/.test(currentRole)){
+    if(!/^(manager|agent|deputy|vice|wakil|leadership|principal|school_manager|مدير|وكيل|وكيلة)$/.test(currentRole)){
       try{var payload=typeof PlatformCloudSession.memberships==='function'?await PlatformCloudSession.memberships():null;var cur=payload&&payload.current?payload.current:{};currentRole=norm(cur.role||currentRole)}catch(_){ }
     }
-    if(!/^(manager|leadership|principal|school_manager|مدير)$/.test(currentRole)) throw new Error('MANAGER_FOLLOW_VIEWER_NOT_MANAGER');
-    window.__MANAGER_FOLLOW_VERIFIED__={schoolId:r.schoolId,targetUserId:r.targetUserId,targetEmail:r.targetEmail,targetRole:r.targetRole,viewerRole:'manager',readonly:true};
+    if(!/^(manager|agent|deputy|vice|wakil|leadership|principal|school_manager|مدير|وكيل|وكيلة)$/.test(currentRole)) throw new Error('MANAGER_FOLLOW_VIEWER_NOT_SUPERVISOR');
+    var viewerRole=/^(agent|deputy|vice|wakil|وكيل|وكيلة)$/.test(currentRole)?'agent':'manager';
+    if(c.viewerRole&&norm(c.viewerRole)!==viewerRole) throw new Error('MANAGER_FOLLOW_VIEWER_MISMATCH');
+    window.__MANAGER_FOLLOW_VERIFIED__={schoolId:r.schoolId,targetUserId:r.targetUserId,targetEmail:r.targetEmail,targetRole:r.targetRole,viewerRole:viewerRole,readonly:true};
     document.documentElement.setAttribute('data-manager-follow-verified','1');
     return window.__MANAGER_FOLLOW_VERIFIED__;
   }
-  function returnToManager(){var r=request(),n=new URLSearchParams();if(r.schoolId)n.set('schoolId',r.schoolId);n.set('sectionReturn','1');n.set('returnedFromFollow','1');location.href='manager.html?'+n.toString()}
+  function returnToManager(){var r=request(),n=new URLSearchParams();if(r.schoolId)n.set('schoolId',r.schoolId);n.set('sectionReturn','1');n.set('returnedFromFollow','1');location.href=(r.viewer==='agent'?'agent.html':'manager.html')+'?'+n.toString()}
   window.ManagerFollowAccessBridge={request:request,verify:verify,returnToManager:returnToManager};
+  window.teacherFollowChildUrl=function(file){
+    var r=request();if(!r.active)return file;
+    var src=q(),out=new URLSearchParams();
+    ['follow','readonly','managerFollow','supervisorFollow','mode','viewer','viewerRole','returnRole','targetRole','followEmail','targetEmail','targetUser','followUserId','userId','uid','schoolId','school_id','blockNewReport','archiveReadOnly'].forEach(function(k){if(src.has(k))out.set(k,src.get(k))});
+    out.set('follow','1');out.set('readonly','1');out.set('mode','supervisor_readonly');
+    return file+'?'+out.toString();
+  };
 })();
 </script>
 
@@ -2255,7 +2264,7 @@ html.teacher-auth-pending body{visibility:hidden!important;}
 <h3 class="font-bold text-xl text-slate-700">قياس الأثر</h3>
 <p class="text-[10px] text-slate-500 text-center leading-relaxed font-bold">نموذج قياس أثر البرامج والخطط والمبادرات</p>
 </div>
-<div class="bg-white/90 backdrop-blur p-10 rounded-[45px] shadow-lg border border-white hover:border-teal-400 cursor-pointer transition-all flex flex-col items-center gap-4 group hover:-translate-y-2" onclick="window.location.href='teacher_comprehensive_record.html'">
+<div class="bg-white/90 backdrop-blur p-10 rounded-[45px] shadow-lg border border-white hover:border-teal-400 cursor-pointer transition-all flex flex-col items-center gap-4 group hover:-translate-y-2" onclick="window.location.href=window.teacherFollowChildUrl('teacher_comprehensive_record.html')">
 <div class="w-20 h-20 bg-gradient-to-br from-teal-600 to-emerald-800 text-white rounded-3xl flex items-center justify-center shadow-lg group-hover:-rotate-6 transition-transform text-4xl">📘</div>
 <h3 class="font-bold text-xl text-slate-700">سجل المعلم الشامل</h3>
 <p class="text-[10px] text-slate-500 text-center leading-relaxed font-bold">متابعة الطلاب والاختبارات والتحليل من مركز المعلومات</p>
@@ -4877,7 +4886,7 @@ window.addEventListener('load', function () {
   function btn(id,icon,tip,cls){
     // حماية خاصة لأيقونة سجل المعلم الشامل: رابط مستقل مباشر وليس زر عام حتى لا يرث أي معالج خروج.
     if(id==='ssTeacherRecords'){
-      return '<a class="ss-final-btn '+(cls||'')+'" id="ssTeacherRecords" href="teacher_comprehensive_record.html" data-floating-label="'+tip+'" aria-label="'+tip+'" title="'+tip+'">'+icon+'<span class="ss-tip">'+tip+'</span><span class="ss-final-badge" id="ssTeacherRecordsBadge">0</span><span class="ss-final-meeting-dot" id="ssTeacherRecordsMeetingDot"></span></a>';
+      return '<a class="ss-final-btn '+(cls||'')+'" id="ssTeacherRecords" href="'+window.teacherFollowChildUrl('teacher_comprehensive_record.html')+'" data-floating-label="'+tip+'" aria-label="'+tip+'" title="'+tip+'">'+icon+'<span class="ss-tip">'+tip+'</span><span class="ss-final-badge" id="ssTeacherRecordsBadge">0</span><span class="ss-final-meeting-dot" id="ssTeacherRecordsMeetingDot"></span></a>';
     }
     return '<button type="button" class="ss-final-btn '+(cls||'')+'" id="'+id+'" data-floating-label="'+tip+'" aria-label="'+tip+'" title="'+tip+'">'+icon+'<span class="ss-tip">'+tip+'</span><span class="ss-final-badge" id="'+id+'Badge">0</span><span class="ss-final-meeting-dot" id="'+id+'MeetingDot"></span></button>'
   }
@@ -4933,7 +4942,7 @@ window.addEventListener('load', function () {
       if(e.stopPropagation) e.stopPropagation();
       if(e.stopImmediatePropagation) e.stopImmediatePropagation();
     }
-    window.location.href='teacher_comprehensive_record.html';
+    window.location.href=window.teacherFollowChildUrl('teacher_comprehensive_record.html');
     return false;
   }
 
@@ -4941,7 +4950,7 @@ window.addEventListener('load', function () {
     return openTeacherRecordsPage();
   }
 
-  function showDataAnalysis(){ window.open('teacher_comprehensive_record.html','_blank','noopener'); }
+  function showDataAnalysis(){ window.open(window.teacherFollowChildUrl('teacher_comprehensive_record.html'),'_blank','noopener'); }
 
   function showActivation(){var u=users(); panel('تنشيط المستخدمين وإدارة الصلاحيات','<div class="ss-grid"><div class="ss-field"><label>الاسم</label><input id="uName" placeholder="اسم المستخدم"></div><div class="ss-field"><label>البريد</label><input id="uEmail" placeholder="بريد منصة مدرستي"></div><div class="ss-field"><label>الدور</label><select id="uRole"><option value="agent">وكيل</option><option value="teacher">معلم</option><option value="activity_leader">رائد/ة النشاط</option></select></div><div class="ss-field"><label>الحالة</label><select id="uStatus"><option value="pending">بانتظار التفعيل</option><option value="active">مفعل</option></select></div></div><div class="ss-field"><label>الصلاحيات</label><input id="uPerm" placeholder="مثال: alerts, meetings, archive-view"></div><div class="ss-actions"><button class="ss-action" id="addUser">إضافة/حفظ مستخدم</button></div><hr style="margin:14px 0;border:0;border-top:1px solid #e5e7eb"><div id="userList">'+renderUserList(u)+'</div>'); document.getElementById('addUser').onclick=function(){var nu={id:uid('user'),name:val('uName'),email:val('uEmail'),role:val('uRole'),status:val('uStatus'),permissions:val('uPerm').split(',').map(function(x){return x.trim()}).filter(Boolean)}; var arr=users(); arr.unshift(nu); saveUsers(arr); showActivation();}}
   function renderUserList(arr){return arr.map(function(u){return '<div class="ss-card"><b>'+esc(u.name||'مستخدم')+'</b><div class="ss-muted">'+esc(u.email||'')+' — '+(u.role==='agent'?'وكيل':(u.role==='activity_leader'?'رائد/ة النشاط':'معلم'))+' — '+(u.status==='active'?'مفعل':'بانتظار التفعيل')+'</div><div class="ss-actions"><button class="ss-action blue" onclick="ssFinalActivate(\''+u.id+'\')">تفعيل</button><button class="ss-action secondary" onclick="ssFinalEditUser(\''+u.id+'\')">تعديل</button></div></div>'}).join('')||'<div class="ss-empty">لا توجد حسابات.</div>'}

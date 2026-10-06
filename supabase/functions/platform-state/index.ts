@@ -395,9 +395,20 @@ Deno.serve(async(req)=>{
 
     if(action==='pull-user'){
       if(!isAdministrativeSupervisor) return json({error:'هذه القراءة تتطلب صلاحية المسؤول المباشر',code:'STATE_SUPERVISOR_REQUIRED',requestId},403);
-      if(!['admin_performance','admin_employee_records'].includes(moduleKey)) return json({error:'هذه القراءة مخصصة لأداء الموظف الإداري',code:'STATE_TARGET_MODULE_FORBIDDEN',requestId},403);
+      if(!['admin_performance','admin_employee_records','teacher_comprehensive','teacher_comprehensive_records'].includes(moduleKey)) return json({error:'هذه القراءة غير متاحة لهذا القسم',code:'STATE_TARGET_MODULE_FORBIDDEN',requestId},403);
       const targetUserId=String(body.ownerUserId||body.userId||'').trim();
-      if(!targetUserId) return json({error:'معرف الموظف الإداري مطلوب',code:'STATE_TARGET_USER_REQUIRED',requestId},400);
+      if(!targetUserId) return json({error:'معرف المستخدم المطلوب متابعته مفقود',code:'STATE_TARGET_USER_REQUIRED',requestId},400);
+      if(['teacher_comprehensive','teacher_comprehensive_records'].includes(moduleKey)){
+        const mq=await sb.from('school_members').select('user_id,role,status').eq('school_id',s.school_id).eq('user_id',targetUserId).neq('status','deleted');
+        if(mq.error)throw mq.error;
+        const teacher=(mq.data||[]).some((m:any)=>['teacher','performance','معلم','معلمة'].includes(String(m.role||'').trim().toLowerCase())&&String(m.status||'active').toLowerCase()==='active');
+        if(!teacher)return json({error:'المستخدم ليس معلمًا مفعلاً في المدرسة الحالية',code:'STATE_TARGET_NOT_TEACHER',requestId},403);
+        const keys=Array.isArray(body.keys)?body.keys.slice(0,100).map((x:unknown)=>safeKey(x,220)).filter(Boolean):[];
+        let q=sb.from('platform_module_state').select('module_key,state_key,payload,deleted_at,updated_at,owner_key').eq('school_id',s.school_id).eq('module_key',moduleKey).eq('owner_key',targetUserId).order('updated_at',{ascending:true}).limit(2000);
+        if(keys.length)q=q.in('state_key',keys);
+        const {data,error}=await q;if(error)throw error;
+        return json({items:data||[],scope:'target-user',ownerKey:targetUserId,readOnly:true});
+      }
       const membership=await sb.from('school_members').select('id,user_id,role,status,role_label,supervisor_user_id').eq('school_id',s.school_id).eq('user_id',targetUserId).in('role',['administrative_employee','admin_employee']).neq('status','deleted').maybeSingle();
       if(membership.error) throw membership.error;
       if(!membership.data) return json({error:'المستخدم ليس موظفًا إداريًا في المدرسة الحالية',code:'STATE_TARGET_NOT_ADMIN_EMPLOYEE',requestId},403);
@@ -534,4 +545,3 @@ Deno.serve(async(req)=>{
     return json({error:e instanceof Error?e.message:String(e),code:'STATE_FATAL_ERROR',requestId},500);
   }
 });
-

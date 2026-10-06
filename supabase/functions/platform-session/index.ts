@@ -49,6 +49,13 @@ const isUuid = (value: unknown) =>
     text(value),
   );
 
+const resolveSchoolAlias = async (admin: any, value: string) => {
+  if (!value) return value;
+  const q = await admin.from('school_identity_aliases').select('canonical_school_id,status').eq('alias', value).eq('status','active').maybeSingle();
+  if (q.error) throw q.error;
+  return text(q.data?.canonical_school_id || value);
+};
+
 const activeStatus = (value: unknown) => {
   const status = lower(value || 'active');
   return ![
@@ -252,7 +259,7 @@ Deno.serve(async (request) => {
     const payload = await request.json().catch(() => ({}));
     const login = text(payload?.login);
     const password = text(payload?.password);
-    const schoolRef = text(payload?.schoolId);
+    let schoolRef = text(payload?.schoolId);
 
     const requestedAction = lower(payload?.action || 'login');
     if (requestedAction === 'probe') {
@@ -265,6 +272,7 @@ Deno.serve(async (request) => {
     const admin = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
+    if (schoolRef && isUuid(schoolRef)) schoolRef = await resolveSchoolAlias(admin, schoolRef);
 
     const action = lower(payload?.action || 'login');
     if (action === 'renew') {

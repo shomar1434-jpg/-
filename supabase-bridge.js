@@ -669,6 +669,7 @@
     const d=await platformDirectoryCall('register-user',{schoolId:payload.schoolId,schoolCode:payload.schoolCode,registrationCode:payload.registrationCode,name:payload.name,email:payload.email,password:payload.password,role:appRoleToDb(payload.role),adminSupervisor:payload.adminSupervisor||payload.supervisor||'',supervisorUserId:payload.supervisorUserId||payload.adminOwnerUserId||'',registrationSource:payload.registrationSource||'',adminRegistrationToken:payload.adminRegistrationToken||payload.adminToken||'',managerUserId:payload.managerUserId||payload.manager_user_id||'',generalRegistrationToken:payload.generalRegistrationToken||payload.generalToken||''},false);return normalizeUser(d.user,d.school);
   }
   async function safeListUsersBySchool(){const d=await platformDirectoryCall('list-users');const um=new Map((d.users||[]).map(u=>[String(u.id),u]));return(d.memberships||[]).map(m=>normalizeUser({...um.get(String(m.user_id)),...m,id:m.user_id,role:m.role},d.school));}
+  async function safeListFollowUsers(role='teacher'){const d=await platformDirectoryCall('list-follow-users',{role});const um=new Map((d.users||[]).map(u=>[String(u.id),u]));return(d.memberships||[]).map(m=>normalizeUser({...um.get(String(m.user_id)),...m,id:m.user_id,role:m.role,status:m.status||um.get(String(m.user_id))?.status},d.school));}
   async function safeListAdministrativeEmployeesBySchool(){const d=await platformDirectoryCall('list-admin-employees');const um=new Map((d.users||[]).map(u=>[String(u.id),u]));return(d.memberships||[]).map(m=>normalizeUser({...um.get(String(m.user_id)),...m,id:m.user_id,role:m.role,adminSupervisor:(String(m.role_label||'').match(/ADMIN_EMPLOYEE_SUPERVISOR:(manager|agent)/i)||[])[1]||'',supervisorUserId:m.supervisor_user_id||''},d.school));}
   async function safeRemoveAdministrativeEmployee(payload){const userId=typeof payload==='string'?payload:(payload.userId||payload.id||'');return platformDirectoryCall('remove-admin-employee',{userId});}
   async function safeUpdateAdministrativeEmployeeStatus(payload,statusArg){const userId=typeof payload==='string'?payload:(payload.userId||payload.id||'');const status=statusArg||(typeof payload==='object'?payload.status:'');return platformDirectoryCall('set-admin-status',{userId,status});}
@@ -698,6 +699,7 @@
     updateSchoolStatus: safeUpdateSchoolStatus,
     registerSchoolUser: safeRegisterSchoolUser,
     listUsersBySchool: safeListUsersBySchool,
+    listFollowUsers: safeListFollowUsers,
     listAdministrativeEmployeesBySchool: safeListAdministrativeEmployeesBySchool,
     removeAdministrativeEmployee: safeRemoveAdministrativeEmployee,
     updateAdministrativeEmployeeStatus: safeUpdateAdministrativeEmployeeStatus,

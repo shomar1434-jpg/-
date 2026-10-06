@@ -4,6 +4,9 @@ if(window.PlatformRecordSaveEngine)return;
 const VERSION='4.0.0-performance-style-fast-save';
 const safe=v=>String(v==null?'':v).trim();
 const clean=v=>safe(v).replace(/[^\p{L}\p{N}._:@/\-]+/gu,'_').slice(0,160);
+const followConfig=()=>window.CLOUD_STATE_CONFIG||{};
+const followOwner=()=>safe(followConfig().ownerUserId||'');
+const followReadOnly=()=>followConfig().readOnly===true;
 
 function isSystemAdminContext(){
   try{
@@ -61,8 +64,13 @@ async function ensure(expectedSchoolId){
 function parseValue(item){
   try{return item?.payload?.value?JSON.parse(item.payload.value):null}catch(_){return null}
 }
-async function pull(moduleKey,scope,keys){
+async function pull(moduleKey,scope,keys,ownerUserId){
   const sid=await ensure();
+  const target=safe(ownerUserId||followOwner());
+  if(scope!=='school'&&target&&typeof PlatformStateEngine.pullUser==='function'){
+    const r=await PlatformStateEngine.pullUser(moduleKey,target,keys);
+    return {items:Array.isArray(r)?r:(r?.items||r?.rows||[])};
+  }
   if(typeof PlatformStateEngine.pull==='function'){
     const r=await PlatformStateEngine.pull(moduleKey,scope||'user',keys);
     return {items:Array.isArray(r)?r:(r?.items||r?.rows||[])};
@@ -81,6 +89,7 @@ async function bulkWrite(moduleKey,scope,items,sid,timeout=15000){
   return r;
 }
 async function save(o){
+  if(followReadOnly())throw new Error('وضع المتابعة للقراءة فقط');
   const sid=await ensure(o.expectedSchoolId);
   const scope=o.scope||'user';
   const rk=recordKey(o), mk=metaKey(o), now=new Date().toISOString();
@@ -118,7 +127,7 @@ async function save(o){
 }
 async function load(o){
   const rk=recordKey(o);
-  const r=await pull(o.moduleKey,o.scope||'user',[rk]);
+  const r=await pull(o.moduleKey,o.scope||'user',[rk],o.ownerUserId);
   const it=(r.items||[]).find(x=>x.state_key===rk&&!x.deleted_at);
   return parseValue(it);
 }
@@ -141,6 +150,7 @@ async function list(o){
   return all.filter(x=>year(x?.meta?.academicYear)===ay&&semester(x?.meta?.semester)===sem);
 }
 async function remove(o){
+  if(followReadOnly())throw new Error('وضع المتابعة للقراءة فقط');
   const sid=await ensure(o.expectedSchoolId);
   const scope=o.scope||'user', rk=recordKey(o), mk=metaKey(o);
   await bulkWrite(o.moduleKey,scope,[{key:rk,deleted:true},{key:mk,deleted:true}],sid,15000);

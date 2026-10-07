@@ -602,6 +602,14 @@ linear-gradient(135deg,rgba(21,68,90,.98),rgba(13,169,166,.92));color:#fff;paddi
 <script src="platform-runtime-guard.js?v=20260914-RL151-single-cloud-session"></script>
 <script src="platform-cloud-session.js?v=20260925-RL217-operational-survey-session"></script>
 <script src="school-information-source.js?v=20260916-RL169-stable-select-dropdowns"></script>
+<script id="operational-plan-cloud-scope-v1">
+(function(){
+  var q=new URLSearchParams(location.search||'');
+  var sid=String(q.get('schoolId')||q.get('school_id')||sessionStorage.getItem('platform_tab_session_school_id_v1')||sessionStorage.getItem('smart_school_tab_school_v1')||localStorage.getItem('active_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||'').trim();
+  var keys=sid?[`operationalPlanIntegratedV14Annual:${sid}`,`operationalPlanArchivesV14:${sid}`,`operationalPlanResetBackupV14:${sid}`]:[];
+  window.CLOUD_STATE_CONFIG={moduleKey:'interactive_operational_plan',scope:'school',keys:keys};
+})();
+</script>
 <script src="platform-state-engine.js?v=20260828-school-isolation-v8"></script>
 <script src="platform-persistence-guard.js?v=20260828-school-isolation-v8"></script>
 <script src="school-base-settings-source.js?v=20260910-master-source-v1"></script>
@@ -2294,6 +2302,10 @@ function saveAll(show=true){
     return false;
   }
 }
+async function verifyActivePlanCloudSave(){
+  if(!ACTIVE_PLAN_KEY||!window.PlatformPersistenceGuard)return {ok:false,error:'محرك الحفظ السحابي غير متاح'};
+  return await PlatformPersistenceGuard.commit([ACTIVE_PLAN_KEY]);
+}
 function scheduleAutoSave(){
   clearTimeout(autoSaveTimer);
   setSaveStatus("saving","تغييرات غير محفوظة...");
@@ -2878,6 +2890,8 @@ async function savePlanToSelfEvaluationArchive(){
     if(button){button.disabled=true;button.textContent="جارٍ الحفظ في الأرشيف..."}
     setSaveStatus("saving","جارٍ تجهيز المخرجات...");
     if(!saveAll(false))throw new Error("تعذر تثبيت بيانات الخطة قبل الأرشفة.");
+    const activeSave=await verifyActivePlanCloudSave();
+    if(!activeSave?.ok)throw new Error(activeSave?.error||"لم يكتمل حفظ الخطة في سحابة المدرسة.");
     const year=normalizeAcademicYear(state.meta?.academicYear||state.fields?.year||"")||"العام الحالي",id=`interactive-operational-plan-${String(year).replace(/\D/g,"")||"current"}`,key=archiveRecordKey(id),now=new Date().toISOString();
     const values=await pullOperationalArchive([SELF_EVAL_ARCHIVE_INDEX,key]),index=parseArchiveArray(values[SELF_EVAL_ARCHIVE_INDEX]),old=parseArchiveObject(values[key])||{},title=`${INTERACTIVE_PLAN_ARCHIVE_FOLDER_NAME} - ${year}`;
     const row={...old,id,title,type:"interactive_operational_plan",folderId:INTERACTIVE_PLAN_ARCHIVE_FOLDER_ID,folderName:INTERACTIVE_PLAN_ARCHIVE_FOLDER_NAME,recordName:INTERACTIVE_PLAN_ARCHIVE_FOLDER_NAME,source:INTERACTIVE_PLAN_ARCHIVE_FOLDER_NAME,savedAt:old.savedAt||now,updatedAt:now,schoolName:String(state.fields?.schoolName||""),academicYear:year,data:deepClone(state),printSourceHtml:buildOperationalArchiveHtml(title),archiveFormat:"interactive-operational-plan-v1",sourceFile:"interactive_operational_plan.html",storageEngine:"SelfEvaluationArchiveV5",archiveType:"selfEvaluation",previewMode:"html-snapshot",stateKey:key,readOnly:false};
@@ -2933,7 +2947,21 @@ function load(){
   if(raw && localStorage.getItem(ACTIVE_PLAN_KEY)){const t=state.meta?.lastSavedAt?new Date(state.meta.lastSavedAt).toLocaleTimeString("ar-SA",{hour:"2-digit",minute:"2-digit"}):"محفوظ سابقًا";setSaveStatus("saved",`تم تحميل البيانات — ${t}`)}
   if(!activeYear())setTimeout(()=>showAcademicYearModal(true),120);
 }
-load();
+async function bootOperationalPlanFromCloud(){
+  try{
+    if(window.PlatformCloudSession?.ensure)await PlatformCloudSession.ensure();
+    if(ACTIVE_PLAN_KEY&&window.PlatformStateEngine?.request){
+      await PlatformStateEngine.request('recover-operational-plan',{moduleKey:'interactive_operational_plan',stateKey:ACTIVE_PLAN_KEY});
+    }
+    if(window.PlatformPersistenceGuard?.readExact&&ACTIVE_PLAN_KEY){
+      await PlatformPersistenceGuard.readExact({moduleKey:'interactive_operational_plan',scope:'school',keys:[ACTIVE_PLAN_KEY,ARCHIVE_KEY,RESET_BACKUP_KEY],removeMissing:false});
+    }else if(window.PlatformPersistenceGuard?.whenReady){
+      await PlatformPersistenceGuard.whenReady();
+    }
+  }catch(error){console.warn('OPERATIONAL_PLAN_CLOUD_BOOT',error?.message||error)}
+  load();
+}
+bootOperationalPlanFromCloud();
 </script>
 
 <div id="archiveRestoreModal" class="archive-modal screen-only" aria-hidden="true">

@@ -82,6 +82,29 @@ Deno.serve(async(req)=>{
 
     if(action==='health') return json({ok:true,version:'1.11.0-RL232-operational-plan-canonical-read',schoolId:s.school_id,userId:s.user_id,role:s.role});
 
+    if(action==='recover-operational-plan'){
+      if(!isAdministrativeSupervisor)return json({error:'استعادة الخطة تتطلب صلاحية مدير أو وكيل المدرسة',code:'STATE_OPERATIONAL_PLAN_SUPERVISOR_REQUIRED',requestId},403);
+      const stateKey=safeKey(body.stateKey,220),expected=`operationalPlanIntegratedV14Annual:${s.school_id}`;
+      if(stateKey!==expected)return json({error:'مفتاح الخطة لا يطابق المدرسة الحالية',code:'STATE_OPERATIONAL_PLAN_SCOPE_MISMATCH',requestId},409);
+      const canonical=await sb.from('platform_module_state').select('*').eq('school_id',s.school_id).eq('owner_key','school').eq('module_key','interactive_operational_plan').eq('state_key',stateKey).is('deleted_at',null).maybeSingle();
+      if(canonical.error)throw canonical.error;
+      if(canonical.data)return json({ok:true,recovered:false,source:'canonical-school',stateKey,updatedAt:canonical.data.updated_at});
+      const candidates=await sb.from('platform_module_state').select('*').eq('school_id',s.school_id).eq('state_key',stateKey).is('deleted_at',null).order('updated_at',{ascending:false}).limit(100);
+      if(candidates.error)throw candidates.error;
+      const scored=(candidates.data||[]).map((row:any)=>{
+        let value:any={};try{value=JSON.parse(String(row?.payload?.value||'{}'))}catch(_){value={}}
+        const arrays=['people','team','meetings','programs','difficulties','classStats','results','accountabilities','improvements','surveys','surveyImports'];
+        const populated=arrays.reduce((sum,key)=>sum+(Array.isArray(value?.[key])?value[key].length:0),0);
+        const fields=value?.fields&&typeof value.fields==='object'?Object.values(value.fields).filter(x=>String(x??'').trim()).length:0;
+        return {row,score:populated*100+fields,valueChars:String(row?.payload?.value||'').length};
+      }).sort((a:any,b:any)=>b.score-a.score||b.valueChars-a.valueChars||String(b.row.updated_at||'').localeCompare(String(a.row.updated_at||'')));
+      const source=scored[0]?.row;
+      if(!source)return json({ok:true,recovered:false,source:'none',stateKey});
+      const up=await sb.from('platform_module_state').upsert({school_id:s.school_id,owner_key:'school',module_key:'interactive_operational_plan',state_key:stateKey,payload:source.payload,updated_by:s.user_id,updated_at:now,deleted_at:null},{onConflict:'school_id,owner_key,module_key,state_key'}).select('state_key,updated_at').single();
+      if(up.error)throw up.error;
+      return json({ok:true,recovered:true,sourceModule:source.module_key,sourceOwner:source.owner_key,stateKey,updatedAt:up.data?.updated_at});
+    }
+
     if(action==='pull'){
       const keys=Array.isArray(body.keys)&&body.keys.length?body.keys.slice(0,500).map((x:unknown)=>safeKey(x,220)).filter(Boolean):[];
       let q=sb.from('platform_module_state').select('module_key,state_key,payload,deleted_at,updated_at,owner_key,updated_by').eq('school_id',s.school_id).eq('module_key',moduleKey).in('owner_key',[requestedOwnerKey,String(s.user_id||'')]).order('updated_at',{ascending:true}).limit(4000);

@@ -241,13 +241,30 @@ Deno.serve(async(req)=>{
    const target=String(body.targetUserId||''),moduleKey=safeKey(body.moduleKey);
    if(!isUuid(target)||!moduleKey.startsWith('section_library_')||!privateModuleRole(moduleKey))return json({error:'طلب متابعة غير صالح'},400);
    if(sessionRole==='agent'&&privateModuleRole(moduleKey)!=='teacher')return json({error:'متابعة الوكيل مقصورة على مكتبة المعلم'},403);
+   const requiredRole=privateModuleRole(moduleKey);
    const {data:membership,error:memberError}=await sb.from('school_members').select('role,status').eq('school_id',s.school_id).eq('user_id',target).limit(20);
    if(memberError)throw memberError;
-   if(!(membership||[]).some((m:any)=>String(m.status||'active').toLowerCase()==='active'&&normalizeRole(m.role)===privateModuleRole(moduleKey)))return json({error:'المستخدم غير مرتبط بهذا القسم في المدرسة'},403);
+   // A number of independent schools legitimately keep the user's base membership
+   // (usually teacher) while granting a full section role through central_tasks.
+   // Historical libraries can also outlive that role label.  The file ownership
+   // tuple is authoritative and remains strictly scoped to this signed school,
+   // target user and exact private module; no ownership or school id is rewritten.
+   const blockedStatuses=new Set(['deleted','disabled','inactive','blocked']);
+   const directRoleLinked=(membership||[]).some((m:any)=>!blockedStatuses.has(String(m.status||'active').toLowerCase())&&normalizeRole(m.role)===requiredRole);
+   const ownedQuery=await sb.from('platform_files').select('*').eq('school_id',s.school_id).eq('owner_user_id',target).eq('ownership_scope','user').eq('module_key',moduleKey).eq('status','active').is('deleted_at',null).order('created_at',{ascending:false}).limit(action==='supervisor-library-list'?1000:1);
+   if(ownedQuery.error)throw ownedQuery.error;
+   const ownedFiles=ownedQuery.data||[];
+   let delegatedRoleLinked=false;
+   if(!directRoleLinked&&!ownedFiles.length){
+    const activeDelegatedStatuses=['active','in_progress','transferred','returned','pending_approval'];
+    const delegatedQuery=await sb.from('central_tasks').select('assignment_type,status,start_date,record_id,record_key,metadata').eq('school_id',s.school_id).eq('assigned_to',target).eq('assignment_type','additional_role').in('status',activeDelegatedStatuses).is('deleted_at',null).limit(100);
+    if(delegatedQuery.error)throw delegatedQuery.error;
+    const delegatedRole=(task:any)=>{const code=String(task?.metadata?.delegatedRole||task?.metadata?.delegatedRoleCode||task?.record_id||task?.record_key||'').trim().toLowerCase();if(['deputy_educational','deputy_school_affairs','deputy_student_affairs'].includes(code))return 'agent';return normalizeRole(code)};
+    delegatedRoleLinked=(delegatedQuery.data||[]).some((task:any)=>(!task.start_date||Date.parse(String(task.start_date))<=Date.now())&&delegatedRole(task)===requiredRole);
+   }
+   if(!directRoleLinked&&!delegatedRoleLinked&&!ownedFiles.length)return json({error:'المستخدم غير مرتبط بهذا القسم في المدرسة'},403);
    if(action==='supervisor-library-list'){
-    const {data,error}=await sb.from('platform_files').select('*').eq('school_id',s.school_id).eq('owner_user_id',target).eq('ownership_scope','user').eq('module_key',moduleKey).eq('status','active').is('deleted_at',null).order('created_at',{ascending:false}).limit(1000);
-    if(error)throw error;
-    return json({files:data||[]});
+    return json({files:ownedFiles});
    }
    const {data:file,error}=await sb.from('platform_files').select('*').eq('id',body.fileId).eq('school_id',s.school_id).eq('owner_user_id',target).eq('ownership_scope','user').eq('module_key',moduleKey).eq('status','active').is('deleted_at',null).maybeSingle();
    if(error)throw error;

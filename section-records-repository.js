@@ -107,6 +107,16 @@
     if(!uid||!sid)throw new Error('تعذر تحديد المدرسة أو المستخدم الحالي لمكتبة القسم.');
     return {token,userId:uid,schoolId:sid};
   }
+  async function verifiedSupervisorTarget(){
+    if(!SUPERVISOR_READONLY)return '';
+    let verified=null;
+    if(window.ManagerFollowAccessBridge&&typeof window.ManagerFollowAccessBridge.verify==='function'){
+      verified=await window.ManagerFollowAccessBridge.verify([ROLE]);
+    }
+    const target=String(verified?.targetUserId||followedUserId||'').trim();
+    if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(target))throw new Error('تعذر التحقق من حساب المستخدم قيد المتابعة.');
+    return target;
+  }
   function isCurrentLibraryFile(f){
     if(!f)return false;
     const uid=cloudUserId();
@@ -161,8 +171,8 @@
   async function all(){
     await ensureCloudContext();
     if(SUPERVISOR_READONLY){
-      if(!followedUserId)throw new Error('تعذر تحديد حساب المستخدم قيد المتابعة.');
-      const result=await CloudFileEngine.request('supervisor-library-list',{body:{targetUserId:followedUserId,moduleKey:CLOUD_MODULE}});
+      const targetUserId=await verifiedSupervisorTarget();
+      const result=await CloudFileEngine.request('supervisor-library-list',{body:{targetUserId,moduleKey:CLOUD_MODULE}});
       return (result.files||[]).map(f=>cloudShape(f));
     }
     await recoverHistoricalCloudFiles();
@@ -189,7 +199,8 @@
   async function get(id){
     await ensureCloudContext();
     if(SUPERVISOR_READONLY){
-      const result=await CloudFileEngine.request('supervisor-library-preview',{body:{targetUserId:followedUserId,moduleKey:CLOUD_MODULE,fileId:String(id)}});
+      const targetUserId=await verifiedSupervisorTarget();
+      const result=await CloudFileEngine.request('supervisor-library-preview',{body:{targetUserId,moduleKey:CLOUD_MODULE,fileId:String(id)}});
       const response=await fetch(result.signedUrl);
       if(!response.ok)throw new Error('تعذرت معاينة ملف المستخدم.');
       return cloudShape(result.file,await response.blob());

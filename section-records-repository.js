@@ -238,7 +238,8 @@
     document.body.appendChild(view);
     if(SUPERVISOR_READONLY){
       view.querySelectorAll('.repo-office-header button:not(.repo-back),#sectionRepoUseMode,#sectionRepoUploadHidden').forEach(el=>el.remove());
-      const save=view.querySelector('#sectionRepoSaveBtn');if(save)save.remove();
+      // تبقى العقدة موجودة لأن المعاينة مشتركة بين المالك والمتابع؛ نخفيها في وضع القراءة فقط.
+      const save=view.querySelector('#sectionRepoSaveBtn');if(save){save.style.display='none';save.disabled=true;}
     }else document.getElementById('sectionRepoUploadHidden').addEventListener('change', upload);
   }
 

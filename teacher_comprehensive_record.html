@@ -70,6 +70,8 @@
 
                 // Multi-class database structure
                 classes: [],
+                // يمنع أي كتابة سحابية قبل اكتمال استعادة سجل المعلم من المصدر المركزي.
+                _cloudHydrationComplete: false,
 
                 // Active selections
                 selectedStage: 'all',
@@ -421,6 +423,12 @@
                         savedAt: new Date().toISOString()
                     };
                 },
+                writeLocalCacheSafely(key,value) {
+                    const text=typeof value==='string'?value:JSON.stringify(value);
+                    if(window.PlatformPersistenceGuard&&typeof PlatformPersistenceGuard.setLocalSilently==='function'){
+                        PlatformPersistenceGuard.setLocalSilently(key,text);
+                    }else localStorage.setItem(key,text);
+                },
                 async restoreCurrentPeriodFromCloud() {
                     if(!window.PlatformRecordSaveEngine) return false;
                     try{
@@ -428,22 +436,25 @@
                         if(!cloud||!cloud.data)return false;
                         const local=this.readPeriodState(this.globalMetadata.year,this.globalMetadata.semester);
                         const cloudAt=Date.parse(cloud.savedAt||cloud.data?.savedAt||0)||0,localAt=Date.parse(local?.savedAt||0)||0;
-                        if(cloudAt>localAt){
+                        const cloudClasses=Array.isArray(cloud.data?.classes)?cloud.data.classes:[];
+                        const localClasses=Array.isArray(local?.classes)?local.classes:[];
+                        // على الجهاز الجديد قد تكون نسخة محلية فارغة وحديثة زمنياً؛ لا يجوز أن تحجب السجل السحابي الحقيقي.
+                        if(cloudAt>localAt||(!localClasses.length&&cloudClasses.length)){
                             const d=cloud.data;
                             this.globalMetadata=Object.assign({},this.globalMetadata,d.globalMetadata||{});
                             this.classes=this.migrateLegacyStudentRecords(d.classes||[]);
                             this.currentClassId=(d.currentClassId&&this.classes.some(c=>c.id===d.currentClassId))?d.currentClassId:(this.classes[0]?.id||'');
-                            this.writePeriodState(this.globalMetadata.year,this.globalMetadata.semester,this.currentPeriodSnapshot());
-                            localStorage.setItem('followup_global_v3',JSON.stringify(this.globalMetadata));
-                            localStorage.setItem('followup_classes_v3',JSON.stringify(this.classes));
-                            localStorage.setItem('followup_current_class_id_v3',this.currentClassId||'');
+                            this.writeLocalCacheSafely(this.periodStorageKey(this.globalMetadata.year,this.globalMetadata.semester),this.currentPeriodSnapshot());
+                            this.writeLocalCacheSafely('followup_global_v3',this.globalMetadata);
+                            this.writeLocalCacheSafely('followup_classes_v3',this.classes);
+                            this.writeLocalCacheSafely('followup_current_class_id_v3',this.currentClassId||'');
                             this.showNotification('تمت استعادة سجل هذا الفصل من السحابة','success');
                         }
                         return true;
                     }catch(e){console.warn('[teacher period cloud restore]',e);return false}
                 },
                 scheduleCurrentPeriodCloudSave() {
-                    if(!window.PlatformRecordSaveEngine||this._switchingAcademicPeriod)return;
+                    if(!window.PlatformRecordSaveEngine||this._switchingAcademicPeriod||!this._cloudHydrationComplete)return;
                     clearTimeout(this._periodCloudTimer);
                     this._periodCloudTimer=setTimeout(async()=>{
                         try{
@@ -560,22 +571,39 @@
 
                     // ترحيل آمن للبيانات القديمة إلى أول فترة زمنية، دون حذف المفاتيح القديمة.
                     const activeKey=this.periodStorageKey(this.globalMetadata.year,this.globalMetadata.semester);
-                    if(!localStorage.getItem(activeKey)) this.writePeriodState(this.globalMetadata.year,this.globalMetadata.semester,this.currentPeriodSnapshot());
-                    localStorage.setItem('followup_global_v3',JSON.stringify(this.globalMetadata));
-                    localStorage.setItem('followup_classes_v3',JSON.stringify(this.classes));
+                    if(!localStorage.getItem(activeKey)) this.writeLocalCacheSafely(activeKey,this.currentPeriodSnapshot());
+                    this.writeLocalCacheSafely('followup_global_v3',this.globalMetadata);
+                    this.writeLocalCacheSafely('followup_classes_v3',this.classes);
 
                     this.$watch('classes',()=>this.saveData());
                     this.$watch('globalMetadata.school',()=>this.saveData());
                     this.$watch('globalMetadata.startDate',()=>this.saveData());
                     this.$watch('globalMetadata.dateSystem',()=>this.saveData());
                     this.$watch('currentClassId',value=>{
-                        localStorage.setItem('followup_current_class_id_v3',value||'');
+                        this.writeLocalCacheSafely('followup_current_class_id_v3',value||'');
                         this.speedIndex=0;
                         this.saveData();
                     });
                     // ننتظر استعادة النسخة السحابية أولاً ثم ننفذ عزل النطاق؛ منعاً لأن تعيد السحابة كشفاً قديماً مختلطاً بعد إصلاحه محلياً.
                     setTimeout(async()=>{
-                        await this.restoreCurrentPeriodFromCloud();
+                        try{
+                            if(window.PlatformPersistenceGuard&&typeof PlatformPersistenceGuard.whenReady==='function')await PlatformPersistenceGuard.whenReady();
+                            // قد يصل مخزن الحماية بعد Alpine؛ نستعيده فقط إذا لم تكن هناك فصول محملة.
+                            if(!this.classes.length){
+                                const hydrated=this.readPeriodState(this.globalMetadata.year,this.globalMetadata.semester);
+                                let recovered=Array.isArray(hydrated?.classes)?hydrated.classes:[];
+                                if(!recovered.length){try{recovered=JSON.parse(localStorage.getItem('followup_classes_v3')||'[]')||[]}catch(_){recovered=[]}}
+                                if(recovered.length){
+                                    this.classes=this.migrateLegacyStudentRecords(recovered);
+                                    this.currentClassId=(hydrated?.currentClassId&&this.classes.some(c=>c.id===hydrated.currentClassId))?hydrated.currentClassId:(this.classes[0]?.id||'');
+                                }
+                            }
+                            await this.restoreCurrentPeriodFromCloud();
+                        }finally{
+                            this._cloudHydrationComplete=true;
+                            // لا نكتب صفراً فوق بيانات بعيدة عند فشل الشبكة أو الاستعادة.
+                            if(this.classes.length)this.saveData();
+                        }
                         await this.syncInformationCenterStudentsIntoClasses(false);
                     },0);
                     window.addEventListener('school-information-change',()=>this.syncInformationCenterStudentsIntoClasses(false));
@@ -887,10 +915,26 @@
 
                 saveData() {
                     if(this._switchingAcademicPeriod) return;
-                    localStorage.setItem('followup_classes_v3',JSON.stringify(this.classes));
-                    localStorage.setItem('followup_global_v3',JSON.stringify(this.globalMetadata));
-                    this.writePeriodState(this.globalMetadata.year,this.globalMetadata.semester,this.currentPeriodSnapshot());
+                    this.writeLocalCacheSafely('followup_classes_v3',this.classes);
+                    this.writeLocalCacheSafely('followup_global_v3',this.globalMetadata);
+                    this.writeLocalCacheSafely(this.periodStorageKey(this.globalMetadata.year,this.globalMetadata.semester),this.currentPeriodSnapshot());
                     this.scheduleCurrentPeriodCloudSave();
+                },
+
+                editClassSubject(classId) {
+                    if(new URLSearchParams(location.search).get('readonly')==='1'){
+                        this.showNotification('وضع المتابعة للقراءة فقط','error');
+                        return;
+                    }
+                    const cls=this.classes.find(c=>c.id===classId);
+                    if(!cls)return;
+                    const value=prompt('تعديل اسم المادة:',String(cls.subject||''));
+                    if(value===null)return;
+                    const subject=String(value).trim();
+                    if(!subject){this.showNotification('اسم المادة مطلوب','error');return;}
+                    cls.subject=subject;
+                    this.saveData();
+                    this.showNotification('تم تعديل اسم المادة وحفظه في السجل','success');
                 },
 
                 // Notification Alerts Engine
@@ -1825,7 +1869,9 @@
         <div class="container mx-auto flex flex-wrap items-center justify-between gap-2">
             <template x-if="activeClass !== null">
                 <div class="flex flex-wrap items-center gap-x-6 gap-y-1">
-                    <span>📚 <strong class="text-white">المادة الحالية:</strong> <span x-text="activeClass.subject"></span></span>
+                    <span class="flex items-center gap-2">📚 <strong class="text-white">المادة الحالية:</strong> <span x-text="activeClass.subject"></span>
+                        <button type="button" @click="editClassSubject(activeClass.id)" class="no-print px-2 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-[10px] font-bold">تعديل المادة</button>
+                    </span>
                     <span>🏫 <strong class="text-white">الصف:</strong> <span x-text="classDisplayName(activeClass)"></span></span>
                     <span>🎓 <strong class="text-white">المرحلة:</strong> <span x-text="activeClassStageLabel"></span></span>
                     <span>👨‍🏫 <strong class="text-white">المعلم:</strong> <span x-text="activeClass.teacher"></span></span>
@@ -2855,7 +2901,9 @@
 
                                 <h4 class="font-black text-slate-800 text-base mt-3" x-text="classDisplayName(cls)"></h4>
                                 <div class="text-xs text-slate-500 mt-1 space-y-0.5">
-                                    <div>📚 <strong>المادة:</strong> <span x-text="cls.subject"></span></div>
+                                    <div class="flex items-center gap-2">📚 <strong>المادة:</strong> <span x-text="cls.subject"></span>
+                                        <button type="button" @click.stop="editClassSubject(cls.id)" class="no-print px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-100 text-[10px] font-bold">تعديل</button>
+                                    </div>
                                     <div>👨‍🏫 <strong>المعلم:</strong> <span x-text="cls.teacher"></span></div>
                                     <template x-if="cls.track"><div>🧭 <strong>المسار:</strong> <span x-text="cls.track"></span></div></template>
                                     <template x-if="cls.section"><div>🏷️ <strong>الشعبة:</strong> <span x-text="cls.section"></span></div></template>

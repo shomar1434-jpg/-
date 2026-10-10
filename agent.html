@@ -3718,7 +3718,8 @@ function openWakilRecordsNewTab() {
     if(role!=='teacher')return users().filter(function(u){return u.role===role});
     if(!window.SmartSchoolSupabase||typeof SmartSchoolSupabase.listFollowUsers!=='function')throw new Error('مصدر حسابات المدرسة السحابي غير متاح. حدّث الصفحة وحاول مجددًا.');
     var list=await SmartSchoolSupabase.listFollowUsers('teacher');
-    list=(Array.isArray(list)?list:[]).filter(function(u){return u&&u.id&&u.role==='teacher'&&u.status==='active'});
+    /* RL238: المعلمون مخزنون بدور performance في قاعدة البيانات؛ الشرط القديم (teacher فقط) كان يُخفي كل المعلمين عن الوكيل */
+    list=(Array.isArray(list)?list:[]).filter(function(u){var r=String(u&&(u.role||u.dbRole)||'').trim().toLowerCase();return u&&u.id&&['teacher','performance','معلم','معلمة'].indexOf(r)>-1&&String(u.status||'active').toLowerCase()==='active'});
     followDirectoryUsers=list;
     return list;
   }

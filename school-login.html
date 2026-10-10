@@ -496,8 +496,8 @@
 </script>
 
 <!-- PREMIUM_UI_2026 -->
-<link rel="stylesheet" href="premium-ui.css">
-<script defer src="premium-ui.js"></script>
+<link rel="stylesheet" href="premium-ui.css?v=2026.10.08-RL238-central-build">
+<script defer src="premium-ui.js?v=2026.10.08-RL238-central-build"></script>
 </head>
 <body>
   <main class="login-card" aria-label="بوابة المدرسة المستقلة">
@@ -570,7 +570,7 @@
 })();
 </script>
 
-<script src="platform-cloud-session.js?v=20260923-RL199-login-timeout"></script>
+<script src="platform-cloud-session.js?v=2026.10.08-RL238-central-build"></script>
 <!-- RL115: strict independent-school link binding; fail closed on school mismatch. -->
 <!-- RL136: legacy active-account school-bound login + cloud-session compatibility merge. -->
 <script id="independent-school-login-engine">
@@ -726,6 +726,10 @@
     return !!codeRef && refs.includes(codeRef);
   }
   async function inspectLoginSchool(){
+    /* RL238: كان SUPABASE_URL وSUPABASE_KEY معرّفين في كتلة أخرى مغلقة، فيفشل التحقق الخادمي دائمًا
+       وتعتمد الصفحة على قراءة جدول المدارس مباشرة (مغلق الآن للحماية). نعرّفهما هنا بنفس القيم. */
+    const SUPABASE_URL=(localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co').trim();
+    const SUPABASE_KEY=(localStorage.getItem('smartSchoolSupabaseAnonKey')||'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM').trim();
     const endpoint=SUPABASE_URL.replace(/\/$/,'')+'/functions/v1/platform-directory';
     const response=await loginDeadline(fetch(endpoint,{
       method:'POST',headers:{'content-type':'application/json','apikey':SUPABASE_KEY},

@@ -191,7 +191,7 @@
     'منسق موهوبين':['متابعة مشاركات الموهوبين','رفع شواهد الرعاية','تقرير مبادرة إثرائية'],
     'أخرى':['مهمة إضافية مخصصة']
   };
-  let teachers=[], weeks=[], activeWeekId='', archives=[], weeklyReviewDecisionBusy=false, weeklyRefreshPromise=null;
+  let teachers=[], weeks=[], activeWeekId='', archives=[], weeklyReviewDecisionBusy=false, weeklyRefreshPromise=null, cloudReviewerId='';
   // RL225: maps historical regenerated week ids to one canonical period/week.
   // Submissions keep their original cloud state_key, so aliases preserve access
   // without duplicating the week card or deleting any submitted work.
@@ -570,7 +570,7 @@
     }catch(e){console.warn('[deputy weekly period restore]',e);return false;}
   }
   function currentWeek(){return weeks.find(w=>w.id===activeWeekId)||null}
-  function currentReviewerIdentity(){return {id:String(window.PlatformCloudSession?.userId?.()||sessionStorage.getItem('currentUserId')||localStorage.getItem('currentUserId')||localStorage.getItem('current_user_id')||'').trim(),email:String(localStorage.getItem('currentUserEmail')||'').trim().toLowerCase(),role:String(sessionStorage.getItem('smart_school_tab_role_v1')||localStorage.getItem('currentRole')||'agent').trim().toLowerCase(),name:localStorage.getItem('currentUserName')||'المسؤول'}}
+  function currentReviewerIdentity(){return {id:String(cloudReviewerId||window.PlatformCloudSession?.userId?.()||sessionStorage.getItem('currentUserId')||localStorage.getItem('currentUserId')||localStorage.getItem('current_user_id')||'').trim(),email:String(localStorage.getItem('currentUserEmail')||'').trim().toLowerCase(),role:String(sessionStorage.getItem('smart_school_tab_role_v1')||localStorage.getItem('currentRole')||'agent').trim().toLowerCase(),name:localStorage.getItem('currentUserName')||'المسؤول'}}
   function reviewerStamp(){const c=currentReviewerIdentity();return {reviewer_id:c.id,reviewer_email:c.email,reviewer_role:c.role,reviewer_name:c.name}}
 
 
@@ -962,6 +962,10 @@
   async function loadWeeklyReviewSubmissions(){
     if(!window.PlatformStateEngine?.pullSchoolUsers)return 0;
     const r=await window.PlatformStateEngine.pullSchoolUsers('weekly_teacher_work'); let count=0;
+    // The Edge Function has already authenticated and filtered these rows for
+    // the signed-in reviewer. Prefer that server identity over stale browser
+    // keys left by a previous manager/deputy session on the same device.
+    cloudReviewerId=String(r?.reviewerId||'').trim()||cloudReviewerId;
     if(weeklyReviewDecisionBusy)return 0;
     for(const item of (r?.items||[])){
       if(item.deleted_at)continue;

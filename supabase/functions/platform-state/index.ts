@@ -324,7 +324,7 @@ Deno.serve(async(req)=>{
           }catch(_){return [];}
         });
       }
-      return json({items:result,scope:'school-users',schoolId:s.school_id,supervisor:['admin_performance','admin_employee_records'].includes(moduleKey)?supervisorKey:undefined});
+      return json({items:result,scope:'school-users',schoolId:s.school_id,reviewerId:moduleKey==='weekly_teacher_work'?String(s.user_id||''):undefined,supervisor:['admin_performance','admin_employee_records'].includes(moduleKey)?supervisorKey:undefined});
     }
 
     if(action==='reset-weekly-context'){

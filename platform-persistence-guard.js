@@ -462,7 +462,9 @@
     }catch(e){return {ok:false,error:e?.message||String(e)};}
     for(let attempt=1;attempt<=5;attempt++){
       const rr=await readExactValues({moduleKey:exactModule,scope:exactScope,ownerUserId,keys});
-      if(rr.ok&&keys.every(k=>Object.prototype.hasOwnProperty.call(rr.values,k)&&String(rr.values[k])===original[k]))return {ok:true,verified:keys.length,moduleKey:exactModule,scope:exactScope};
+      // RL238: الخادم قد يُبقي في قائمة الأرشيف (‎*_perf_index_v1) تقارير حيّة أسقطتها نسخة قديمة؛ يكفي أن تحتوي القائمة السحابية كل ما كُتب.
+      const sameOrSuperset=(k)=>{if(String(rr.values[k])===original[k])return true;if(!/(^|_)perf_index_v1$/i.test(k))return false;try{const a=JSON.parse(original[k]),b=JSON.parse(rr.values[k]);if(!Array.isArray(a)||!Array.isArray(b))return false;const ids=new Set(b.map(x=>String(x&&x.id!=null?x.id:'')));return a.every(x=>ids.has(String(x&&x.id!=null?x.id:'')));}catch(_){return false;}};
+      if(rr.ok&&keys.every(k=>Object.prototype.hasOwnProperty.call(rr.values,k)&&sameOrSuperset(k)))return {ok:true,verified:keys.length,moduleKey:exactModule,scope:exactScope};
       await new Promise(r=>setTimeout(r,180*attempt));
     }
     return {ok:false,error:'تعذر التحقق من الأرشيف المرجعي بعد الكتابة',moduleKey:exactModule,scope:exactScope};

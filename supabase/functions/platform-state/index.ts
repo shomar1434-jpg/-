@@ -32,6 +32,55 @@ const performanceModulesForRole=(role:unknown)=>{
   return [];
 };
 
+// RL238: حماية قوائم أرشيف الأداء الخاصة (‎*_perf_index_v1) عند كل كتابة، لكل المدارس وكل نسخ الصفحات:
+//  1) لا تُسقِط الكتابة تقريرًا موجودًا في القائمة الحالية ومحتواه حي، إلا إذا حُذف في نفس الطلب
+//     (مفتاح التقرير محذوف أو فارغ، أو مُدرج في قائمة المحذوفات المرسلة) — يمنع الكتابة فوقها بنسخة قديمة من جهاز/تبويب آخر.
+//  2) لا تُدخل الكتابة في قائمة المستخدم تقريرًا محتواه لمستخدم آخر فقط — يمنع انتقال القوائم المشتركة القديمة لغير أصحابها.
+// لا يُحذف أي محتوى؛ القائمة وحدها تُصحَّح قبل الحفظ.
+async function guardPerformanceIndexRows(sb:any,s:any,moduleKey:string,rows:any[]){
+  const user=String(s.user_id||''),out={kept:0,dropped:0};
+  if(!user||!PRIVATE_PERFORMANCE_MODULES.has(String(moduleKey||'').toLowerCase()))return out;
+  const isIndex=(k:string)=>/(^|_)perf_index_v1$/i.test(k);
+  const reportKeyOf=(indexKey:string,e:any)=>String(e?.stateKey||'')||(indexKey.replace(/perf_index_v1$/i,'perf_report_v1_')+String(e?.id??'').replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,120));
+  const parse=(v:any)=>{try{const x=JSON.parse(String(v??''));return Array.isArray(x)?x:null}catch(_){return null}};
+  // ما يحذفه هذا الطلب صراحة
+  const removedKeys=new Set<string>(),removedIds=new Set<string>();
+  for(const r of rows){
+    const k=String(r.state_key||'');
+    if(/perf_report_v1_/i.test(k)&&(r.deleted_at||String(r.payload?.value??'')===''))removedKeys.add(k);
+    if(/(performance|perf)_deleted_v1$/i.test(k)){for(const d of parse(r.payload?.value)||[]){const id=String(d?.id??d??'');if(id)removedIds.add(id);if(d?.stateKey)removedKeys.add(String(d.stateKey));}}
+  }
+  for(const row of rows){
+    const indexKey=String(row.state_key||'');
+    if(!isIndex(indexKey)||row.deleted_at||String(row.owner_key)!==user)continue;
+    const list=parse(row.payload?.value);if(!list)continue;
+    const cur=await sb.from('platform_module_state').select('payload').eq('school_id',s.school_id).eq('owner_key',user).eq('module_key',moduleKey).eq('state_key',indexKey).is('deleted_at',null).maybeSingle();
+    if(cur.error)throw cur.error;
+    const serverList=parse(cur.data?.payload?.value)||[];
+    const clientIds=new Set(list.map((e:any)=>String(e?.id??'')));
+    const missing=serverList.filter((e:any)=>{const id=String(e?.id??'');return id&&!clientIds.has(id)&&!removedIds.has(id)&&!removedKeys.has(reportKeyOf(indexKey,e));});
+    const keys=[...new Set([...list,...missing].map((e:any)=>reportKeyOf(indexKey,e)).filter(Boolean))];
+    if(!keys.length)continue;
+    const owners=new Map<string,{mine:boolean,other:boolean,live:boolean}>();
+    for(let i=0;i<keys.length;i+=200){
+      const b=await sb.from('platform_module_state').select('state_key,owner_key,updated_by').eq('school_id',s.school_id).eq('module_key',moduleKey).in('state_key',keys.slice(i,i+200)).is('deleted_at',null).neq('payload->>value','');
+      if(b.error)throw b.error;
+      for(const x of b.data||[]){
+        const author=String(x.owner_key)==='school'?String(x.updated_by||''):String(x.owner_key);
+        const o=owners.get(String(x.state_key))||{mine:false,other:false,live:true};
+        if(author===user)o.mine=true;else o.other=true;owners.set(String(x.state_key),o);
+      }
+    }
+    // (2) إسقاط ما محتواه لمستخدم آخر فقط
+    const cleaned=list.filter((e:any)=>{const o=owners.get(reportKeyOf(indexKey,e));const foreign=!!o&&o.other&&!o.mine;if(foreign)out.dropped++;return !foreign;});
+    // (1) إبقاء ما سقط من القائمة ومحتواه حي ولصاحب القائمة
+    const keep=missing.filter((e:any)=>{const o=owners.get(reportKeyOf(indexKey,e));return !!o&&o.mine;});
+    out.kept+=keep.length;
+    if(keep.length||cleaned.length!==list.length)row.payload={value:JSON.stringify(cleaned.concat(keep))};
+  }
+  return out;
+}
+
 Deno.serve(async(req)=>{
   if(req.method==='OPTIONS') return new Response('ok',{headers:cors});
   const supabaseUrl=Deno.env.get('SUPABASE_URL');
@@ -584,9 +633,10 @@ Deno.serve(async(req)=>{
       }
       if(totalChars>MAX_TOTAL_CHARS) return json({error:'حجم بيانات المزامنة في الدفعة كبير جدًا',code:'STATE_PAYLOAD_TOO_LARGE',requestId},413);
       if(!rows.length) return json({ok:true,upserted:0});
+      const indexGuard=await guardPerformanceIndexRows(sb,s,moduleKey,rows);
       const {error}=await sb.from('platform_module_state').upsert(rows,{onConflict:'school_id,owner_key,module_key,state_key'});
       if(error) throw error;
-      return json({ok:true,upserted:rows.length,scope,ownerKey:requestedOwnerKey,privateUserIsolation:true});
+      return json({ok:true,upserted:rows.length,scope,ownerKey:requestedOwnerKey,privateUserIsolation:true,indexGuard});
     }
 
     if(action==='purge-module'){

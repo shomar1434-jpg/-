@@ -5924,7 +5924,11 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
   }
   async function saveCanonical(){
     const G=g();if(!G||typeof G.writeExactValues!=='function')throw new Error('محرك الأرشيف المرجعي V6 غير متاح');
-    const raw=performanceRoleLocalGet(LEGACY)||'[]';
+    let raw=performanceRoleLocalGet(LEGACY)||'[]';
+    /* RL238: إضافة تقارير السحابة غير الموجودة محليًا بدل الكتابة فوقها (إضافة فقط؛ الحذف له مسار مستقل يقرأ السحابة أولًا) */
+    {const cur=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:[CANON]});if(!cur.ok)throw new Error(cur.error||'تعذر قراءة الأرشيف المرجعي قبل الحفظ');
+     if(cur.values[CANON]!==undefined){const local=arr(raw),ids=new Set(local.map(x=>String(x?.id??''))),extra=arr(cur.values[CANON]).filter(x=>x&&String(x.id??'')!==''&&!ids.has(String(x.id)));
+       if(extra.length){raw=JSON.stringify(local.concat(extra));performanceRoleLocalSet(LEGACY,raw);}}}
     const w=await G.writeExactValues({moduleKey:MODULE,scope:'user',values:{[CANON]:raw}});if(!w.ok)throw new Error(w.error||'تعذر حفظ الأرشيف المرجعي');
     const r=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:[CANON]});if(!r.ok||r.values[CANON]!==raw)throw new Error('فشل التحقق النهائي من الأرشيف المرجعي');return true;
   }

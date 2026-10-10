@@ -6045,7 +6045,11 @@ function showFinalApproval(){var t=val('meetTitle')||'محضر اجتماع', li
   }
   async function saveCanonical(){
     const G=g();if(!G||typeof G.writeExactValues!=='function')throw new Error('محرك الأرشيف المرجعي V6 غير متاح');
-    const raw=performanceRoleLocalGet(LEGACY)||'[]';
+    let raw=performanceRoleLocalGet(LEGACY)||'[]';
+    /* RL238: إضافة تقارير السحابة غير الموجودة محليًا بدل الكتابة فوقها (إضافة فقط) */
+    {const cur=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:[CANON]});if(!cur.ok)throw new Error(cur.error||'تعذر قراءة الأرشيف المرجعي قبل الحفظ');
+     if(cur.values[CANON]!==undefined){const local=arr(raw),ids=new Set(local.map(x=>String(x?.id??''))),extra=arr(cur.values[CANON]).filter(x=>x&&String(x.id??'')!==''&&!ids.has(String(x.id)));
+       if(extra.length){raw=JSON.stringify(local.concat(extra));performanceRoleLocalSet(LEGACY,raw);}}}
     const w=await G.writeExactValues({moduleKey:MODULE,scope:'user',values:{[CANON]:raw}});if(!w.ok)throw new Error(w.error||'تعذر حفظ الأرشيف المرجعي');
     const r=await G.readExactValues({moduleKey:MODULE,scope:'user',keys:[CANON]});if(!r.ok||r.values[CANON]!==raw)throw new Error('فشل التحقق النهائي من الأرشيف المرجعي');return true;
   }
@@ -6271,7 +6275,7 @@ async function fetchReport(id){
   indexRows=parseArray(check[INDEX]).map(meta);cache();return full;
 }
 async function removeReport(id){
-  await bootstrap(false);const wanted=String(id),m=indexRows.find(x=>idOf(x)===wanted);if(!m)throw new Error('تعذر العثور على التقرير في الأرشيف');
+  /* RL238: أحدث فهرس من الخادم قبل الكتابة */await bootstrap(true);const wanted=String(id),m=indexRows.find(x=>idOf(x)===wanted);if(!m)throw new Error('تعذر العثور على التقرير في الأرشيف');
   const values=await read([DELETED]),deleted=parseArray(values[DELETED]).filter(x=>String(x?.id??x)!==wanted);
   deleted.push({id:wanted,stateKey:m.stateKey||keyOf(wanted),deletedAt:new Date().toISOString()});
   const next=indexRows.filter(x=>idOf(x)!==wanted),stateKey=m.stateKey||keyOf(wanted);
@@ -6281,7 +6285,7 @@ async function removeReport(id){
   indexRows=parseArray(check[INDEX]).map(meta);cache();return true;
 }
 async function saveReport(report){
-  await bootstrap(false);const full={...report,id:idOf(report),category:catOf(report),archiveFolderId:catOf(report),stateKey:keyOf(idOf(report)),archiveRole:'student_advisor',archiveType:'performanceReport',storageEngine:'PerformanceArchiveCleanV5'};
+  /* RL238: أحدث فهرس من الخادم قبل الكتابة */await bootstrap(true);const full={...report,id:idOf(report),category:catOf(report),archiveFolderId:catOf(report),stateKey:keyOf(idOf(report)),archiveRole:'student_advisor',archiveType:'performanceReport',storageEngine:'PerformanceArchiveCleanV5'};
   if(!full.id||!full.category)throw new Error('بيانات التقرير أو المجال غير مكتملة');
   const m=meta(full),next=indexRows.filter(x=>idOf(x)!==full.id);next.push(m);
   await write({[full.stateKey]:JSON.stringify(full),[INDEX]:JSON.stringify(next)});

@@ -59,11 +59,31 @@
       throw error;
     }finally{clearTimeout(timer)}
   }
-  const pull=(moduleKey,scope='user',keys)=>request('pull',{moduleKey,scope,keys});
+  // RL238: متابعة المدير أو الوكيل لصفحة مستخدم آخر = قراءة فقط، ومن أرشيف ذلك المستخدم لا أرشيف المدير.
+  // كان كل دور غير المعلمة (الموجه، الوكيل، رائد النشاط، الموجه الصحي، معلمة رياض الأطفال) يعرض بيانات المدير
+  // ويحفظ/يحذف في حساب المدير. نفس شرط ManagerFollowAccessBridge، والخادم يتحقق أن القارئ مدير نفس المدرسة.
+  const FOLLOW=(function(){
+    try{
+      const p=new URLSearchParams(location.search||''),mode=String(p.get('mode')||'').toLowerCase();
+      const viewer=String(p.get('viewerRole')||p.get('viewer')||p.get('returnRole')||'').toLowerCase();
+      const active=(p.get('managerFollow')==='1'||p.get('supervisorFollow')==='1'||viewer==='manager'||viewer==='agent')&&(p.get('follow')==='1'||p.get('readonly')==='1'||mode.indexOf('supervisor')>=0);
+      return active?{targetUserId:String(p.get('targetUser')||p.get('followUserId')||p.get('owner_uid')||p.get('userId')||p.get('uid')||'').trim()}:null;
+    }catch(_){return null;}
+  })();
+  const FOLLOW_RO_ERROR='وضع المتابعة للقراءة فقط: لا يمكن الحفظ أو الحذف في حساب المستخدم المتابَع';
+  const PRIVATE_PERFORMANCE_MODULES=new Set(['manager','teacher','agent','student_advisor','student_advisor_analysis_tool','health_advisor','activity_leader','kindergarten_teacher','administrative_employee_portal','administrative_employee_library','admin_employee_management','admin_performance']);
+  async function pull(moduleKey,scope='user',keys){
+    if(FOLLOW&&FOLLOW.targetUserId&&scope!=='school'&&PRIVATE_PERFORMANCE_MODULES.has(String(moduleKey||''))){
+      const r=await request('pull-performance-archive',{moduleKey,ownerUserId:FOLLOW.targetUserId,keys:Array.isArray(keys)?keys:[]});
+      const items=(r?.items||[]).filter(x=>String(x.module_key||moduleKey)===String(moduleKey));
+      return {...r,items,readOnly:true};
+    }
+    return request('pull',{moduleKey,scope,keys});
+  }
   const pullUser=(moduleKey,ownerUserId,keys)=>request('pull-user',{moduleKey,ownerUserId,keys});
   const pullSchoolUsers=(moduleKey,keys)=>request('pull-school-users',{moduleKey,keys});
-  const bulkUpsert=(moduleKey,scope='user',items,opts)=>request('bulk-upsert',{moduleKey,scope,items},opts);
-  const managerUpsertUser=(moduleKey,ownerUserId,items,opts)=>request('manager-upsert-user',{moduleKey,ownerUserId,items},opts);
+  const bulkUpsert=(moduleKey,scope='user',items,opts)=>FOLLOW?Promise.reject(new Error(FOLLOW_RO_ERROR)):request('bulk-upsert',{moduleKey,scope,items},opts);
+  const managerUpsertUser=(moduleKey,ownerUserId,items,opts)=>FOLLOW?Promise.reject(new Error(FOLLOW_RO_ERROR)):request('manager-upsert-user',{moduleKey,ownerUserId,items},opts);
   const publishWeeklyPlan=(ownerUserId,payload)=>request('publish-weekly-plan',{moduleKey:'weekly_teacher_work',ownerUserId,payload});
   const closeWeeklyPlan=(ownerUserId,weekId)=>request('close-weekly-plan',{moduleKey:'weekly_teacher_work',ownerUserId,weekId});
   const submitWeeklySubmission=(payload)=>request('submit-weekly-submission',{moduleKey:'weekly_teacher_work',payload});

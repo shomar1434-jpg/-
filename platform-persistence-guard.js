@@ -13,7 +13,20 @@
   const prefixes=(explicit?.prefixes||[]).map(String);
   const explicitMode=!!explicit;
   const targetOwnerUserId=String(explicit?.ownerUserId||'').trim();
-  const readOnly=explicit?.readOnly===true;
+  // RL238: وضع متابعة المدير يُستنتج مركزيًا من الرابط (نفس شرط ManagerFollowAccessBridge).
+  // كان يُعتمد على CLOUD_STATE_CONFIG فقط، فكانت صفحات الموجه والوكيل ورائد النشاط وغيرها
+  // تكتب في حساب المدير وتعرض أرشيفه هو بدل أرشيف المستخدم المتابَع.
+  const followCtx=(function(){
+    try{
+      const p=new URLSearchParams(location.search||''),mode=String(p.get('mode')||'').toLowerCase();
+      const viewer=String(p.get('viewerRole')||p.get('viewer')||p.get('returnRole')||'').toLowerCase();
+      const active=(p.get('managerFollow')==='1'||p.get('supervisorFollow')==='1'||viewer==='manager'||viewer==='agent')&&(p.get('follow')==='1'||p.get('readonly')==='1'||mode.indexOf('supervisor')>=0);
+      return active?{targetUserId:String(p.get('targetUser')||p.get('followUserId')||p.get('owner_uid')||p.get('userId')||p.get('uid')||'').trim()}:null;
+    }catch(_){return null;}
+  })();
+  const readOnly=explicit?.readOnly===true||(!!followCtx&&explicit?.readOnly!==false);
+  const FOLLOW_RO_ERROR='وضع المتابعة للقراءة فقط: لا يمكن الحفظ أو الحذف في حساب المستخدم المتابَع';
+  // قراءة أرشيف المستخدم المتابَع تتم مركزيًا داخل PlatformStateEngine.pull.
   const legacyModuleKeys=(explicit?.legacyModules||[]).map(x=>String(x||'').replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,100)).filter(Boolean).filter(x=>x!==moduleKey);
   let applying=false,hydrated=false,booted=false;
   const queues={user:new Map(),school:new Map()};
@@ -166,6 +179,8 @@
 
   async function hydrateScope(scope){
     if(!window.PlatformStateEngine) return false;
+    // RL238: في متابعة المدير لا نملأ التخزين المحلي ببيانات المدير الخاصة لهذا القسم (كانت تُعرض كأنها بيانات المستخدم المتابَع).
+    if(followCtx&&scope==='user'&&!targetOwnerUserId) return false;
     const wanted=(explicitMode&&!prefixes.length)?[...exact]:undefined;
     const result=(scope==='user'&&targetOwnerUserId&&typeof PlatformStateEngine.pullUser==='function')?await PlatformStateEngine.pullUser(moduleKey,targetOwnerUserId,wanted):await PlatformStateEngine.pull(moduleKey,scope,wanted);
     const rows=[...(result.items||[])];
@@ -218,7 +233,7 @@
 
 
   async function commit(keys){
-    if(readOnly) return {ok:false,readOnly:true,error:'وضع المتابعة للقراءة فقط'};
+    if(readOnly) return {ok:false,readOnly:true,error:FOLLOW_RO_ERROR};
     // PERFORMANCE_ARCHIVE_EXACT_DOMAIN_2026_08_28
     // قد يضغط المستخدم حفظ قبل اكتمال تهيئة المحرك السحابي؛ انتظر بدلاً من
     // اعتبار ذلك فشلاً فورياً. لا يتم إرجاع نجاح إلا بعد القراءة من السحابة.
@@ -344,6 +359,7 @@
     const exactScope=String(options.scope||'user')==='school'?'school':'user';
     const ownerUserId=String(options.ownerUserId||'').trim();
     const keys=[...new Set((Array.isArray(options.keys)?options.keys:[options.keys]).map(String).filter(Boolean))];
+    if(readOnly) return {ok:false,readOnly:true,error:FOLLOW_RO_ERROR,moduleKey:exactModule,scope:exactScope};
     if(!keys.length) return {ok:true,verified:0,moduleKey:exactModule,scope:exactScope};
     let tries=0;
     while(!window.PlatformStateEngine && tries++<80) await new Promise(r=>setTimeout(r,100));
@@ -433,6 +449,7 @@
     const ownerUserId=String(options.ownerUserId||'').trim();
     const values=options.values&&typeof options.values==='object'?options.values:{};
     const keys=Object.keys(values).map(String).filter(Boolean);
+    if(readOnly)return {ok:false,readOnly:true,error:FOLLOW_RO_ERROR,moduleKey:exactModule,scope:exactScope};
     if(!keys.length)return {ok:true,verified:0,moduleKey:exactModule,scope:exactScope};
     dropQueuedKeys(keys);
     let tries=0;while(!window.PlatformStateEngine&&tries++<80)await new Promise(r=>setTimeout(r,100));
@@ -469,6 +486,6 @@
   }
   window.addEventListener('pagehide',()=>void flush(true));
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')void flush(true)});
-  window.PlatformPersistenceGuard={VERSION:'2026.08.28-school-isolation-v8',moduleKey,track,scopeFor,flush,commit,commitExact,readExact,readExactValues,writeExactValues,setLocalSilently,whenReady,boot,get hydrated(){return hydrated;}};
+  window.PlatformPersistenceGuard={VERSION:'2026.08.28-school-isolation-v8',moduleKey,track,scopeFor,flush,commit,commitExact,readExact,readExactValues,writeExactValues,setLocalSilently,whenReady,boot,get hydrated(){return hydrated;},get readOnly(){return readOnly;},get followTarget(){return followCtx?followCtx.targetUserId:'';}};
   setTimeout(boot,0);
 })();

@@ -60,6 +60,25 @@ Deno.serve(async(req)=>{
     const isAgent=agents.has(sessionRole)||agents.has(String(s.role||''));
     const supervisorKey=isAgent?'agent':isManager?'manager':'';
     const isAdministrativeSupervisor=!!supervisorKey;
+  // RL238: خطة جاهزية المدرسة عبر الخادم ومربوطة بمدرسة الجلسة فقط — بدل الكتابة المباشرة من المتصفح للجدول
+  if(action==='readiness-load'||action==='readiness-save'){
+    const ryear=Number(String(body.academicYear||'1448').replace(/\D/g,''))||1448;
+    if(action==='readiness-load'){
+      const rq=await sb.from('school_readiness_plans').select('id,readiness_data,updated_at').eq('school_id',s.school_id).eq('academic_year',ryear).eq('semester','first').maybeSingle();
+      if(rq.error)throw rq.error;
+      return json({ok:true,plan:rq.data||null,requestId});
+    }
+    const rdata=body.readinessData;
+    if(!rdata||typeof rdata!=='object'||Array.isArray(rdata))return json({error:'بيانات الجاهزية غير صالحة',code:'READINESS_DATA_INVALID',requestId},400);
+    if(JSON.stringify(rdata).length>4000000)return json({error:'حجم خطة الجاهزية أكبر من المسموح',code:'READINESS_TOO_LARGE',requestId},413);
+    const rex=await sb.from('school_readiness_plans').select('id').eq('school_id',s.school_id).eq('academic_year',ryear).eq('semester','first').maybeSingle();
+    if(rex.error)throw rex.error;
+    const rrow:any={school_id:s.school_id,academic_year:ryear,semester:'first',status:'active',readiness_data:rdata,updated_at:now,updated_by:s.user_id};
+    if(!rex.data)rrow.created_by=s.user_id;
+    const rsave=await sb.from('school_readiness_plans').upsert(rrow,{onConflict:'school_id,academic_year,semester'}).select('id,updated_at').single();
+    if(rsave.error)throw rsave.error;
+    return json({ok:true,id:rsave.data.id,updated_at:rsave.data.updated_at,requestId});
+  }
     const supervisorOwnsMembership=async(m:any)=>{
       if(!m||!isAdministrativeSupervisor)return false;
       const exact=String(m.supervisor_user_id||'').trim();
@@ -146,11 +165,13 @@ Deno.serve(async(req)=>{
         for(const row of newestByKey.values())pulled.push({...row,module_key:moduleKey});
       }
       const accepted:any[]=[];const legacy:any[]=[];
+      // RL238: صف المستخدم الخاص (ولو محذوفًا) هو المرجع؛ لا يُكتب فوقه صف قديم من نطاق المدرسة ولا يُعاد المحذوف.
+      const ownPrivate=new Set((pulled||[]).filter((r:any)=>String(r.owner_key)===String(s.user_id)).map((r:any)=>String(r.state_key)));
       for(const row of pulled){
         const priv=isPrivatePerformanceState(moduleKey,String(row.state_key||''));
         if(priv){
           if(String(row.owner_key)===String(s.user_id))accepted.push(row);
-          else if(String(row.owner_key)==='school'&&String(row.updated_by||'')===String(s.user_id)){accepted.push({...row,owner_key:String(s.user_id)});legacy.push(row);}
+          else if(String(row.owner_key)==='school'&&String(row.updated_by||'')===String(s.user_id)&&!ownPrivate.has(String(row.state_key))){accepted.push({...row,owner_key:String(s.user_id)});legacy.push(row);}
         }else if(String(row.owner_key)===requestedOwnerKey)accepted.push(row);
       }
       // Safe legacy recovery: a school-scoped personal state is migrated only when updated_by proves the same current user.
@@ -167,12 +188,16 @@ Deno.serve(async(req)=>{
       let archiveRole=String(s.role||'');
       let managerFollow=false;
       if(requestedTarget&&requestedTarget!==archiveOwner){
-        if(!isManager)return json({error:'قراءة أرشيف مستخدم آخر تتطلب صلاحية مدير المدرسة',code:'STATE_PERFORMANCE_MANAGER_REQUIRED',requestId},403);
-        const membership=await sb.from('school_members').select('user_id,role,status').eq('school_id',s.school_id).eq('user_id',requestedTarget).in('role',['teacher','performance']).eq('status','active').maybeSingle();
+        if(!isManager&&!isAgent)return json({error:'قراءة أرشيف مستخدم آخر تتطلب صلاحية مدير المدرسة أو الوكيل',code:'STATE_PERFORMANCE_MANAGER_REQUIRED',requestId},403);
+        // RL238: كانت المتابعة مقصورة على المدير والمعلمة، فتعرض صفحات الموجه والوكيل ورائد النشاط وغيرها أرشيف المدير نفسه،
+        // ولا يرى الوكيل أرشيف المعلمين أصلًا. قراءة فقط ضمن نفس المدرسة:
+        // المدير: أي عضو نشط له أرشيف أداء (عدا أدوار الإدارة العليا). الوكيل: المعلمون فقط (نفس قاعدة مكتبة الملفات).
+        const membership=await sb.from('school_members').select('user_id,role,status').eq('school_id',s.school_id).eq('user_id',requestedTarget).eq('status','active');
         if(membership.error)throw membership.error;
-        if(!membership.data)return json({error:'المعلمة المحددة ليست عضوًا نشطًا في المدرسة الحالية',code:'STATE_PERFORMANCE_TARGET_NOT_IN_SCHOOL',requestId},403);
+        const followable=(membership.data||[]).find((m:any)=>{const mods=performanceModulesForRole(m.role);if(!mods.length||mods.includes('manager'))return false;return isManager||mods.includes('teacher');});
+        if(!followable)return json({error:'المستخدم المحدد ليس عضوًا نشطًا في المدرسة الحالية',code:'STATE_PERFORMANCE_TARGET_NOT_IN_SCHOOL',requestId},403);
         archiveOwner=requestedTarget;
-        archiveRole=String(membership.data.role||'teacher');
+        archiveRole=String(followable.role||'teacher');
         managerFollow=true;
       }
       const modules=performanceModulesForRole(archiveRole);
@@ -183,10 +208,20 @@ Deno.serve(async(req)=>{
       const q=await query;
       if(q.error)throw q.error;
       const accepted:any[]=[];const legacy:any[]=[];
+      // RL238: النسخة الخاصة بالمستخدم هي المرجع دائمًا. كان الاسترجاع من الصفوف القديمة (owner=school) يكتب فوق
+      // نسخة المستخدم الأحدث، ويعيد تقريرًا حذفه المستخدم (deleted_at) إلى الظهور. الآن: لا يُستخدم الصف القديم
+      // إلا إذا لم يوجد للمستخدم صف بنفس المفتاح إطلاقًا (ولو محذوفًا)، ولا كتابة أثناء المتابعة (قراءة فقط).
+      const ownSig=new Set<string>();
+      {
+        let oq=sb.from('platform_module_state').select('module_key,state_key').eq('school_id',s.school_id).in('module_key',modules).eq('owner_key',archiveOwner).limit(5000);
+        if(keys.length)oq=oq.in('state_key',keys);
+        const o=await oq;if(o.error)throw o.error;
+        for(const r of o.data||[])ownSig.add(String(r.module_key)+'|'+String(r.state_key));
+      }
       for(const row of q.data||[]){
         if(!isPrivatePerformanceState(String(row.module_key||''),String(row.state_key||'')))continue;
         if(String(row.owner_key)===archiveOwner)accepted.push(row);
-        else if(String(row.owner_key)==='school'&&String(row.updated_by||'')===archiveOwner){accepted.push({...row,owner_key:archiveOwner});legacy.push(row);}
+        else if(String(row.owner_key)==='school'&&String(row.updated_by||'')===archiveOwner&&!ownSig.has(String(row.module_key)+'|'+String(row.state_key))){accepted.push({...row,owner_key:archiveOwner});if(!managerFollow)legacy.push(row);}
       }
       for(const row of legacy){
         const up={school_id:s.school_id,owner_key:archiveOwner,module_key:row.module_key,state_key:row.state_key,payload:row.payload,updated_by:archiveOwner,updated_at:row.updated_at||now,deleted_at:null};
@@ -516,11 +551,12 @@ Deno.serve(async(req)=>{
       if(membership.error) throw membership.error;
       if(!membership.data) return json({error:'المستخدم ليس موظفًا إداريًا في المدرسة الحالية',code:'STATE_TARGET_NOT_ADMIN_EMPLOYEE',requestId},403);
       if(!(await supervisorOwnsMembership(membership.data))) return json({error:'هذا الموظف يتبع مسؤولاً مباشرًا آخر',code:'STATE_TARGET_SUPERVISOR_MISMATCH',requestId},403);
-      const md=await sb.from('school_members').delete().eq('id',membership.data.id);if(md.error)throw md.error;
+      // RL238: تعطيل بدل حذف نهائي — العضوية والحساب وبيانات الأداء تبقى قابلة للاستعادة
+  const md=await sb.from('school_members').update({status:'deleted',updated_at:new Date().toISOString()}).eq('id',membership.data.id);if(md.error)throw md.error;
       const remaining=await sb.from('school_members').select('school_id,role,status').eq('user_id',targetUserId).neq('status','deleted').order('updated_at',{ascending:false}).limit(1);if(remaining.error)throw remaining.error;
       if((remaining.data||[]).length){const r=(remaining.data||[])[0];const uu=await sb.from('users').update({school_id:r.school_id,role:r.role,status:r.status==='active'?'active':'pending',active:r.status==='active'}).eq('id',targetUserId);if(uu.error)throw uu.error;}
-      else{const ud=await sb.from('users').delete().eq('id',targetUserId);if(ud.error)throw ud.error;}
-      await sb.from('platform_module_state').delete().eq('school_id',s.school_id).eq('owner_key',targetUserId).eq('module_key','admin_performance');
+      else{const ud=await sb.from('users').update({status:'disabled',active:false}).eq('id',targetUserId);if(ud.error)throw ud.error;}
+      /* RL238: بيانات أداء الموظف تبقى محفوظة */
       return json({ok:true,userId:targetUserId,supervisor:supervisorKey});
     }
 
@@ -554,6 +590,8 @@ Deno.serve(async(req)=>{
     }
 
     if(action==='purge-module'){
+      // RL238: موقوفة — كانت تحذف بيانات قسم كامل للمدرسة حذفًا نهائيًا، ولا تستخدمها الواجهة
+      return json({error:'عملية الحذف الشامل موقوفة لحماية بيانات المدرسة',code:'STATE_PURGE_DISABLED',requestId},410);
       if(!isManager) return json({error:'هذه العملية تتطلب صلاحية المدير'},403);
       const targetScope=String(body.scope||'school')==='school'?'school':'user';
       const targetOwner=targetScope==='school'?'school':String(body.ownerUserId||s.user_id||'');

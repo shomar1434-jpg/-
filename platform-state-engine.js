@@ -72,11 +72,20 @@
   })();
   const FOLLOW_RO_ERROR='وضع المتابعة للقراءة فقط: لا يمكن الحفظ أو الحذف في حساب المستخدم المتابَع';
   const PRIVATE_PERFORMANCE_MODULES=new Set(['manager','teacher','agent','student_advisor','student_advisor_analysis_tool','health_advisor','activity_leader','kindergarten_teacher','administrative_employee_portal','administrative_employee_library','admin_employee_management','admin_performance']);
+  // نفس تعريف الخادم (isPrivatePerformanceState): مفاتيح أرشيف الأداء الخاصة بكل مستخدم.
+  const isPrivatePerformanceKey=(k)=>{const sk=String(k||'').toLowerCase();return /(^|_)perf_index_v1$/.test(sk)||/(^|_)perf_report_v1_/.test(sk)||/_performance_deleted_v1$/.test(sk)||/^performance_reports_archive_v2/.test(sk)||sk==='reports_archive'||sk==='school_reports'||/performance_reports_clean_v[123]$/.test(sk)||/^ss_performance_profile/.test(sk)||/^school_performance_module_v1:/.test(sk);};
   async function pull(moduleKey,scope='user',keys){
-    if(FOLLOW&&FOLLOW.targetUserId&&scope!=='school'&&PRIVATE_PERFORMANCE_MODULES.has(String(moduleKey||''))){
-      const r=await request('pull-performance-archive',{moduleKey,ownerUserId:FOLLOW.targetUserId,keys:Array.isArray(keys)?keys:[]});
-      const items=(r?.items||[]).filter(x=>String(x.module_key||moduleKey)===String(moduleKey));
-      return {...r,items,readOnly:true};
+    if(FOLLOW&&FOLLOW.targetUserId&&PRIVATE_PERFORMANCE_MODULES.has(String(moduleKey||''))){
+      const list=Array.isArray(keys)?keys:[];
+      const archive=async(k)=>{const r=await request('pull-performance-archive',{moduleKey,ownerUserId:FOLLOW.targetUserId,keys:k});return (r?.items||[]).filter(x=>String(x.module_key||moduleKey)===String(moduleKey));};
+      if(scope!=='school') return {items:await archive(list),readOnly:true};
+      // بعض الصفحات (مثل الوكيل) تقرأ فهرس أرشيفها عبر نطاق المدرسة؛ الخادم يعيد عندها نسخة القارئ الخاصة.
+      // في المتابعة: مفاتيح الأرشيف الخاصة من المستخدم المتابَع، وبقية مفاتيح المدرسة كما هي.
+      const privKeys=list.filter(isPrivatePerformanceKey),otherKeys=list.filter(k=>!isPrivatePerformanceKey(k));
+      let rest=[];
+      if(!list.length||otherKeys.length){const r=await request('pull',{moduleKey,scope,keys:list.length?otherKeys:keys});rest=(r?.items||[]).filter(x=>!isPrivatePerformanceKey(x.state_key));}
+      const priv=(!list.length||privKeys.length)?await archive(list.length?privKeys:[]):[];
+      return {items:[...rest,...priv],readOnly:true};
     }
     return request('pull',{moduleKey,scope,keys});
   }

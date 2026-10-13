@@ -4250,6 +4250,13 @@ const ANALYZER_CLOUD_MODULE = 'evaluation_operational_nafis_analyzer';
 const ANALYZER_CLOUD_KEY = 'school_analyzer_workspace_v1';
 let ANALYZER_CLOUD_SUPPRESS = true;
 let analyzerCloudTimer = null;
+let analyzerCloudWriteQueue=Promise.resolve();
+function analyzerReadCloudValue(result){
+  if(result?.ok===false)throw new Error(result.error||'تعذر قراءة المحلل');
+  const row=(result?.items||[]).find(x=>x.state_key===ANALYZER_CLOUD_KEY&&(!x.owner_key||x.owner_key==='school')&&!x.deleted_at);
+  return row?.payload?.value ?? result?.values?.[ANALYZER_CLOUD_KEY] ?? result?.[ANALYZER_CLOUD_KEY];
+}
+
 
 function analyzerSchoolId(){
   return String(window.PlatformCloudSession?.schoolId?.() || '').trim();
@@ -4270,18 +4277,19 @@ function analyzerCurrentState(){
   return {acc:JSON.parse(JSON.stringify({...S.acc, list:undefined})), tab:S.tab, demo:false, at:Date.now()};
 }
 function analyzerSnapshot(sid){
-  return {schemaVersion:1, schoolId:sid, savedAt:new Date().toISOString(), current:analyzerCurrentState(), analyses:JSON.parse(JSON.stringify(LIB.list || [])), plans:JSON.parse(JSON.stringify(OP.list || [])), nafs:JSON.parse(JSON.stringify(NF.list || []))};
+  return {schemaVersion:1, saveId:crypto.randomUUID(), schoolId:sid, savedAt:new Date().toISOString(), current:analyzerCurrentState(), analyses:JSON.parse(JSON.stringify(LIB.list || [])), plans:JSON.parse(JSON.stringify(OP.list || [])), nafs:JSON.parse(JSON.stringify(NF.list || []))};
 }
-async function analyzerCloudPersist(){
-  if(ANALYZER_CLOUD_SUPPRESS) return;
+async function analyzerCloudPersistNow(){
+  if(ANALYZER_CLOUD_SUPPRESS) throw new Error('لم يكتمل استرجاع مساحة المدرسة؛ لم يتم الحفظ حمايةً للبيانات.');
   const sid = await analyzerEnsureCloud();
   const payload = analyzerSnapshot(sid);
   await PlatformStateEngine.bulkUpsert(ANALYZER_CLOUD_MODULE, 'school', [{key:ANALYZER_CLOUD_KEY, value:JSON.stringify(payload), deleted:false}], {timeout:20000});
   const verify = await PlatformStateEngine.pull(ANALYZER_CLOUD_MODULE, 'school', [ANALYZER_CLOUD_KEY]);
-  const raw = verify?.values?.[ANALYZER_CLOUD_KEY] ?? verify?.[ANALYZER_CLOUD_KEY];
+  const raw = analyzerReadCloudValue(verify);
   const saved = typeof raw === 'string' ? JSON.parse(raw) : raw;
-  if(!saved || saved.schoolId !== sid || !saved.savedAt) throw new Error('لم يكتمل التحقق من الحفظ السحابي للمحلل');
+  if(!saved || saved.schoolId !== sid || !saved.savedAt || saved.saveId!==payload.saveId) throw new Error('لم يكتمل التحقق من الحفظ السحابي للمحلل');
 }
+function analyzerCloudPersist(){const task=analyzerCloudWriteQueue.catch(()=>{}).then(analyzerCloudPersistNow);analyzerCloudWriteQueue=task;return task;}
 function analyzerCloudSchedule(){
   if(ANALYZER_CLOUD_SUPPRESS) return;
   clearTimeout(analyzerCloudTimer);
@@ -4291,8 +4299,8 @@ async function analyzerCloudHydrate(){
   try{
     const sid = await analyzerEnsureCloud();
     const pulled = await PlatformStateEngine.pull(ANALYZER_CLOUD_MODULE, 'school', [ANALYZER_CLOUD_KEY]);
-    const raw = pulled?.values?.[ANALYZER_CLOUD_KEY] ?? pulled?.[ANALYZER_CLOUD_KEY];
-    if(!raw){ ANALYZER_CLOUD_SUPPRESS = false; await analyzerCloudPersist(); return; }
+    const raw = analyzerReadCloudValue(pulled);
+    if(!raw){ ANALYZER_CLOUD_SUPPRESS = false; return; }
     const cloud = typeof raw === 'string' ? JSON.parse(raw) : raw;
     if(!cloud || cloud.schoolId !== sid) throw new Error('بيانات المحلل لا تخص المدرسة الحالية');
     LIB.list = Array.isArray(cloud.analyses) ? cloud.analyses : [];
@@ -4302,7 +4310,7 @@ async function analyzerCloudHydrate(){
     ANALYZER_CLOUD_SUPPRESS = false;
     render(false, true);
   }catch(e){
-    ANALYZER_CLOUD_SUPPRESS = false;
+    ANALYZER_CLOUD_SUPPRESS = true;
     console.warn('[Analyzer cloud hydrate]', e);
     toast('تعذر تحميل بيانات المدرسة من المصدر السحابي. لم يتم استخدام أي بيانات محلية بديلة.','err');
   }

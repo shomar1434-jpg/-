@@ -1,3 +1,4 @@
+import {PERFORMANCE_STATE_MODULES,projectSchoolPerformance} from './school-performance-projector.ts';
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const cors = {
@@ -470,6 +471,19 @@ Deno.serve(async (req) => {
       const {data,error}=await sb.from('semester_plan_weeks').update(patch).eq('id',id).eq('school_id',session.school_id).select('*').single();if(error)throw error;return json({row:data});
     }
 
+    if(action==='school-performance-records'){
+      if(!['manager','owner','school_manager','principal','مدير','مديرة'].includes(String(effectiveRole||role)))return json({error:'قراءة مؤشرات المدرسة تتطلب صلاحية المدير',code:'DASHBOARD_MANAGER_REQUIRED'},403);
+      const expected=String(body.expectedSchoolId||'');if(expected&&expected!==String(session.school_id))return json({error:'هوية المدرسة لا تطابق الجلسة',code:'DASHBOARD_SCHOOL_MISMATCH'},409);
+      const rows:any[]=[];let complete=false;
+      for(let offset=0;offset<20000;offset+=500){
+        const query=await sb.from('platform_module_state').select('school_id,owner_key,module_key,state_key,payload,deleted_at,updated_at,updated_by').eq('school_id',session.school_id).in('module_key',PERFORMANCE_STATE_MODULES).is('deleted_at',null).order('module_key',{ascending:true}).order('owner_key',{ascending:true}).order('state_key',{ascending:true}).range(offset,offset+499);
+        if(query.error)throw query.error;rows.push(...(query.data||[]));if((query.data||[]).length<500){complete=true;break;}
+      }
+      if(!complete)return json({error:'تجاوز مصدر المؤشرات حجم القراءة؛ لم تُعرض نتيجة جزئية',code:'DASHBOARD_SOURCE_LIMIT'},503);
+      const records=await projectSchoolPerformance(rows,String(session.school_id));
+      return json({ok:true,schoolId:session.school_id,source:'platform_module_state',records,updatedAt:new Date().toISOString()});
+    }
+
     if (action === 'dashboard') {
       const filters:any = body.filters || {};
       const period = String(filters.period || 'month');
@@ -524,3 +538,4 @@ Deno.serve(async (req) => {
     return json({ error: error instanceof Error ? error.message : String(error), code: 'CORE_FATAL_ERROR', requestId }, 500);
   }
 });
+

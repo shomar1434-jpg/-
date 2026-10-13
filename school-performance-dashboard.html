@@ -375,9 +375,20 @@ function finalize(d){ROLE_ORDER.forEach(function(k){var r=d.roles[k];r.users=0;r
 function collectLocal(){var d=emptyData();for(var i=0;i<localStorage.length;i++){var key=localStorage.key(i)||'';if(/activation|theme|token|password|api|supabaseAnonKey/i.test(key))continue;var raw=localStorage.getItem(key);var val=parse(raw,'__raw__');if(val==='__raw__')continue;scanValue(d,key,val);}applyAdminEmployeeRoleMetrics(d);return finalize(d);}
 function mergeData(a,b){if(!b)return a;ROLE_ORDER.forEach(function(k){var ar=a.roles[k],br=b.roles[k];ar.reports+=br.reports;ar.records+=br.records;ar.evidence+=br.evidence;ar.scores=ar.scores.concat(br.scores);});Object.keys(a.domain).forEach(function(k){a.domain[k].scores=a.domain[k].scores.concat((b.domain[k]||{scores:[]}).scores);});a.totals.reports+=b.totals.reports;a.totals.records+=b.totals.records;a.totals.evidence+=b.totals.evidence;b.users.forEach(function(u){a.users.add(u);});a.records=a.records.concat(b.records);a.evidenceItems=a.evidenceItems.concat(b.evidenceItems);return finalize(a);}
 async function ensureSupabase(){try{if(window.supabase&&window.supabase.createClient)return window.supabase;if(document.getElementById('supabase-js-sdk'))return null;await new Promise(function(res,rej){var s=document.createElement('script');s.id='supabase-js-sdk';s.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';s.onload=res;s.onerror=rej;document.head.appendChild(s);});return window.supabase;}catch(e){return null;}}
-async function collectRemote(){var d=emptyData(),sid=schoolId();if(!sid)return finalize(d);try{var sdk=await ensureSupabase();if(!sdk||!sdk.createClient)return finalize(d);var url=localStorage.getItem('smartSchoolSupabaseUrl')||'https://cijhgvbtrvmmlcssgxht.supabase.co';var key=localStorage.getItem('smartSchoolSupabaseAnonKey')||'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaWpoZ3ZidHJ2bW1sY3NzeGhodCIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzc4Njk2ODM1LCJleHAiOjIwOTQyNzI4MzV9.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';var sb=sdk.createClient(url,key);var tables=['reports','school_reports','records','archives','evidences','files','school_members','users','administrative_employee_plans','admin_employee_plans','employee_evaluations','improvement_plans'];for(var t=0;t<tables.length;t++){try{var q=await sb.from(tables[t]).select('*').eq('school_id',sid).limit(1000);if(q&&q.data)q.data.forEach(function(row){scanValue(d,tables[t],row);});}catch(e){}}}catch(e){}return finalize(d);}
-async function loadData(){var local=collectLocal();var remote=await collectRemote();LIVE_CACHE=mergeData(local,remote);return LIVE_CACHE;}
-function getCurrentData(){return LIVE_CACHE||collectLocal();}
+async function collectRemote(){
+ var tries=0;while((!window.PlatformCloudSession||!window.PlatformCore?.request)&&tries++<60)await new Promise(resolve=>setTimeout(resolve,50));
+ if(window.PlatformCloudSession?.ensure)await PlatformCloudSession.ensure();
+ var d=emptyData(),sid=String(window.PlatformCloudSession?.schoolId?.()||schoolId()||'');
+ if(!sid)throw new Error('جلسة المدرسة غير متاحة');
+ if(!window.PlatformCore?.request)throw new Error('مصدر مؤشرات المدرسة الخادمي غير متاح');
+ var result=await PlatformCore.request('school-performance-records',{expectedSchoolId:sid});
+ if(!result?.ok||String(result.schoolId)!==sid)throw new Error('تعذر التحقق من مصدر مؤشرات المدرسة');
+ (result.records||[]).forEach(function(item){if(String(item.school_id)!==sid||!inPeriod(item))return;var role=item.role,r=d.roles[role];if(!r)return;var ev=Number(item.evidence)||0,score=Number(item.score)||0,domain=role==='teacher'?'التعليم والتعلم':'القيادة والإدارة المدرسية';if(item.kind==='report'){r.reports++;d.totals.reports++;}else{r.records++;d.totals.records++;}r.evidence+=ev;d.totals.evidence+=ev;r.scores.push(score);d.domain[domain].scores.push(score);d.users.add(String(item.owner_id));var row={role:role,roleLabel:ROLE_DEFS[role].label,title:item.title,score:score,evidence:ev,date:new Date(item.updated_at),kind:item.kind};if(item.kind!=='report')d.records.push(row);if(ev)d.evidenceItems.push(row);});
+ var out=finalize(d);out.source='platform_module_state';out.updatedAt=result.updatedAt;ROLE_ORDER.forEach(function(role){out.roles[role].users=new Set((result.records||[]).filter(function(x){return x.role===role&&inPeriod(x)}).map(function(x){return x.owner_id})).size;});return out;
+}
+async function loadData(){var remote=await collectRemote();LIVE_CACHE=remote;document.getElementById('schoolPerformanceCloudStatus')?.remove();return LIVE_CACHE;}
+function showSchoolPerformanceCloudError(error){var box=document.getElementById('schoolPerformanceCloudStatus');if(!box){box=document.createElement('div');box.id='schoolPerformanceCloudStatus';box.dir='rtl';box.style.cssText='padding:14px;margin:12px;background:#fff7ed;border:1px solid #fdba74;border-radius:12px;color:#9a3412;font-weight:700';document.body.prepend(box);}box.textContent='تعذر تحديث مؤشرات المدرسة من السحابة. '+(LIVE_CACHE?'المعروض آخر نتيجة سحابية مؤكدة. ':'لم تُعتمد الأرقام بعد. ')+String(error.message||error);}
+function getCurrentData(){return LIVE_CACHE||finalize(emptyData());}
 function periodMultiplier(){return {today:1,week:1,month:1,term:1}[currentPeriod]||1;}
 function selectedData(d){if(currentRole==='all')return d;var r=d.roles[currentRole];var one=emptyData();one.roles[currentRole]=JSON.parse(JSON.stringify(r));one.totals={reports:r.reports,records:r.records,evidence:r.evidence,users:r.users};one.readiness=r.score;return one;}
 function relTime(dt){if(!dt)return 'غير محدد';var diff=Math.max(0,(new Date()-dt)/60000);if(diff<60)return 'منذ '+Math.round(diff)+' دقيقة';if(diff<1440)return 'منذ '+Math.round(diff/60)+' ساعة';return 'منذ '+Math.round(diff/1440)+' يوم';}
@@ -398,9 +409,7 @@ async function dataForCompareSpec(spec){
  if(spec.day!==undefined)selectedDay=spec.day;
  if(spec.term!==undefined)selectedTerm=spec.term;
  if(window.__SSP_LIVE__&&window.__SSP_LIVE__.setPeriod)window.__SSP_LIVE__.setPeriod(currentPeriod);
- var local=collectLocal();
- var remote=await collectRemote();
- var merged=mergeData(local,remote);
+ var merged=await collectRemote();
  restoreSelection(snap);
  return window.__SSP_LIVE__.selectedData(merged);
 }
@@ -434,7 +443,7 @@ function compareTitle(){
 
 
 async function refreshDashboard(){
- var live=await window.__SSP_LIVE__.loadData();
+ var live;try{live=await window.__SSP_LIVE__.loadData();}catch(e){showSchoolPerformanceCloudError(e);return;}
  document.getElementById('schoolName').textContent=window.__SSP_LIVE__.schoolName();
  var d=getData();
  var score=d.readiness||0;
@@ -692,7 +701,7 @@ document.addEventListener('DOMContentLoaded',function(){['reportsNum','recordsNu
 <script src="delegated-access-guard.js"></script>
 <script src="platform-runtime-guard.js?v=20260914-RL148-legacy-session-bridge"></script>
 <script src="platform-cloud-session.js?v=20260914-RL160-rollback-pre-follow-records"></script>
-<script src="platform-core-engine.js"></script>
+<script src="platform-core-engine.js?v=20261013-RL242-school-state"></script>
 <script src="platform-dashboard-bridge.js"></script>
 
 <script src="school-information-source.js?v=20260916-RL169-stable-select-dropdowns"></script>

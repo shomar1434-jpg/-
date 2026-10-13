@@ -374,6 +374,26 @@ Deno.serve(async(req)=>{
     }
 
 
+    if(action==='weekly-plan-history'){
+      if(!['teacher','performance','معلم','معلمة'].includes(sessionRole))return json({error:'هذا العرض مخصص لحساب المعلم',code:'STATE_TEACHER_REQUIRED',requestId},403);
+      const planRow=await sb.from('platform_module_state').select('payload,deleted_at').eq('school_id',s.school_id).eq('owner_key',String(s.user_id)).eq('module_key','weekly_teacher_work').eq('state_key','weekly_active_plan_v1').maybeSingle();
+      if(planRow.error)throw planRow.error;
+      if(!planRow.data||planRow.data.deleted_at)return json({ok:true,weeks:[],reason:'NO_PUBLISHED_PLAN'});
+      let plan:any={};try{plan=JSON.parse(String(planRow.data.payload?.value||'{}'))}catch(_){return json({error:'خطة الأسبوع غير صالحة',code:'STATE_WEEK_PLAN_INVALID',requestId},409)}
+      const periods=await sb.from('platform_module_state').select('payload,updated_at').eq('school_id',s.school_id).eq('owner_key','school').eq('module_key','deputy_weekly_followup').like('state_key','record_v1:weekly_followup_period:%').is('deleted_at',null).order('updated_at',{ascending:false}).limit(20);
+      if(periods.error)throw periods.error;
+      const digits=(v:any)=>String(v??'').replace(/[٠-٩]/g,c=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(c)));
+      const year=(v:any)=>digits(v).match(/\d{4}/)?.[0]||'';
+      const term=(v:any)=>{const x=String(v||'');return /الأول|الاول|semester_1/.test(x)?'1':/الثاني|semester_2/.test(x)?'2':/الثالث|semester_3/.test(x)?'3':x.trim()};
+      const number=(v:any)=>Number(digits(v).match(/\d+/)?.[0]||0),seen=new Set<number>(),weeks:any[]=[];
+      for(const row of periods.data||[]){let data:any={};try{data=JSON.parse(String(row.payload?.value||'{}'))?.data||{}}catch(_){continue;}
+        for(const w of Array.isArray(data.weeks)?data.weeks:[]){const n=number(w.number);if(!n||n>=number(plan.week_number)||seen.has(n)||year(w.year)!==year(plan.year)||term(w.term)!==term(plan.term))continue;seen.add(n);
+          weeks.push({id:String(w.id),number:w.number,year:w.year,term:w.term,start:w.start,end:w.end,status:'مؤرشف',execution_state:'history',history_only:true,source_status:String(w.status||''),source_confirmed_at:String(w.execution_confirmed_at||''),school_id:s.school_id,teacher_id:String(s.user_id)});
+        }
+      }
+      return json({ok:true,weeks:weeks.sort((a,b)=>number(a.number)-number(b.number)),activeWeekId:plan.week_id,readOnly:true});
+    }
+
     if(action==='publish-weekly-plan'){
       if(!isManager&&!isAgent)return json({error:'هذه العملية تتطلب صلاحية المدير أو الوكيل',code:'STATE_SUPERVISOR_REQUIRED',requestId},403);
       if(moduleKey!=='weekly_teacher_work')return json({error:'مصدر خطة الأسبوع غير صحيح',code:'STATE_TARGET_MODULE_FORBIDDEN',requestId},403);

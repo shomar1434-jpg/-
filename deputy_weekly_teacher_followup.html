@@ -74,6 +74,7 @@
 <script src="platform-persistence-guard.js"></script>
 <script defer src="school-base-settings-source.js"></script>
 <link rel="stylesheet" href="responsive-layout.css?v=20260818-responsive-1">
+<script src="weekly-workflow-core.js?v=20261012-weekly-reference"></script>
 </head>
 <body>
   <div class="page">
@@ -191,7 +192,7 @@
     'منسق موهوبين':['متابعة مشاركات الموهوبين','رفع شواهد الرعاية','تقرير مبادرة إثرائية'],
     'أخرى':['مهمة إضافية مخصصة']
   };
-  let teachers=[], weeks=[], activeWeekId='', archives=[], weeklyReviewDecisionBusy=false, weeklyRefreshPromise=null, cloudReviewerId='';
+  let teachers=[], weeks=[], activeWeekId='', archives=[], weeklyReviewDecisionBusy=false, weeklyRefreshPromise=null;
   // RL225: maps historical regenerated week ids to one canonical period/week.
   // Submissions keep their original cloud state_key, so aliases preserve access
   // without duplicating the week card or deleting any submitted work.
@@ -481,11 +482,7 @@
   }
   function safeLocalSet(key,value){try{localStorage.setItem(key,value);return true}catch(e){console.warn('[weekly light cache skipped]',key,e&&e.name||e);return false}}
   function normWeekPart(v){return String(v??'').trim().replace(/\s+/g,' ').toLowerCase()}
-  function weekCanonicalKey(w){
-    const year=normWeekPart(w?.year||localStorage.getItem('school_info_academic_year')||''),term=normWeekPart(w?.term||'');
-    const number=normWeekPart(w?.number||w?.week_number||'');
-    return [year,term,number||normWeekPart(w?.start||w?.end||w?.id||'')].join('|');
-  }
+  function weekCanonicalKey(w){return WeeklyWorkflowCore.periodKey(w)||('id:'+String(w?.id||''));}
   function weekRichness(w){
     if(!w)return -1;
     const closed=['مغلق','مؤرشف'].includes(String(w.status||''))||w.execution_state==='closed'||!!w.closed_at;
@@ -505,7 +502,7 @@
     const merged={...other,...keep};
     merged.id=canonicalId;
     merged.teacherStatuses={...(other?.teacherStatuses||{}),...(keep?.teacherStatuses||{})};
-    merged.teacherSubmissions={...(other?.teacherSubmissions||{}),...(keep?.teacherSubmissions||{})};
+    merged.teacherSubmissions={...(other?.teacherSubmissions||{})};for(const [tid,sub] of Object.entries(keep?.teacherSubmissions||{}))merged.teacherSubmissions[tid]=WeeklyWorkflowCore.mergeSubmission(merged.teacherSubmissions[tid],sub);merged.legacy_week_ids=[...new Set([...(a.legacy_week_ids||[]),...(b.legacy_week_ids||[]),a.id,b.id].filter(Boolean))];
     merged.variableAssignments=uniqueWeekRows([...(other?.variableAssignments||[]),...(keep?.variableAssignments||[])]);
     merged.extraTasks=uniqueWeekRows([...(other?.extraTasks||[]),...(keep?.extraTasks||[])]);
     merged.basicTasks=(keep?.basicTasks?.length?keep.basicTasks:other?.basicTasks)||BASIC_TASKS;
@@ -517,12 +514,13 @@
     for(const raw of (list||[])){
       if(!raw||typeof raw!=='object')continue;
       const w={...raw,variableAssignments:Array.isArray(raw.variableAssignments)?raw.variableAssignments:[],extraTasks:Array.isArray(raw.extraTasks)?raw.extraTasks:[]};
+      for(const alias of (w.legacy_week_ids||[]))if(String(alias)!==String(w.id))weekIdAliases[String(alias)]=String(w.id);
       const key=weekCanonicalKey(w);
       if(!byKey.has(key)){byKey.set(key,w);order.push(key)}else byKey.set(key,mergeWeekCopies(byKey.get(key),w));
     }
     return order.map(k=>byKey.get(k)).filter(Boolean);
   }
-  function lightWeekCache(w){if(!w)return null;return {id:w.id,number:w.number,year:w.year,term:w.term,start:w.start,end:w.end,status:w.status,execution_state:w.execution_state||'',execution_confirmed_at:w.execution_confirmed_at||'',closed_at:w.closed_at||'',reviewer_id:w.reviewer_id||'',reviewer_email:w.reviewer_email||'',reviewer_role:w.reviewer_role||'',reviewer_name:w.reviewer_name||'',execution_notice:w.execution_notice||''}}
+  function lightWeekCache(w){if(!w)return null;return {id:w.id,number:w.number,year:w.year,term:w.term,start:w.start,end:w.end,status:w.status,legacy_week_ids:w.legacy_week_ids||[],published_teacher_count:w.published_teacher_count||0,publish_failed_teachers:w.publish_failed_teachers||[],last_published_at:w.last_published_at||'',execution_state:w.execution_state||'',execution_confirmed_at:w.execution_confirmed_at||'',closed_at:w.closed_at||'',reviewer_id:w.reviewer_id||'',reviewer_email:w.reviewer_email||'',reviewer_role:w.reviewer_role||'',reviewer_name:w.reviewer_name||'',execution_notice:w.execution_notice||''}}
   function lightArchiveCache(a){if(!a)return null;return {id:a.id,week_id:a.week_id,week_number:a.week_number,year:a.year,term:a.term,start:a.start,end:a.end,closed_at:a.closed_at,metrics:a.metrics?{disciplineAvg:a.metrics.disciplineAvg||0,executiveAvg:a.metrics.executiveAvg||a.metrics.avg||0,avg:a.metrics.avg||0,counts:a.metrics.counts||{}}:{}}}
   function cloudWeekRecord(w){const x={...(w||{})};delete x.teacherSubmissions;delete x.teacherEvidenceDrafts;delete x.evidenceViews;return x}
   function writeLightWeeklyCache(){
@@ -570,7 +568,7 @@
     }catch(e){console.warn('[deputy weekly period restore]',e);return false;}
   }
   function currentWeek(){return weeks.find(w=>w.id===activeWeekId)||null}
-  function currentReviewerIdentity(){return {id:String(cloudReviewerId||window.PlatformCloudSession?.userId?.()||sessionStorage.getItem('currentUserId')||localStorage.getItem('currentUserId')||localStorage.getItem('current_user_id')||'').trim(),email:String(localStorage.getItem('currentUserEmail')||'').trim().toLowerCase(),role:String(sessionStorage.getItem('smart_school_tab_role_v1')||localStorage.getItem('currentRole')||'agent').trim().toLowerCase(),name:localStorage.getItem('currentUserName')||'المسؤول'}}
+  function currentReviewerIdentity(){return {id:String(window.PlatformCloudSession?.userId?.()||sessionStorage.getItem('currentUserId')||localStorage.getItem('currentUserId')||localStorage.getItem('current_user_id')||'').trim(),email:String(localStorage.getItem('currentUserEmail')||'').trim().toLowerCase(),role:String(sessionStorage.getItem('smart_school_tab_role_v1')||localStorage.getItem('currentRole')||'agent').trim().toLowerCase(),name:localStorage.getItem('currentUserName')||'المسؤول'}}
   function reviewerStamp(){const c=currentReviewerIdentity();return {reviewer_id:c.id,reviewer_email:c.email,reviewer_role:c.role,reviewer_name:c.name}}
 
 
@@ -600,8 +598,9 @@
   function nextSundayAfter(d){let x=new Date(d); x.setHours(12,0,0,0); let diff=(7-x.getDay())%7; if(diff===0)diff=7; x.setDate(x.getDate()+diff); return x}
   function blankTeacherStatus(){let s={attendance:{},lineup:{},weeklyPlan:'مطلوب',madrasati:'مطلوب',weeklyStrategy:'مطلوب',classTime:'مطلوب',followupRecord:'مطلوب',periodTest:'مطلوب',notes:''}; DAYS.forEach(d=>{s.attendance[d]='حاضر'; s.lineup[d]='حاضر'}); return s}
   function ensureWeekTeacherStatuses(){weeks.forEach(w=>{w.teacherStatuses=w.teacherStatuses||{}; w.teacherSubmissions=w.teacherSubmissions||{}; teachers.forEach(t=>{if(!w.teacherStatuses[t.user_id])w.teacherStatuses[t.user_id]=blankTeacherStatus()})})}
-  async function createWeek(data){const id='W'+Date.now(); const w={id,number:data.number,year:data.year||'',term:data.term,start:data.start,end:data.end,status:data.status||'نشط',created_at:new Date().toISOString(),...reviewerStamp(),basicTasks:BASIC_TASKS,variableAssignments:[],periodTest:null,extraTasks:[],teacherStatuses:{}}; teachers.forEach(t=>{w.teacherStatuses[t.user_id]=blankTeacherStatus()}); weeks.unshift(w); activeWeekId=id; await saveWeeks(); renderAll(); toast('تم إنشاء أسبوع المتابعة والتحقق سحابيًا')}
-  async function generateAcademicWeeks(year,term,start,count){if(!start)return toast('حدد تاريخ بداية الفصل'); count=Number(count)||20; let first=new Date(start+'T12:00:00'); let list=[]; let s=new Date(first); for(let i=1;i<=count;i++){let e=weekEndThursday(s); let id='W'+Date.now()+'_'+i; let status=i===1?'نشط':'لم يبدأ'; list.push({id,number:i,year,term,start:ymd(s),end:ymd(e),status,created_at:new Date().toISOString(),...reviewerStamp(),basicTasks:BASIC_TASKS,variableAssignments:[],periodTest:null,extraTasks:[],teacherStatuses:{}}); s=nextSundayAfter(e)} list.forEach(w=>teachers.forEach(t=>w.teacherStatuses[t.user_id]=blankTeacherStatus())); weeks=list.concat(weeks.filter(w=>!(w.year===year&&w.term===term))); activeWeekId=list[0]?.id||activeWeekId; await saveWeeks(); renderAll(); toast('تم توليد '+count+' أسبوعًا دراسيًا والتحقق سحابيًا')}
+  function stableWeekId(w){return 'week_v2_'+WeeklyWorkflowCore.periodKey(w).replace(/[^a-zA-Z0-9_-]/g,'_');}
+  async function createWeek(data){const period=WeeklyWorkflowCore.periodKey(data);if(!period)return toast('حدد العام والفصل ورقم الأسبوع');const existing=weeks.find(w=>weekCanonicalKey(w)===period);if(existing){activeWeekId=existing.id;renderAll();return toast('الأسبوع موجود؛ تم فتحه دون إنشاء نسخة أخرى');}const id=stableWeekId(data),w={id,number:data.number,year:data.year||'',term:data.term,start:data.start,end:data.end,status:data.status||'نشط',created_at:new Date().toISOString(),...reviewerStamp(),basicTasks:BASIC_TASKS,variableAssignments:[],periodTest:null,extraTasks:[],teacherStatuses:{}};teachers.forEach(t=>w.teacherStatuses[t.user_id]=blankTeacherStatus());weeks.unshift(w);activeWeekId=id;await saveWeeks();renderAll();toast('تم إنشاء أسبوع المتابعة والتحقق سحابيًا');}
+  async function generateAcademicWeeks(year,term,start,count){if(!start)return toast('حدد تاريخ بداية الفصل');count=Math.min(60,Math.max(1,Number(count)||20));let date=new Date(start+'T12:00:00');if(!Number.isFinite(date.getTime()))return toast('تاريخ بداية الفصل غير صحيح');const generated=[];for(let i=1;i<=count;i++){const data={year,term,number:i},existing=weeks.find(w=>weekCanonicalKey(w)===WeeklyWorkflowCore.periodKey(data));if(existing)generated.push(existing);else{const w={id:stableWeekId(data),...data,start:ymd(date),end:ymd(weekEndThursday(date)),status:i===1?'نشط':'لم يبدأ',created_at:new Date().toISOString(),...reviewerStamp(),basicTasks:BASIC_TASKS,variableAssignments:[],periodTest:null,extraTasks:[],teacherStatuses:{}};teachers.forEach(t=>w.teacherStatuses[t.user_id]=blankTeacherStatus());generated.push(w);}date=nextSundayAfter(weekEndThursday(date));}const old=weeks.filter(w=>!generated.some(x=>String(x.id)===String(w.id)));weeks=dedupeWeeks(generated.concat(old));if(!weeks.some(w=>w.id===activeWeekId))activeWeekId=generated[0]?.id||activeWeekId;await saveWeeks();renderAll();toast('تم استكمال الأسابيع دون حذف الأسابيع أو الأعمال السابقة');}
   function filteredTeachers(){const q=($('teacherSearch')?.value||'').trim().toLowerCase(), ex=$('extraFilter')?.value||'', st=$('statusFilter')?.value||''; return teachers.filter(t=>(!q || [t.name,t.email,t.subject].join(' ').toLowerCase().includes(q)) && (!ex || (t.extra_roles||[]).includes(ex)) && (!st || (st==='ready'?t.profile_status==='complete':t.profile_status!=='complete')))}
   function badges(arr,cls=''){return (arr&&arr.length)?arr.map(x=>'<span class="badge '+cls+'">'+esc(x)+'</span>').join(' '):'<span class="badge gray">لا يوجد</span>'}
   function assignmentLabel(x){if(typeof x==='string')return x; return [x?.stage,x?.grade,x?.track,x?.section,x?.subject,x?.title].filter(Boolean).join(' / ')||'تكليف تدريسي'}
@@ -956,16 +955,12 @@
     const tid=String(payload.teacher_id||'').trim(); if(!tid)return false;
     const old=w.teacherSubmissions[tid]||{};
     const incoming={...payload,items:payload.items||{},cloud_submission_key:payload.cloud_submission_key||('weekly_submission_v1:'+String(payload.week_id)+':'+tid)};
-    if(!old.updated_at||String(incoming.updated_at||incoming.submitted_at||'')>=String(old.updated_at||old.submitted_at||''))w.teacherSubmissions[tid]={...old,...incoming};
+    w.teacherSubmissions[tid]=WeeklyWorkflowCore.mergeSubmission(old,incoming);
     return true;
   }
   async function loadWeeklyReviewSubmissions(){
     if(!window.PlatformStateEngine?.pullSchoolUsers)return 0;
     const r=await window.PlatformStateEngine.pullSchoolUsers('weekly_teacher_work'); let count=0;
-    // The Edge Function has already authenticated and filtered these rows for
-    // the signed-in reviewer. Prefer that server identity over stale browser
-    // keys left by a previous manager/deputy session on the same device.
-    cloudReviewerId=String(r?.reviewerId||'').trim()||cloudReviewerId;
     if(weeklyReviewDecisionBusy)return 0;
     for(const item of (r?.items||[])){
       if(item.deleted_at)continue;
@@ -1002,7 +997,7 @@
     const closed=!!w&&(w.execution_state==='closed'||['مغلق','مؤرشف'].includes(w.status||''));
     box.className='notice '+(st.confirmed&&!closed?'ok':'');
     box.innerHTML=closed?`🔒 <b>تم إغلاق أعمال الأسبوع ${esc(w.number||'—')}</b> — لا يستطيع المعلمون رفع أو إرسال شواهد جديدة لهذا الأسبوع. يبقى الأسبوع متاحًا لك للعرض والمراجعة وطباعة تقرير التنفيذ.`:(st.confirmed?`✅ <b>${esc(st.label)}</b> — تم التأكيد في ${w.execution_confirmed_at?new Date(w.execution_confirmed_at).toLocaleString('ar-SA'):'—'} بواسطة ${esc(w.reviewer_name||'المسؤول')}. الأعمال منشورة للمعلمين.`:`⚠️ <b>${esc(st.label)}</b> — حفظ الأسبوع وحده لا يرسله للمعلمين. استخدم «تأكيد وبدء تنفيذ الأسبوع».`);
-    if(btn){btn.disabled=!w||st.confirmed||closed||['إجازة'].includes(w?.status||'');btn.textContent=closed?'🔒 الأسبوع مغلق':st.confirmed?'✅ الأسبوع في طور التنفيذ':'🚀 تأكيد وبدء تنفيذ الأسبوع';}
+    if(btn){btn.disabled=!w||!!window.weeklyPublishBusy||closed||['إجازة'].includes(w?.status||'');btn.textContent=closed?'🔒 الأسبوع مغلق':st.confirmed?'🔄 إعادة نشر الأسبوع والتحقق من الاستلام':'🚀 تأكيد وبدء تنفيذ الأسبوع';}
   }
   function weeklyPlanPayloadForTeacher(w,t){
     const cur=currentReviewerIdentity();
@@ -1027,7 +1022,7 @@
     const failed=[];let published=0;
     for(const t of targets){
       try{
-        await window.PlatformStateEngine.publishWeeklyPlan(t.user_id,weeklyPlanPayloadForTeacher(w,t));
+        await WeeklyWorkflowCore.publishVerified(window.PlatformStateEngine,t.user_id,weeklyPlanPayloadForTeacher(w,t));
         published++;
         try{if(window.PlatformEventBus?.emit)await PlatformEventBus.emit(eventType,{recipient_user_id:String(t.user_id),summary:'أضيفت أو حُدثت مهمة في أعمال الأسبوع '+String(w.number||'')+'.',title:'تحديث أعمال الأسبوع',severity:'important',notifyPush:true,action_url:'teacher_weekly_tasks.html'},{moduleKey:'deputy_weekly_followup',recordType:'weekly_plan_update',recordId:String(w.id||''),cloud:false});}catch(e){console.warn('[weekly mutation notification]',e)}
       }catch(e){failed.push({id:String(t.user_id),name:t.name||t.user_id,error:String(e&&e.message||e)})}
@@ -1036,11 +1031,22 @@
     await saveWeeks();
     return {published,failed,pendingConfirmation:false};
   }
+  async function refreshWeeklyPublicationRoster(){
+    if(!window.SmartSchoolSupabase?.listFollowUsers)throw new Error('مصدر الحسابات المفعلة غير متاح؛ لم يتم اعتماد نشر جزئي.');
+    const roster=await SmartSchoolSupabase.listFollowUsers('teacher');
+    const active=(Array.isArray(roster)?roster:[]).filter(x=>x&&x.id&&x.role==='teacher'&&x.status==='active');
+    const known=new Map(teachers.map(x=>[String(x.user_id),x]));
+    teachers=active.map(x=>{const prior=known.get(String(x.id))||{};return normalizeTeacher({...prior,...x,user_id:x.id,id:x.id,subject:prior.subject||x.subject||'',weekly_lessons:prior.weekly_lessons||x.weekly_lessons||'',assignments:prior.assignments||x.assignments||[]});});
+    return teachers;
+  }
   async function confirmAndPublishActiveWeek(){
+    if(window.weeklyPublishBusy)return;
     const w=currentWeek(); if(!w)return toast('اختر الأسبوع المراد تنفيذه أولًا');
     if(['مغلق','مؤرشف','إجازة'].includes(w.status||''))return toast('لا يمكن بدء تنفيذ أسبوع مغلق أو مؤرشف أو إجازة');
-    if(!teachers.length)return toast('لا توجد قائمة معلمين مفعلة لإرسال خطة الأسبوع إليها');
+    try{await refreshWeeklyPublicationRoster();}catch(e){return toast(String(e.message||e));}
+    if(!teachers.length)return toast('لا توجد حسابات معلمين مفعلة لإرسال خطة الأسبوع إليها');
     if(w.execution_confirmed_at&&!confirm('تم تأكيد هذا الأسبوع مسبقًا. هل تريد إعادة نشر الخطة الحالية للمعلمين؟'))return;
+    window.weeklyPublishBusy=true;
     const cur=currentReviewerIdentity();
     w.execution_confirmed_at=w.execution_confirmed_at||new Date().toISOString();
     w.execution_state='in_progress';w.status='نشط';w.reviewer_id=cur.id;w.reviewer_email=cur.email;w.reviewer_role=cur.role||'agent';w.reviewer_name=cur.name||'المسؤول';
@@ -1049,12 +1055,12 @@
       if(!window.PlatformStateEngine?.publishWeeklyPlan)throw new Error('محرك نشر خطة الأسبوع غير متاح');
       let ok=0,failed=[];
       for(const t of teachers){
-        try{await window.PlatformStateEngine.publishWeeklyPlan(t.user_id,weeklyPlanPayloadForTeacher(w,t));ok++;}catch(e){failed.push(t.name||t.user_id);}
+        try{await WeeklyWorkflowCore.publishVerified(window.PlatformStateEngine,t.user_id,weeklyPlanPayloadForTeacher(w,t));ok++;}catch(e){failed.push(t.name||t.user_id);}
       }
       w.published_teacher_count=ok;w.publish_failed_teachers=failed;w.last_published_at=new Date().toISOString();
       await saveWeeks();renderAll();
       if(failed.length)toast(`تم بدء تنفيذ الأسبوع ونشره إلى ${ok} معلم/ـة، وتعذر النشر لـ ${failed.length}`);else toast(`تم تأكيد الأسبوع ${w.number||''} وبدء التنفيذ لدى جميع المعلمين (${ok})`);
-    }catch(e){toast('تعذر نشر الأسبوع للمعلمين: '+String(e&&e.message||e));}
+    }catch(e){toast('تعذر نشر الأسبوع للمعلمين: '+String(e&&e.message||e));}finally{window.weeklyPublishBusy=false;renderAll();}
   }
   async function refreshWeeklyReviewInbox(showToast){
     if(weeklyReviewDecisionBusy)return 0;

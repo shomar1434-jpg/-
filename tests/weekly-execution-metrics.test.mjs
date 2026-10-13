@@ -53,7 +53,7 @@ test('actual reviewer functions retain cloud submissions through analytics and c
 test('actual cloud merge rejects other schools/reviewers and older response',()=>{
  const w={id:'w1',teacherSubmissions:{}};
  const ctx={weeks:[w],weekIdAliases:{oldWeek:'w1'},schoolId:()=> 'school-a',currentReviewerIdentity:()=>({id:'reviewer-a'}),weekCanonicalKey:()=> 'week1'};
- vm.createContext(ctx);vm.runInContext(fn('submissionBelongsToCurrentReviewer')+'\n'+fn('mergeCloudSubmissionPayload'),ctx);
+ vm.createContext(ctx);vm.runInContext(fs.readFileSync(new URL('../weekly-workflow-core.js',import.meta.url),'utf8'),ctx);vm.runInContext(fn('submissionBelongsToCurrentReviewer')+'\n'+fn('mergeCloudSubmissionPayload'),ctx);
  const p={school_id:'school-a',week_id:'oldWeek',teacher_id:'t',reviewer_id:'reviewer-a',updated_at:'2026-10-03',...sent('مطلوب','approved')};ctx.p=p;
  assert.equal(vm.runInContext('mergeCloudSubmissionPayload(p)',ctx),true);assert.equal(w.teacherSubmissions.t.items.weeklyPlan.review_status,'approved');
  ctx.p={...p,school_id:'school-b'};assert.equal(vm.runInContext('mergeCloudSubmissionPayload(p)',ctx),false);

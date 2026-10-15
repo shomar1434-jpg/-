@@ -534,6 +534,13 @@
   var forgot=document.getElementById('forgot-password-btn'),login=document.getElementById('login-email'),loginMsg=document.getElementById('login-msg');
   var overlay=document.getElementById('password-recovery-overlay'),recoveryMsg=document.getElementById('password-recovery-msg');
   function client(){return window.SmartSchoolSupabase&&window.SmartSchoolSupabase.getClient?window.SmartSchoolSupabase.getClient():null}
+  async function recoveryAction(action,body,token){
+    var sb=client();if(!sb)throw new Error('خدمة الاستعادة غير متاحة الآن.');
+    var result=await sb.functions.invoke('platform-session',{body:Object.assign({action:action},body),headers:token?{Authorization:'Bearer '+token}:undefined});
+    if(result.error){var errorMessage='تعذر الاتصال بخدمة الاستعادة.';var context=result.error.context;if(context&&typeof context.json==='function'){try{var errorBody=await context.json();errorMessage=errorBody.error||errorMessage;}catch(_){}}throw new Error(errorMessage);}
+    if(!result.data||!result.data.ok)throw new Error(result.data&&result.data.error||'تعذر تنفيذ الاستعادة.');
+    return result.data;
+  }
   function showRecovery(){overlay.hidden=false;setTimeout(function(){document.getElementById('recovery-new-password').focus()},0)}
   function hideRecovery(){overlay.hidden=true;document.getElementById('recovery-new-password').value='';document.getElementById('recovery-confirm-password').value='';recoveryMsg.textContent=''}
   forgot.onclick=async function(){
@@ -543,10 +550,9 @@
     forgot.disabled=true;loginMsg.style.color='#ccfbf1';loginMsg.textContent='جاري إرسال رابط الاستعادة...';
     try{
       var redirectTo=location.origin+location.pathname+location.search;
-      var result=await sb.auth.resetPasswordForEmail(email,{redirectTo:redirectTo});
-      if(result.error)throw result.error;
+      await recoveryAction('request-password-recovery',{email:email,redirectTo:redirectTo});
       loginMsg.textContent='إذا كان البريد مسجلًا للاستعادة فسيصلك رابط لتعيين رقم سري جديد. افحص البريد غير الهام أيضًا.';
-    }catch(e){loginMsg.style.color='#fecdd3';loginMsg.textContent='تعذر إرسال رابط الاستعادة الآن. حاول لاحقًا أو تواصل مع مدير المدرسة.'}
+    }catch(e){loginMsg.style.color='#fecdd3';loginMsg.textContent=e.message||'تعذر إرسال رابط الاستعادة الآن.'}
     finally{forgot.disabled=false;}
   };
   document.getElementById('cancel-recovery-password').onclick=hideRecovery;
@@ -557,11 +563,12 @@
     var sb=client();if(!sb){recoveryMsg.textContent='خدمة الاستعادة غير متاحة الآن.';return;}
     try{
       btn.disabled=true;recoveryMsg.style.color='#0f766e';recoveryMsg.textContent='جاري حفظ الرقم السري الجديد...';
-      var result=await sb.auth.updateUser({password:password});if(result.error)throw result.error;
+      var sessionResult=await sb.auth.getSession();var token=sessionResult.data&&sessionResult.data.session&&sessionResult.data.session.access_token;if(!token)throw new Error('انتهت صلاحية رابط الاستعادة. اطلب رابطًا جديدًا.');
+      await recoveryAction('complete-password-recovery',{password:password},token);
       await sb.auth.signOut();
       hideRecovery();loginMsg.style.color='#ccfbf1';loginMsg.textContent='تم تغيير الرقم السري. يمكنك الآن تسجيل الدخول بالرقم الجديد.';
       history.replaceState(null,'',location.pathname+location.search);
-    }catch(e){recoveryMsg.style.color='#b91c1c';recoveryMsg.textContent='انتهت صلاحية رابط الاستعادة أو تعذر الحفظ. اطلب رابطًا جديدًا.'}
+    }catch(e){recoveryMsg.style.color='#b91c1c';recoveryMsg.textContent=e.message||'انتهت صلاحية رابط الاستعادة أو تعذر الحفظ. اطلب رابطًا جديدًا.'}
     finally{btn.disabled=false;}
   };
   var sb=client();

@@ -1,3 +1,4 @@
+import {handlePasswordRecovery,legacyRecoveryGate} from './password-recovery.ts';
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const CORS_HEADERS = {
@@ -272,6 +273,10 @@ Deno.serve(async (request) => {
     const admin = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
+    const recoveryClient=anonKey?createClient(supabaseUrl,anonKey,{auth:{persistSession:false,autoRefreshToken:false}}):null;
+    const recovery=await handlePasswordRecovery({action:requestedAction,body:payload,request,admin,authClient:recoveryClient,
+      origin:Deno.env.get('PLATFORM_PASSWORD_RECOVERY_URL')||'https://shomar1434-jpg.github.io/school-login.html',requestId});
+    if(recovery)return json(recovery.body,recovery.status);
     if (schoolRef && isUuid(schoolRef)) schoolRef = await resolveSchoolAlias(admin, schoolRef);
 
     const action = lower(payload?.action || 'login');
@@ -415,6 +420,14 @@ Deno.serve(async (request) => {
         ) || null;
       }
     } catch (_) {}
+
+    if(!authUser&&!normalizedLogin.includes('@')&&anonKey&&loginIdentityRows.length===1&&text(loginIdentityRows[0].email)){
+      const byEmail=createClient(supabaseUrl,anonKey,{auth:{persistSession:false,autoRefreshToken:false}});
+      const checked=await byEmail.auth.signInWithPassword({email:lower(loginIdentityRows[0].email),password});
+      if(!checked.error&&checked.data?.user)authUser=checked.data.user;
+    }
+    // Once mailbox-authorized recovery completes, old profile/school passwords cannot authenticate.
+    if(await legacyRecoveryGate(admin,loginIdentityRows,authUser))return json({error:'بيانات الدخول غير صحيحة',code:'USER_NOT_RESOLVED',details:'LD203',requestId},401);
 
     // Some old shared-manager accounts stored their credential on a schools row
     // while users contains only the identity/profile. Prove that legacy password
@@ -775,3 +788,4 @@ Deno.serve(async (request) => {
     );
   }
 });
+

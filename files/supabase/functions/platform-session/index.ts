@@ -1,0 +1,788 @@
+import {handlePasswordRecovery,legacyRecoveryGate} from './password-recovery.ts';
+import {loginUpstreamFetch,loginServiceFailure} from '../_shared/login-upstream.ts';
+import { createClient } from 'npm:@supabase/supabase-js@2';
+
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-platform-session',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      ...CORS_HEADERS,
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+    },
+  });
+
+const sha256 = async (value: string) =>
+  Array.from(
+    new Uint8Array(
+      await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)),
+    ),
+  )
+    .map((item) => item.toString(16).padStart(2, '0'))
+    .join('');
+
+const text = (value: unknown) => String(value ?? '').trim();
+const lower = (value: unknown) => text(value).toLowerCase();
+const canonicalRole = (value: unknown) => {
+  const role = lower(value);
+  const groups: Record<string, string[]> = {
+    manager: ['manager','principal','school_manager','school-manager','leadership','مدير','مديرة','مدير المدرسة','مديرة المدرسة'],
+    agent: ['agent','deputy','vice','wakil','agency','وكيل','وكيلة'],
+    teacher: ['teacher','performance','معلم','معلمة'],
+    student_advisor: ['student_advisor','student-advisor','advisor','counselor','مرشد','مرشدة','موجه','موجهة'],
+    health_advisor: ['health_advisor','health-advisor','موجه صحي','موجهة صحية','الموجه الصحي'],
+    activity_leader: ['activity_leader','activity-leader','activity','رائد النشاط','رائدة النشاط'],
+    kindergarten_teacher: ['kindergarten_teacher','kindergarten-teacher','kindergarten','kindergarten teacher','kg','kg_teacher','kg-teacher','معلمة رياض الأطفال','معلمة رياض أطفال','معلم رياض الأطفال','قسم معلمة رياض الأطفال'],
+    administrative_employee: ['administrative_employee','admin_employee','employee_admin','موظف إداري','موظفة إدارية'],
+  };
+  for (const [canonical, aliases] of Object.entries(groups)) {
+    if (role === canonical || aliases.includes(role)) return canonical;
+  }
+  return role;
+};
+const isUuid = (value: unknown) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    text(value),
+  );
+
+const resolveSchoolAlias = async (admin: any, value: string) => {
+  if (!value) return value;
+  const q = await admin.from('school_identity_aliases').select('canonical_school_id,status').eq('alias', value).eq('status','active').maybeSingle();
+  if (q.error) throw q.error;
+  return text(q.data?.canonical_school_id || value);
+};
+
+const activeStatus = (value: unknown) => {
+  const status = lower(value || 'active');
+  return ![
+    'inactive',
+    'disabled',
+    'suspended',
+    'blocked',
+    'deleted',
+    'archived',
+    'pending',
+    'بانتظار التفعيل',
+    'غير فعال',
+    'معطل',
+    'موقوف',
+    'محذوف',
+  ].includes(status);
+};
+
+const passwordMatches = (row: Record<string, unknown>, password: string) => {
+  const fields = [
+    'password',
+    'pass',
+    'manager_password',
+    'school_password',
+    'login_password',
+    'temp_password',
+    'default_password',
+    'pin',
+    'code',
+    'access_code',
+    'secret',
+  ];
+  const candidates = fields.map((field) => text(row?.[field])).filter(Boolean);
+  return candidates.length > 0 && candidates.includes(password);
+};
+
+const managerSchoolPasswordMatches = (row: Record<string, unknown>, password: string) => {
+  // School codes, registration codes and PIN-like fields are identifiers, not
+  // manager credentials. Only explicit password fields may prove this fallback.
+  const fields = [
+    'manager_password',
+    'password',
+    'school_password',
+    'login_password',
+    'temp_password',
+    'default_password',
+  ];
+  const candidates = fields.map((field) => text(row?.[field])).filter(Boolean);
+  return candidates.length > 0 && candidates.includes(password);
+};
+
+const loginMatches = (row: Record<string, unknown>, login: string) => {
+  const wanted = lower(login);
+  const fields = [
+    'email',
+    'user_email',
+    'manager_email',
+    'principal_email',
+    'admin_email',
+    'owner_email',
+    'login_email',
+    'username',
+    'userName',
+    'loginName',
+    'full_name',
+    'name',
+    'national_id',
+    'nationalId',
+    'id',
+  ];
+  return fields.some((field) => lower(row?.[field]) === wanted);
+};
+
+
+const activeSession = async (admin: any, rawToken: string) => {
+  if (!rawToken) return null;
+  const hash = await sha256(rawToken);
+  const q = await admin.from('platform_sessions').select('*').eq('session_token_hash', hash).eq('status','active').limit(1).maybeSingle();
+  if (q.error || !q.data) return null;
+  if (q.data.expires_at && Date.parse(q.data.expires_at) <= Date.now()) return null;
+  return q.data;
+};
+
+const membershipsForIdentity = async (admin: any, session: any) => {
+  const uq = await admin.from('users').select('*').eq('id', session.user_id).limit(1).maybeSingle();
+  const identity = uq.data || {};
+  let email = lower(identity.email || identity.microsoft_email || session.email || '');
+  // RL140: if the canonical session UUID is an Auth identity without a matching
+  // legacy users row, recover its verified e-mail for membership resolution.
+  if(!email && isUuid(session.user_id)) {
+    try {
+      const au = await admin.auth.admin.getUserById(session.user_id);
+      email = lower(au?.data?.user?.email || '');
+    } catch(_) {}
+  }
+  const rows: any[] = [];
+  const add = (items:any[], source:'user_id'|'email') => (items||[]).forEach((x:any)=>{
+    if(!x || !activeStatus(x.status)) return;
+    const row={...x,__identityMatch:source};
+    // An e-mail match is accepted only when the membership itself carries the
+    // exact verified identity e-mail. This repairs legacy memberships whose
+    // user_id points to an older account row without weakening school isolation.
+    if(source==='email' && email && lower(x.email||x.microsoft_email||'')!==email) return;
+    rows.push(row);
+  });
+  try { const q=await admin.from('school_members').select('*').eq('user_id',session.user_id); if(!q.error)add(q.data,'user_id'); } catch(_){}
+  if(email){
+    try { const q=await admin.from('school_members').select('*').eq('email',email); if(!q.error)add(q.data,'email'); } catch(_){}
+    try { const q=await admin.from('school_members').select('*').eq('microsoft_email',email); if(!q.error)add(q.data,'email'); } catch(_){}
+  }
+  const byKey = new Map<string,any>();
+  rows.forEach((r:any)=>{
+    const k=`${r.school_id}|${canonicalRole(r.role)}`;
+    const prev=byKey.get(k);
+    // Prefer direct user_id membership over legacy e-mail binding when both exist.
+    if(!prev || (prev.__identityMatch!=='user_id' && r.__identityMatch==='user_id')) byKey.set(k,r);
+  });
+  if(email){
+    try {
+      const q=await admin.from('users').select('*').eq('email',email).limit(1000);
+      if(!q.error)(q.data||[]).forEach((u:any)=>{
+        if(!activeStatus(u.status)||!u.school_id)return;
+        const k=`${u.school_id}|${canonicalRole(u.role)}`;
+        if(!byKey.has(k))byKey.set(k,{id:`user:${u.id}`,school_id:u.school_id,user_id:session.user_id,email,role:u.role,status:u.status,__userRow:u,__identityMatch:'email'});
+      });
+    } catch(_){}
+  }
+  // Legacy independent schools may predate school_members. A school whose manager
+  // e-mail equals the verified identity remains an authoritative manager binding.
+  if(email){
+    try{
+      const q=await admin.from('schools').select('*').eq('manager_email',email).limit(1000);
+      if(!q.error)(q.data||[]).forEach((school:any)=>{
+        if(!school?.id||!activeStatus(school.status))return;
+        const k=`${school.id}|manager`;
+        if(!byKey.has(k))byKey.set(k,{id:`manager:${school.id}`,school_id:school.id,user_id:session.user_id,email,role:'manager',status:'active',is_primary_manager:true,__schoolRow:school,__identityMatch:'email'});
+      });
+    }catch(_){}
+  }
+  const memberships=[...byKey.values()].filter((r:any)=>r.school_id);
+  const ids=[...new Set(memberships.map((r:any)=>r.school_id))];
+  const schools=new Map<string,any>();
+  if(ids.length){const sq=await admin.from('schools').select('*').in('id',ids);if(!sq.error)(sq.data||[]).forEach((x:any)=>schools.set(String(x.id),x));}
+  return memberships.map((m:any)=>{
+    const school=schools.get(String(m.school_id))||{};
+    return {
+      membershipId:String(m.id||''),schoolId:String(m.school_id||''),schoolName:text(school.school_name||school.schoolName),schoolCode:text(school.school_code||school.schoolCode),
+      role:text(m.role||identity.role||session.role||'member'),roleLabel:text(m.role_label||''),
+      // Memberships returned by this function are already proven to belong to
+      // the current identity (direct user_id or exact verified e-mail). Expose
+      // the active session user id so old duplicated user ids cannot eject a user.
+      userId:String(session.user_id),status:text(m.status||'active'),isPrimary:Boolean(m.is_primary||m.is_primary_manager)
+    };
+  }).filter((m:any)=>m.schoolId && activeStatus(schools.get(m.schoolId)?.status||'active'));
+};
+
+const issueSession = async (admin:any, userId:string, schoolId:string, role:string, previousSessionId?:string) => {
+  const rawToken = `${crypto.randomUUID()}${crypto.randomUUID()}`;
+  const tokenHash = await sha256(rawToken);
+  const now = new Date().toISOString();
+  const expiresAt = new Date(Date.now()+12*60*60*1000).toISOString();
+  // أنشئ الجلسة البديلة أولاً. لا تُلغِ الجلسة العاملة قبل نجاح الإدراج؛
+  // وإلا فإن أي فشل عابر أثناء التجديد يطرد المستخدم من المدرسة، ويظهر أكثر
+  // مع الحساب الواحد المرتبط بأكثر من مدرسة.
+  const ins=await admin.from('platform_sessions').insert({session_token_hash:tokenHash,user_id:userId,school_id:schoolId,role,status:'active',expires_at:expiresAt,last_seen_at:now}).select('id').single();
+  if(ins.error) throw new Error(ins.error.message);
+  if(previousSessionId) {
+    const revoke=await admin.from('platform_sessions').update({status:'revoked',revoked_at:now}).eq('id',previousSessionId);
+    if(revoke.error) console.warn('[platform-session] replacement_created_old_revoke_failed', previousSessionId, revoke.error.message);
+  }
+  return {token:rawToken,expiresAt,userId,schoolId,role};
+};
+
+Deno.serve(async (request) => {
+  if (request.method === 'OPTIONS') {
+    return new Response('ok', { headers: CORS_HEADERS });
+  }
+  if (request.method !== 'POST') {
+    return json({ error: 'طريقة الطلب غير مدعومة' }, 405);
+  }
+
+  const requestId = crypto.randomUUID();
+
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+
+    if (!supabaseUrl || !serviceRoleKey) {
+      console.error('[platform-session]', requestId, 'missing_environment');
+      return json(
+        {
+          error: 'إعدادات وظيفة الجلسة غير مكتملة',
+          code: 'SESSION_ENV_MISSING',
+          requestId,
+        },
+        500,
+      );
+    }
+
+    const payload = await request.json().catch(() => ({}));
+    const login = text(payload?.login);
+    const password = text(payload?.password);
+    let schoolRef = text(payload?.schoolId);
+
+    const requestedAction = lower(payload?.action || 'login');
+    if (requestedAction === 'probe') {
+      return json({ok:true,service:'platform-session',version:'2026.09.23-RL199',requestId});
+    }
+    if (requestedAction === 'login' && (!login || !password || !schoolRef)) {
+      return json({error:'بيانات الجلسة غير مكتملة',code:'SESSION_INPUT_INCOMPLETE',requestId},400);
+    }
+
+    const upstreamFetch=requestedAction==='login'?loginUpstreamFetch():fetch;
+    const admin = createClient(supabaseUrl, serviceRoleKey, {
+      global:{fetch:upstreamFetch},
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const recoveryClient=anonKey?createClient(supabaseUrl,anonKey,{global:{fetch:upstreamFetch},auth:{persistSession:false,autoRefreshToken:false}}):null;
+    const recovery=await handlePasswordRecovery({action:requestedAction,body:payload,request,admin,authClient:recoveryClient,
+      origin:Deno.env.get('PLATFORM_PASSWORD_RECOVERY_URL')||'https://shomar1434-jpg.github.io/school-login.html',requestId});
+    if(recovery)return json(recovery.body,recovery.status);
+    if (schoolRef && isUuid(schoolRef)) schoolRef = await resolveSchoolAlias(admin, schoolRef);
+
+    const action = lower(payload?.action || 'login');
+    if (action === 'renew') {
+      const rawSession = text(request.headers.get('x-platform-session'));
+      if (!rawSession) return json({error:'رمز الجلسة غير موجود',code:'SESSION_TOKEN_MISSING',requestId},401);
+      const hash = await sha256(rawSession);
+      const sq = await admin.from('platform_sessions').select('*').eq('session_token_hash',hash).eq('status','active').limit(1).maybeSingle();
+      if (sq.error) throw sq.error;
+      const previous = sq.data;
+      if (!previous) return json({error:'تعذر تجديد الجلسة السحابية',code:'SESSION_RENEW_NOT_FOUND',requestId},401);
+      const expiredAt = previous.expires_at ? Date.parse(previous.expires_at) : Date.now();
+      const graceMs = 7 * 24 * 60 * 60 * 1000;
+      if (Number.isFinite(expiredAt) && expiredAt < Date.now() - graceMs) {
+        return json({error:'انتهت مهلة تجديد الجلسة. يلزم تسجيل الدخول مرة أخرى.',code:'SESSION_RENEW_GRACE_EXPIRED',requestId},401);
+      }
+      const memberships = await membershipsForIdentity(admin, previous);
+      const requestedSchool = text(payload?.schoolId || previous.school_id);
+      // RL33: renewal must preserve the exact school + role. A renewal is never a role switch.
+      const allowed = memberships.find((m:any)=>m.schoolId===requestedSchool && canonicalRole(m.role)===canonicalRole(previous.role) && String(m.userId||previous.user_id)===String(previous.user_id));
+      if (!allowed) return json({error:'عضوية الحساب في المدرسة أو الدور الحالي لم تعد فعالة. اختر الدور صراحة من مبدّل العضويات.',code:'SESSION_RENEW_ROLE_MEMBERSHIP_DENIED',requestId},403);
+      const next = await issueSession(admin, previous.user_id, allowed.schoolId, previous.role, previous.id);
+      return json({...next,membershipId:allowed.membershipId,schoolName:allowed.schoolName,schoolCode:allowed.schoolCode,requestId,renewed:true});
+    }
+    if (action === 'memberships' || action === 'switch') {
+      const rawSession = text(request.headers.get('x-platform-session'));
+      const currentSession = await activeSession(admin, rawSession);
+      if (!currentSession) return json({error:'جلسة المنصة غير صالحة أو منتهية',code:'SESSION_INVALID',requestId},401);
+      const memberships = await membershipsForIdentity(admin,currentSession);
+      if(action === 'memberships') return json({memberships,current:{schoolId:currentSession.school_id,userId:currentSession.user_id,role:currentSession.role},requestId});
+      const targetSchool=text(payload?.schoolId), targetRole=canonicalRole(payload?.role), membershipId=text(payload?.membershipId);
+      const allowed=memberships.find((m:any)=>(!membershipId||m.membershipId===membershipId)&&m.schoolId===targetSchool&&(!targetRole||canonicalRole(m.role)===targetRole));
+      if(!allowed) return json({error:'الحساب غير مرتبط بالمدرسة أو الدور المطلوب',code:'MEMBERSHIP_NOT_ALLOWED',requestId},403);
+      const next=await issueSession(admin,allowed.userId||currentSession.user_id,allowed.schoolId,allowed.role,currentSession.id);
+      return json({...next,membershipId:allowed.membershipId,schoolName:allowed.schoolName,schoolCode:allowed.schoolCode,requestId});
+    }
+
+    let school: Record<string, any> | null = null;
+    if (isUuid(schoolRef)) {
+      const result = await admin
+        .from('schools')
+        .select('*')
+        .eq('id', schoolRef)
+        .limit(1)
+        .maybeSingle();
+      if (!result.error) school = result.data;
+      else console.warn('[platform-session]', requestId, 'school_uuid_lookup', result.error);
+    } else {
+      const schoolsResult = await admin.from('schools').select('*').limit(1000);
+      if (schoolsResult.error) {
+        console.error('[platform-session]', requestId, 'schools_query', schoolsResult.error);
+        return json(
+          {
+            error: 'تعذر قراءة بيانات المدرسة',
+            details: schoolsResult.error.message,
+            code: 'SCHOOLS_QUERY_FAILED',
+            requestId,
+          },
+          500,
+        );
+      }
+      const wanted = lower(schoolRef);
+      school =
+        (schoolsResult.data || []).find((row: Record<string, unknown>) =>
+          [
+            row.id,
+            row.school_id,
+            row.school_code,
+            row.registration_code,
+            row.code,
+            row.login_code,
+          ].some((value) => lower(value) === wanted),
+        ) || null;
+    }
+
+    if (!school || !isUuid(school.id) || !activeStatus(school.status)) {
+      return json(
+        {
+          error: 'المدرسة غير موجودة أو غير فعالة',
+          code: 'SCHOOL_NOT_FOUND',
+          requestId,
+        },
+        404,
+      );
+    }
+
+    let authUser: any = null;
+    const normalizedLogin = lower(login);
+    if (anonKey && normalizedLogin.includes('@')) {
+      const authClient = createClient(supabaseUrl, anonKey, {
+        global:{fetch:upstreamFetch},
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      const authResult = await authClient.auth.signInWithPassword({
+        email: normalizedLogin,
+        password,
+      });
+      if (!authResult.error && authResult.data?.user) authUser = authResult.data.user;
+    }
+
+    // RL143 — SCHOOL-FIRST MULTI-SCHOOL LOGIN:
+    // The login link fixes the school context first. For one identity that legitimately
+    // belongs to more than one independent school, prove the credential once, then
+    // authorize ONLY the active membership inside the school selected by this link.
+    // A stale users.active flag in one legacy row must not override an ACTIVE
+    // school_members authorization for the selected school.
+    let schoolBoundMembership: any = null;
+    if (normalizedLogin.includes('@')) {
+      try {
+        const mq = await admin.from('school_members').select('*')
+          .eq('school_id', school.id).eq('email', normalizedLogin).limit(1).maybeSingle();
+        if (!mq.error && mq.data && activeStatus(mq.data.status)) schoolBoundMembership = mq.data;
+      } catch (_) {}
+    }
+
+    let crossSchoolCredentialUser: any = null;
+    let sameLoginIdentityUser: any = null;
+    let loginIdentityRows: any[] = [];
+    try {
+      // البريد هو معرف الدخول الغالب في المدارس؛ الاستعلام المحدد يمنع سحب
+      // آلاف المستخدمين في كل محاولة. يبقى المسح القديم احتياطًا لأسماء
+      // المستخدمين/الهويات التاريخية فقط.
+      let identityQ = normalizedLogin.includes('@')
+        ? await admin.from('users').select('*').eq('email', normalizedLogin).limit(100)
+        : await admin.from('users').select('*').limit(5000);
+      if (!identityQ.error && normalizedLogin.includes('@') && !(identityQ.data || []).length) {
+        identityQ = await admin.from('users').select('*').limit(5000);
+      }
+      if (!identityQ.error) {
+        const identityRows = (identityQ.data || []).filter((row: Record<string, unknown>) => loginMatches(row, login));
+        loginIdentityRows = identityRows;
+        // Keep a UUID identity candidate separate from credential validation.
+        // It may be the selected school's legacy row whose password was stored
+        // on the linked school record instead of users.
+        sameLoginIdentityUser = identityRows.find((row: Record<string, unknown>) =>
+          isUuid(row.id) && activeStatus(row.status) && text(row.school_id) === text(school.id)
+        ) || identityRows.find((row: Record<string, unknown>) =>
+          isUuid(row.id) && activeStatus(row.status)
+        ) || identityRows.find((row: Record<string, unknown>) => isUuid(row.id)) || null;
+        crossSchoolCredentialUser = identityRows.find((row: Record<string, unknown>) =>
+          authUser ? (text(row.id) === text(authUser.id) || lower(row.email) === normalizedLogin) : passwordMatches(row, password)
+        ) || null;
+      }
+    } catch (_) {}
+
+    if(!authUser&&!normalizedLogin.includes('@')&&anonKey&&loginIdentityRows.length===1&&text(loginIdentityRows[0].email)){
+      const byEmail=createClient(supabaseUrl,anonKey,{global:{fetch:upstreamFetch},auth:{persistSession:false,autoRefreshToken:false}});
+      const checked=await byEmail.auth.signInWithPassword({email:lower(loginIdentityRows[0].email),password});
+      if(!checked.error&&checked.data?.user)authUser=checked.data.user;
+    }
+    // Once mailbox-authorized recovery completes, old profile/school passwords cannot authenticate.
+    if(await legacyRecoveryGate(admin,loginIdentityRows,authUser))return json({error:'بيانات الدخول غير صحيحة',code:'USER_NOT_RESOLVED',details:'LD203',requestId},401);
+
+    // Some old shared-manager accounts stored their credential on a schools row
+    // while users contains only the identity/profile. Prove that legacy password
+    // only against an ACTIVE school carrying the exact same manager e-mail.
+    let sharedManagerSchoolCredential: any = null;
+    if (!authUser && !crossSchoolCredentialUser && normalizedLogin.includes('@')) {
+      try {
+        const managerSchoolsQ = await admin.from('schools').select('*')
+          .ilike('manager_email', normalizedLogin).limit(100);
+        if (!managerSchoolsQ.error) {
+          sharedManagerSchoolCredential = (managerSchoolsQ.data || []).find((row: Record<string, unknown>) =>
+            activeStatus(row.status) &&
+            lower(row.manager_email) === normalizedLogin &&
+            managerSchoolPasswordMatches(row, password)
+          ) || null;
+        }
+      } catch (_) {}
+    }
+
+    const schoolBoundCredentialVerified = Boolean(authUser || crossSchoolCredentialUser || sharedManagerSchoolCredential);
+
+    // RL161 — SHARED MANAGER IDENTITY REPAIR:
+    // Some legacy multi-school managers have one verified login identity but old,
+    // per-school users/school_members rows with different user_id or role values.
+    // The selected active school's exact manager_email remains an authoritative,
+    // school-scoped manager binding after the credential for that SAME e-mail has
+    // been proved by Supabase Auth or by a password-bearing users row.  This does
+    // not mutate historical rows and never grants access to a school whose
+    // manager_email does not exactly match the authenticated login.
+    const selectedSchoolManagerEmail = lower(school.manager_email || school.managerEmail || '');
+    const verifiedSharedManager = Boolean(
+      normalizedLogin.includes('@') &&
+      selectedSchoolManagerEmail &&
+      selectedSchoolManagerEmail === normalizedLogin &&
+      schoolBoundCredentialVerified
+    );
+
+    const usersResult = await admin
+      .from('users')
+      .select('*')
+      .eq('school_id', school.id)
+      .limit(1000);
+
+    if (usersResult.error) {
+      console.error('[platform-session]', requestId, 'users_query', usersResult.error);
+      return json(
+        {
+          error: 'تعذر قراءة بيانات المستخدم',
+          details: usersResult.error.message,
+          code: 'USERS_QUERY_FAILED',
+          requestId,
+        },
+        500,
+      );
+    }
+
+    // RL139 — failure-stage diagnostics. Keep user-facing login errors generic;
+    // details carries only an opaque diagnostic code (no password, no PII).
+    const sameSchoolLoginRows = (usersResult.data || []).filter(
+      (row: Record<string, unknown>) => loginMatches(row, login),
+    );
+    const candidates = sameSchoolLoginRows.filter(
+      (row: Record<string, unknown>) => activeStatus(row.status),
+    );
+    const sameSchoolCredentialMatch = candidates.some((row: Record<string, unknown>) =>
+      authUser
+        ? text(row.id) === text(authUser.id) || lower(row.email) === normalizedLogin
+        : passwordMatches(row, password),
+    );
+    let diagnosticIdentityFound = sameSchoolLoginRows.length > 0;
+    let diagnosticCredentialValidated = sameSchoolCredentialMatch || Boolean(authUser);
+    let diagnosticMembershipFound = false;
+    let diagnosticMembershipActive = false;
+
+    let user =
+      candidates.find((candidate: Record<string, unknown>) => {
+        if (authUser) {
+          return (
+            text(candidate.id) === text(authUser.id) ||
+            lower(candidate.email) === normalizedLogin
+          );
+        }
+        return passwordMatches(candidate, password);
+      }) || null;
+
+    let resolvedMembership: any = null;
+
+    // Prefer the selected school's explicit manager contract over a stale legacy
+    // membership role.  Use the single canonical identity UUID that proved the
+    // credential; the school link still fixes school.id before this point.
+    if (verifiedSharedManager) {
+      const canonicalManagerId = authUser && isUuid(authUser.id)
+        ? authUser.id
+        : (crossSchoolCredentialUser?.id || sameLoginIdentityUser?.id);
+      if (isUuid(canonicalManagerId)) {
+        resolvedMembership = {
+          id: `manager:${school.id}`,
+          school_id: school.id,
+          user_id: canonicalManagerId,
+          email: normalizedLogin,
+          role: 'manager',
+          status: 'active',
+          is_primary_manager: true,
+          __identityMatch: 'manager_email',
+        };
+        user = {
+          ...(crossSchoolCredentialUser || sameLoginIdentityUser || user || {}),
+          id: canonicalManagerId,
+          email: normalizedLogin,
+          school_id: school.id,
+          role: 'manager',
+          status: 'active',
+          active: true,
+          is_primary_manager: true,
+        };
+        diagnosticIdentityFound = true;
+        diagnosticCredentialValidated = true;
+        diagnosticMembershipFound = true;
+        diagnosticMembershipActive = true;
+      }
+    }
+
+    // RL143: resolve the selected school's membership BEFORE any global identity
+    // fallback. This is the authoritative authorization edge for multi-school users.
+    if (!resolvedMembership && schoolBoundMembership && schoolBoundCredentialVerified) {
+      resolvedMembership = schoolBoundMembership;
+      const canonicalIdentityId = authUser && isUuid(authUser.id)
+        ? authUser.id
+        : (schoolBoundMembership.user_id || crossSchoolCredentialUser?.id || user?.id);
+      if (isUuid(canonicalIdentityId)) {
+        user = {
+          ...(crossSchoolCredentialUser || user || {}),
+          id: canonicalIdentityId,
+          email: normalizedLogin || lower(crossSchoolCredentialUser?.email),
+          school_id: school.id,
+          role: schoolBoundMembership.role || crossSchoolCredentialUser?.role || user?.role,
+          status: 'active',
+          active: true,
+        };
+        diagnosticIdentityFound = true;
+        diagnosticCredentialValidated = true;
+        diagnosticMembershipFound = true;
+        diagnosticMembershipActive = true;
+      }
+    }
+
+    // RL140: a legacy users row can match the verified e-mail while carrying an
+    // obsolete/non-canonical id. Resolve the active membership with the verified
+    // Auth identity/e-mail and use a valid UUID before issuing platform_sessions.
+    if(user && authUser && isUuid(authUser.id)) {
+      try {
+        let mq = await admin.from('school_members').select('*').eq('school_id', school.id).eq('user_id', authUser.id).limit(1).maybeSingle();
+        if((!mq.data || mq.error) && normalizedLogin.includes('@')) {
+          mq = await admin.from('school_members').select('*').eq('school_id', school.id).eq('email', normalizedLogin).limit(1).maybeSingle();
+        }
+        // Do not let an old school_members role replace the selected school's
+        // explicit manager_email contract established above.
+        if(!verifiedSharedManager && !mq.error && mq.data && activeStatus(mq.data.status)) resolvedMembership = mq.data;
+      } catch(_) {}
+      // RL141 — MULTI-SCHOOL IDENTITY LOCK:
+      // Supabase Auth is the canonical identity whenever the credential was verified by Auth.
+      // school_members.user_id may be a legacy per-school UUID and MUST NOT replace the Auth UUID.
+      // Authorization remains school-scoped through resolvedMembership + school.id.
+      const canonicalUid = authUser.id;
+      user = {
+        ...user,
+        id: canonicalUid,
+        email: normalizedLogin,
+        school_id: school.id,
+        role: resolvedMembership?.role || user.role,
+      };
+    }
+
+    // إذا لم يوجد سجل مستخدم مستقل داخل المدرسة المختارة، نتحقق من عضوية نفس الهوية في school_members.
+    if (!user) {
+      // RL199: لا نعيد تحميل جدول users (حتى 5000 صف) للمرة الثانية في طلب
+      // الدخول نفسه. نتيجة فحص الهوية السابقة هي المرجع، وSupabase Auth يستطيع
+      // إنشاء هوية دنيا للتحقق من العضوية عندما لا يوجد صف legacy مطابق.
+      {
+        // RL118: credential identity and school authorization are separate concerns.
+        // A legacy users row may still be pending/hold an old role while school_members
+        // already contains the authoritative ACTIVE membership for this school.
+        // We may use that row only to prove the credential identity; the active
+        // school_members row below remains mandatory before granting school access.
+        const identityCandidates = loginIdentityRows;
+        diagnosticIdentityFound = diagnosticIdentityFound || identityCandidates.length > 0;
+        let identityUser = identityCandidates.find((candidate: Record<string, unknown>) => {
+          if (authUser) return text(candidate.id) === text(authUser.id) || lower(candidate.email) === normalizedLogin;
+          return passwordMatches(candidate, password);
+        }) || null;
+        // Supabase Auth can prove the identity even when the legacy users row is stale
+        // or absent. Create a minimal identity only for the subsequent membership check.
+        if (!identityUser && authUser && isUuid(authUser.id)) {
+          identityUser = { id: authUser.id, email: normalizedLogin, status: 'identity_verified' };
+        }
+        if (identityUser) {
+          diagnosticCredentialValidated = true;
+          try {
+            let mq = await admin.from('school_members').select('*').eq('school_id', school.id).eq('user_id', identityUser.id).limit(1).maybeSingle();
+            if ((!mq.data || mq.error) && lower(identityUser.email)) {
+              mq = await admin.from('school_members').select('*').eq('school_id', school.id).eq('email', lower(identityUser.email)).limit(1).maybeSingle();
+            }
+            diagnosticMembershipFound = Boolean(!mq.error && mq.data);
+            diagnosticMembershipActive = Boolean(!mq.error && mq.data && activeStatus(mq.data.status));
+            if (diagnosticMembershipActive) {
+              resolvedMembership = mq.data;
+              // RL141: keep the verified Auth UUID as the platform-session identity.
+              // A legacy membership UUID is authorization metadata for this school, not a new identity.
+              const canonicalIdentityId = authUser && isUuid(authUser.id) ? authUser.id : (mq.data.user_id || identityUser.id);
+              user = {
+                ...identityUser,
+                id: canonicalIdentityId,
+                email: authUser && normalizedLogin.includes('@') ? normalizedLogin : identityUser.email,
+                school_id: school.id,
+                role: mq.data.role || identityUser.role,
+              };
+            }
+          } catch (_) {}
+        }
+      }
+    }
+
+    if (!user) {
+      let diagnosticCode = 'LD299';
+      if (!diagnosticIdentityFound) diagnosticCode = 'LD201';
+      else if (sameSchoolLoginRows.length > 0 && candidates.length === 0) diagnosticCode = 'LD202';
+      else if (candidates.length > 0 && !sameSchoolCredentialMatch && !authUser) diagnosticCode = 'LD203';
+      else if (diagnosticCredentialValidated && !diagnosticMembershipFound) diagnosticCode = 'LD204';
+      else if (diagnosticCredentialValidated && diagnosticMembershipFound && !diagnosticMembershipActive) diagnosticCode = 'LD205';
+      console.warn('[platform-session]', requestId, 'user_not_resolved', {
+        diagnosticCode,
+        schoolId: school.id,
+        authValidated: Boolean(authUser),
+        sameSchoolLoginCount: sameSchoolLoginRows.length,
+        activeCandidateCount: candidates.length,
+        identityFound: diagnosticIdentityFound,
+        credentialValidated: diagnosticCredentialValidated,
+        membershipFound: diagnosticMembershipFound,
+        membershipActive: diagnosticMembershipActive,
+      });
+      return json({
+        error:'بيانات الدخول غير صحيحة أو الحساب غير مرتبط بهذه المدرسة',
+        code:'USER_NOT_RESOLVED',
+        details:diagnosticCode,
+        requestId
+      },401);
+    }
+
+    if (!isUuid(user.id)) {
+      return json(
+        {
+          error: 'معرّف المستخدم غير صالح لإنشاء جلسة الملفات',
+          code: 'INVALID_PUBLIC_USER_ID',
+          details: 'LD301',
+          requestId,
+        },
+        409,
+      );
+    }
+
+    // First prefer a direct membership bound to the canonical session identity.
+    // If this school still carries an old per-school user_id, resolvedMembership (matched
+    // above inside the SAME school by the verified e-mail) is merged below.
+    const membershipsQ = await admin
+      .from('school_members')
+      .select('*')
+      .eq('school_id', school.id)
+      .eq('user_id', user.id);
+
+    if (membershipsQ.error) {
+      console.warn('[platform-session]', requestId, 'membership_lookup_warning', membershipsQ.error);
+    }
+    const activeMemberships=(membershipsQ.data||[]).filter((m:any)=>activeStatus(m.status));
+    if(resolvedMembership && activeStatus(resolvedMembership.status) && !activeMemberships.some((m:any)=>String(m.id||'')===String(resolvedMembership.id||''))) {
+      activeMemberships.push(resolvedMembership);
+    }
+    const requestedLoginRole=canonicalRole(payload?.role||'');
+    const preferredRole=canonicalRole(resolvedMembership?.role||user.role||'');
+    let selectedMembership:any=null;
+    // RL122 — automatic role resolution from the account/email within the bound school.
+    // Normal school login does not ask the user to choose a role. If exactly one active
+    // school_members row exists, it is authoritative even when users.role is stale.
+    // An explicit requested role remains supported only for specialized callers.
+    if(requestedLoginRole) selectedMembership=activeMemberships.find((m:any)=>canonicalRole(m.role)===requestedLoginRole)||null;
+    if(!selectedMembership&&activeMemberships.length===1) selectedMembership=activeMemberships[0];
+    if(!selectedMembership&&activeMemberships.length>1&&preferredRole) selectedMembership=activeMemberships.find((m:any)=>canonicalRole(m.role)===preferredRole)||null;
+    if(requestedLoginRole&&!selectedMembership) return json({error:'الحساب لا يملك الدور المطلوب في هذه المدرسة',code:'LOGIN_ROLE_NOT_ALLOWED',details:'LD401',requestId},403);
+    if(!selectedMembership&&activeMemberships.length>1) return json({error:'للحساب أكثر من دور في المدرسة. اختر الدور المطلوب قبل الدخول.',code:'ROLE_SELECTION_REQUIRED',details:'LD402',roles:activeMemberships.map((m:any)=>text(m.role)),requestId},409);
+    if(!selectedMembership&&activeMemberships.length===0){
+      const legacyRole=text(user.role||'member');
+      const sameSchool=String(user.school_id||school.id)===String(school.id);
+      const managerLegacy=canonicalRole(legacyRole)==='manager'&&lower(school.manager_email||'')===normalizedLogin;
+      if(!sameSchool&&!managerLegacy)return json({error:'عضوية المستخدم في المدرسة غير فعالة',code:'MEMBERSHIP_INACTIVE',details:'LD403',requestId},403);
+      selectedMembership={role:legacyRole,status:'active',user_id:user.id,school_id:school.id};
+    }
+    const role = canonicalRole(selectedMembership?.role || user.role || 'member') || 'member';
+    const rawToken = `${crypto.randomUUID()}${crypto.randomUUID()}`;
+    const tokenHash = await sha256(rawToken);
+    const now = new Date().toISOString();
+    const expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
+
+    // لا نلغي الجلسات النشطة الأخرى عند تسجيل الدخول.
+    // قد يكون للمستخدم أكثر من تبويب/جهاز أو أكثر من سياق مدرسة،
+    // وإلغاء جميع الجلسات هنا كان يكسر مركز التكليفات بصورة عشوائية.
+
+    const sessionInsert = await admin
+      .from('platform_sessions')
+      .insert({
+        session_token_hash: tokenHash,
+        user_id: user.id,
+        school_id: school.id,
+        role,
+        status: 'active',
+        expires_at: expiresAt,
+        last_seen_at: now,
+      })
+      .select('id,created_at,expires_at')
+      .single();
+
+    if (sessionInsert.error) {
+      console.error('[platform-session]', requestId, 'session_insert_failed', sessionInsert.error);
+      return json(
+        {
+          error: 'تعذر إنشاء جلسة الملفات السحابية',
+          diagnosticMessage: sessionInsert.error.message,
+          code: 'SESSION_INSERT_FAILED',
+          details: 'LD501',
+          requestId,
+        },
+        500,
+      );
+    }
+
+    console.log('[platform-session]', requestId, 'session_created', {
+      sessionId: sessionInsert.data.id,
+      schoolId: school.id,
+      userId: user.id,
+      role,
+    });
+
+    return json({
+      token: rawToken,
+      expiresAt,
+      userId: user.id,
+      schoolId: school.id,
+      role,
+      requestId,
+    });
+  } catch (error) {
+    console.error('[platform-session]', requestId, 'fatal', error);
+    const failure=loginServiceFailure(error,requestId);
+    return json(failure.body,failure.status);
+  }
+});

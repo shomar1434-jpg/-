@@ -1,0 +1,945 @@
+(function(){
+  'use strict';
+
+  // RL234 — one session authority per browser page. Some legacy pages can load
+  // this file more than once through nested engines. A second copy used to own
+  // independent renew/role-check promises and could revoke or reject the token
+  // while the first copy was still using it.
+  if(window.__PLATFORM_CLOUD_SESSION_SINGLETON__ && window.PlatformCloudSession)return;
+  window.__PLATFORM_CLOUD_SESSION_SINGLETON__='2026.10.04-RL234-agent-followup-session-stability';
+
+  const TOKEN_KEY = 'platform_file_session_token';
+  const EXPIRES_KEY = 'platform_file_session_expires_at';
+  const USER_KEY = 'platform_file_session_user_id';
+  const SCHOOL_KEY = 'platform_file_session_school_id';
+  const ROLE_KEY = 'platform_file_session_role';
+  const TAB_TOKEN_KEY='platform_tab_session_token_v1';
+  const TAB_EXPIRES_KEY='platform_tab_session_expires_v1';
+  const TAB_EXPIRES_COMPAT_KEY='platform_tab_session_expires_at_v1';
+  const TAB_USER_KEY='platform_tab_session_user_v1';
+  const TAB_SCHOOL_KEY='platform_tab_session_school_v1';
+  const TAB_ROLE_KEY='smart_school_tab_role_v1';
+  const VERIFIED_CONTEXT_KEY='platform_verified_school_context_v1';
+
+  /* RL33 — Tab Identity Firewall
+     Identity/session compatibility keys are tab-scoped. Once a verified tab
+     context exists, legacy localStorage reads/writes are transparently
+     redirected to sessionStorage so another account in the same browser
+     cannot overwrite this tab's school/user/role. */
+  const LEGACY_IDENTITY_KEYS=new Set([
+    'currentUser','currentSchoolUser','currentRole','smart_school_active_role',
+    'currentUserId','currentUserEmail','currentUserName','smart_school_current_session',
+    'platform_file_session_token','platform_file_session_expires_at',
+    'platform_file_session_user_id','platform_file_session_school_id','platform_file_session_role',
+    'activeSchoolId','active_school_id','current_school_id','school_id','smart_school_id',
+    'current_school_name','school_name','active_school_name'
+  ]);
+  let __rawLocalGet = null;
+
+  const LEGACY_TO_TAB={
+    platform_file_session_token:TAB_TOKEN_KEY,
+    platform_file_session_expires_at:TAB_EXPIRES_KEY,
+    platform_file_session_user_id:TAB_USER_KEY,
+    platform_file_session_school_id:TAB_SCHOOL_KEY,
+    platform_file_session_role:TAB_ROLE_KEY,
+    currentRole:TAB_ROLE_KEY,
+    smart_school_active_role:TAB_ROLE_KEY,
+    currentUserId:TAB_USER_KEY,
+    activeSchoolId:TAB_SCHOOL_KEY,
+    active_school_id:TAB_SCHOOL_KEY,
+    current_school_id:TAB_SCHOOL_KEY,
+    school_id:TAB_SCHOOL_KEY,
+    smart_school_id:TAB_SCHOOL_KEY
+  };
+  function installTabIdentityFirewall(){
+    if(window.__PLATFORM_TAB_IDENTITY_FIREWALL_RL33__)return;
+    window.__PLATFORM_TAB_IDENTITY_FIREWALL_RL33__=true;
+    const proto=Storage.prototype, originalGet=proto.getItem, originalSet=proto.setItem, originalRemove=proto.removeItem;
+    __rawLocalGet=(key)=>{try{return originalGet.call(window.localStorage,String(key))}catch(_){return null}};
+    const isLocal=(store)=>{try{return store===window.localStorage}catch(_){return false}};
+    const tabValue=(key)=>{
+      const mapped=LEGACY_TO_TAB[key];
+      if(mapped){const v=originalGet.call(sessionStorage,mapped);if(v!==null&&v!=='')return v}
+      const v=originalGet.call(sessionStorage,key);
+      return v!==null?v:null;
+    };
+    proto.getItem=function(key){
+      key=String(key);
+      if(isLocal(this)&&LEGACY_IDENTITY_KEYS.has(key)){
+        const tv=tabValue(key);
+        if(tv!==null)return tv;
+        if(hasTabIdentity())return null;
+      }
+      return originalGet.call(this,key);
+    };
+    proto.setItem=function(key,value){
+      key=String(key);
+      if(isLocal(this)&&LEGACY_IDENTITY_KEYS.has(key)&&hasTabIdentity()){
+        const mapped=LEGACY_TO_TAB[key];
+        if(mapped)originalSet.call(sessionStorage,mapped,String(value));
+        originalSet.call(sessionStorage,key,String(value));
+        return;
+      }
+      return originalSet.call(this,key,String(value));
+    };
+    proto.removeItem=function(key){
+      key=String(key);
+      if(isLocal(this)&&LEGACY_IDENTITY_KEYS.has(key)&&hasTabIdentity()){
+        const mapped=LEGACY_TO_TAB[key];
+        if(mapped)originalRemove.call(sessionStorage,mapped);
+        originalRemove.call(sessionStorage,key);
+        return;
+      }
+      return originalRemove.call(this,key);
+    };
+  }
+
+  installTabIdentityFirewall();
+
+  // Session continuity bridge: preserve the authenticated school session while
+  // navigating between independent-school pages.  Only a token whose stored
+  // school matches the active school is restored; cross-school restoration is
+  // deliberately rejected.
+  function parseJson(raw) {
+    try { return raw ? JSON.parse(raw) : null; } catch (_) { return null; }
+  }
+
+  function hasTabIdentity() {
+    return Boolean(
+      sessionStorage.getItem(TAB_SCHOOL_KEY) || sessionStorage.getItem('smart_school_tab_school_v1') ||
+      sessionStorage.getItem(TAB_USER_KEY) || sessionStorage.getItem('currentUserId') ||
+      sessionStorage.getItem(TAB_ROLE_KEY) || sessionStorage.getItem('smart_school_current_session') ||
+      sessionStorage.getItem('administrative_employee_tab_session_v1')
+    );
+  }
+  function tabFirst(tabKey, legacyKey) {
+    // RL33: authenticated identity/session is never restored from localStorage.
+    // A newly opened browser tab must establish its own server-issued session.
+    return String(sessionStorage.getItem(tabKey)||'').trim();
+  }
+
+  function directActiveSchoolId() {
+    const tabSchool=String(sessionStorage.getItem(TAB_SCHOOL_KEY)||sessionStorage.getItem('smart_school_tab_school_v1')||'').trim();
+    if(tabSchool)return tabSchool;
+    if(hasTabIdentity())return '';
+    return String(localStorage.getItem('active_school_id')||localStorage.getItem('current_school_id')||localStorage.getItem('school_id')||localStorage.getItem('smart_school_id')||'').trim();
+  }
+
+  function directActiveUserId() {
+    try {
+      const tabUser=sessionStorage.getItem(TAB_USER_KEY)||sessionStorage.getItem('currentUserId')||'';
+      if(tabUser)return String(tabUser).trim();
+      if(hasTabIdentity())return '';
+      const current = parseJson(localStorage.getItem('currentUser')) || parseJson(localStorage.getItem('currentSchoolUser')) || {};
+      return String(localStorage.getItem('currentUserId') || current.id || current.user_id || '').trim();
+    } catch (_) { return ''; }
+  }
+
+  function isSystemAdminContext() {
+    try {
+      const q = new URLSearchParams(location.search || '');
+      return q.get('systemAdmin') === '1' || q.get('systemAdminReturn') === '1' ||
+        sessionStorage.getItem('system_admin_context') === '1' ||
+        sessionStorage.getItem('system_admin_verified') === 'true';
+    } catch (_) { return false; }
+  }
+
+  // RL148 — Safe legacy-session bridge for browsers upgraded from pre-RL33 builds.
+  // Older builds persisted the school cloud token in localStorage. RL33 correctly
+  // isolated identity per tab, but deliberately stopped reading those shared keys.
+  // A school that had not logged in again after that upgrade could therefore keep
+  // its visual manager shell while protected child pages saw SESSION_MISSING.
+  // Migrate the legacy token into this tab ONLY when school + user (+ role when known)
+  // exactly match the current tab identity. Nothing is deleted from localStorage.
+  const LEGACY_BRIDGE_MARK='platform_legacy_cloud_session_bridge_rl148';
+  function migrateLegacyCloudSessionToTab(){
+    if(isSystemAdminContext())return '';
+    const existing=String(sessionStorage.getItem(TAB_TOKEN_KEY)||'').trim();
+    if(existing)return existing;
+    if(typeof __rawLocalGet!=='function')return '';
+    try{
+      const legacyToken=String(__rawLocalGet(TOKEN_KEY)||'').trim();
+      if(!legacyToken)return '';
+      const legacySchool=String(__rawLocalGet(SCHOOL_KEY)||'').trim();
+      const legacyUser=String(__rawLocalGet(USER_KEY)||'').trim();
+      const legacyRole=String(__rawLocalGet(ROLE_KEY)||'').trim();
+      const legacyExp=String(__rawLocalGet(EXPIRES_KEY)||'').trim();
+      const sess=parseJson(sessionStorage.getItem('smart_school_current_session'))||{};
+      const tabSchool=String(sessionStorage.getItem(TAB_SCHOOL_KEY)||sessionStorage.getItem('smart_school_tab_school_v1')||sess.cloudSchoolId||sess.schoolId||sess.school_id||'').trim();
+      const tabUser=String(sessionStorage.getItem(TAB_USER_KEY)||sessionStorage.getItem('currentUserId')||sess.cloudUserId||sess.userId||sess.id||'').trim();
+      const tabRole=String(sessionStorage.getItem(TAB_ROLE_KEY)||sess.cloudRole||sess.role||'').trim();
+      // Never import a shared legacy token into an unbound tab.
+      if(!tabSchool||!tabUser||!legacySchool||!legacyUser)return '';
+      if(tabSchool!==legacySchool||tabUser!==legacyUser)return '';
+      if(tabRole&&legacyRole&&canonicalRole(tabRole)!==canonicalRole(legacyRole))return '';
+      sessionStorage.setItem(TAB_TOKEN_KEY,legacyToken);
+      sessionStorage.setItem(TAB_EXPIRES_KEY,legacyExp);
+      sessionStorage.setItem(TAB_USER_KEY,tabUser);
+      sessionStorage.setItem(TAB_SCHOOL_KEY,tabSchool);
+      sessionStorage.setItem(TAB_ROLE_KEY,tabRole||legacyRole);
+      sessionStorage.setItem(LEGACY_BRIDGE_MARK,JSON.stringify({schoolId:tabSchool,userId:tabUser,at:Date.now()}));
+      return legacyToken;
+    }catch(_){return ''}
+  }
+
+  function sessionContexts() {
+    return [parseJson(sessionStorage.getItem('smart_school_current_session')),parseJson(sessionStorage.getItem('administrative_employee_tab_session_v1'))].filter(Boolean);
+  }
+
+  function contextToken(ctx) {
+    return String(ctx?.cloudToken || ctx?.token || ctx?.platformToken || '').trim();
+  }
+
+  function restoreFromKnownContext() {
+    if (isSystemAdminContext()) return '';
+    const activeSchool = directActiveSchoolId();
+    const activeUser = directActiveUserId();
+    const tabToken=String(sessionStorage.getItem(TAB_TOKEN_KEY)||'').trim();
+    if(tabToken)return tabToken;
+    const bridged=migrateLegacyCloudSessionToTab();
+    if(bridged)return bridged;
+    for (const ctx of sessionContexts()) {
+      const candidate = contextToken(ctx);
+      if (!candidate) continue;
+      const ctxSchool = String(ctx.cloudSchoolId || ctx.schoolId || ctx.school_id || '').trim();
+      if (activeSchool && ctxSchool && activeSchool !== ctxSchool) continue;
+      const sid = ctxSchool || activeSchool;
+      if (!sid) continue;
+      const uid = String(ctx.cloudUserId || ctx.userId || ctx.id || '').trim();
+      if (activeUser && uid && activeUser !== uid) continue;
+      const rr = String(ctx.cloudRole || ctx.role || (hasTabIdentity()?'':localStorage.getItem('currentRole')) || '').trim();
+      const exp = String(ctx.cloudExpiresAt || ctx.expiresAt || '').trim();
+
+      sessionStorage.setItem(TAB_TOKEN_KEY, candidate);
+      sessionStorage.setItem(TAB_EXPIRES_KEY, exp);
+      sessionStorage.setItem(TAB_USER_KEY, uid);
+      sessionStorage.setItem(TAB_SCHOOL_KEY, sid);
+      sessionStorage.setItem(TAB_ROLE_KEY, rr);
+      return candidate;
+    }
+    return '';
+  }
+
+  // A few old navigation guards wrote the expiry under *_expires_at_v1. Migrate
+  // it inside the same tab only; no school/user identity is accepted from it.
+  function migrateTabExpiryKey(){
+    try{
+      const canonical=String(sessionStorage.getItem(TAB_EXPIRES_KEY)||'').trim();
+      const compat=String(sessionStorage.getItem(TAB_EXPIRES_COMPAT_KEY)||'').trim();
+      if(!canonical&&compat)sessionStorage.setItem(TAB_EXPIRES_KEY,compat);
+    }catch(_){}
+  }
+
+  function updateKnownContext(payload) {
+    try {
+      let raw = parseJson(sessionStorage.getItem('smart_school_current_session')) || {};
+      if(!Object.keys(raw).length && !hasTabIdentity()) raw=parseJson(localStorage.getItem('smart_school_current_session'))||{};
+      const sid = String(payload?.schoolId || directActiveSchoolId() || '').trim();
+      const rawSid = String(raw.schoolId || raw.school_id || '').trim();
+      const rawUid = String(raw.userId || raw.id || '').trim();
+      const uid = String(payload?.userId || rawUid || '').trim();
+      if (rawSid && sid && rawSid !== sid) return;
+      if (rawUid && uid && rawUid !== uid) return;
+      const next = {...raw,cloudToken:String(payload?.token||''),cloudExpiresAt:String(payload?.expiresAt||''),cloudUserId:uid,cloudSchoolId:sid,cloudRole:String(payload?.role||raw.role||'')};
+      sessionStorage.setItem('smart_school_current_session', JSON.stringify(next));
+    } catch (_) {}
+  }
+
+  const url = () =>
+    (localStorage.getItem('smartSchoolSupabaseUrl') ||
+      'https://cijhgvbtrvmmlcssgxht.supabase.co').replace(/\/$/, '');
+
+  const key = () =>
+    localStorage.getItem('smartSchoolSupabaseAnonKey') ||
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpamhndmJ0cnZtbWxjc3NneGh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTY4MzUsImV4cCI6MjA5NDI3MjgzNX0.1sbfDvL1V12kj9oVcYJqYhj8NPuLpYjId7CO9QGj3bM';
+
+  let openPromise = null;
+  async function open(login, password, schoolId, requestedRole) {
+    // RL199: منع النقرات المتتابعة من إنشاء عدة جلسات متزامنة، وإنهاء الطلب
+    // الشبكي نفسه عند تجاوز المهلة بدل تركه يعمل بعد إعادة تمكين زر الدخول.
+    if(openPromise)return openPromise;
+    openPromise=(async()=>{
+    const controller=new AbortController();
+    const timeout=setTimeout(()=>controller.abort(),25000);
+    let response;
+    try{
+      response = await fetch(`${url()}/functions/v1/platform-session`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          apikey: key(),
+        },
+        body: JSON.stringify({ login, password, schoolId, role: requestedRole || undefined }),
+        signal:controller.signal,
+      });
+    }catch(error){
+      if(error?.name==='AbortError'){
+        const timeoutError=new Error('انتهت مهلة إنشاء جلسة المدرسة. حاول مرة أخرى.');
+        timeoutError.code='SESSION_REQUEST_TIMEOUT';
+        throw timeoutError;
+      }
+      throw error;
+    }finally{clearTimeout(timeout)}
+
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      // RL243: old servers may serialize a database error as an object or HTML.
+      const upstreamUnavailable=response.status>=500;
+      const safeMessage=typeof payload.error==='string'&&!/\[object Object\]|<!doctype|<html/i.test(payload.error)?payload.error:'';
+      const error = new Error(
+        upstreamUnavailable?'خدمة التحقق السحابية غير متاحة مؤقتًا. انتظر قليلًا ثم أعد المحاولة من رابط المدرسة نفسه.':safeMessage || 'تعذر إنشاء جلسة الملفات السحابية',
+      );
+      error.code = payload.code || `HTTP_${response.status}`;
+      error.details = payload.details || '';
+      error.requestId = payload.requestId || '';
+      throw error;
+    }
+
+    if (!payload.token) {
+      throw new Error('استجابة جلسة الملفات لا تحتوي على رمز جلسة صالح');
+    }
+
+    applyPayload(payload, false);
+    // استجابة فتح الجلسة صادرة من البوابة الخادمية بعد التحقق من المدرسة
+    // والعضوية والدور؛ نحفظ بصمتها لتجنب إعادة الطلب نفسه عند فتح الواجهة.
+    markVerifiedContext({schoolId:payload.schoolId,userId:payload.userId,role:payload.role});
+
+    return payload;
+    })();
+    try{return await openPromise}finally{openPromise=null}
+  }
+
+  async function sessionAction(action, body = {}) {
+    if (!valid()) throw new Error('جلسة المنصة السحابية غير صالحة للتبديل.');
+    const response = await fetch(`${url()}/functions/v1/platform-session`, {
+      method: 'POST',
+      headers: {'content-type':'application/json',apikey:key(),'x-platform-session':token()},
+      body: JSON.stringify({...body, action}),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(payload.error || 'تعذر تحديث سياق المدرسة');
+      error.code = payload.code || `HTTP_${response.status}`;
+      throw error;
+    }
+    return payload;
+  }
+
+  async function memberships() {
+    return sessionAction('memberships');
+  }
+
+  async function switchSchool(targetSchoolId, targetRole = '', membershipId = '') {
+    const payload = await sessionAction('switch', {schoolId:targetSchoolId, role:targetRole, membershipId});
+    if (!payload.token) throw new Error('لم تُنشأ جلسة سحابية للمدرسة المختارة.');
+    sessionStorage.setItem(TAB_TOKEN_KEY,payload.token);sessionStorage.setItem(TAB_EXPIRES_KEY,payload.expiresAt||'');sessionStorage.setItem(TAB_USER_KEY,payload.userId||'');sessionStorage.setItem(TAB_SCHOOL_KEY,payload.schoolId||'');sessionStorage.setItem(TAB_ROLE_KEY,payload.role||'');
+    markVerifiedContext({schoolId:payload.schoolId,userId:payload.userId,role:payload.role});
+    window.dispatchEvent(new CustomEvent('platform-cloud-session-ready',{detail:{userId:payload.userId||'',schoolId:payload.schoolId||'',role:payload.role||'',expiresAt:payload.expiresAt||'',membershipId:payload.membershipId||''}}));
+    return payload;
+  }
+
+  function token() {
+    if (isSystemAdminContext()) return '';
+    return tabFirst(TAB_TOKEN_KEY,TOKEN_KEY);
+  }
+
+  function expiresAt() {
+    return tabFirst(TAB_EXPIRES_KEY,EXPIRES_KEY);
+  }
+
+  function userId() {
+    if (isSystemAdminContext()) return '';
+    return tabFirst(TAB_USER_KEY,USER_KEY);
+  }
+
+  function schoolId() {
+    if (isSystemAdminContext()) return '';
+    return tabFirst(TAB_SCHOOL_KEY,SCHOOL_KEY);
+  }
+
+  function baseRole() {
+    if (isSystemAdminContext()) return 'system_admin';
+    return tabFirst(TAB_ROLE_KEY,ROLE_KEY);
+  }
+
+  // RL143 — Unified Independent School Identity Contract
+  // One source of truth for every school/tab: verified cloud session school + user + canonical role.
+  function canonicalRole(value) {
+    const v=String(value||'').trim().toLowerCase();
+    const groups={
+      manager:['manager','principal','school_manager','school-manager','leadership','مدير','مديرة','مدير المدرسة','مديرة المدرسة'],
+      agent:['agent','deputy','vice','wakil','agency','وكيل','وكيلة'],
+      teacher:['teacher','performance','معلم','معلمة'],
+      student_advisor:['student_advisor','student-advisor','advisor','counselor','مرشد','مرشدة','موجه','موجهة'],
+      health_advisor:['health_advisor','health-advisor','موجه صحي','موجهة صحية','الموجه الصحي'],
+      activity_leader:['activity_leader','activity-leader','activity','رائد النشاط','رائدة النشاط'],
+      kindergarten_teacher:['kindergarten_teacher','kindergarten-teacher','kindergarten','kindergarten teacher','kg','kg_teacher','kg-teacher','معلمة رياض الأطفال','معلمة رياض أطفال','معلم رياض الأطفال','قسم معلمة رياض الأطفال'],
+      administrative_employee:['administrative_employee','admin_employee','employee_admin','موظف إداري','موظفة إدارية']
+    };
+    for(const [k,a] of Object.entries(groups)) if(v===k||a.includes(v)) return k;
+    return v;
+  }
+  function verifiedContext(){
+    return {schoolId:String(schoolId()||'').trim(),userId:String(userId()||'').trim(),role:canonicalRole(role()||'')};
+  }
+
+  function role() {
+    if (isSystemAdminContext()) return 'system_admin';
+    try {
+      const delegated = window.__PLATFORM_DELEGATED_ROLE_ACCESS__;
+      const delegatedRole = String(delegated?.requiredRole || delegated?.roleCode || '').trim().toLowerCase();
+      const delegatedSchool = String(delegated?.schoolId || '').trim();
+      if (delegatedRole && (!delegatedSchool || delegatedSchool === String(schoolId() || '').trim())) return delegatedRole;
+    } catch (_) {}
+    return baseRole();
+  }
+
+  function valid() {
+    if (isSystemAdminContext()) return false;
+    const currentToken = token();
+    const expiry = expiresAt();
+    const activeSchool = sessionStorage.getItem(TAB_SCHOOL_KEY) || sessionStorage.getItem('smart_school_tab_school_v1') || (hasTabIdentity()?'':(localStorage.getItem('active_school_id') || localStorage.getItem('current_school_id') || localStorage.getItem('school_id') || localStorage.getItem('smart_school_id'))) || '';
+    const sameSchool = !activeSchool || !schoolId() || String(activeSchool) === String(schoolId());
+    return Boolean(currentToken && sameSchool && (!expiry || Date.parse(expiry) > Date.now() + 60_000));
+  }
+
+  function currentSchoolId() {
+    return sessionStorage.getItem(TAB_SCHOOL_KEY) || sessionStorage.getItem('smart_school_tab_school_v1') ||
+      (hasTabIdentity()?'':(localStorage.getItem('active_school_id') || localStorage.getItem('current_school_id') || localStorage.getItem('school_id') || localStorage.getItem('smart_school_id'))) || schoolId() || '';
+  }
+
+  function applyPayload(payload, renewed = true) {
+    if (!payload || !payload.token) throw new Error('استجابة تجديد الجلسة لا تحتوي على رمز صالح');
+    const sid=payload.schoolId || currentSchoolId() || '';const rr=payload.role || baseRole() || (hasTabIdentity()?'':localStorage.getItem('currentRole')) || '';
+    sessionStorage.setItem(TAB_TOKEN_KEY,payload.token);sessionStorage.setItem(TAB_EXPIRES_KEY,payload.expiresAt||'');sessionStorage.setItem(TAB_EXPIRES_COMPAT_KEY,payload.expiresAt||'');sessionStorage.setItem(TAB_USER_KEY,payload.userId||'');sessionStorage.setItem(TAB_SCHOOL_KEY,sid);sessionStorage.setItem(TAB_ROLE_KEY,rr);
+    try{delete window.__PLATFORM_SESSION_RECOVERY_FAILURE__}catch(_){}
+    updateKnownContext({...payload,schoolId:sid,role:rr});
+    window.dispatchEvent(new CustomEvent('platform-cloud-session-ready',{detail:{userId:payload.userId||'',schoolId:sid,role:rr,expiresAt:payload.expiresAt||'',renewed:Boolean(renewed)}}));
+    return payload.token;
+  }
+
+  let recoveryPromise = null;
+  async function recover() {
+    // The promise/failure latch is window-scoped so even a legacy duplicate
+    // loader cannot create a renewal storm. A rejected token is retried only
+    // after a short cool-down or after login/applyPayload installs a new token.
+    if (window.__PLATFORM_SESSION_RECOVERY_PROMISE__) return window.__PLATFORM_SESSION_RECOVERY_PROMISE__;
+    if (recoveryPromise) return recoveryPromise;
+    const before=String(token()||'');
+    const previousFailure=window.__PLATFORM_SESSION_RECOVERY_FAILURE__;
+    if(previousFailure&&previousFailure.token===before&&Date.now()-Number(previousFailure.at||0)<15000){
+      const cached=new Error(previousFailure.message||'تعذر تجديد جلسة المدرسة مؤقتًا.');
+      cached.code=previousFailure.code||'SESSION_RENEW_COOLDOWN';
+      throw cached;
+    }
+    recoveryPromise = (async () => {
+      let oldToken = token();
+      const sid = currentSchoolId();
+      if (!oldToken) oldToken = restoreFromKnownContext();
+      if (!oldToken) {
+        const error = new Error('لا توجد جلسة سحابية لهذه المدرسة. أعد تسجيل الدخول إلى المدرسة.');
+        error.code = 'SESSION_MISSING';
+        throw error;
+      }
+      const response = await fetch(`${url()}/functions/v1/platform-session`, {
+        method: 'POST',
+        headers: {'content-type':'application/json',apikey:key(),'x-platform-session':oldToken},
+        body: JSON.stringify({action:'renew',schoolId:sid}),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.token) {
+        const error = new Error(payload.error || 'تعذر تجديد الجلسة السحابية. أعد تسجيل الدخول إلى المدرسة.');
+        error.code = payload.code || `HTTP_${response.status}`;
+        error.requestId = payload.requestId || '';
+        window.__PLATFORM_SESSION_RECOVERY_FAILURE__={token:oldToken,at:Date.now(),code:error.code,message:error.message};
+        throw error;
+      }
+      return applyPayload(payload, true);
+    })();
+    window.__PLATFORM_SESSION_RECOVERY_PROMISE__=recoveryPromise;
+    try { return await recoveryPromise; }
+    finally { recoveryPromise = null; window.__PLATFORM_SESSION_RECOVERY_PROMISE__=null; }
+  }
+
+  let ensurePromise = null;
+  async function ensure() {
+    if (ensurePromise) return ensurePromise;
+    ensurePromise = (async () => {
+      if (isSystemAdminContext()) {
+        const error = new Error('جلسة مدير النظام منفصلة عن جلسات المدارس المستقلة.');
+        error.code = 'SYSTEM_ADMIN_SCHOOL_SESSION_BLOCKED';
+        throw error;
+      }
+      let currentToken = '';
+      if (valid()) currentToken = token();
+      else {
+        restoreFromKnownContext();
+        if (valid()) currentToken = token();
+        else currentToken = await recover();
+      }
+      // Delegated access is still revalidated server-side. Single-flight only prevents
+      // duplicate startup calls in the same page from repeating the same work concurrently.
+      await refreshDelegatedRoleContext().catch(()=>null);
+      return currentToken || token();
+    })();
+    try { return await ensurePromise; }
+    finally { ensurePromise = null; }
+  }
+
+
+  function recentlyVerified(requiredRoles = [], maxAgeMs = 5 * 60 * 1000) {
+    try {
+      const raw=parseJson(sessionStorage.getItem(VERIFIED_CONTEXT_KEY))||{};
+      const sid=String(schoolId()||'').trim(), uid=String(userId()||'').trim(), rr=canonicalRole(baseRole()||'');
+      const allowed=(requiredRoles||[]).map(canonicalRole).filter(Boolean);
+      if(!raw || !raw.verifiedAt || Date.now()-Number(raw.verifiedAt)>maxAgeMs) return null;
+      if(String(raw.schoolId||'')!==sid || String(raw.userId||'')!==uid || canonicalRole(raw.role||'')!==rr) return null;
+      if(allowed.length && !allowed.includes(rr)) return null;
+      return {schoolId:sid,userId:uid,role:rr,verified:true,verifiedAt:Number(raw.verifiedAt)};
+    } catch(_) { return null; }
+  }
+
+  function markVerifiedContext(ctx) {
+    try {
+      sessionStorage.setItem(VERIFIED_CONTEXT_KEY,JSON.stringify({
+        schoolId:String((ctx&&ctx.schoolId)||schoolId()||'').trim(),
+        userId:String((ctx&&ctx.userId)||userId()||'').trim(),
+        role:canonicalRole((ctx&&ctx.role)||baseRole()||''),
+        verifiedAt:Date.now()
+      }));
+    } catch(_) {}
+  }
+
+  async function ensureLive(requiredRoles = [], options = {}) {
+    if (isSystemAdminContext()) {
+      const error = new Error('جلسة مدير النظام منفصلة عن جلسات المدارس المستقلة.');
+      error.code = 'SYSTEM_ADMIN_SCHOOL_SESSION_BLOCKED';
+      throw error;
+    }
+    const forceLive=options&&options.force===true;
+    const recent=forceLive?null:recentlyVerified(requiredRoles);
+    if(recent && valid()) return recent;
+    await ensure();
+    try {
+      return await verifyAccess(requiredRoles);
+    } catch (e) {
+      const code=String(e&&e.code||'').toUpperCase();
+      const recoverable=['SESSION_INVALID','SESSION_EXPIRED','SESSION_MISSING','SESSION_RENEW_NOT_FOUND','HTTP_401'].includes(code);
+      if(!recoverable) throw e;
+      await recover();
+      return await verifyAccess(requiredRoles);
+    }
+  }
+
+
+  async function verifyAccess(requiredRoles = []) {
+    if (isSystemAdminContext()) {
+      const error = new Error('التحقق من عضوية المدرسة غير متاح داخل سياق مدير النظام.');
+      error.code = 'SYSTEM_ADMIN_SCHOOL_VERIFY_BLOCKED';
+      throw error;
+    }
+    const payload = await memberships();
+    const current = payload && payload.current ? payload.current : {};
+    const sid = String(current.schoolId || '').trim();
+    const uid = String(current.userId || '').trim();
+    const rr = String(current.role || '').trim();
+    if (!sid || !uid || !rr) {
+      const error = new Error('الجلسة لا تحتوي على مدرسة ومستخدم ودور موثقين.');
+      error.code = 'VERIFIED_CONTEXT_INCOMPLETE';
+      throw error;
+    }
+    const membershipsList = Array.isArray(payload.memberships) ? payload.memberships : [];
+    // RL143: use the single module-level canonical role contract.
+    const allowed = (requiredRoles || []).map(canonicalRole).filter(Boolean);
+    const currentRole = canonicalRole(rr);
+    const member = membershipsList.find((m) =>
+      String(m.schoolId || '') === sid &&
+      String(m.userId || '') === uid &&
+      canonicalRole(m.role) === currentRole
+    );
+    if (!member) {
+      const error = new Error('المستخدم غير مرتبط بالمدرسة الحالية بعضوية فعالة.');
+      error.code = 'VERIFIED_MEMBERSHIP_MISSING';
+      throw error;
+    }
+    if (allowed.length && !allowed.includes(currentRole)) {
+      const error = new Error('الدور الحالي غير مخول بفتح هذه الصفحة.');
+      error.code = 'VERIFIED_ROLE_DENIED';
+      throw error;
+    }
+    // RL33: verified identity remains tab-scoped. Never rewrite shared localStorage identity keys.
+    sessionStorage.setItem(TAB_SCHOOL_KEY, sid);
+    sessionStorage.setItem(TAB_USER_KEY, uid);
+    sessionStorage.setItem(TAB_ROLE_KEY, rr || String(member.role || ''));
+    return { schoolId: sid, userId: uid, role: rr || String(member.role || ''), membership: member };
+  }
+
+  function clear() {
+    // RL33: logout/clear is strictly tab-scoped. Shared localStorage may belong to another open account/tab.
+    [TAB_TOKEN_KEY,TAB_EXPIRES_KEY,TAB_EXPIRES_COMPAT_KEY,TAB_USER_KEY,TAB_SCHOOL_KEY,TAB_ROLE_KEY,'platform_file_session_token','platform_file_session_expires_at','platform_file_session_user_id','platform_file_session_school_id','platform_file_session_role'].forEach(k=>sessionStorage.removeItem(k));
+    try{delete window.__PLATFORM_SESSION_RECOVERY_FAILURE__;window.__PLATFORM_SESSION_RECOVERY_PROMISE__=null}catch(_){}
+    try {
+      const raw=parseJson(sessionStorage.getItem('smart_school_current_session'));
+      if(raw){delete raw.cloudToken;delete raw.cloudExpiresAt;delete raw.cloudUserId;delete raw.cloudSchoolId;delete raw.cloudRole;sessionStorage.setItem('smart_school_current_session',JSON.stringify(raw));}
+      const admin=parseJson(sessionStorage.getItem('administrative_employee_tab_session_v1'));
+      if(admin){delete admin.token;delete admin.expiresAt;sessionStorage.setItem('administrative_employee_tab_session_v1',JSON.stringify(admin));}
+    } catch (_) {}
+  }
+
+
+  const ROLE_ROOTS={
+    manager:'manager.html',agent:'agent.html',teacher:'teacher.html',
+    student_advisor:'student_advisor.html',health_advisor:'health_advisor.html',
+    activity_leader:'activity_leader.html',kindergarten_teacher:'kindergarten_teacher.html',
+    administrative_employee:'administrative_employee_portal.html'
+  };
+  function routeRequiredRole(){
+    const file=(location.pathname.split('/').pop()||'').toLowerCase();
+    if(!file || /(login|register|guardian|public|invite)/.test(file))return '';
+
+    // RL228: a record-specific delegation is authorized by its exact task,
+    // school, module, record type and record id in delegated-access-guard.js.
+    // Do not classify the assignee as the owner role of the target page first;
+    // that late role check used to hide/redirect an already opened record.
+    try{
+      const delegatedParams=new URLSearchParams(location.search||'');
+      const exactDelegation=delegatedParams.get('delegated')==='1'&&
+        !!delegatedParams.get('task_id')&&!!delegatedParams.get('module_key')&&
+        !!delegatedParams.get('record_type')&&
+        !!(delegatedParams.get('record_id')||delegatedParams.get('record'));
+      if(exactDelegation)return '';
+    }catch(_){ }
+
+    // RL70: admin_employee_management.html is a supervisor workspace, not the
+    // administrative employee's personal portal. Its required role must follow
+    // the supervisor that opened it, otherwise RL33 hides the page then redirects
+    // manager/agent away after the first visible paint.
+    if(file==='admin_employee_management.html'){
+      try{
+        const q=new URLSearchParams(location.search||'');
+        const s=String(q.get('supervisor')||q.get('viewerRole')||q.get('viewer')||q.get('returnRole')||'').trim().toLowerCase();
+        if(['agent','deputy','vice','wakil','agency','وكيل','وكيلة'].includes(s))return 'agent';
+        if(['manager','principal','school_manager','leadership','مدير','مديرة'].includes(s))return 'manager';
+      }catch(_){}
+      const current=String(baseRole()||'').trim().toLowerCase();
+      if(['agent','deputy','vice','wakil','agency','وكيل','وكيلة'].includes(current))return 'agent';
+      if(['manager','principal','school_manager','leadership','مدير','مديرة'].includes(current))return 'manager';
+      return '';
+    }
+
+    // RL74: supervisor views of admin-employee subpages must keep the
+    // manager/agent session instead of being reclassified as employee.
+    if([
+      'administrative_employee_portal.html',
+      'administrative_employee_evaluation.html',
+      'administrative_employee_execution.html',
+      'administrative_employee_improvement.html',
+      'administrative_employee_plan.html',
+      'administrative_employee_library.html'
+    ].includes(file)){
+      try{
+        const q=new URLSearchParams(location.search||'');
+        const supervisorMode=String(q.get('mode')||'').trim().toLowerCase()==='supervisor';
+        const s=String(q.get('supervisor')||q.get('viewerRole')||q.get('returnRole')||'').trim().toLowerCase();
+        if(supervisorMode){
+          if(['agent','deputy','vice','wakil','agency','وكيل','وكيلة'].includes(s))return 'agent';
+          if(['manager','principal','school_manager','leadership','مدير','مديرة'].includes(s))return 'manager';
+          const current=String(baseRole()||'').trim().toLowerCase();
+          if(['agent','deputy','vice','wakil','agency','وكيل','وكيلة'].includes(current))return 'agent';
+          if(['manager','principal','school_manager','leadership','مدير','مديرة'].includes(current))return 'manager';
+        }
+      }catch(_){}
+    }
+
+    const rules=[
+      [/^administrative_employee|^admin_employee/,'administrative_employee'],
+      [/^kindergarten_teacher/,'kindergarten_teacher'],
+      [/^student_advisor/,'student_advisor'],
+      [/^health_advisor/,'health_advisor'],
+      [/^activity_leader/,'activity_leader'],
+      [/^(agent|wakil|deputy)/,'agent'],
+      [/^teacher/,'teacher'],
+      [/^manager/,'manager']
+    ];
+    for(const [rx,roleName] of rules)if(rx.test(file))return roleName;
+    return '';
+  }
+  function explicitFollowMode(){
+    try{const q=new URLSearchParams(location.search);return q.get('mode')==='follow'||q.get('follow')==='1'||q.get('readOnly')==='1'}catch(_){return false}
+  }
+
+  // RL76: full-role delegation is a temporary execution authorization, not a
+  // permanent role mutation.  It must be verified by platform-tasks before the
+  // normal role isolation guard is bypassed.  Query parameters alone never grant
+  // access.  A verified context is kept only in this browser tab so nested pages
+  // of the delegated role can be opened without changing the user's base role.
+  const DELEGATED_ROLE_CONTEXT_KEY='platform_delegated_role_context_v1';
+  function readDelegatedRoleContext(){
+    try{return parseJson(sessionStorage.getItem(DELEGATED_ROLE_CONTEXT_KEY))||{}}catch(_){return {}}
+  }
+  function clearDelegatedRoleContext(){
+    try{sessionStorage.removeItem(DELEGATED_ROLE_CONTEXT_KEY)}catch(_){}
+    try{delete window.__PLATFORM_DELEGATED_ROLE_ACCESS__}catch(_){}
+    try{document.documentElement.removeAttribute('data-platform-delegated-role')}catch(_){}
+  }
+  function delegatedRoleCandidate(required){
+    try{
+      const q=new URLSearchParams(location.search||'');
+      if(q.get('delegated_role')==='1' && q.get('delegated_role_task')){
+        return {taskId:String(q.get('delegated_role_task')||'').trim(),requiredRole:String(required||'').trim().toLowerCase(),source:'query'};
+      }
+      const c=readDelegatedRoleContext();
+      if(c && c.taskId && String(c.requiredRole||'').toLowerCase()===String(required||'').toLowerCase())
+        markVerifiedContext({schoolId:sid,userId:uid,role:rr});
+    return {taskId:String(c.taskId),requiredRole:String(required||'').trim().toLowerCase(),source:'tab'};
+    }catch(_){}
+    return null;
+  }
+  async function verifyDelegatedRoleAccess(required){
+    const candidate=delegatedRoleCandidate(required);
+    if(!candidate||!candidate.taskId)return null;
+    const platformToken=String(token()||'').trim();
+    if(!platformToken){clearDelegatedRoleContext();return null;}
+    try{
+      const response=await fetch(`${url()}/functions/v1/platform-tasks?action=validate-delegated-role`,{
+        method:'POST',
+        headers:{'content-type':'application/json',apikey:key(),'x-platform-session':platformToken},
+        body:JSON.stringify({taskId:candidate.taskId,requiredRole:candidate.requiredRole})
+      });
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok||data?.ok!==true||!data?.delegation){throw new Error(data?.error||'DELEGATED_ROLE_NOT_AUTHORIZED');}
+      const ctx={
+        taskId:candidate.taskId,
+        requiredRole:String(data.delegation.requiredRole||candidate.requiredRole),
+        roleCode:String(data.delegation.roleCode||''),
+        schoolId:String(data.delegation.schoolId||schoolId()||''),
+        verifiedAt:Date.now()
+      };
+      sessionStorage.setItem(DELEGATED_ROLE_CONTEXT_KEY,JSON.stringify(ctx));
+      window.__PLATFORM_DELEGATED_ROLE_ACCESS__=Object.freeze({...ctx});
+      document.documentElement.setAttribute('data-platform-delegated-role','1');
+      return ctx;
+    }catch(err){
+      clearDelegatedRoleContext();
+      if(candidate.source==='query')console.warn('[platform-session] delegated role authorization rejected',err);
+      return null;
+    }
+  }
+
+  async function refreshDelegatedRoleContext(){
+    const ctx=readDelegatedRoleContext();
+    const required=String(ctx?.requiredRole||ctx?.roleCode||'').trim().toLowerCase();
+    if(!ctx?.taskId||!required){
+      try{delete window.__PLATFORM_DELEGATED_ROLE_ACCESS__}catch(_){}
+      return null;
+    }
+    return verifyDelegatedRoleAccess(required);
+  }
+
+  function delegatedRole(){
+    try{return String(window.__PLATFORM_DELEGATED_ROLE_ACCESS__?.requiredRole||window.__PLATFORM_DELEGATED_ROLE_ACCESS__?.roleCode||'').trim().toLowerCase()}catch(_){return ''}
+  }
+  function delegatedTaskId(){
+    try{return String(window.__PLATFORM_DELEGATED_ROLE_ACCESS__?.taskId||'').trim()}catch(_){return ''}
+  }
+  function delegationHeaders(){
+    const taskId=delegatedTaskId(), delegated=delegatedRole();
+    return taskId&&delegated?{'x-platform-delegated-task':taskId,'x-platform-delegated-role':delegated}:{};
+  }
+
+  async function enforceRouteRole(){
+    const required=routeRequiredRole();
+    if(!required||isSystemAdminContext())return true;
+    document.documentElement.dataset.platformRoleChecking='1';
+    try{
+      const delegated=await verifyDelegatedRoleAccess(required);
+      if(delegated){
+        document.documentElement.dataset.platformRoleVerified='1';
+        return delegated;
+      }
+      const verified=await verifyAccess([required]);
+      document.documentElement.dataset.platformRoleVerified='1';
+      return verified;
+    }catch(err){
+      if(explicitFollowMode()){
+        try{
+          const v=await verifyAccess([]);
+          const r=String(v.role||'').toLowerCase();
+          if(['manager','principal','school_manager','agent','deputy','vice','wakil'].includes(r)){
+            document.documentElement.dataset.platformReadOnlyFollow='1';
+            document.documentElement.dataset.platformRoleVerified='1';
+            window.__PLATFORM_READ_ONLY_FOLLOW__=true;
+            return v;
+          }
+        }catch(_){}
+      }
+      // RL234: the login endpoint already verified this exact tab identity.
+      // A brief network/renewal failure immediately afterwards is not a proven
+      // role denial and must not eject an agent while opening teacher follow-up.
+      // This grace never changes school/user/role and never applies to an
+      // explicit role or membership denial; protected APIs still validate the
+      // signed token independently on every request.
+      const code=String(err&&err.code||'').toUpperCase();
+      const recoverable=['SESSION_INVALID','SESSION_EXPIRED','SESSION_MISSING','SESSION_RENEW_NOT_FOUND','SESSION_REQUEST_TIMEOUT','SESSION_RENEW_COOLDOWN','HTTP_401','HTTP_408','HTTP_429','HTTP_500','HTTP_502','HTTP_503','HTTP_504'].includes(code)||err?.name==='TypeError';
+      const recent=recoverable?recentlyVerified([required],2*60*1000):null;
+      if(recent){
+        document.documentElement.dataset.platformRoleVerified='1';
+        document.documentElement.dataset.platformSessionDegraded='1';
+        try{window.dispatchEvent(new CustomEvent('platform-cloud-session-degraded',{detail:{code:code||'NETWORK_ERROR',schoolId:recent.schoolId,userId:recent.userId,role:recent.role}}))}catch(_){}
+        return recent;
+      }
+      document.documentElement.dataset.platformRoleDenied='1';
+      const current=String(baseRole()||'').toLowerCase();
+      const normalized=current==='performance'?'teacher':current;
+      let target=ROLE_ROOTS[normalized]||'';
+      if(!target){
+        try{
+          const q=new URLSearchParams();
+          q.set('reason','school_access_denied');
+          const sid=String(schoolId()||sessionStorage.getItem('smart_school_tab_school_v1')||sessionStorage.getItem('platform_tab_session_school_id_v1')||sessionStorage.getItem('current_school_id')||new URLSearchParams(location.search||'').get('schoolId')||new URLSearchParams(location.search||'').get('school_id')||'').trim();
+          const schoolName=String(sessionStorage.getItem('current_school_name')||new URLSearchParams(location.search||'').get('school_name')||'').trim();
+          if(sid)q.set('schoolId',sid);
+          if(schoolName)q.set('school_name',schoolName);
+          q.set('schoolMode','independent');
+          q.set('scope','school');
+          target='school-login.html?'+q.toString();
+        }catch(_){target='school-login.html?reason=school_access_denied';}
+      }
+      if(!/school-login\.html$/i.test(location.pathname))location.replace(target);
+      throw err;
+    }
+  }
+
+  const SESSION_VERSION='2026.10.04-RL234-agent-followup-session-stability';
+
+  window.PlatformCloudSession = {
+    VERSION:SESSION_VERSION,
+    open,
+    memberships,
+    switchSchool,
+    token,
+    expiresAt,
+    userId,
+    schoolId,
+    role,
+    canonicalRole,
+    verifiedContext,
+    baseRole,
+    delegatedRole,
+    delegatedTaskId,
+    delegationHeaders,
+    valid,
+    ensure,
+    ensureLive,
+    recentlyVerified,
+    recover,
+    restoreFromKnownContext,
+    verifyAccess,
+    enforceRouteRole,
+    clearDelegatedRoleContext,
+    clear,
+    // Canonical read-only connection descriptor for child platform modules.
+    // It exposes only the public project URL + anon key already used by this
+    // session engine; school/user identity is NOT accepted from callers.
+    connectionConfig: () => Object.freeze({
+      supabaseUrl: url(),
+      anonKey: key(),
+    }),
+  };
+
+  // RL145 — Unified session heartbeat for every independent-school page.
+  // A school tab may remain open for many hours. Previously the visual shell could
+  // stay usable after the 12-hour cloud session expired, so a later protected
+  // section appeared to lose the cloud connection. Keep the verified tab session
+  // warm without changing school/user/role and retry only through the canonical
+  // platform-session renew path.
+  let __heartbeatTimer = null;
+  let __heartbeatInFlight = false;
+  async function heartbeat(reason = 'interval') {
+    if (isSystemAdminContext() || __heartbeatInFlight) return false;
+    const known = Boolean(token() || restoreFromKnownContext());
+    if (!known) return false;
+    __heartbeatInFlight = true;
+    try {
+      await ensure();
+      window.dispatchEvent(new CustomEvent('platform-cloud-session-heartbeat',{detail:{ok:true,reason,schoolId:schoolId(),userId:userId(),role:role()}}));
+      return true;
+    } catch (err) {
+      // Never clear or redirect on a transient heartbeat failure. Individual
+      // protected pages may decide how to present a definitive authorization error.
+      console.warn('[platform-session] heartbeat failed', reason, err?.code || err?.message || err);
+      window.dispatchEvent(new CustomEvent('platform-cloud-session-heartbeat',{detail:{ok:false,reason,code:String(err?.code||''),message:String(err?.message||'')}}));
+      return false;
+    } finally {
+      __heartbeatInFlight = false;
+    }
+  }
+  function startHeartbeat(){
+    if(__heartbeatTimer || isSystemAdminContext()) return;
+    // Heartbeat must never compete with the initial page access check. The first
+    // automatic heartbeat is delayed; returning to a tab only checks after it has
+    // actually spent time in the background.
+    let hiddenAt=0;
+    __heartbeatTimer=setInterval(()=>heartbeat('interval'),5*60*1000);
+    document.addEventListener('visibilitychange',()=>{
+      if(document.visibilityState==='hidden'){hiddenAt=Date.now();return;}
+      if(document.visibilityState==='visible'&&hiddenAt&&Date.now()-hiddenAt>60*1000) heartbeat('visibility');
+      hiddenAt=0;
+    });
+    window.addEventListener('pageshow',(event)=>{if(event && event.persisted) setTimeout(()=>heartbeat('bfcache'),250);});
+  }
+
+  // Same-tab navigation normally keeps sessionStorage, but restoring here also
+  // covers pages opened after a browser/sessionStorage transition.
+  migrateTabExpiryKey();
+  restoreFromKnownContext();
+  startHeartbeat();
+  const roleContract=routeRequiredRole();
+  // Pages with their own verified access gate (manager.html) must not start a
+  // second concurrent role check. The explicit gate still calls verifyAccess().
+  if(roleContract && !window.__PLATFORM_EXPLICIT_ACCESS_GATE__){
+    const st=document.createElement('style');
+    st.id='platform-role-lock-style';
+    st.textContent='html[data-platform-role-checking=\"1\"]:not([data-platform-role-verified=\"1\"]) body{visibility:hidden!important}';
+    (document.head||document.documentElement).appendChild(st);
+    const run=()=>enforceRouteRole().catch(()=>{});
+    if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',run,{once:true});else queueMicrotask(run);
+  }
+})();
+
+/* iOS/WebKit compatibility layer — presentation only; no auth/storage semantics changed. */
+(function(){
+  'use strict';
+  if(window.__PLATFORM_IOS_COMPAT__) return; window.__PLATFORM_IOS_COMPAT__=1;
+  var d=document, de=d.documentElement;
+  var touchWebKit=('WebkitAppearance' in de.style) && (navigator.maxTouchPoints||0)>0;
+  if(!touchWebKit) return;
+  de.classList.add('platform-webkit-touch');
+  function viewport(){
+    var vv=window.visualViewport;
+    var h=Math.max(1, Math.round(vv ? vv.height : window.innerHeight));
+    var w=Math.max(1, Math.round(vv ? vv.width : window.innerWidth));
+    de.style.setProperty('--platform-visual-height',h+'px');
+    de.style.setProperty('--platform-visual-width',w+'px');
+    de.style.setProperty('--platform-vv-top',Math.max(0,Math.round(vv?vv.offsetTop:0))+'px');
+  }
+  viewport();
+  window.addEventListener('resize',viewport,{passive:true});
+  window.addEventListener('orientationchange',function(){setTimeout(viewport,80);setTimeout(viewport,350)},{passive:true});
+  if(window.visualViewport){visualViewport.addEventListener('resize',viewport,{passive:true});visualViewport.addEventListener('scroll',viewport,{passive:true});}
+  var s=d.createElement('style'); s.id='platform-ios-webkit-compat';
+  s.textContent=`
+    html.platform-webkit-touch{height:100%;-webkit-text-size-adjust:100%;text-size-adjust:100%;}
+    html.platform-webkit-touch body{min-height:100%;min-height:var(--platform-visual-height,100dvh);padding-left:env(safe-area-inset-left,0);padding-right:env(safe-area-inset-right,0);}
+    html.platform-webkit-touch img,html.platform-webkit-touch video,html.platform-webkit-touch canvas,html.platform-webkit-touch svg{max-width:100%;}
+    html.platform-webkit-touch iframe{max-width:100%;}
+    html.platform-webkit-touch input,html.platform-webkit-touch select,html.platform-webkit-touch textarea{font-size:max(16px,1em);}
+    html.platform-webkit-touch button,html.platform-webkit-touch a,html.platform-webkit-touch [role="button"]{touch-action:manipulation;-webkit-tap-highlight-color:rgba(0,0,0,.06);}
+    html.platform-webkit-touch .modal,html.platform-webkit-touch [role="dialog"],html.platform-webkit-touch dialog{max-height:calc(var(--platform-visual-height,100dvh) - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));}
+    html.platform-webkit-touch table{max-width:100%;}
+    @supports (height:100dvh){html.platform-webkit-touch .uw-fullscreen-internal{height:100dvh!important;min-height:100dvh!important;}}
+    @media (max-width:820px){html.platform-webkit-touch .table-responsive,html.platform-webkit-touch .responsive-table,html.platform-webkit-touch .table-wrap{overflow-x:auto!important;-webkit-overflow-scrolling:touch;}}
+  `;
+  (d.head||de).appendChild(s);
+})();

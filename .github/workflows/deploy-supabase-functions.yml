@@ -8,6 +8,12 @@ on:
       - main
     paths:
       - "supabase/functions/**"
+      - "supabase/functions/platform-session/**"
+      - "supabase/functions/platform-state/**"
+      - "supabase/functions/platform-core/**"
+      - "supabase/functions/platform-directory/**"
+      - "supabase/functions/_shared/login-upstream.ts"
+      - "weekly-workflow-core.js"
       - ".github/workflows/deploy-supabase-functions.yml"
 
 permissions:
@@ -41,6 +47,7 @@ jobs:
           test -n "${SUPABASE_ACCESS_TOKEN}"
           test -n "${{ secrets.SUPABASE_PROJECT_REF }}"
           test -d supabase/functions
+          test -f supabase/functions/platform-files/index.ts
           count="$(find supabase/functions -mindepth 1 -maxdepth 1 -type d ! -name '_*' | wc -l | tr -d ' ')"
           if [ "${count}" -eq 0 ]; then
             echo "::error::No Supabase Edge Functions were found."
@@ -54,9 +61,27 @@ jobs:
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
             --no-verify-jwt
 
-      - name: Re-deploy weekly state identity contract
+      - name: Deploy platform-session password recovery
+        run: |
+          supabase functions deploy platform-session \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
+            --no-verify-jwt
+
+      - name: Deploy platform-state weekly delivery integrity
         run: |
           supabase functions deploy platform-state \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
+            --no-verify-jwt
+
+      - name: Deploy platform-core school performance projection
+        run: |
+          supabase functions deploy platform-core \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
+            --no-verify-jwt
+
+      - name: Deploy platform-directory school login identity
+        run: |
+          supabase functions deploy platform-directory \
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
             --no-verify-jwt
 
@@ -104,3 +129,25 @@ jobs:
           fi
 
           echo "All Edge Functions were deployed successfully."
+
+      - name: Verify platform-files access boundary is reachable
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co/functions/v1/platform-files?action=health"
+          http_code="$(
+            curl \
+              --silent \
+              --show-error \
+              --output /tmp/platform_files_probe.json \
+              --write-out '%{http_code}' \
+              --connect-timeout 15 \
+              --max-time 30 \
+              "${URL}"
+          )"
+          cat /tmp/platform_files_probe.json
+          echo
+          # The unauthenticated probe must reach the new function while its
+          # session boundary remains closed. A 401 is the expected healthy result.
+          test "${http_code}" = "401"
+          grep -q 'جلسة الملفات مفقودة' /tmp/platform_files_probe.json

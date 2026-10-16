@@ -284,8 +284,11 @@
     const payload = await response.json().catch(() => ({}));
 
     if (!response.ok) {
+      // RL243: old servers may serialize a database error as an object or HTML.
+      const upstreamUnavailable=response.status>=500;
+      const safeMessage=typeof payload.error==='string'&&!/\[object Object\]|<!doctype|<html/i.test(payload.error)?payload.error:'';
       const error = new Error(
-        payload.error || 'تعذر إنشاء جلسة الملفات السحابية',
+        upstreamUnavailable?'خدمة التحقق السحابية غير متاحة مؤقتًا. انتظر قليلًا ثم أعد المحاولة من رابط المدرسة نفسه.':safeMessage || 'تعذر إنشاء جلسة الملفات السحابية',
       );
       error.code = payload.code || `HTTP_${response.status}`;
       error.details = payload.details || '';

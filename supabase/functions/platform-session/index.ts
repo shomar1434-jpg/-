@@ -1,4 +1,5 @@
 import {handlePasswordRecovery,legacyRecoveryGate} from './password-recovery.ts';
+import {loginUpstreamFetch,loginServiceFailure} from '../_shared/login-upstream.ts';
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const CORS_HEADERS = {
@@ -270,10 +271,12 @@ Deno.serve(async (request) => {
       return json({error:'بيانات الجلسة غير مكتملة',code:'SESSION_INPUT_INCOMPLETE',requestId},400);
     }
 
+    const upstreamFetch=requestedAction==='login'?loginUpstreamFetch():fetch;
     const admin = createClient(supabaseUrl, serviceRoleKey, {
+      global:{fetch:upstreamFetch},
       auth: { persistSession: false, autoRefreshToken: false },
     });
-    const recoveryClient=anonKey?createClient(supabaseUrl,anonKey,{auth:{persistSession:false,autoRefreshToken:false}}):null;
+    const recoveryClient=anonKey?createClient(supabaseUrl,anonKey,{global:{fetch:upstreamFetch},auth:{persistSession:false,autoRefreshToken:false}}):null;
     const recovery=await handlePasswordRecovery({action:requestedAction,body:payload,request,admin,authClient:recoveryClient,
       origin:Deno.env.get('PLATFORM_PASSWORD_RECOVERY_URL')||'https://shomar1434-jpg.github.io/school-login.html',requestId});
     if(recovery)return json(recovery.body,recovery.status);
@@ -367,6 +370,7 @@ Deno.serve(async (request) => {
     const normalizedLogin = lower(login);
     if (anonKey && normalizedLogin.includes('@')) {
       const authClient = createClient(supabaseUrl, anonKey, {
+        global:{fetch:upstreamFetch},
         auth: { persistSession: false, autoRefreshToken: false },
       });
       const authResult = await authClient.auth.signInWithPassword({
@@ -422,7 +426,7 @@ Deno.serve(async (request) => {
     } catch (_) {}
 
     if(!authUser&&!normalizedLogin.includes('@')&&anonKey&&loginIdentityRows.length===1&&text(loginIdentityRows[0].email)){
-      const byEmail=createClient(supabaseUrl,anonKey,{auth:{persistSession:false,autoRefreshToken:false}});
+      const byEmail=createClient(supabaseUrl,anonKey,{global:{fetch:upstreamFetch},auth:{persistSession:false,autoRefreshToken:false}});
       const checked=await byEmail.auth.signInWithPassword({email:lower(loginIdentityRows[0].email),password});
       if(!checked.error&&checked.data?.user)authUser=checked.data.user;
     }
@@ -778,13 +782,7 @@ Deno.serve(async (request) => {
     });
   } catch (error) {
     console.error('[platform-session]', requestId, 'fatal', error);
-    return json(
-      {
-        error: error instanceof Error ? error.message : String(error),
-        code: 'SESSION_FATAL_ERROR',
-        requestId,
-      },
-      500,
-    );
+    const failure=loginServiceFailure(error,requestId);
+    return json(failure.body,failure.status);
   }
 });

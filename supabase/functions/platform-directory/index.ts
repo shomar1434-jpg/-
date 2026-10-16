@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import {loginUpstreamFetch,loginServiceFailure} from '../_shared/login-upstream.ts';
 const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization,x-client-info,apikey,content-type,x-platform-session','Access-Control-Allow-Methods':'POST,OPTIONS'};
 const json=(b:unknown,s=200)=>new Response(JSON.stringify(b),{status:s,headers:{...cors,'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
 const t=(v:unknown,n=2000)=>String(v??'').trim().slice(0,n), low=(v:unknown)=>t(v).toLowerCase();
@@ -11,21 +12,27 @@ const REGISTRATION_CONTRACT_VERSION='RL92-school-bound-registration-v1';
 Deno.serve(async(req)=>{
  if(req.method==='OPTIONS')return new Response('ok',{headers:cors}); if(req.method!=='POST')return json({error:'METHOD_NOT_ALLOWED'},405);
  const url=Deno.env.get('SUPABASE_URL'),service=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');if(!url||!service)return json({error:'ENV_MISSING'},500);
- const sb=createClient(url,service,{auth:{persistSession:false,autoRefreshToken:false}}),requestId=crypto.randomUUID();
+ const requestId=crypto.randomUUID();
  const adminLinkToken=async(schoolId:string,supervisorUserId:string,supervisorRole:string,exp:number)=>`${exp}.${await hmacHex(service,`${schoolId}|${supervisorUserId}|${supervisorRole}|${exp}`)}`;
  const verifyAdminLinkToken=async(token:string,schoolId:string,supervisorUserId:string,supervisorRole:string)=>{const [expRaw,sig]=String(token||'').split('.');const exp=Number(expRaw);if(!Number.isFinite(exp)||Date.now()>exp||!sig)return false;const expected=await hmacHex(service,`${schoolId}|${supervisorUserId}|${supervisorRole}|${exp}`);if(expected.length!==sig.length)return false;let diff=0;for(let i=0;i<expected.length;i++)diff|=expected.charCodeAt(i)^sig.charCodeAt(i);return diff===0};
  try{
   const body:any=await req.json().catch(()=>({})),action=t(body.action,80);
+  const sb=createClient(url,service,{...(action==='inspect-login-school'?{global:{fetch:loginUpstreamFetch(12000)}}:{}),auth:{persistSession:false,autoRefreshToken:false}});
   if(action==='registration-contract-version')return json({ok:true,version:REGISTRATION_CONTRACT_VERSION,requestId});
   if(action==='inspect-login-school'){
    // The school login link is public. Resolve only its school identity, never a user or registration secret.
    const sid=t(body.schoolId,100),scode=t(body.schoolCode,100);
    if(!sid&&!scode)return json({error:'SCHOOL_REFERENCE_REQUIRED',requestId},400);
    let row:any=null;
+   const ref=sid||scode;
    if(sid){
-    const q=await sb.from('schools').select('id,school_name,school_code,status').eq('id',sid).maybeSingle();
-    if(q.error)throw q.error;
-    row=q.data||null;
+    // Old links may carry a school code or a registered alias in schoolId.
+    // Never send a non-UUID to the UUID column (Postgres rejects it before alias lookup).
+    if(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sid)){
+     const q=await sb.from('schools').select('id,school_name,school_code,status').eq('id',sid).maybeSingle();
+     if(q.error)throw q.error;
+     row=q.data||null;
+    }
     if(!row){
      const aliasQ=await sb.from('school_identity_aliases').select('canonical_school_id,status').eq('alias',sid).eq('status','active').maybeSingle();
      if(aliasQ.error)throw aliasQ.error;
@@ -35,15 +42,31 @@ Deno.serve(async(req)=>{
       row=canonicalQ.data||null;
      }
     }
+    if(!row&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sid)){
+     const q=await sb.from('schools').select('id,school_name,school_code,status').eq('school_code',sid).limit(2);
+     if(q.error)throw q.error;
+     if((q.data||[]).length>1)return json({error:'SCHOOL_REFERENCE_AMBIGUOUS',requestId},409);
+     row=(q.data||[])[0]||null;
+    }
     // When an ID is present it is authoritative; aliases may only point to one canonical school.
     if(!row)return json({error:'SCHOOL_NOT_FOUND',requestId},404);
    }else{
     const q=await sb.from('schools').select('id,school_name,school_code,status').eq('school_code',scode).limit(2);
     if(q.error)throw q.error;
+    if((q.data||[]).length>1)return json({error:'SCHOOL_REFERENCE_AMBIGUOUS',requestId},409);
     row=(q.data||[]).length===1?q.data[0]:null;
+    if(!row){
+     const aliasQ=await sb.from('school_identity_aliases').select('canonical_school_id,status').eq('alias',scode).eq('status','active').maybeSingle();
+     if(aliasQ.error)throw aliasQ.error;
+     if(aliasQ.data?.canonical_school_id){
+      const canonicalQ=await sb.from('schools').select('id,school_name,school_code,status').eq('id',aliasQ.data.canonical_school_id).maybeSingle();
+      if(canonicalQ.error)throw canonicalQ.error;
+      row=canonicalQ.data||null;
+     }
+    }
    }
    if(!row||['disabled','inactive','suspended','deleted'].includes(low(row.status)))return json({error:'SCHOOL_NOT_FOUND',requestId},404);
-   return json({ok:true,school:{id:row.id,schoolId:row.id,school_name:row.school_name,schoolName:row.school_name,school_code:row.school_code,schoolCode:row.school_code,status:row.status},canonicalizedFrom:sid&&sid!==String(row.id)?sid:null,requestId});
+   return json({ok:true,school:{id:row.id,schoolId:row.id,school_name:row.school_name,schoolName:row.school_name,school_code:row.school_code,schoolCode:row.school_code,status:row.status},canonicalizedFrom:ref!==String(row.id)?ref:null,requestId});
   }
   const findSchool=async()=>{
    const sid=t(body.schoolId,100),scode=t(body.schoolCode,100),reg=t(body.registrationCode,160);
@@ -263,5 +286,5 @@ Deno.serve(async(req)=>{
    return json({ok:true,user:verifyU.data,membership:verifyM.data,school:schoolQ.data,schoolId,requestId});
   }
   return json({error:'ACTION_UNSUPPORTED',requestId},400);
- }catch(e){console.error('[platform-directory]',requestId,e);return json({error:e instanceof Error?e.message:String(e),requestId},500)}
+ }catch(e){console.error('[platform-directory]',requestId,e);const failure=loginServiceFailure(e,requestId);return json(failure.body,failure.status)}
 });

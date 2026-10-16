@@ -490,7 +490,30 @@
     normalized.isActive = true;
     return normalized;
   }
-  window.SmartSchoolSupabase = { getClient, appRoleToDb, dbRoleToApp, normalizeUser, normalizeSchool, listSchools, createSchoolWithManager, updateSchoolStatus, registerSchoolUser, listUsersBySchool, updateUserStatus, upsertSchoolUser, login };
+  // RL243: keep the directory transport beside its connection configuration.
+  // The independent login engine runs in a separate closure and cannot read these constants.
+  async function inspectLoginSchoolIdentity(schoolId, schoolCode){
+    const controller = new AbortController();
+    const timer = setTimeout(()=>controller.abort(), 15000);
+    try{
+      const response = await fetch(SUPABASE_URL.replace(/\/$/,'')+'/functions/v1/platform-directory', {
+        method:'POST', signal:controller.signal,
+        headers:{'content-type':'application/json','apikey':SUPABASE_KEY},
+        body:JSON.stringify({action:'inspect-login-school',schoolId,schoolCode})
+      });
+      const payload = await response.json().catch(()=>({}));
+      if(!response.ok || !payload.ok){
+        const messages={SCHOOL_NOT_FOUND:'لم يتم العثور على مدرسة مفعلة مرتبطة بهذا الرابط.',SCHOOL_REFERENCE_AMBIGUOUS:'تعذر تحديد المدرسة بصورة فريدة. تواصل مع إدارة المنصة.',SCHOOL_REFERENCE_REQUIRED:'الرابط لا يحتوي على معرف المدرسة.'};
+        const message=response.status>=500?'تعذر الاتصال بخدمة المدارس مؤقتًا. انتظر قليلًا ثم أعد المحاولة.':messages[payload.error]||'تعذر التحقق من رابط المدرسة.';
+        throw new Error(message+(payload.requestId?' — رمز التشخيص: '+String(payload.requestId).slice(0,100):''));
+      }
+      return payload;
+    }catch(error){
+      if(error?.name==='AbortError')throw new Error('انتهت مهلة التحقق من المدرسة. أعد المحاولة من رابط المدرسة نفسه.');
+      throw error;
+    }finally{clearTimeout(timer);}
+  }
+  window.SmartSchoolSupabase = { getClient, inspectLoginSchoolIdentity, appRoleToDb, dbRoleToApp, normalizeUser, normalizeSchool, listSchools, createSchoolWithManager, updateSchoolStatus, registerSchoolUser, listUsersBySchool, updateUserStatus, upsertSchoolUser, login };
 })();
 
 </script>
@@ -577,7 +600,7 @@
 })();
 </script>
 
-<script src="platform-cloud-session.js?v=20260923-RL199-login-timeout"></script>
+<script src="platform-cloud-session.js?v=20261015-RL243-school-login"></script>
 <!-- RL115: strict independent-school link binding; fail closed on school mismatch. -->
 <!-- RL136: legacy active-account school-bound login + cloud-session compatibility merge. -->
 <script id="independent-school-login-engine">
@@ -733,13 +756,9 @@
     return !!codeRef && refs.includes(codeRef);
   }
   async function inspectLoginSchool(){
-    const endpoint=SUPABASE_URL.replace(/\/$/,'')+'/functions/v1/platform-directory';
-    const response=await loginDeadline(fetch(endpoint,{
-      method:'POST',headers:{'content-type':'application/json','apikey':SUPABASE_KEY},
-      body:JSON.stringify({action:'inspect-login-school',schoolId:targetSchoolId,schoolCode:targetSchoolCode})
-    }),'التحقق من رابط المدرسة',20000);
-    const payload=await loginDeadline(response.json(),'قراءة هوية المدرسة',10000);
-    if(!response.ok||!payload.ok)throw new Error(payload.error||'تعذر التحقق من رابط المدرسة');
+    const inspect=window.SmartSchoolSupabase?.inspectLoginSchoolIdentity;
+    if(!inspect)throw new Error('خدمة التحقق من المدرسة غير جاهزة. أعد تحميل الصفحة.');
+    const payload=await inspect(targetSchoolId,targetSchoolCode);
     const school=payload.school||null;
     if(school&&payload.canonicalizedFrom){
       targetSchoolId=String(school.id||school.schoolId||'').trim();
@@ -757,28 +776,11 @@
     // RL115: عند وجود رابط مدرسة مستقل، نحل المدرسة من نفس المعرف/الكود فقط.
     // ممنوع تمامًا الانتقال إلى مدرسة أخرى اعتمادًا على بريد مكتوب أو جلسة/مدرسة سابقة.
     if(hasExplicitSchoolContract){
-      try{
-        const candidate=await inspectLoginSchool();
-        if(schoolMatchesLinkContract(candidate))school=candidate;
-      }catch(e){ console.warn('school exact resolve failed', e); }
+      const candidate=await inspectLoginSchool();
+      if(schoolMatchesLinkContract(candidate))school=candidate;
 
-      // Compatibility during Edge Function deployment: one bounded legacy lookup.
-      if(!school){
-        try{
-          const sb=window.SmartSchoolSupabase?.getClient?.()||getClient();
-          if(sb){
-            const field=targetSchoolId?'id':'school_code',value=targetSchoolId||targetSchoolCode;
-            const result=await loginDeadline(sb.from('schools').select('id,school_name,school_code,status').eq(field,value).limit(2),'قراءة سجل المدرسة',20000);
-            const row=!result.error&&result.data?.length===1?result.data[0]:null;
-            if(row&&schoolMatchesLinkContract(row)&&!['disabled','inactive','suspended','deleted'].includes(String(row.status||'').toLowerCase()))school=row;
-          }
-        }catch(e){console.warn('school legacy lookup unavailable',e);}
-      }
-
-      // Existing browser cache is usable only when its stable ID or unique code matches this link.
-      if(!school){
-        school = localSchools.find(candidate => schoolMatchesLinkContract(candidate)) || null;
-      }
+      // RL243: the public directory is the single authority for explicit links.
+      // Neither anonymous table reads nor browser caches can override its rejection.
       if(!school) return null;
     }else{
       // الدخول العام القديم فقط: يمكن استخدام البريد لحل المدرسة، دون التأثير على روابط المدارس المستقلة.
@@ -950,9 +952,7 @@
       // RL122: لا يختار المستخدم دوره يدويًا. الخادم يحل الدور من عضويته الفعالة في المدرسة.
       const requestedDbRole = '';
       if(!loginId || !password){ setMsg('يرجى إدخال البريد/اسم المستخدم والرقم السري'); return; }
-      // RL224: resolveActiveSchool قد يجرب بوابة الدليل ثم القراءة الاحتياطية
-      // بالتتابع. كانت المهلة الخارجية 15 ثانية فتقطع المسار قبل أن تصل
-      // القراءة الاحتياطية إلى نتيجتها، رغم أن كل طلب له مهلة مستقلة.
+      // The independent link resolves through the directory before any session is created.
       const school = await loginDeadline(resolveActiveSchool(), 'التحقق من رابط المدرسة', 45000);
       if((targetSchoolId || targetSchoolCode) && !school){ setMsg('رابط المدرسة غير مرتبط بسجل مدرسة صحيح. تم إيقاف الدخول حمايةً لعزل المدارس.'); return; }
       if((targetSchoolId || targetSchoolCode) && !schoolMatchesLinkContract(school)){ setMsg('تم رفض الدخول لأن هوية المدرسة لا تطابق رابطها المستقل.'); return; }
@@ -1107,12 +1107,10 @@
     }
     const hasSchoolLink = !!(targetSchoolId || targetSchoolCode);
     if(hasSchoolLink){
-      const cached = findCachedSchoolByLink();
-      if(cached){ updateSchoolTitle(cached); }
-      else {
-        const title = document.getElementById('school-title');
-        if(title) title.textContent = 'جارٍ التحقق من رابط المدرسة المستقلة...';
-      }
+      const title = document.getElementById('school-title');
+      const mainTitle = document.getElementById('school-main-title');
+      if(title) title.textContent = 'جارٍ التحقق من رابط المدرسة المستقلة...';
+      if(mainTitle) mainTitle.textContent = 'جارٍ التحقق من المدرسة...';
     }
     let school=null;
     try{school=await loginDeadline(resolveActiveSchool(),'التحقق من رابط المدرسة',45000);}
@@ -1120,6 +1118,8 @@
     if(!school && hasSchoolLink){
       const title=document.getElementById('school-title');
       if(title)title.textContent='تعذر التحقق من رابط المدرسة';
+      const mainTitle=document.getElementById('school-main-title');
+      if(mainTitle)mainTitle.textContent='تعذر التحقق من المدرسة';
       if(!document.getElementById('login-msg')?.textContent)setMsg('لم يتم التحقق من المدرسة المرتبطة بالرابط. تحقق من الاتصال ثم أعد فتح الرابط القديم كما هو.');
     }
   }
